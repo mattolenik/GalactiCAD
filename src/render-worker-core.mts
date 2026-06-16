@@ -250,6 +250,8 @@ export class RenderWorkerCore {
     #featureGraphOcclusionMode = 0
     /** Edge line width (framebuffer px) for the FeatureGraph overlay. */
     #featureGraphLineWidth = 2
+    /** Color original creases green vs subdivided cyan in the overlay (default off ⇒ all cyan). */
+    #featureGraphDifferentiateSegments = false
     /**
      * Lazily-built depth-only pipeline (preview shader's `depthOnlyMain` entry,
      * rgba32float target). Compiled from {@link #sceneShader} on first use of an
@@ -638,6 +640,13 @@ export class RenderWorkerCore {
         this.#forceNextRender = true
     }
 
+    /** Toggle original-vs-subdivided overlay edge coloring (off ⇒ all cyan). */
+    setFeatureGraphDifferentiateSegments(on: boolean): void {
+        if (this.#featureGraphDifferentiateSegments === on) return
+        this.#featureGraphDifferentiateSegments = on
+        this.#forceNextRender = true
+    }
+
     cancelBuilds(): void {
         this.#buildGeneration++
         // Supersede any in-flight background FG build too — its upload is
@@ -1019,6 +1028,7 @@ export class RenderWorkerCore {
         const depthView = this.#renderSceneDepthForOcclusion(commandEncoder, sceneWidth, sceneHeight)
         overlay.setDepthSource(depthView, depthView ? this.#featureGraphOcclusionMode : 0)
         overlay.setLineWidth(this.#featureGraphLineWidth)
+        overlay.setDifferentiateSegments(this.#featureGraphDifferentiateSegments)
         overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
         const pass = commandEncoder.beginRenderPass({
             label: "FeatureGraph Overlay",

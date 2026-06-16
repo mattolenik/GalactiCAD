@@ -48,6 +48,10 @@ struct OverlayCamera {
     occlusionMode: u32,
     // Edge line width in framebuffer pixels (dev-tools knob).
     lineWidthPx: f32,
+    // 0 = all edges cyan (default); 1 = paint original creases green to
+    // distinguish them from subdivided polyline segments (dev-tools knob).
+    differentiateSegments: u32,
+    // struct auto-pads to 128 bytes (16-aligned).
 }
 
 @group(0) @binding(0) var<uniform> camera: OverlayCamera;
@@ -202,16 +206,18 @@ const OCCLUSION_DIM: f32 = 0.18;
 // vertices that get a point marker.
 const CORNER_COLOR: vec4f = vec4f(1.0, 0.95, 0.2, 1.0);
 
-// Edge color by crease lineage. Corner-ness is a *vertex* property shown via
-// the point markers, so edges are colored only by their crease type.
+// Edge color. Corner-ness is a *vertex* property shown via the point markers,
+// so edges carry no corner color. By default every alive edge is cyan; when
+// `differentiateSegments` is set, original (non-subdivided) creases are painted
+// green so the subdivided polyline segments stand out from the emitted ones.
 fn lineColor(flags: u32) -> vec4f {
     if ((flags & FG_FLAG_ALIVE) == 0u) {
         return vec4f(0.6, 0.15, 0.15, 0.7);
     }
-    if ((flags & FG_FLAG_CREASE_SUBDIVIDED) != 0u) {
-        return vec4f(0.25, 0.85, 0.95, 0.9);
+    if (camera.differentiateSegments != 0u && (flags & FG_FLAG_CREASE_SUBDIVIDED) == 0u) {
+        return vec4f(0.25, 0.95, 0.35, 1.0);
     }
-    return vec4f(0.25, 0.95, 0.35, 1.0);
+    return vec4f(0.25, 0.85, 0.95, 0.9);
 }
 
 // Does the SDF surface occlude a fragment at `fragXY` (framebuffer pixels) with

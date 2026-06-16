@@ -242,6 +242,7 @@ export type MainToWorkerMessage =
     | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setFeatureGraphOcclusionMode"; mode: FeatureGraphOcclusionMode }
     | { type: "setFeatureGraphLineWidth"; px: number }
+    | { type: "setFeatureGraphDifferentiateSegments"; on: boolean }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
 

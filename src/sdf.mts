@@ -148,6 +148,7 @@ export class SDFRenderer {
     #featureGraphOverlayEnabled = true
     #featureGraphOcclusion: FeatureGraphOcclusionMode = "off"
     #featureGraphLineWidth = 2
+    #featureGraphDifferentiateSegments = false
     #stepHeatmapEnabled = false
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
@@ -398,6 +399,7 @@ export class SDFRenderer {
         this.#featureGraphOverlayEnabled = prev.featureGraphOverlay
         this.#featureGraphOcclusion = prev.featureGraphOcclusion
         this.#featureGraphLineWidth = prev.featureGraphLineWidth
+        this.#featureGraphDifferentiateSegments = prev.featureGraphDifferentiateSegments
         this.#selectionMode = global.preview.selectionMode
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
@@ -421,6 +423,10 @@ export class SDFRenderer {
                 this.#worker.postMessage({
                     type: "setFeatureGraphLineWidth",
                     px: this.#featureGraphLineWidth,
+                })
+                this.#worker.postMessage({
+                    type: "setFeatureGraphDifferentiateSegments",
+                    on: this.#featureGraphDifferentiateSegments,
                 })
                 this.syncDebugLogModulesToWorker()
                 this.#readyResolve()
@@ -1550,6 +1556,17 @@ export class SDFRenderer {
     }
     get featureGraphLineWidth(): number {
         return this.#featureGraphLineWidth
+    }
+
+    set featureGraphDifferentiateSegments(on: boolean) {
+        if (this.#featureGraphDifferentiateSegments === on) return
+        this.#featureGraphDifferentiateSegments = on
+        this.#settings.updatePreview("featureGraphDifferentiateSegments", on)
+        this.#worker.postMessage({ type: "setFeatureGraphDifferentiateSegments", on })
+        this.#needsRender = true
+    }
+    get featureGraphDifferentiateSegments(): boolean {
+        return this.#featureGraphDifferentiateSegments
     }
 
     /**

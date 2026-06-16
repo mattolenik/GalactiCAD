@@ -1298,6 +1298,7 @@ class App {
         devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
         devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
         devTools.featureGraphLineWidth = this.renderer.featureGraphLineWidth
+        devTools.featureGraphDifferentiateSegments = this.renderer.featureGraphDifferentiateSegments
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
@@ -1317,6 +1318,9 @@ class App {
         }
         devTools.onFeatureGraphLineWidthChange = (px) => {
             this.renderer.featureGraphLineWidth = px
+        }
+        devTools.onFeatureGraphDifferentiateSegmentsChange = (on) => {
+            this.renderer.featureGraphDifferentiateSegments = on
         }
         devTools.onStepHeatmapChange = (enabled) => {
             this.renderer.stepHeatmapEnabled = enabled
@@ -1345,6 +1349,7 @@ class App {
             devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
             devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
             devTools.featureGraphLineWidth = this.renderer.featureGraphLineWidth
+            devTools.featureGraphDifferentiateSegments = this.renderer.featureGraphDifferentiateSegments
         })
 
         const showFps = devTools.showFps
@@ -1417,6 +1422,7 @@ class App {
                     featureGraphOverlay: this.renderer.featureGraphOverlayEnabled,
                     featureGraphOcclusion: this.renderer.featureGraphOcclusion,
                     featureGraphLineWidth: this.renderer.featureGraphLineWidth,
+                    featureGraphDifferentiateSegments: this.renderer.featureGraphDifferentiateSegments,
                 },
             }
         }

@@ -63,9 +63,11 @@ const DEFAULT_LINE_WIDTH_PX = 2
  *   - 92 : _pad1 (f32), 4 bytes  →  vec4 alignment
  *   - 96 : viewCenter (vec2f), 8 bytes
  *   - 104: occlusionMode (u32), 4 bytes  (0 = off, 1 = hard, 2 = dim)
- *   - 108: lineWidthPx (f32), 4 bytes  →  struct size = 112 (16-aligned)
+ *   - 108: lineWidthPx (f32), 4 bytes
+ *   - 112: differentiateSegments (u32), 4 bytes  (0 = all cyan, 1 = green/cyan)
+ *   - 116: pad → struct size = 128 (16-aligned)
  */
-const CAMERA_UNIFORM_BYTES = 112
+const CAMERA_UNIFORM_BYTES = 128
 
 /** FeatureGraph overlay depth-occlusion mode. */
 export type FeatureGraphOcclusionMode = "off" | "hard" | "dim"
@@ -130,6 +132,8 @@ export class FeatureGraphOverlay {
     #occlusionMode = 0
     /** Edge line width in framebuffer pixels, written into the camera uniform. */
     #lineWidthPx = DEFAULT_LINE_WIDTH_PX
+    /** 0 = all edges cyan (default); 1 = green/cyan original-vs-subdivided. */
+    #differentiateSegments = 0
     /**
      * Persistent staging for the camera uniform payload. Filled in-place each
      * upload to avoid the per-frame `new ArrayBuffer(112)` + `new Float32Array(...)`
@@ -140,11 +144,11 @@ export class FeatureGraphOverlay {
     #cameraStagingF32 = new Float32Array(this.#cameraStaging)
     /**
      * Cache of the *inputs* (viewTransform[16] + cameraPosition[3] + res[2] +
-     * zoom[1] + viewCenter[2] + occlusionMode[1] + lineWidthPx[1] = 26 floats).
-     * Cheap to compare and lets us skip the matrix inverse + upload when nothing
-     * relevant changed.
+     * zoom[1] + viewCenter[2] + occlusionMode[1] + lineWidthPx[1] +
+     * differentiateSegments[1] = 27 floats). Cheap to compare and lets us skip
+     * the matrix inverse + upload when nothing relevant changed.
      */
-    #cameraInputCache = new Float32Array(26)
+    #cameraInputCache = new Float32Array(27)
     #cameraInputValid = false
     /** Uint32 view of {@link #cameraStaging} for the integer occlusionMode slot. */
     #cameraStagingU32 = new Uint32Array(this.#cameraStaging)
@@ -355,7 +359,8 @@ export class FeatureGraphOverlay {
                 cache[22] === viewCenter[0] &&
                 cache[23] === viewCenter[1] &&
                 cache[24] === this.#occlusionMode &&
-                cache[25] === this.#lineWidthPx
+                cache[25] === this.#lineWidthPx &&
+                cache[26] === this.#differentiateSegments
             ) return
         }
         for (let i = 0; i < 16; i++) cache[i] = vt[i]!
@@ -369,6 +374,7 @@ export class FeatureGraphOverlay {
         cache[23] = viewCenter[1]
         cache[24] = this.#occlusionMode
         cache[25] = this.#lineWidthPx
+        cache[26] = this.#differentiateSegments
         this.#cameraInputValid = true
 
         // Invert on CPU: WGSL inversion is doable for rigid transforms but
@@ -397,6 +403,8 @@ export class FeatureGraphOverlay {
         this.#cameraStagingU32[26] = this.#occlusionMode
         // lineWidthPx (f32): bytes 108..111
         f32[27] = this.#lineWidthPx
+        // differentiateSegments (u32): bytes 112..115
+        this.#cameraStagingU32[28] = this.#differentiateSegments
         this.#device.queue.writeBuffer(this.#cameraBuffer, 0, this.#cameraStaging)
     }
 
@@ -422,6 +430,15 @@ export class FeatureGraphOverlay {
     /** Set the edge line width (framebuffer pixels). Applied on next {@link uploadCamera}. */
     setLineWidth(px: number): void {
         this.#lineWidthPx = px
+    }
+
+    /**
+     * Toggle original-vs-subdivided edge coloring. `false` (default) draws all
+     * edges cyan; `true` paints emitted (non-subdivided) creases green. Applied
+     * on next {@link uploadCamera}.
+     */
+    setDifferentiateSegments(on: boolean): void {
+        this.#differentiateSegments = on ? 1 : 0
     }
 
     /**

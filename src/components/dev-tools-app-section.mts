@@ -59,6 +59,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #fgOcclusionSelect?: HTMLSelectElement
     #fgLineWidth$: BehaviorSubject<number>
     #fgLineWidthInput?: HTMLInputElement
+    #fgDifferentiate$: BehaviorSubject<boolean>
     #stepHeatmap$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
@@ -73,6 +74,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
     onFeatureGraphLineWidthChange?: (px: number) => void
+    onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
@@ -169,6 +171,20 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         }
     }
 
+    get featureGraphDifferentiateSegments(): boolean {
+        return this.#fgDifferentiate$.value
+    }
+
+    /** Sync the checkbox from the renderer/settings without re-dispatching. */
+    set featureGraphDifferentiateSegments(on: boolean) {
+        this.#applying = true
+        try {
+            this.#fgDifferentiate$.next(on)
+        } finally {
+            this.#applying = false
+        }
+    }
+
     get stepHeatmap(): boolean {
         return this.#stepHeatmap$.value
     }
@@ -225,6 +241,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#fgOverlay$ = new BehaviorSubject(true)
         this.#fgOcclusion$ = new BehaviorSubject<FeatureGraphOcclusionMode>("off")
         this.#fgLineWidth$ = new BehaviorSubject(2)
+        this.#fgDifferentiate$ = new BehaviorSubject(false)
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
@@ -310,6 +327,16 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
                 }),
             )
         }
+
+        // Color original (emitted) creases green vs subdivided cyan. Off by
+        // default ⇒ all overlay edges are cyan.
+        const fgDiffCb = this.#addCheckbox(viewportBox, "Differentiate segments", this.#fgDifferentiate$.value)
+        this.#subscriptions.push(connectCheckbox(fgDiffCb, this.#fgDifferentiate$))
+        this.#subscriptions.push(
+            this.#fgDifferentiate$.pipe(skip(1)).subscribe(v => {
+                if (!this.#applying) this.onFeatureGraphDifferentiateSegmentsChange?.(v)
+            }),
+        )
 
         const perfBox = document.createElement("dev-tools-collapse")
         perfBox.setAttribute("label", "Performance")

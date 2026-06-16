@@ -75,6 +75,11 @@ export interface PreviewSettings {
     featureGraphOcclusion: FeatureGraphOcclusionMode
     /** Edge line width (framebuffer px) for the FeatureGraph overlay. */
     featureGraphLineWidth: number
+    /**
+     * Color original (emitted) crease edges green vs subdivided edges cyan in
+     * the overlay. Default false ⇒ all edges cyan.
+     */
+    featureGraphDifferentiateSegments: boolean
 }
 
 export interface LayoutSettings {
@@ -196,6 +201,7 @@ function defaultPreview(): PreviewSettings {
         featureGraphOverlay: true,
         featureGraphOcclusion: "off",
         featureGraphLineWidth: 2,
+        featureGraphDifferentiateSegments: false,
     }
 }
 

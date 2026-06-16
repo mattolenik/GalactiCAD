@@ -217,6 +217,9 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setFeatureGraphLineWidth":
             if (core) core.setFeatureGraphLineWidth(msg.px)
             break
+        case "setFeatureGraphDifferentiateSegments":
+            if (core) core.setFeatureGraphDifferentiateSegments(msg.on)
+            break
         case "setStepHeatmapEnabled":
             if (core) core.setStepHeatmapEnabled(msg.enabled)
             break

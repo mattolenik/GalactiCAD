@@ -72,6 +72,7 @@ export class DevToolsPanel extends HTMLElement {
     onFeatureGraphOverlayChange?: (enabled: boolean) => void
     onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
     onFeatureGraphLineWidthChange?: (px: number) => void
+    onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
@@ -154,6 +155,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set featureGraphLineWidth(px: number) {
         this.#appSection.featureGraphLineWidth = px
+    }
+
+    get featureGraphDifferentiateSegments(): boolean {
+        return this.#appSection.featureGraphDifferentiateSegments
+    }
+
+    set featureGraphDifferentiateSegments(on: boolean) {
+        this.#appSection.featureGraphDifferentiateSegments = on
     }
 
     get renderNormals(): boolean {
@@ -360,6 +369,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
         this.#appSection.onFeatureGraphOcclusionChange = v => this.onFeatureGraphOcclusionChange?.(v)
         this.#appSection.onFeatureGraphLineWidthChange = v => this.onFeatureGraphLineWidthChange?.(v)
+        this.#appSection.onFeatureGraphDifferentiateSegmentsChange = v => this.onFeatureGraphDifferentiateSegmentsChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)

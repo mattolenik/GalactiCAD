@@ -75,10 +75,13 @@ export class MonacoHighlighter {
     }
 
     /**
-     * Generate CSS for a shape indicator pill.
-     * Single class: rounded rect background (object color), text and icon in inverse color.
+     * Generate CSS for a shape indicator.
+     * `textClass` styles the function name (colored bottom underline). `iconClass` styles the leading
+     * icon, which is rendered as Monaco injected `before` text (not a CSS `::before`) so that the text
+     * caret sits to the LEFT of the icon — placing the cursor at the symbol start lands before the icon,
+     * not between the icon and the name.
      */
-    private generateIndicatorCss(className: string, svg: string, r: number, g: number, b: number): string {
+    private generateIndicatorCss(textClass: string, iconClass: string, svg: string, r: number, g: number, b: number): string {
         const colorRgb = `rgb(${r},${g},${b})`
         const svgWithColor = svg.replace(/currentColor/g, colorRgb)
         const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">${svgWithColor}</svg>`
@@ -91,11 +94,11 @@ export class MonacoHighlighter {
             `0 -0.2px 0 ${colorRgb}`,
         ].join(", ")
 
-        return `.${className} {
+        // 22px box with the 12px icon centered → ~5-6px breathing room on each side
+        // (between the caret and the icon, and between the icon and the name).
+        return `.${textClass} {
             background-color: transparent;
-            border: 1px solid ${colorRgb};
-            border-radius: 8px;
-            padding: 0 5px 0 3px;
+            border-bottom: 1px solid ${colorRgb};
             color: ${colorRgb} !important;
             font-weight: 600 !important;
             text-shadow: ${subtleBoldShadow};
@@ -103,15 +106,14 @@ export class MonacoHighlighter {
             box-decoration-break: clone;
             box-sizing: border-box;
         }
-        .${className}::before {
-            content: "";
+        .${iconClass} {
             display: inline-block;
-            width: 12px;
+            width: 22px;
             height: 12px;
-            margin-right: 4px;
             vertical-align: middle;
             background-image: url("${dataUri}");
-            background-size: contain;
+            background-size: 12px 12px;
+            background-position: center;
             background-repeat: no-repeat;
             cursor: default;
         }\n`
@@ -147,8 +149,10 @@ export class MonacoHighlighter {
             const g = Math.round(color.y * 255)
             const b = Math.round(color.z * 255)
 
-            const className = `shape-indicator-${this.indicatorCounter++}`
-            css += this.generateIndicatorCss(className, indicator.svg, r, g, b)
+            const idx = this.indicatorCounter++
+            const className = `shape-indicator-${idx}`
+            const iconClass = `shape-indicator-icon-${idx}`
+            css += this.generateIndicatorCss(className, iconClass, indicator.svg, r, g, b)
 
             return {
                 range: new monaco.Range(
@@ -159,16 +163,24 @@ export class MonacoHighlighter {
                 ),
                 options: {
                     inlineClassName: className,
+                    // Icon as injected text (not CSS ::before) so the caret sits to the LEFT of the icon.
+                    before: {
+                        content: "\u200B",
+                        inlineClassName: iconClass,
+                        inlineClassNameAffectsLetterSpacing: true,
+                        cursorStops: monaco.editor.InjectedTextCursorStops.None,
+                    },
                     stickiness: STICKY_TOKEN
                 }
             }
         })
 
-        // Append selection modifiers: solid for primary, dashed for children
-        css += `.shape-indicator-selected { box-shadow: 0 0 0 2px currentColor; }
-        [data-theme="dark"] .shape-indicator-selected { box-shadow: 0 0 0 2px #fff; }
-        .shape-indicator-selected-child { box-shadow: none; border: 2px dashed currentColor; border-radius: 8px; box-sizing: border-box; }
-        [data-theme="dark"] .shape-indicator-selected-child { border-color: #fff; }\n`
+        // Append selection modifiers: thicker solid underline for primary, dashed underline for children.
+        // Each rule defines a complete border-bottom so it also shows on selection-only ranges (no base pill).
+        css += `.shape-indicator-selected { border-bottom: 3px solid currentColor; }
+        [data-theme="dark"] .shape-indicator-selected { border-bottom-color: #fff; }
+        .shape-indicator-selected-child { border-bottom: 2px dashed currentColor; }
+        [data-theme="dark"] .shape-indicator-selected-child { border-bottom-color: #fff; }\n`
 
         // Update the style element with generated CSS
         this.styleElement!.textContent = css
@@ -223,9 +235,20 @@ export class MonacoHighlighter {
             options: { inlineClassName: "shape-indicator-selected-child", overviewRuler: ruler, stickiness: STICKY_TOKEN }
         }))
 
+        // Highlight the whole line of each primary-selected object. Deduped by line so several
+        // selected objects sharing a line don't stack translucent backgrounds.
+        const primaryLines = new Set<number>()
+        for (const range of primaryRanges) {
+            for (let line = range.startLine; line <= range.endLine; line++) primaryLines.add(line)
+        }
+        const lineDecorations: monaco.editor.IModelDeltaDecoration[] = [...primaryLines].map(line => ({
+            range: new monaco.Range(line, 1, line, 1),
+            options: { isWholeLine: true, className: "shape-line-selected", stickiness: STICKY_TOKEN }
+        }))
+
         this.selectionDecorationIds = this.editor.deltaDecorations(
             this.selectionDecorationIds,
-            [...primaryDecorations, ...childDecorations]
+            [...lineDecorations, ...primaryDecorations, ...childDecorations]
         )
 
         const firstRange = primaryRanges[0] ?? childRanges[0]

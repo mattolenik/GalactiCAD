@@ -268,29 +268,41 @@ const SQUARE_WITH_COLLINEAR: [number, number][] = [
     [0, 10],
 ]
 
-test("Extrude.accumulateFeatureGraph: every polygon vertex casts a vertical side edge (no sharpness threshold)", () => {
+test("Extrude.accumulateFeatureGraph: real-turn vertices cast a side edge; collinear vertices do not", () => {
     const root = extrude.profile(polygon2d(SQUARE_WITH_COLLINEAR)).height(5)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
 
-    // 5 polygon vertices × (top + bottom).
+    // 5 polygon vertices × (top + bottom) — every vertex is emitted so cap
+    // edges/loops have valid endpoints, even the collinear one.
     assert.equal(cpu.vertexCount, 10)
-    // 5 top cap + 5 bottom cap + 5 vertical — a vertical side edge for EVERY
-    // vertex including the collinear one (previously it would be skipped → 14).
-    assert.equal(cpu.edgeCount, 15, "5 top + 5 bottom + 5 vertical (one per vertex)")
+    // 5 top cap + 5 bottom cap + 4 vertical: the four square corners turn (any
+    // turn counts — no sharpness floor), but the collinear midpoint is flat and
+    // casts no vertical crease.
+    assert.equal(cpu.edgeCount, 14, "5 top + 5 bottom + 4 vertical (collinear midpoint skipped)")
 
-    // The collinear vertex's corners (indices 2, 3) must still NOT be flagged
-    // as corners — only the feature LINE is unconditional, not the 0D corner.
+    // The collinear vertex (polygon vertex 1 → vert indices 2, 3) is NOT a
+    // corner and casts NO vertical side edge — the surface is flat there.
     assert.equal(cpu.vertexFlags[2]! & FG_FLAG_CORNER, 0, "collinear vertex top: not a corner")
     assert.equal(cpu.vertexFlags[3]! & FG_FLAG_CORNER, 0, "collinear vertex bottom: not a corner")
-
-    // …but a vertical side edge connecting top↔bottom (2 ↔ 3) does exist.
     let hasCollinearSideEdge = false
     for (let e = 0; e < cpu.edgeCount; e++) {
         const a = cpu.edgeEndpoints[e * 2]!
         const b = cpu.edgeEndpoints[e * 2 + 1]!
         if ((a === 2 && b === 3) || (a === 3 && b === 2)) hasCollinearSideEdge = true
     }
-    assert.ok(hasCollinearSideEdge, "collinear vertex still casts a vertical side edge")
+    assert.ok(!hasCollinearSideEdge, "collinear vertex casts no vertical side edge")
+
+    // A real (90°) corner — polygon vertex 0 → vert indices 0 (top), 1 (bottom)
+    // — IS flagged a corner and DOES cast a vertical edge (0 ↔ 1).
+    assert.ok((cpu.vertexFlags[0]! & FG_FLAG_CORNER) !== 0, "square corner top: corner flag set")
+    assert.ok((cpu.vertexFlags[1]! & FG_FLAG_CORNER) !== 0, "square corner bottom: corner flag set")
+    let hasCornerSideEdge = false
+    for (let e = 0; e < cpu.edgeCount; e++) {
+        const a = cpu.edgeEndpoints[e * 2]!
+        const b = cpu.edgeEndpoints[e * 2 + 1]!
+        if ((a === 0 && b === 1) || (a === 1 && b === 0)) hasCornerSideEdge = true
+    }
+    assert.ok(hasCornerSideEdge, "real corner casts a vertical side edge")
 })

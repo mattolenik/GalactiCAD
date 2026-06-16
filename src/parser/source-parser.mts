@@ -262,6 +262,8 @@ export class SourceParser {
     #varMap: Map<string, ParsedShapeCall> = new Map()
     /** Root positions already added for fluent chains (avoid duplicate ParsedShapeCalls) */
     #fluentChainRoots: Set<number> = new Set()
+    /** `callStart:funcName` keys already emitted, to drop duplicate ParsedShapeCalls — see processCallExpression. */
+    #seenCallKeys: Set<string> = new Set()
     /** Cached AST from last parseShapeCalls, used by findFluentMethods */
     #lastSourceFile: ts.SourceFile | null = null
 
@@ -277,6 +279,7 @@ export class SourceParser {
         this.#callNodeMap.clear()
         this.#callMap.clear()
         this.#fluentChainRoots.clear()
+        this.#seenCallKeys.clear()
 
         const visit = (node: ts.Node) => {
             if (ts.isCallExpression(node)) {
@@ -455,17 +458,33 @@ export class SourceParser {
                 return
             }
 
-            // Pure CSG: look through its arguments
+            // Pure CSG: look through its arguments. The mapped node may be the OUTER node of a
+            // fluent chain (`union(a,b).shift(...)` → the `.shift` call, whose arguments are the
+            // shift vector, not the operands), so descend to the operator call that actually holds
+            // the CSG operands before reading them.
             const callNode = this.#callNodeMap.get(call.callStart)
             if (!callNode) return
 
-            for (const arg of callNode.arguments) {
+            for (const arg of this.#operatorCallNode(callNode).arguments) {
                 this.#resolveCallArg(arg, resolve)
             }
         }
 
         resolve(compositeCall)
         return results
+    }
+
+    /**
+     * Descend a fluent chain to the call that names the operator directly, i.e. whose `.expression`
+     * is the shape-function identifier. For a plain `union(a,b)` this is the node itself; for
+     * `union(a,b).shift(v)` it walks past the trailing `.shift(v)` to the `union(a,b)` call.
+     */
+    #operatorCallNode(callNode: ts.CallExpression): ts.CallExpression {
+        let cur: ts.CallExpression = callNode
+        while (ts.isPropertyAccessExpression(cur.expression) && ts.isCallExpression(cur.expression.expression)) {
+            cur = cur.expression.expression
+        }
+        return cur
     }
 
     /** Resolve a single call argument to a shape call and invoke resolve() on it */
@@ -481,6 +500,13 @@ export class SourceParser {
                 const fluent = this.#getFluentChainInfo(arg)
                 if (fluent && ALL_SHAPE_FUNCTIONS.has(fluent.operator)) {
                     callStart = fluent.callStart
+                } else {
+                    // Modifier chain on a variable operand (e.g. `union(a.scale(2), b)`):
+                    // the chain root is a variable, not a shape-function name, so the fluent
+                    // lookup bails and the operand would be dropped — leaving the CSG result
+                    // only partially selected. The chain's own (modifier) call is keyed in
+                    // #callMap at the arg's start; resolve it so the geometry is still selected.
+                    callStart = arg.getStart() - WRAP_PREFIX_CHARS
                 }
             }
             if (callStart !== undefined) {
@@ -545,12 +571,17 @@ export class SourceParser {
 
         if (!ALL_SHAPE_FUNCTIONS.has(funcName)) return
 
-        // Dedup: a chained modifier (e.g. `union(a,b).scale(2)`) makes #ensureChainCallsCreated
-        // pre-create the inner call before the AST visitor reaches it. callStart is the call's source
-        // offset, so it uniquely identifies a call — skip if we've already emitted this one. Without
-        // this, composites like union get a duplicate ParsedShapeCall at the same location, which
-        // surfaces as two stacked indicator icons when the composite expands to multiple scene nodes.
-        if (this.#callMap.has(callStart)) return
+        // Dedup by (callStart, funcName). A call is reached twice in two ways:
+        //  • #ensureChainCallsCreated pre-creates an inner chain call the AST visitor then revisits.
+        //  • The fluent branch emits the operator call (`union(...).shift(...)`, `sphere().radius(5)`)
+        //    while the inner identifier call emits the same operator at the same offset.
+        // Both share (callStart, funcName), so they collapse to one — avoiding duplicate indicators
+        // (two stacked icons once a composite expands to multiple scene nodes). funcName is part of
+        // the key because every call in a chain shares getStart(): keying on callStart alone would
+        // wrongly drop a chained modifier (`box(...).scale(2)` — box & scale differ only by funcName).
+        const callKey = `${callStart}:${funcName}`
+        if (this.#seenCallKeys.has(callKey)) return
+        this.#seenCallKeys.add(callKey)
 
         const startPos = rootExpr.getStart()
         const endPos = rootExpr.getEnd()

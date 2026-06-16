@@ -146,6 +146,49 @@ pub enum CsgNode {
     },
 }
 
+/// Max positive principal curvature of the analytic carriers reachable under a
+/// blend's children, in world units (the uniform similarity scale `s` divides a
+/// local radius). Plane → 0; Sphere/Cylinder → 1/(r·s). Returns false the moment
+/// a carrier has no constant analytic curvature here — Cone (radius shrinks to the
+/// apex ⇒ unbounded), Extrude/Loft (ruled, non-unit gradient), Lathe (mixed
+/// profile) — so the blend falls back to the sampled cone. Recurses through hard
+/// combiners and nested blends, reading the FINAL solid's carriers (sign-agnostic:
+/// curvature magnitude is what bounds normal variation).
+fn max_carrier_curvature(children: &[CsgNode], out: &mut f64) -> bool {
+    fn walk(node: &CsgNode, out: &mut f64) -> bool {
+        match node {
+            CsgNode::Leaf(l) => {
+                let s = l.sim.s.max(1e-12);
+                match &l.shape {
+                    Shape::Cuboid { .. } => true, // 6 planes → κ = 0
+                    Shape::Sphere { r } | Shape::Cylinder { r, .. } => {
+                        if *r > 1e-12 {
+                            let k = 1.0 / (*r * s);
+                            if k > *out {
+                                *out = k;
+                            }
+                        }
+                        true
+                    }
+                    // Cone curvature → ∞ at the apex; ruled/profile shapes have no
+                    // constant analytic curvature → ineligible for the analytic bound.
+                    Shape::Cone { .. } | Shape::Extrude { .. } | Shape::Loft { .. } | Shape::Lathe { .. } => false,
+                }
+            }
+            CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter().all(|c| walk(c, out)),
+            CsgNode::Blend { mode, children, .. } => {
+                // A nested blend is itself a carrier of the parent fillet only if it is
+                // analytic-eligible; require Round + eligible carriers underneath.
+                if *mode != SminMode::Round {
+                    return false;
+                }
+                children.iter().all(|c| walk(c, out))
+            }
+        }
+    }
+    children.iter().all(|c| walk(c, out))
+}
+
 /// The nearest two transformed field values (smallest first), matching the
 /// shader's nearest-pair fold. Binary blends keep operand order.
 fn nearest_pair(children: &[CsgNode], p: [f64; 3], sgn: f64) -> (f64, f64) {
@@ -418,6 +461,79 @@ impl CsgNode {
                     m *= SQRT_2;
                 }
                 m
+            }
+        }
+    }
+
+    /// Analytic blend-curvature bound (the lever-2 cert, opt-in/default-OFF). A
+    /// round-`smin` fillet has a closed-form surface curvature: the cross-section arc
+    /// is `1/r`, so for a Smin UNION (convex carriers, the fillet bulges outward and
+    /// carriers only REDUCE it) `κ ≤ 1/r`, and for a Smax INTERSECT/SUBTRACT (concave
+    /// groove) `κ ≤ 1/r + max(0, κ_a, κ_b)` (the concave carrier curvature adds).
+    /// Empirically (`examples/blend_curv_probe`): plane∪plane = exactly `1/r`,
+    /// sphere∪sphere = `0.80 < 1/r`, box−sphere = `1/r`, perpendicular cylinders
+    /// `≈1/r`. So this is a SOUND upper bound on the true fillet curvature. The
+    /// per-cell normal variation is then ≤ `κ · cellSize`, and the analytic cert splits
+    /// iff `κ · cellSize > θ` — with NO per-cell ∇f cone (the strata-empty path needs
+    /// no owner/grad query at all).
+    ///
+    /// HONEST RESULT (measured): because `κ` is a single worst-case CONSTANT over the
+    /// whole blend band while the sampled ∇f cone reads the TRUE *local* curvature
+    /// (≈0 on the flat approaches, reduced on convex carriers), the analytic cert
+    /// TIES the sampled cone only on the dominant plane∪plane case and OVER-refines
+    /// curved-carrier fillets (sphere∪sphere ≈ +70% leaves at matched θ). It is
+    /// SOUND (never faceting-regresses — realized fillet variation stays ≤ θ) but NOT
+    /// tighter, so it ships default-OFF and wired for A/B, mirroring the Lever-1
+    /// disposition. See the SfccTuning flag `blend_curvature_analytic`.
+    ///
+    /// Returns `Some(κ_max)` (max over all blends) iff EVERY blend in the tree is
+    /// analytic-eligible: `Round` mode and only plane/sphere/cylinder carriers (whose
+    /// principal curvatures are constant and known). `None` ⇒ at least one blend is
+    /// not analytically bounded here (non-round mode, or a cone/extrude/loft/lathe
+    /// carrier whose curvature is position-dependent or ruled) — the caller falls back
+    /// to the sampled ∇f cone for the whole tree. Hard/primitive-only trees (no blend)
+    /// return `Some(0.0)` (the cert is inert there anyway).
+    pub fn blend_curvature_bound(&self) -> Option<f64> {
+        let mut k = 0.0f64;
+        if self.collect_blend_curvature(&mut k) {
+            Some(k)
+        } else {
+            None
+        }
+    }
+
+    /// Accumulate the max round-blend curvature bound into `k`; returns false the
+    /// moment any blend is analytic-ineligible.
+    fn collect_blend_curvature(&self, k: &mut f64) -> bool {
+        match self {
+            CsgNode::Leaf(_) => true,
+            CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter().all(|c| c.collect_blend_curvature(k)),
+            CsgNode::Blend { kind, mode, r, children, .. } => {
+                if *mode != SminMode::Round {
+                    return false; // soft/chamfer/stairs/columns → sampled fallback
+                }
+                // Max positive carrier principal curvature over this blend's leaves.
+                let mut carrier_k = 0.0f64;
+                if !max_carrier_curvature(children, &mut carrier_k) {
+                    return false; // a cone/ruled carrier sits under this round blend
+                }
+                if *r > 1e-12 {
+                    // Round-smin fillet curvature: the cross-section arc is 1/r. For a
+                    // Smin UNION the carriers are CONVEX from the solid's side and the
+                    // fillet bulges OUTWARD — empirically κ ≤ 1/r (convex carriers only
+                    // REDUCE it; `examples/blend_curv_probe`: sphere∪sphere measured
+                    // 0.80 < 1.0 = 1/r). For a Smax INTERSECT/SUBTRACT the fillet is a
+                    // concave groove and a concave carrier ADDS its curvature, so the
+                    // sound bound there is 1/r + κ_carrier. Splitting the cases keeps
+                    // the common union fillet tight (1/r) without losing soundness on
+                    // grooves.
+                    let node_k = if *kind == BlendKind::Smin { 1.0 / *r } else { 1.0 / *r + carrier_k };
+                    if node_k > *k {
+                        *k = node_k;
+                    }
+                }
+                // Recurse into children too (nested blends).
+                children.iter().all(|c| c.collect_blend_curvature(k))
             }
         }
     }
@@ -991,6 +1107,86 @@ mod tests {
         assert!(solid.f([0.0, 0.0, 0.0]) < 0.0);
         // At (2,0,0): inside the box but inside the carve → removed (positive).
         assert!(solid.f([2.0, 0.0, 0.0]) > 0.0);
+    }
+
+    #[test]
+    fn blend_curvature_bound_round_union_planes_is_inv_r() {
+        // Two boxes, round Smin union r=2 → κ = 1/r = 0.5 (planes add nothing).
+        let t = union_smooth(
+            vec![
+                leaf_at(Shape::Cuboid { half: [5.0, 5.0, 5.0] }, [-4.0, 0.0, 0.0]),
+                leaf_at(Shape::Cuboid { half: [5.0, 5.0, 5.0] }, [0.0, -4.0, 0.0]),
+            ],
+            SminMode::Round,
+            2.0,
+            2.0,
+        );
+        assert_eq!(t.blend_curvature_bound(), Some(0.5));
+    }
+
+    #[test]
+    fn blend_curvature_bound_round_union_spheres_drops_carrier() {
+        // Smin union of spheres r=4 → convex union, carrier curvature is DROPPED →
+        // κ = 1/r only (sound: convex union is ≤ 1/r).
+        let t = union_smooth(
+            vec![leaf_at(sphere(4.0), [-3.0, 0.0, 0.0]), leaf_at(sphere(4.0), [3.0, 0.0, 0.0])],
+            SminMode::Round,
+            1.0,
+            2.0,
+        );
+        assert_eq!(t.blend_curvature_bound(), Some(1.0));
+    }
+
+    #[test]
+    fn blend_curvature_bound_round_subtract_adds_carrier() {
+        // Smax (subtract) round, carve sphere r=4 → concave groove, carrier ADDS:
+        // κ = 1/r + 1/4 = 1.0 + 0.25.
+        let t = subtract_smooth(
+            leaf_at(Shape::Cuboid { half: [5.0, 5.0, 5.0] }, [0.0, 0.0, 0.0]),
+            leaf_at(sphere(4.0), [5.0, 0.0, 0.0]),
+            SminMode::Round,
+            1.0,
+            2.0,
+        );
+        assert_eq!(t.blend_curvature_bound(), Some(1.25));
+    }
+
+    #[test]
+    fn blend_curvature_bound_uniform_scale_divides_radius() {
+        // Sphere r=2 under ×2 uniform scale = world r=4 → carrier κ = 1/4 (but Smin
+        // drops it). Use Smax to observe the scaled carrier curvature add: 1/r + 1/4.
+        let s = leaf(sphere(2.0), Similarity::from_uniform_scale(2.0), [0.0, 0.0, 0.0]);
+        let t = subtract_smooth(
+            leaf_at(Shape::Cuboid { half: [5.0, 5.0, 5.0] }, [0.0, 0.0, 0.0]),
+            s,
+            SminMode::Round,
+            1.0,
+            2.0,
+        );
+        assert_eq!(t.blend_curvature_bound(), Some(1.25));
+    }
+
+    #[test]
+    fn blend_curvature_bound_ineligible_modes_and_cone() {
+        // Soft mode → not analytically bounded here → None.
+        let soft = union_smooth(
+            vec![leaf_at(sphere(2.0), [-1.0, 0.0, 0.0]), leaf_at(sphere(2.0), [1.0, 0.0, 0.0])],
+            SminMode::Soft,
+            1.0,
+            2.0,
+        );
+        assert_eq!(soft.blend_curvature_bound(), None);
+        // Round but with a cone carrier (position-dependent curvature) → None.
+        let cone = union_smooth(
+            vec![leaf_at(Shape::Cone { r: 2.0, h: 4.0 }, [0.0, 0.0, 0.0]), leaf_at(sphere(2.0), [3.0, 0.0, 0.0])],
+            SminMode::Round,
+            1.0,
+            2.0,
+        );
+        assert_eq!(cone.blend_curvature_bound(), None);
+        // No blend at all → Some(0.0) (cert inert).
+        let hard = union(vec![leaf_at(sphere(2.0), [-1.0, 0.0, 0.0]), leaf_at(sphere(2.0), [1.0, 0.0, 0.0])]);
+        assert_eq!(hard.blend_curvature_bound(), Some(0.0));
     }
 
     #[test]

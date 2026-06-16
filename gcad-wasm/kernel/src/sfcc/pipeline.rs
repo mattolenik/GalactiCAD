@@ -51,6 +51,9 @@ pub struct PipelineTuning {
     pub normal_variation_deg: f64,
     pub blend_curvature_refine: bool,
     pub blend_curvature_deg: f64,
+    /// Lever 2: use the analytic closed-form blend-curvature bound instead of the
+    /// sampled ∇f cone (opt-in; default OFF — the sampled cone stays the proven path).
+    pub blend_curvature_analytic: bool,
     pub surface_tol_mm: f64,
     pub edge_root_tol_fraction: f64,
     pub interior_vertex_mode: InteriorVertexMode,
@@ -82,6 +85,7 @@ impl Default for PipelineTuning {
             normal_variation_deg: 18.0,
             blend_curvature_refine: true,
             blend_curvature_deg: 18.0,
+            blend_curvature_analytic: false,
             surface_tol_mm: 0.01,
             edge_root_tol_fraction: 1e-3,
             interior_vertex_mode: InteriorVertexMode::Project,
@@ -388,6 +392,7 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
         normal_variation_deg: tuning.normal_variation_deg,
         blend_curvature_refine: tuning.blend_curvature_refine,
         blend_curvature_deg: tuning.blend_curvature_deg,
+        blend_curvature_analytic: tuning.blend_curvature_analytic,
         tangential_epsilon: tuning.tangential_epsilon,
         feature_query_inflate: tuning.feature_query_inflate,
         surface_tol_mm: tuning.surface_tol_mm,
@@ -406,6 +411,14 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
     let has_blend = tree.has_blend();
     // Lever 1: per-cell CSG pruning gate (default OFF; see lever1_should_prune).
     let prune = crate::sdf::lever1_should_prune(tree, crate::sfcc::octree::LEVER1_MIN_LEAVES);
+    // Lever 2: analytic blend-curvature bound (default OFF). On only when the tuning
+    // flag is set AND every blend is analytic-eligible (round + plane/sphere/cylinder
+    // carriers); otherwise `None` → the proven sampled ∇f cone for the whole tree.
+    let blend_curvature_analytic = if tuning.blend_curvature_analytic && tuning.blend_curvature_refine {
+        tree.blend_curvature_bound()
+    } else {
+        None
+    };
     let smooth_opts = SmoothCriteriaOptions {
         normal_variation_cos: (tuning.normal_variation_deg * PI / 180.0).cos(),
         blend_normal_variation_cos: if tuning.blend_curvature_refine {
@@ -413,6 +426,7 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
         } else {
             1.0 // ≥1 disables (iii-d)
         },
+        blend_curvature_analytic,
     };
     let feature_opts = FeatureCriteriaOptions {
         feature_query_inflate: tuning.feature_query_inflate,

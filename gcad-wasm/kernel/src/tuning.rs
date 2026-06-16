@@ -33,6 +33,9 @@ pub struct SfccTuning {
     pub blend_curvature_refine: bool,
     /// Max surface-normal variation (deg) across a blend cell before it splits.
     pub blend_curvature_deg: f64,
+    /// Lever 2: certify blend curvature from the closed-form `κ ≤ 1/r + κ_carrier`
+    /// bound (`κ·diag > θ`) instead of the sampled ∇f cone. Opt-in; default OFF.
+    pub blend_curvature_analytic: bool,
     /// |tangent·faceNormal| below this counts as a tangential crossing → split. (M4 path.)
     pub tangential_epsilon: f64,
     /// Feature query AABB inflation, in fractions of the cell size. (M4 path.)
@@ -69,6 +72,7 @@ impl Default for SfccTuning {
             normal_variation_deg: 18.0,
             blend_curvature_refine: true,
             blend_curvature_deg: 18.0,
+            blend_curvature_analytic: false,
             tangential_epsilon: 0.05,
             feature_query_inflate: 0.25,
 

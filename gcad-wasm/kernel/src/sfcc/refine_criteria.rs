@@ -32,6 +32,22 @@ use std::collections::HashSet;
 
 const SQRT_3: f64 = 1.732_050_807_568_877_2;
 
+/// Effective cell extent (world units) the analytic blend-curvature bound multiplies
+/// `κ` by to estimate the per-cell surface-normal variation `κ·extent`. The SAMPLED
+/// ∇f cone compares the normal between probe points up to the cell DIAGONAL apart
+/// (√3·cellSize), but its REALIZED per-cell normal variation on the meshed fillet
+/// tracks the cell EDGE (adjacent mesh vertices are ~one edge apart), giving
+/// realized variation ≈ θ at threshold (`examples/blend_curv_probe`: sampled filletVar
+/// ≈ θ). To match that quality (not the stricter diagonal metric, which over-refines)
+/// the analytic extent is the cell EDGE — i.e. `κ·cellSize ≈ realized variation`.
+/// Soundness vs the sampled cone holds: the realized adjacent-normal variation that
+/// causes visible faceting is the edge-scale quantity, and `κ` upper-bounds the true
+/// curvature, so `κ·cellSize ≤ θ` ⇒ realized variation ≤ θ (verified by sampling).
+#[inline]
+fn blend_cell_extent(cell_size: f64) -> f64 {
+    cell_size
+}
+
 /// Probe data for one cell: the 8 corners (then the center) world positions and
 /// `f` values. Corner f comes from the octree's shared sample cache; the center
 /// f is evaluated directly (not lattice-keyed, never shared).
@@ -232,6 +248,52 @@ pub fn tree_blend_band_normal_variation_ok<T: SdfQuery + ?Sized>(
     pairwise_cos_ok(&ns, k, min_cos)
 }
 
+/// (iii-d, ANALYTIC variant — lever 2, opt-in) blend-band curvature certified from
+/// the blend's CLOSED-FORM surface curvature instead of a sampled ∇f cone. A
+/// round-`smin` fillet has surface curvature `κ ≤ κ_bound` (tree-level advisory,
+/// [`crate::sdf::CsgNode::blend_curvature_bound`]); the per-cell normal variation is
+/// then ≤ `κ · cellSize`. So split iff `κ · cellSize > θ` (`cos θ = min_cos`). SOUND:
+/// `κ_bound` upper-bounds the true curvature, so we never under-refine — the realized
+/// fillet variation stays ≤ θ (verified by sampling). NOT tighter than the sampled
+/// cone in general (a constant κ over-refines curved carriers); see the bound doc.
+///
+/// Still gated to actual blend-band cells (zero-owner near-surface probes) so flats
+/// and stratum-backed primitives are untouched — same selection as the sampled
+/// variant, just with the per-point ∇f normalization + the O(k²) pairwise cone
+/// replaced by ONE closed-form comparison. Returns `true` (ok, don't split) when
+/// the cell has no blend-band probe (the cell barely grazes the band) or when
+/// `κ · cellSize ≤ θ`.
+pub fn tree_blend_band_curvature_ok_analytic<T: SdfQuery + ?Sized>(
+    tree: &T,
+    probe: &RefineProbe,
+    min_cos: f64,
+    grad_bound: f64,
+    kappa_bound: f64,
+) -> bool {
+    // θ from cos θ = min_cos. Split iff the per-cell normal variation can exceed θ.
+    let theta = min_cos.clamp(-1.0, 1.0).acos();
+    if kappa_bound * blend_cell_extent(probe.cell_size) <= theta {
+        return true; // even the worst-case fillet curvature fits within θ → ok
+    }
+    // The curvature CAN exceed θ over this cell extent; refine iff the cell actually
+    // contains blend-band surface (a zero-owner near-surface probe). One owner query
+    // per near-surface probe, short-circuiting on the first band probe found — no
+    // ∇f cone, no per-point gradient normalization, no O(k²) pairwise loop.
+    let reach = SQRT_3 * probe.cell_size * grad_bound;
+    for i in 0..9 {
+        if probe.f[i].abs() >= reach {
+            continue;
+        }
+        let x = probe.pts[i * 3];
+        let y = probe.pts[i * 3 + 1];
+        let z = probe.pts[i * 3 + 2];
+        if tree.active_owners_at([x, y, z], 0.0).is_empty() {
+            return false; // a blend-band probe whose curvature can exceed θ ⇒ split
+        }
+    }
+    true
+}
+
 /// Shared pairwise-dot gate over the first `k` unit normals in a flat buffer.
 fn pairwise_cos_ok(ns: &[f64; 27], k: usize, min_cos: f64) -> bool {
     for i in 0..k {
@@ -252,6 +314,12 @@ pub struct SmoothCriteriaOptions {
     pub normal_variation_cos: f64,
     /// cos(blend_curvature_deg); ≥1 disables (iii-d).
     pub blend_normal_variation_cos: f64,
+    /// Lever-2 analytic blend-curvature bound `κ_max` (world units). `Some(κ)` ⇒
+    /// the blend cert uses the closed-form `κ·cellSize > θ` test in place of the
+    /// sampled ∇f cone; `None` ⇒ the proven sampled cone (the default). Set to
+    /// `Some` only when the tuning flag is on AND the tree is analytic-eligible
+    /// ([`crate::sdf::CsgNode::blend_curvature_bound`] returned `Some`).
+    pub blend_curvature_analytic: Option<f64>,
 }
 
 /// Combined P3 criteria: returns true when the cell needs splitting. Port of
@@ -269,9 +337,19 @@ pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
     }
     let strata = active_strata(tree, probe, grad_bound);
     if strata.is_empty() {
-        // Blend region (no analytic carrier): certify the tree surface directly.
-        return opts.blend_normal_variation_cos < 1.0
-            && !tree_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound);
+        // Blend region (no analytic carrier): certify the tree surface's curvature.
+        if opts.blend_normal_variation_cos >= 1.0 {
+            return false; // (iii-d) disabled
+        }
+        return match opts.blend_curvature_analytic {
+            // Lever 2: closed-form κ·diag bound (a pure blend cell IS the band, so
+            // the analytic test needs no owner query here — κ alone certifies it).
+            Some(kappa) => {
+                let theta = opts.blend_normal_variation_cos.clamp(-1.0, 1.0).acos();
+                kappa * blend_cell_extent(probe.cell_size) > theta
+            }
+            None => !tree_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound),
+        };
     }
     for st in &strata {
         if !stratum_normal_variation_ok(st, probe, opts.normal_variation_cos) {
@@ -282,13 +360,24 @@ pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
         }
     }
     // Mixed cell: a stratum is active, but the cell may also straddle a blend
-    // band. Certify that band's ∇f curvature — gated to trees that contain a
-    // blend so hard/primitive-only geometry stays zero-cost.
-    if has_blend
-        && opts.blend_normal_variation_cos < 1.0
-        && !tree_blend_band_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound)
-    {
-        return true;
+    // band. Certify that band's curvature — gated to trees that contain a blend so
+    // hard/primitive-only geometry stays zero-cost. The analytic variant replaces
+    // the sampled ∇f cone with the closed-form κ·diag bound (still owner-gated to
+    // actual blend-band cells so flats/stratum faces are untouched).
+    if has_blend && opts.blend_normal_variation_cos < 1.0 {
+        let band_ok = match opts.blend_curvature_analytic {
+            Some(kappa) => tree_blend_band_curvature_ok_analytic(
+                tree,
+                probe,
+                opts.blend_normal_variation_cos,
+                grad_bound,
+                kappa,
+            ),
+            None => tree_blend_band_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound),
+        };
+        if !band_ok {
+            return true;
+        }
     }
     false
 }

@@ -1,4 +1,4 @@
-// FeatureGraph debug overlay — line draw over the rendered scene.
+// FeatureGraph debug overlay — anti-aliased line draw over the rendered scene.
 //
 // The projection convention matches `mesh-viewer.mts`'s MDC overlay shader,
 // which is the canonical reference for projecting world-space vertices in
@@ -14,6 +14,14 @@
 //     `[-1, +1]`, y in `[-zoom, +zoom]` → `[-1, +1]`.
 //   - `viewCenter` offsets the scene rectangle inside the canvas (matches
 //     the editor-overlay shift the preview applies).
+//
+// Lines are drawn as *instanced screen-space quads* (one instance per alive
+// edge, 6 vertices) rather than native `line-list` primitives, so they can be
+// anti-aliased and given a real pixel width — native GPU lines are a hard 1px
+// with no AA. The vertex shader projects both endpoints, expands a quad of
+// `LINE_CORE_HALF_PX + LINE_AA_PX` half-width in framebuffer pixels along the
+// screen-space normal, and the fragment shader feathers the edge with a
+// smoothstep over the signed perpendicular distance.
 //
 // By default there is no depth attachment; lines draw on top of the outline
 // pass output so the debug overlay is always visible (the user wants to see
@@ -45,38 +53,102 @@ struct OverlayCamera {
 // `textureLoad` (unfilterable). Bound to a 1×1 dummy when occlusion is off.
 @group(0) @binding(1) var sceneDepthTex: texture_2d<f32>;
 
+// Line geometry, in framebuffer pixels. Solid core extends ±LINE_CORE_HALF_PX
+// from the center; the AA band feathers coverage from 1→0 over the next
+// LINE_AA_PX. Total half-extent of the expanded quad is the sum of the two.
+// (Framebuffer pixels = CSS pixels × devicePixelRatio, so on a 2× display a
+// 1.0 half-core reads as a ~1px line — comparable to the old native line but
+// smoothly anti-aliased.)
+const LINE_CORE_HALF_PX: f32 = 1.0;
+const LINE_AA_PX: f32 = 1.0;
+
 struct VOut {
     @builtin(position) position: vec4f,
     // Integer interpolants require @interpolate(flat).
     @location(0) @interpolate(flat) flags: u32,
-    // This vertex's depth in the overlay's projection space
+    // This fragment's depth in the overlay's projection space
     // (`(camera.transform * world - origin).z`), interpolated along the line
     // so the fragment can compare it against the re-projected surface depth.
     @location(1) viewZ: f32,
+    // Signed perpendicular distance from the line center, in framebuffer
+    // pixels, for the analytic-AA falloff in the fragment shader.
+    @location(2) perpPx: f32,
+}
+
+// World point → overlay projection space. Returns the NDC x/y (with the
+// viewCenter shift folded in, w = 1) plus the view-space Z used for both
+// depth-occlusion and the rasteriser's clamped `position.z`.
+struct Proj {
+    clip: vec2f,
+    viewZ: f32,
+}
+
+fn project(world: vec3f) -> Proj {
+    let aspect = camera.res.x / camera.res.y;
+    let pCam = (camera.transform * vec4f(world, 1.0)).xyz;
+    let p = pCam - camera.origin;
+    let ndcX = p.x / (camera.zoom * aspect);
+    let ndcY = p.y / camera.zoom;
+    let vcOffsetX = 2.0 * (camera.viewCenter.x - 0.5);
+    let vcOffsetY = -2.0 * (camera.viewCenter.y - 0.5);
+    var o: Proj;
+    o.clip = vec2f(ndcX + vcOffsetX, ndcY + vcOffsetY);
+    o.viewZ = p.z;
+    return o;
 }
 
 @vertex
 fn vertexMain(
-    @location(0) worldPos: vec3f,
-    @location(1) inFlags: u32,
+    // Per-instance: the two world-space endpoints of one alive edge + flags.
+    @location(0) posA: vec3f,
+    @location(1) posB: vec3f,
+    @location(2) inFlags: u32,
+    @builtin(vertex_index) vid: u32,
 ) -> VOut {
-    let aspect = camera.res.x / camera.res.y;
-    let pCam = (camera.transform * vec4f(worldPos, 1.0)).xyz;
-    let p = pCam - camera.origin;
-    let ndcX = p.x / (camera.zoom * aspect);
-    let ndcY = p.y / camera.zoom;
-    // Use a generous near/far range so the overlay never clips against
-    // the depth slice — there's no depth attachment, but the rasteriser
-    // still requires `position.z` in `[0, 1]` for visible primitives.
+    let a = project(posA);
+    let b = project(posB);
+
+    // Clip → framebuffer pixels. NDC spans [-1, 1] across `res` pixels, so
+    // pixel = (ndc * 0.5) * res. We only use this scale to offset along the
+    // screen-space normal, so the Y sign convention cancels out.
+    let halfRes = camera.res * 0.5;
+    let pixA = a.clip * halfRes;
+    let pixB = b.clip * halfRes;
+
+    var dir = pixB - pixA;
+    let len = max(length(dir), 1e-6);
+    dir = dir / len;
+    let normal = vec2f(-dir.y, dir.x);
+
+    let halfExtent = LINE_CORE_HALF_PX + LINE_AA_PX;
+
+    // Two triangles → quad. `along` ∈ {0 at A, 1 at B}; `side` ∈ {-1, +1}.
+    var alongLUT = array<f32, 6>(0.0, 1.0, 1.0, 0.0, 1.0, 0.0);
+    var sideLUT = array<f32, 6>(-1.0, -1.0, 1.0, -1.0, 1.0, 1.0);
+    let along = alongLUT[vid];
+    let side = sideLUT[vid];
+
+    // Extend each end past its endpoint by `halfExtent` along the segment so
+    // consecutive segments of a polyline overlap at shared vertices — that
+    // hides miter gaps at joints (the overlap is invisible for opaque cores).
+    let basePix = mix(pixA, pixB, along);
+    let endExtend = (along * 2.0 - 1.0) * halfExtent; // -ext at A, +ext at B
+    let pix = basePix + dir * endExtend + normal * (side * halfExtent);
+
+    let clip = pix / halfRes;
+    let viewZ = mix(a.viewZ, b.viewZ, along);
+
+    // Generous near/far so the overlay never clips against the (absent) depth
+    // slice — the rasteriser still requires `position.z` in `[0, 1]`.
     let near = -10000.0;
     let far = 10000.0;
-    let ndcZ = clamp((far - p.z) / (far - near), 0.0, 1.0);
-    let vcOffsetX = 2.0 * (camera.viewCenter.x - 0.5);
-    let vcOffsetY = -2.0 * (camera.viewCenter.y - 0.5);
+    let ndcZ = clamp((far - viewZ) / (far - near), 0.0, 1.0);
+
     var out: VOut;
-    out.position = vec4f(ndcX + vcOffsetX, ndcY + vcOffsetY, ndcZ, 1.0);
+    out.position = vec4f(clip, ndcZ, 1.0);
     out.flags = inFlags;
-    out.viewZ = p.z;
+    out.viewZ = viewZ;
+    out.perpPx = side * halfExtent;
     return out;
 }
 
@@ -114,6 +186,11 @@ fn featureColor(flags: u32) -> vec4f {
 @fragment
 fn fragmentMain(in: VOut) -> @location(0) vec4f {
     var color = featureColor(in.flags);
+
+    // Analytic AA across the line width: full coverage inside the solid core,
+    // smooth falloff over the AA band at each edge.
+    let coverage = 1.0 - smoothstep(LINE_CORE_HALF_PX, LINE_CORE_HALF_PX + LINE_AA_PX, abs(in.perpPx));
+    color.a *= coverage;
 
     if (camera.occlusionMode != 0u) {
         // `in.position.xy` is in the (full-res) overlay target's framebuffer

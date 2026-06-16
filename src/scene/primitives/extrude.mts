@@ -715,10 +715,11 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         }
 
         // Pass 2: emit edges.
-        // Helical side-edge resolution: ~1 segment per 15° of twist (min 1
-        // = straight edge when untwisted). Cheap visual approximation; the
+        // Helical side-edge resolution: ~1 segment per 10° of twist (min 1
+        // = straight edge when untwisted). Cheap visual approximation that
+        // keeps twisted side-creases smooth in the FeatureGraph overlay; the
         // stage-3 subdivision pass refines further by chord length.
-        const helixSegments = hasTwist ? Math.max(1, Math.ceil(Math.abs(this.twistDegrees) / 15)) : 1
+        const helixSegments = hasTwist ? Math.max(1, Math.ceil(Math.abs(this.twistDegrees) / 10)) : 1
 
         for (let k = 0; k < N; k++) {
             const kNext = (k + 1) % N

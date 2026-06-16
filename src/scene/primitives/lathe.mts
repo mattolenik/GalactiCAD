@@ -9,8 +9,11 @@ import {
     type FeatureGraphBuilder,
 } from "../feature-graph-buffer.mjs"
 
-/** Ring discretisation resolution for revolved feature rings (same as Cylinder). */
-const LATHE_FG_RING_SEGMENTS = 32
+/**
+ * Ring discretisation resolution for revolved feature rings (same as Cylinder's
+ * `RING_SEGMENTS`). Exported so tests assert against this single source of truth.
+ */
+export const LATHE_FG_RING_SEGMENTS = 64
 
 /** Profile-space ring radius below this is treated as an axis pole (corner), not a revolved ring. */
 const LATHE_AXIS_RING_R = 1e-6

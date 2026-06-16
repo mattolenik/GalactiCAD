@@ -2,24 +2,22 @@
  * FeatureGraph debug overlay — GPU pipeline + buffer management.
  *
  * Renders alive crease/corner edges from the latest FeatureGraph build as
- * line primitives over the rendered scene. Decoupled from the main scene
- * pipeline so it can be toggled on/off at runtime without recompiling
- * shaders and so the overlay pass owns its own camera uniform (the existing
- * preview camera struct has a much larger layout we don't need here).
+ * anti-aliased screen-space quads over the rendered scene. Decoupled from the
+ * main scene pipeline so it can be toggled on/off at runtime without
+ * recompiling shaders and so the overlay pass owns its own camera uniform (the
+ * existing preview camera struct has a much larger layout we don't need here).
  *
  * Buffer layout
  * -------------
- *  - **Vertex buffer**: stride 16 bytes per FG vertex (x, y, z, flags).
- *    Includes *all* vertices so dead-feature rendering can be enabled later
- *    by populating the index buffer with dead-edge endpoints too.
- *  - **Index buffer**: pairs of `u32` per alive edge. Dead edges are simply
- *    omitted, which causes the GPU to never reference any dead vertex
- *    either — the vertex shader still pays the cost of transforming all
- *    vertices, but with line-list input assembly only the indexed subset
- *    actually fires the rasteriser.
- *  - **Camera uniform**: 80 bytes — `mat4x4f transform` (64) + `vec2f res`
- *    (8) + `f32 zoom` (4) + 4-byte pad. Same camera→world matrix the
- *    preview ray-marcher uses, so the overlay aligns with the scene.
+ *  - **Instance buffer**: one record per *alive* edge, stride 32 bytes —
+ *    endpoint A (vec3f) + endpoint B (vec3f) + flags (u32) + 4-byte pad. Dead
+ *    edges are skipped entirely (no per-vertex transform cost). Each instance
+ *    is drawn as a 6-vertex quad (`draw(6, edgeCount)`); the shader expands it
+ *    in screen space to a pixel-width, anti-aliased line. `flags` is endpoint
+ *    A's vertex flags, matching the old `line-list` provoking-vertex coloring.
+ *  - **Camera uniform**: 112 bytes — see {@link CAMERA_UNIFORM_BYTES}. Same
+ *    camera→world matrix the preview ray-marcher uses, so the overlay aligns
+ *    with the scene.
  *
  * Render integration
  * ------------------
@@ -38,8 +36,11 @@ import { FG_FLAG_ALIVE, type FeatureGraphCpu } from "../scene/feature-graph-buff
 import type { FeatureGraphWorldPositions } from "./feature-graph-stages.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 
-/** Stride in bytes for the vertex buffer (vec3<f32> position + u32 flags). */
-const VERTEX_STRIDE = 16
+/**
+ * Stride in bytes for the per-edge instance buffer: endpoint A (vec3f, 12) +
+ * endpoint B (vec3f, 12) + flags (u32, 4) + 4-byte pad = 32 (8 floats/edge).
+ */
+const INSTANCE_STRIDE = 32
 
 /**
  * Size in bytes of the overlay camera uniform struct. Layout (column-major,
@@ -79,13 +80,11 @@ export class FeatureGraphOverlay {
     #shaderModule: GPUShaderModule
     #pipeline!: GPURenderPipeline
     #cameraBuffer: GPUBuffer
-    #vertexBuffer?: GPUBuffer
-    #vertexCapacity = 0
-    #indexBuffer?: GPUBuffer
-    #indexCapacity = 0
+    #instanceBuffer?: GPUBuffer
+    #instanceCapacity = 0
     #bindGroup?: [number, GPUBindGroup]
-    /** Number of `u32` indices currently uploaded; `drawIndexed(indexCount)`. */
-    #indexCount = 0
+    /** Number of alive-edge instances uploaded; `draw(6, edgeCount)`. */
+    #edgeCount = 0
     /**
      * 1×1 rgba32float placeholder bound at binding 1 whenever occlusion is off
      * (or no scene-depth texture has been supplied yet). The shader never reads
@@ -153,10 +152,13 @@ export class FeatureGraphOverlay {
                 entryPoint: "vertexMain",
                 buffers: [
                     {
-                        arrayStride: VERTEX_STRIDE,
+                        // Per-edge instance: posA (vec3f) + posB (vec3f) + flags (u32).
+                        arrayStride: INSTANCE_STRIDE,
+                        stepMode: "instance",
                         attributes: [
                             { shaderLocation: 0, offset: 0, format: "float32x3" },
-                            { shaderLocation: 1, offset: 12, format: "uint32" },
+                            { shaderLocation: 1, offset: 12, format: "float32x3" },
+                            { shaderLocation: 2, offset: 24, format: "uint32" },
                         ],
                     },
                 ],
@@ -183,61 +185,60 @@ export class FeatureGraphOverlay {
                 ],
             },
             primitive: {
-                topology: "line-list",
+                // Two triangles per instance form the expanded line quad.
+                topology: "triangle-list",
             },
         })
     }
 
     /**
-     * Upload world positions + flags + alive-edge endpoints from the latest
-     * FeatureGraph build. Grow-on-demand pattern matching `IsoSampleBatch`.
-     * Call once per FG rebuild; the camera uniform is uploaded separately
-     * via {@link uploadCamera} on every render frame.
+     * Upload one instance record per alive edge from the latest FeatureGraph
+     * build (endpoint A + endpoint B world positions + endpoint-A flags). Dead
+     * edges are skipped entirely. Grow-on-demand pattern matching
+     * `IsoSampleBatch`. Call once per FG rebuild; the camera uniform is
+     * uploaded separately via {@link uploadCamera} on every render frame.
      */
     upload(cpu: FeatureGraphCpu, world: FeatureGraphWorldPositions): void {
         if (cpu.vertexCount === 0) {
-            this.#indexCount = 0
+            this.#edgeCount = 0
             return
         }
 
-        // Vertex buffer: all vertices interleaved (pos × 3, flags × 1).
-        const vertexBytes = cpu.vertexCount * VERTEX_STRIDE
-        this.#ensureVertexBuffer(vertexBytes)
-        const vbCpu = new ArrayBuffer(vertexBytes)
-        const vbF32 = new Float32Array(vbCpu)
-        const vbU32 = new Uint32Array(vbCpu)
-        for (let i = 0; i < cpu.vertexCount; i++) {
-            vbF32[i * 4 + 0] = world.positions[i * 3 + 0]!
-            vbF32[i * 4 + 1] = world.positions[i * 3 + 1]!
-            vbF32[i * 4 + 2] = world.positions[i * 3 + 2]!
-            vbU32[i * 4 + 3] = cpu.vertexFlags[i] ?? 0
-        }
-        this.#device.queue.writeBuffer(this.#vertexBuffer!, 0, vbCpu)
-
-        // Index buffer: alive edges only. Dead edges drop out of the draw
-        // call (and their dead endpoints are never rasterised).
         let aliveEdgeCount = 0
         for (let e = 0; e < cpu.edgeCount; e++) {
             if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) !== 0) aliveEdgeCount++
         }
 
         if (aliveEdgeCount === 0) {
-            this.#indexCount = 0
+            this.#edgeCount = 0
             return
         }
 
-        const indexBytes = aliveEdgeCount * 8 // 2 u32 per edge
-        this.#ensureIndexBuffer(indexBytes)
-        const ibCpu = new Uint32Array(aliveEdgeCount * 2)
+        // Instance buffer: per alive edge, posA × 3, posB × 3, flags × 1, pad.
+        const instanceBytes = aliveEdgeCount * INSTANCE_STRIDE
+        this.#ensureInstanceBuffer(instanceBytes)
+        const buf = new ArrayBuffer(instanceBytes)
+        const f32 = new Float32Array(buf)
+        const u32 = new Uint32Array(buf)
         let s = 0
         for (let e = 0; e < cpu.edgeCount; e++) {
             if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) === 0) continue
-            ibCpu[s * 2 + 0] = cpu.edgeEndpoints[e * 2]!
-            ibCpu[s * 2 + 1] = cpu.edgeEndpoints[e * 2 + 1]!
+            const a = cpu.edgeEndpoints[e * 2]!
+            const b = cpu.edgeEndpoints[e * 2 + 1]!
+            const o = s * 8
+            f32[o + 0] = world.positions[a * 3 + 0]!
+            f32[o + 1] = world.positions[a * 3 + 1]!
+            f32[o + 2] = world.positions[a * 3 + 2]!
+            f32[o + 3] = world.positions[b * 3 + 0]!
+            f32[o + 4] = world.positions[b * 3 + 1]!
+            f32[o + 5] = world.positions[b * 3 + 2]!
+            // Endpoint A's flags drive the line color (matches the old
+            // line-list provoking-vertex behavior). Slot o+7 is pad.
+            u32[o + 6] = cpu.vertexFlags[a] ?? 0
             s++
         }
-        this.#device.queue.writeBuffer(this.#indexBuffer!, 0, ibCpu)
-        this.#indexCount = aliveEdgeCount * 2
+        this.#device.queue.writeBuffer(this.#instanceBuffer!, 0, buf)
+        this.#edgeCount = aliveEdgeCount
     }
 
     /**
@@ -352,7 +353,7 @@ export class FeatureGraphOverlay {
      * pass with the canvas target and `loadOp: "load"`.
      */
     render(pass: GPURenderPassEncoder): void {
-        if (this.#indexCount === 0 || !this.#vertexBuffer || !this.#indexBuffer) return
+        if (this.#edgeCount === 0 || !this.#instanceBuffer) return
         if (!this.#bindGroup) {
             // Built directly (not via helper.createBindGroup) because binding 1
             // is a texture view, not a buffer.
@@ -371,50 +372,36 @@ export class FeatureGraphOverlay {
         const [groupId, bindGroup] = this.#bindGroup
         pass.setPipeline(this.#pipeline)
         pass.setBindGroup(groupId, bindGroup)
-        pass.setVertexBuffer(0, this.#vertexBuffer)
-        pass.setIndexBuffer(this.#indexBuffer, "uint32")
-        pass.drawIndexed(this.#indexCount)
+        pass.setVertexBuffer(0, this.#instanceBuffer)
+        // 6 vertices (2 triangles) per edge instance.
+        pass.draw(6, this.#edgeCount)
     }
 
     /** True if the overlay has alive features uploaded and ready to draw. */
     get hasAliveFeatures(): boolean {
-        return this.#indexCount > 0
+        return this.#edgeCount > 0
     }
 
     destroy(): void {
         this.#cameraBuffer.destroy()
         this.#dummyDepthTexture.destroy()
-        this.#vertexBuffer?.destroy()
-        this.#indexBuffer?.destroy()
-        this.#vertexBuffer = undefined
-        this.#indexBuffer = undefined
-        this.#vertexCapacity = 0
-        this.#indexCapacity = 0
+        this.#instanceBuffer?.destroy()
+        this.#instanceBuffer = undefined
+        this.#instanceCapacity = 0
         this.#bindGroup = undefined
-        this.#indexCount = 0
+        this.#edgeCount = 0
     }
 
-    #ensureVertexBuffer(minBytes: number): void {
-        if (this.#vertexBuffer && this.#vertexCapacity >= minBytes) return
-        this.#vertexBuffer?.destroy()
+    #ensureInstanceBuffer(minBytes: number): void {
+        if (this.#instanceBuffer && this.#instanceCapacity >= minBytes) return
+        this.#instanceBuffer?.destroy()
         // Double-on-grow with a 4 KiB floor — identical pattern to
         // `IsoSampleBatch.#ensurePositionBuffer`.
-        this.#vertexCapacity = Math.max(minBytes, this.#vertexCapacity * 2 || 4096)
-        this.#vertexBuffer = this.#device.createBuffer({
-            label: "FeatureGraphOverlay.Vertex",
-            size: this.#vertexCapacity,
+        this.#instanceCapacity = Math.max(minBytes, this.#instanceCapacity * 2 || 4096)
+        this.#instanceBuffer = this.#device.createBuffer({
+            label: "FeatureGraphOverlay.Instance",
+            size: this.#instanceCapacity,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        })
-    }
-
-    #ensureIndexBuffer(minBytes: number): void {
-        if (this.#indexBuffer && this.#indexCapacity >= minBytes) return
-        this.#indexBuffer?.destroy()
-        this.#indexCapacity = Math.max(minBytes, this.#indexCapacity * 2 || 4096)
-        this.#indexBuffer = this.#device.createBuffer({
-            label: "FeatureGraphOverlay.Index",
-            size: this.#indexCapacity,
-            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
         })
     }
 }

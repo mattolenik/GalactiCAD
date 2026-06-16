@@ -1,14 +1,13 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { lathe, polygon2d } from "../scene.mjs"
+import { LATHE_FG_RING_SEGMENTS as RING_SEGMENTS } from "./lathe.mjs"
 import {
     FeatureGraphBuilder,
     FG_FLAG_ALIVE,
     FG_FLAG_CORNER,
     FG_FLAG_CREASE_ORIGINAL,
 } from "../feature-graph-buffer.mjs"
-
-const RING_SEGMENTS = 32
 
 /**
  * Right-angle profile in (r, y) space: a unit square at radius 2..3, height -1..+1.
@@ -21,14 +20,14 @@ const SQUARE_TUBE: [number, number][] = [
     [2, 1],
 ]
 
-test("Lathe.accumulateFeatureGraph: 4 sharp profile vertices → 4 rings × 32 segments", () => {
+test(`Lathe.accumulateFeatureGraph: 4 sharp profile vertices → 4 rings × ${RING_SEGMENTS} segments`, () => {
     const root = lathe.profile(polygon2d(SQUARE_TUBE))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
 
-    assert.equal(cpu.vertexCount, 4 * RING_SEGMENTS, "4 rings × 32 segments each")
-    assert.equal(cpu.edgeCount, 4 * RING_SEGMENTS, "4 rings × 32 closing edges")
+    assert.equal(cpu.vertexCount, 4 * RING_SEGMENTS, "4 rings × RING_SEGMENTS segments each")
+    assert.equal(cpu.edgeCount, 4 * RING_SEGMENTS, "4 rings × RING_SEGMENTS closing edges")
     // No cap loops for lathe rings (revolved rings aren't planar cap faces).
     assert.equal(cpu.loopCount, 0)
 })
@@ -55,7 +54,7 @@ test("Lathe.accumulateFeatureGraph: rings sit at the profile vertex's (r, y) rev
     const cpu = builder.finish()
 
     // Profile vertex order: (2,-1), (3,-1), (3,1), (2,1).
-    // Rings emitted in that order, each = 32 vertices.
+    // Rings emitted in that order, each = RING_SEGMENTS vertices.
     const expected = [
         { r: 2, y: -1 },
         { r: 3, y: -1 },
@@ -116,5 +115,5 @@ test("Lathe.accumulateFeatureGraph: profile vertex at r=0 (axis) is skipped", ()
     const cpu = builder.finish()
     // Only the single non-axis vertex (3, -2) qualifies. Its turn between
     // the two profile edges is sharp (apex→base rim vs base rim→base center).
-    assert.equal(cpu.vertexCount, RING_SEGMENTS, "1 ring × 32 segments (the rim at (3, -2))")
+    assert.equal(cpu.vertexCount, RING_SEGMENTS, "1 ring × RING_SEGMENTS segments (the rim at (3, -2))")
 })

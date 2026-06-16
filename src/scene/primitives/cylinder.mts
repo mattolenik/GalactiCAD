@@ -240,12 +240,14 @@ export class Cylinder extends Node {
 }
 
 /**
- * Ring discretisation resolution. 32 segments around a circle is visually
- * smooth at typical zooms and is well above the stage-3 subdivision target
- * for default cell sizes — so the ring won't be further subdivided into
- * even smaller chords. Raise if very smooth rings are needed.
+ * Ring discretisation resolution. 64 segments around a circle keeps revolved
+ * feature rings visually smooth (notably in the FeatureGraph debug overlay)
+ * and well above the stage-3 subdivision target for default cell sizes — so
+ * the ring won't be further subdivided into even smaller chords. Exported so
+ * tests assert against the single source of truth; shared in spirit with
+ * `LATHE_FG_RING_SEGMENTS`. Raise further if even smoother rings are needed.
  */
-const RING_SEGMENTS = 32
+export const RING_SEGMENTS = 64
 
 function cylinderRadius(r: number): Cylinder {
     return new Cylinder(DEFAULT_POS, { r, h: 1 })

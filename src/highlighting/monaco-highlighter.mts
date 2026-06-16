@@ -33,6 +33,17 @@ export interface ShapeIndicator {
 }
 
 /**
+ * Keep decorations glued to exactly their token. Monaco's default decoration stickiness is
+ * `AlwaysGrowsWhenTypingAtEdges`, which makes a decoration absorb text typed at its boundary —
+ * so typing a modifier (e.g. `scale(`) right before a decorated shape name grows that shape's
+ * pill over the freshly-typed text. The intermediate source is usually a syntax error (unbalanced
+ * paren), so the build can't recompute/reset the decorations and the growth visibly accumulates
+ * per keystroke. `NeverGrowsWhenTypingAtEdges` makes the decoration shift with, but never swallow,
+ * text inserted at either edge.
+ */
+const STICKY_TOKEN = monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
+
+/**
  * Manages Monaco editor decorations for highlighting selected shapes
  * and showing color indicators
  */
@@ -147,7 +158,8 @@ export class MonacoHighlighter {
                     indicator.endColumn
                 ),
                 options: {
-                    inlineClassName: className
+                    inlineClassName: className,
+                    stickiness: STICKY_TOKEN
                 }
             }
         })
@@ -204,11 +216,11 @@ export class MonacoHighlighter {
         const ruler = { color: overviewRulerColor, position: monaco.editor.OverviewRulerLane.Full as const }
         const primaryDecorations: monaco.editor.IModelDeltaDecoration[] = primaryRanges.map(range => ({
             range: new monaco.Range(range.startLine, range.startColumn, range.endLine, range.endColumn),
-            options: { inlineClassName: "shape-indicator-selected", overviewRuler: ruler }
+            options: { inlineClassName: "shape-indicator-selected", overviewRuler: ruler, stickiness: STICKY_TOKEN }
         }))
         const childDecorations: monaco.editor.IModelDeltaDecoration[] = childRanges.map(range => ({
             range: new monaco.Range(range.startLine, range.startColumn, range.endLine, range.endColumn),
-            options: { inlineClassName: "shape-indicator-selected-child", overviewRuler: ruler }
+            options: { inlineClassName: "shape-indicator-selected-child", overviewRuler: ruler, stickiness: STICKY_TOKEN }
         }))
 
         this.selectionDecorationIds = this.editor.deltaDecorations(
@@ -247,7 +259,7 @@ export class MonacoHighlighter {
                 loc.endLine,
                 loc.endColumn
             ),
-            options: { inlineClassName: "cad-fluent-method" }
+            options: { inlineClassName: "cad-fluent-method", stickiness: STICKY_TOKEN }
         }))
 
         this.fluentMethodDecorationIds = this.editor.deltaDecorations(

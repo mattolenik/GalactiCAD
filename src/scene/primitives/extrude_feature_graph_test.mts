@@ -252,3 +252,45 @@ test("Extrude under Scale: transform stack records scale matrix", () => {
     assert.equal(cpu.transforms[1 * 16 + 5]!, 1, "scale frame m[5] = sy")
     assert.equal(cpu.transforms[1 * 16 + 10]!, 1, "scale frame m[10] = sz")
 })
+
+/**
+ * A square with an extra COLLINEAR midpoint on the bottom edge. Polygon vertex
+ * 1 = [5, 0] lies on the straight run [0,0]→[10,0], so its turn is ~0 and it is
+ * NOT sharp; the four square corners are sharp (90°). Emission order is
+ * top/bottom per polygon vertex, so polygon vertex 1 → vertex indices 2 (top)
+ * and 3 (bottom).
+ */
+const SQUARE_WITH_COLLINEAR: [number, number][] = [
+    [0, 0],
+    [5, 0],
+    [10, 0],
+    [10, 10],
+    [0, 10],
+]
+
+test("Extrude.accumulateFeatureGraph: every polygon vertex casts a vertical side edge (no sharpness threshold)", () => {
+    const root = extrude.profile(polygon2d(SQUARE_WITH_COLLINEAR)).height(5)
+    const builder = new FeatureGraphBuilder()
+    root.accumulateFeatureGraph(builder)
+    const cpu = builder.finish()
+
+    // 5 polygon vertices × (top + bottom).
+    assert.equal(cpu.vertexCount, 10)
+    // 5 top cap + 5 bottom cap + 5 vertical — a vertical side edge for EVERY
+    // vertex including the collinear one (previously it would be skipped → 14).
+    assert.equal(cpu.edgeCount, 15, "5 top + 5 bottom + 5 vertical (one per vertex)")
+
+    // The collinear vertex's corners (indices 2, 3) must still NOT be flagged
+    // as corners — only the feature LINE is unconditional, not the 0D corner.
+    assert.equal(cpu.vertexFlags[2]! & FG_FLAG_CORNER, 0, "collinear vertex top: not a corner")
+    assert.equal(cpu.vertexFlags[3]! & FG_FLAG_CORNER, 0, "collinear vertex bottom: not a corner")
+
+    // …but a vertical side edge connecting top↔bottom (2 ↔ 3) does exist.
+    let hasCollinearSideEdge = false
+    for (let e = 0; e < cpu.edgeCount; e++) {
+        const a = cpu.edgeEndpoints[e * 2]!
+        const b = cpu.edgeEndpoints[e * 2 + 1]!
+        if ((a === 2 && b === 3) || (a === 3 && b === 2)) hasCollinearSideEdge = true
+    }
+    assert.ok(hasCollinearSideEdge, "collinear vertex still casts a vertical side edge")
+})

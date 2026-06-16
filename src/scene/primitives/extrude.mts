@@ -586,11 +586,11 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
      *    uses — smooth polygon vertices are still emitted so cap edges have
      *    valid endpoints, just without the corner flag. Each vertex carries
      *    three source-face normals: cap (±Y) and the two adjacent side faces.
-     *  - **Vertical side edges** at sharp polygon vertices only — these are
-     *    where two side faces meet at a real dihedral. Under twist, these
-     *    become helices and are pre-subdivided into a chain at extraction
-     *    time so the visualised overlay traces the helix instead of cutting
-     *    a chord through it.
+     *  - **Vertical side edges** at *every* polygon vertex — each vertex casts
+     *    a feature line regardless of dihedral sharpness (no threshold). Under
+     *    twist, these become helices and are pre-subdivided into a chain at
+     *    extraction time so the visualised overlay traces the helix instead of
+     *    cutting a chord through it.
      *  - **Cap edges** along each polygon segment, top and bottom — always
      *    emitted. With twist, the top cap is the polygon rotated by the full
      *    twist angle; its edges are still straight in 3D (it's a planar
@@ -728,8 +728,10 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             builder.emitEdge(topIdx[k]!, topIdx[kNext]!, FG_FLAG_CREASE_ORIGINAL)
             builder.emitEdge(botIdx[k]!, botIdx[kNext]!, FG_FLAG_CREASE_ORIGINAL)
 
-            // Side edge — only at sharp polygon vertices.
-            if (!sharpAt[k]) continue
+            // Side edge — emitted at EVERY polygon vertex (no sharpness
+            // threshold), so each vertex of the extrusion casts a feature
+            // line. `sharpAt[k]` now drives only the FG_FLAG_CORNER vertex
+            // classification (above), not whether the side edge exists.
 
             if (helixSegments === 1) {
                 // Straight vertical edge (no twist).

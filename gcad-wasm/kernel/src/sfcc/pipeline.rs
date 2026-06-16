@@ -54,6 +54,9 @@ pub struct PipelineTuning {
     /// Lever 2: use the analytic closed-form blend-curvature bound instead of the
     /// sampled ∇f cone (opt-in; default OFF — the sampled cone stays the proven path).
     pub blend_curvature_analytic: bool,
+    /// Lever 2: analytic per-stratum normal-variation bound (κ·cellSize) for the
+    /// smoothCrit (iii-b) cert instead of the sampled ∇f cone (opt-in; default OFF).
+    pub normal_variation_analytic: bool,
     pub surface_tol_mm: f64,
     pub edge_root_tol_fraction: f64,
     pub interior_vertex_mode: InteriorVertexMode,
@@ -86,6 +89,7 @@ impl Default for PipelineTuning {
             blend_curvature_refine: true,
             blend_curvature_deg: 18.0,
             blend_curvature_analytic: false,
+            normal_variation_analytic: false,
             surface_tol_mm: 0.01,
             edge_root_tol_fraction: 1e-3,
             interior_vertex_mode: InteriorVertexMode::Project,
@@ -427,6 +431,7 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
             1.0 // ≥1 disables (iii-d)
         },
         blend_curvature_analytic,
+        normal_variation_analytic: tuning.normal_variation_analytic,
     };
     let feature_opts = FeatureCriteriaOptions {
         feature_query_inflate: tuning.feature_query_inflate,

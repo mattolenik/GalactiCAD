@@ -160,6 +160,7 @@ fn run_parity(name: &str, tree: CsgNode) {
         normal_variation_cos: fix.normal_variation_cos,
         blend_normal_variation_cos: fix.blend_normal_variation_cos,
         blend_curvature_analytic: None,
+        normal_variation_analytic: false,
     };
 
     let oct = build_octree_feature_aware(

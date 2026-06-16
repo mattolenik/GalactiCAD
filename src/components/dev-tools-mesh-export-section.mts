@@ -1300,12 +1300,19 @@ const SFCC_RANGE_KNOBS: {
 ]
 
 const SFCC_BOOL_KNOBS: {
-    key: "enforceEdgeBalance" | "blendCurvatureRefine" | "blendCurvatureAnalytic" | "checkVertexLinks" | "debugOutput"
+    key:
+        | "enforceEdgeBalance"
+        | "blendCurvatureRefine"
+        | "blendCurvatureAnalytic"
+        | "normalVariationAnalytic"
+        | "checkVertexLinks"
+        | "debugOutput"
     label: string
 }[] = [
     { key: "enforceEdgeBalance", label: "2:1 edge balance" },
     { key: "blendCurvatureRefine", label: "Blend curvature refine" },
     { key: "blendCurvatureAnalytic", label: "Blend curvature analytic (sfcc-rs)" },
+    { key: "normalVariationAnalytic", label: "Normal variation analytic (sfcc-rs)" },
     { key: "checkVertexLinks", label: "Vertex-link audit" },
     { key: "debugOutput", label: "Debug overlays" },
 ]

@@ -371,6 +371,11 @@ pub struct SmoothCriteriaOptions {
     /// `Some` only when the tuning flag is on AND the tree is analytic-eligible
     /// ([`crate::sdf::CsgNode::blend_curvature_bound`] returned `Some`).
     pub blend_curvature_analytic: Option<f64>,
+    /// Lever 2: when `true`, the per-stratum smoothCrit (iii-b) uses the carrier's
+    /// closed-form curvature bound ([`Stratum::curvature_bound`]) — split iff
+    /// `κ·cellSize > θ` — instead of the sampled ∇f normal cone. Ruled carriers
+    /// (twisted/loft) fall back to the sampled cone per-stratum. Default `false`.
+    pub normal_variation_analytic: bool,
 }
 
 /// Combined P3 criteria: returns true when the cell needs splitting. Port of
@@ -406,8 +411,21 @@ pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
             None => !tree_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound),
         };
     }
+    let nv_theta = opts.normal_variation_cos.clamp(-1.0, 1.0).acos();
     for st in &strata {
-        if !stratum_normal_variation_ok(st, probe, opts.normal_variation_cos) {
+        // (iii-b) normal variation: the sampled ∇f cone, or the analytic closed-form
+        // κ·cellSize bound (lever 2) when enabled and the carrier is analytic
+        // (plane/sphere/cylinder/cone). Ruled twisted/loft carriers return `None` →
+        // fall back to the sampled cone per-stratum.
+        let var_ok = if opts.normal_variation_analytic {
+            match st.curvature_bound(&probe.pts, probe.cell_size) {
+                Some(kappa) => kappa * blend_cell_extent(probe.cell_size) <= nv_theta,
+                None => stratum_normal_variation_ok(st, probe, opts.normal_variation_cos),
+            }
+        } else {
+            stratum_normal_variation_ok(st, probe, opts.normal_variation_cos)
+        };
+        if !var_ok {
             return true;
         }
         if !stratum_edge_crossings_ok(st, probe) {

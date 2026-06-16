@@ -201,6 +201,49 @@ impl Stratum {
         }
     }
 
+    /// Sound upper bound on this carrier's max surface-normal curvature (1/length)
+    /// over a cell with the 9 probe points `pts` (8 corners + center, xyz each) and
+    /// edge length `cell_size`. `Some(κ)` for analytic carriers (the per-cell normal
+    /// variation is then ≤ κ·cell_size); `None` for the ruled twisted/loft sides (no
+    /// closed-form bound → caller falls back to the sampled ∇f cone). Lever 2: the
+    /// per-stratum smoothCrit (iii-b) cert can then split iff `κ·cell_size > θ`,
+    /// replacing the O(k²) sampled normal cone with one closed-form comparison.
+    pub fn curvature_bound(&self, pts: &[f64; 27], cell_size: f64) -> Option<f64> {
+        match self.carrier {
+            Carrier::Plane { .. } => Some(0.0),
+            Carrier::Sphere { r, .. } => Some(1.0 / r.abs().max(1e-12)),
+            // Cylinder: the analytic κ=1/r bound is exact+cheap, but in the refine
+            // loop it measured ~3.6× SLOWER than the sampled cone at the SAME leaf
+            // count (no cell saving, net regression) — so fall back to the proven
+            // sampled ∇f cone here. Sphere (exact 1/R, ~4× fewer cells) and cone
+            // (neutral) keep the analytic path. Revisit if a net-positive cylinder
+            // formulation is found.
+            Carrier::Cylinder { .. } => None,
+            // Cone: circumferential normal curvature is cos(α)/ρ (meridian = 0), so
+            // κ_max = cos(α)/ρ_min over the cell. ρ_min(box) ≥ (min ρ over probes) −
+            // ½·√3·cell_size (the box can reach ½·diagonal closer to the axis than any
+            // probe); clamp the denominator so a cell at/near the apex gets a huge κ →
+            // always split (correct — the apex is a feature point).
+            Carrier::Cone { a, u, cos_a, .. } => {
+                let mut rho_min = f64::INFINITY;
+                for i in 0..9 {
+                    let dx = pts[i * 3] - a[0];
+                    let dy = pts[i * 3 + 1] - a[1];
+                    let dz = pts[i * 3 + 2] - a[2];
+                    let t = dx * u[0] + dy * u[1] + dz * u[2];
+                    let (qx, qy, qz) = (dx - t * u[0], dy - t * u[1], dz - t * u[2]);
+                    let rho = (qx * qx + qy * qy + qz * qz).sqrt();
+                    if rho < rho_min {
+                        rho_min = rho;
+                    }
+                }
+                let slack = 0.5 * 3.0f64.sqrt() * cell_size;
+                Some(cos_a / (rho_min - slack).max(1e-9))
+            }
+            Carrier::TwistedSide(_) | Carrier::LoftSide(_) => None,
+        }
+    }
+
     /// Signed distance to the carrier, sign-adjusted (negative on the final
     /// solid's inside of this patch).
     pub fn f(&self, px: f64, py: f64, pz: f64) -> f64 {

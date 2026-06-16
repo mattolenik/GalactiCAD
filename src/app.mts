@@ -577,33 +577,43 @@ class App {
      */
     #handleEditorMouseDown(e: monaco.editor.IEditorMouseEvent) {
         if (this.#isUpdatingFromPreview) return
+        if (e.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) return
 
-        if (e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT) {
-            const position = e.target.position
-            if (!position) return
+        const position = e.target.position
+        if (!position) return
 
-            // Find the parsed call at the clicked position
+        // Editor↔preview selection is two-way. A single click only selects from the leading edge
+        // where the color indicator sits; a double-click selects the shape from anywhere on its
+        // function name (Monaco reports click count via the browser event's `detail`).
+        const isDoubleClick = e.event.browserEvent.detail >= 2
+        if (!isDoubleClick) {
             const clickedCall = this.#findParsedCallAtPosition(position.lineNumber, position.column)
-
-            if (!clickedCall) return
-
-            // Only act when clicking on or before the function name (where the color indicator is)
-            if (position.column > clickedCall.location.startColumn) return
-
-            if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
-                const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
-                const leafIds = this.#getNodeIdsForCalls(leafCalls)
-                const idsWithRoot = this.renderer.getSelectionIdsWithRoot(leafIds)
-                this.renderer.setSelection(idsWithRoot)
-            } else {
-                const nodeId = this.#findNodeIdAtPosition(position.lineNumber, position.column)
-                if (nodeId !== null) {
-                    const node = this.#sceneNodeMap.get(nodeId)
-                    this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
-                }
-            }
-            this.#updateEditorHighlighting()
+            if (!clickedCall || position.column > clickedCall.location.startColumn) return
         }
+
+        this.#selectSceneNodeAtEditorPosition(position.lineNumber, position.column)
+    }
+
+    /**
+     * Select the scene node(s) for the shape whose function name contains (line, column).
+     * Pure CSG operators resolve to their contained leaf shapes via AST containment; everything
+     * else matches a node directly. No-op when no shape name sits at the position.
+     */
+    #selectSceneNodeAtEditorPosition(line: number, column: number): void {
+        const clickedCall = this.#findParsedCallAtPosition(line, column)
+        if (!clickedCall) return
+
+        if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
+            const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
+            const leafIds = this.#getNodeIdsForCalls(leafCalls)
+            this.renderer.setSelection(this.renderer.getSelectionIdsWithRoot(leafIds))
+        } else {
+            const nodeId = this.#findNodeIdAtPosition(line, column)
+            if (nodeId === null) return
+            const node = this.#sceneNodeMap.get(nodeId)
+            this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
+        }
+        this.#updateEditorHighlighting()
     }
 
     constructor(
@@ -928,6 +938,20 @@ class App {
             .cad-fluent-method {
                 color: #4ec9b0 !important;
                 font-weight: 600;
+            }
+            /* Faint wash + a 45° cross-hatch texture echoing the SDF-preview selection
+               overlay. Spacing kept small (~5px) so the weave fits within a single line. */
+            .shape-line-selected {
+                background-color: rgba(139, 105, 20, 0.08);
+                background-image:
+                    repeating-linear-gradient(45deg, transparent 0 4.4px, rgba(139, 105, 20, 0.15) 4.4px 5px),
+                    repeating-linear-gradient(-45deg, transparent 0 4.4px, rgba(139, 105, 20, 0.15) 4.4px 5px);
+            }
+            [data-theme="dark"] .shape-line-selected {
+                background-color: rgba(255, 255, 0, 0.05);
+                background-image:
+                    repeating-linear-gradient(45deg, transparent 0 4.4px, rgba(255, 255, 0, 0.11) 4.4px 5px),
+                    repeating-linear-gradient(-45deg, transparent 0 4.4px, rgba(255, 255, 0, 0.11) 4.4px 5px);
             }
         `
         document.body.appendChild(style)

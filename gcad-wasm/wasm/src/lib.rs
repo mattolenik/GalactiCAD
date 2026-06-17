@@ -181,10 +181,9 @@ pub fn export_sfcc(
     };
     let cube = SfccWorldCube { min_x, min_y, min_z, size };
     // Phase-timed run: `js_sys::Date::now()` is the injected clock (the dep-free kernel
-    // has no time source). Date.now has ~1ms resolution — ample for the 10s–1000s-of-ms
-    // phases; the mesh output is identical to the un-profiled `run_sfcc_pipeline`. The
-    // phase split measures the #3 spatial-partition Amdahl ceiling (parallelizable
-    // contour+cellmesh vs serial feature/octree/assemble).
+    // has no time source). Date.now has ~1ms resolution — ample for the phases; the mesh
+    // output is identical to the un-profiled `run_sfcc_pipeline`. The phase split is the
+    // banked #3 spatial-partition Amdahl measurement (NO-GO; see the design doc).
     let now = || js_sys::Date::now();
     let result = run_sfcc_pipeline_profiled(&tree, &cube, &tuning.to_pipeline(), &now);
 
@@ -192,8 +191,7 @@ pub fn export_sfcc(
     let m = &result.manifold;
     let euler: Vec<String> = m.euler_per_component.iter().map(|c| c.to_string()).collect();
     // Compact hand-rolled JSON of the stat fields the TS exporter logs (avoids a
-    // serde-Serialize derive on the kernel SfccStats). The phase* ms are appended for
-    // the spatial-partition (#3) ceiling measurement.
+    // serde-Serialize derive on the kernel SfccStats).
     let stats_json = format!(
         "{{\"leaves\":{},\"faces\":{},\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"degenerateCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"reRefineRounds\":{},\"faceAuditFailures\":{},\"boundaryViolations\":{},\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}],\"phaseFeatureMs\":{},\"phaseOctreeMs\":{},\"phaseContourMs\":{},\"phaseCellmeshMs\":{},\"phaseAssembleMs\":{}}}",
         s.leaves, s.faces, s.cross_points, s.tris, s.failed_cells, s.degenerate_cells, s.feature_curves, s.edge_cells,

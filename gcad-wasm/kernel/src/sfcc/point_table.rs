@@ -17,18 +17,6 @@ use std::collections::HashMap;
 
 pub const POINT_KEY_INTERIOR: i64 = 3;
 
-/// The provenance key of a point — what the spatial-partition separate-table merge
-/// dedups on. `Num`/`Str` keys are GLOBAL (lattice/feature-derived), so the same
-/// boundary crossing or feature pin created independently in two partitions collapses
-/// to one vertex. `Unkeyed` points (cell-owned, e.g. feature polyline samples) are
-/// local to a single cell — hence a single partition — and must never dedup.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PointKey {
-    Num(i64),
-    Str(String),
-    Unkeyed,
-}
-
 /// Iso-crossing key on the minimal edge with min-corner `lattice_key` along `axis` (0|1|2).
 pub fn crossing_key(lattice_key: i64, axis: usize) -> i64 {
     lattice_key * 8 + axis as i64
@@ -47,9 +35,6 @@ pub struct PointTable {
     normal: Vec<f64>,
     by_num_key: HashMap<i64, usize>,
     by_str_key: HashMap<String, usize>,
-    /// Per-point provenance key, parallel to `pos`/`normal` (one entry per id). The
-    /// merge key for the separate-table spatial partition.
-    keys: Vec<PointKey>,
 }
 
 impl PointTable {
@@ -71,7 +56,6 @@ impl PointTable {
         self.normal.push(nx);
         self.normal.push(ny);
         self.normal.push(nz);
-        self.keys.push(PointKey::Unkeyed);
         id
     }
 
@@ -84,7 +68,6 @@ impl PointTable {
         let b = create();
         let id = self.add(b[0], b[1], b[2], b[3], b[4], b[5]);
         self.by_num_key.insert(key, id);
-        self.keys[id] = PointKey::Num(key);
         id
     }
 
@@ -101,20 +84,12 @@ impl PointTable {
         let b = create();
         let id = self.add(b[0], b[1], b[2], b[3], b[4], b[5]);
         self.by_str_key.insert(key.to_string(), id);
-        self.keys[id] = PointKey::Str(key.to_string());
         id
     }
 
     /// Lookup a string key without creating.
     pub fn lookup_str(&self, key: &str) -> Option<usize> {
         self.by_str_key.get(key).copied()
-    }
-
-    /// The provenance key of point `id` — its global merge key for the
-    /// spatial-partition separate-table merge. `Unkeyed` points are cell-local and
-    /// must never dedup across partitions.
-    pub fn key_at(&self, id: usize) -> &PointKey {
-        &self.keys[id]
     }
 
     pub fn x(&self, id: usize) -> f64 {

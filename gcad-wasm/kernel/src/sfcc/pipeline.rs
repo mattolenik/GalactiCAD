@@ -13,20 +13,14 @@
 //! feature-hugging debris drop, and the forced-split re-refinement of failed +
 //! (round-0) fallback cells.
 
-use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, stride_at_level, SfccLattice};
+use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, SfccLattice};
 use crate::sdf::CsgNode;
-use crate::sfcc::cell_mesh::{
-    mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult,
-    InteriorVertexMode,
-};
-use crate::sfcc::face_contour::{
-    contour_all_faces, contour_faces_for, contour_faces_partitioned, contour_subset_separate, FaceContourOptions,
-    FaceContourResult,
-};
+use crate::sfcc::cell_mesh::{mesh_all_cells, CellMeshOptions, CellMeshResult, InteriorVertexMode};
+use crate::sfcc::face_contour::{contour_all_faces, FaceContourOptions, FaceContourResult};
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions, SfccCell, SfccOctree};
-use crate::sfcc::point_table::{PointKey, PointTable};
+use crate::sfcc::point_table::PointTable;
 use crate::sfcc::refine_criteria::{
     classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
     SmoothCriteriaOptions,
@@ -146,8 +140,6 @@ pub struct SfccPipelineResult {
     pub ok: bool,
     /// Phase wall-clock split in ms (zeros unless run via [`run_sfcc_pipeline_profiled`]).
     /// Measured from an injected clock so the dep-free kernel needs no time source.
-    /// `contour`+`cellmesh` are the spatial-partition-PARALLELIZABLE phases; feature
-    /// compile, octree build, and assemble (S4 merge/audits) stay serial.
     pub phase_feature_ms: f64,
     pub phase_octree_ms: f64,
     pub phase_contour_ms: f64,
@@ -383,270 +375,26 @@ struct ForcedMarker {
 /// Run the full feature-aware SFCC pipeline. Port of `runSfccPipeline`. On a
 /// featureless scene (no curves/corners) every feature path is inert, so the
 /// output equals the prior smooth-only driver byte-for-byte.
-/// How the per-cell meshing (contour + cell-mesh) is decomposed. The octree build +
-/// re-refine loop + S4 cleanups are identical across all three; only the meshing step
-/// differs, and all three produce the same mesh.
-enum MeshStrategy {
-    /// Single pass over all leaves (the original serial path).
-    Serial,
-    /// #3 slice 1: N contiguous groups sharing ONE face map + point table.
-    Shared(usize),
-    /// #3 slice 3: N contiguous groups, each meshed into its OWN face map + point
-    /// table (the per-worker view), then merged by global provenance key.
-    Separate(usize),
-    /// #3 slice 2: N Morton/Z-order (spatially-compact, count-balanced) groups sharing
-    /// ONE face map + point table. Canonically equal to serial (cell order reorders).
-    SharedMorton(usize),
-    /// #3 slice 2 over the slice-3 separate-table view: N Morton/Z-order groups, each
-    /// meshed into its OWN face map + point table, then merged by global provenance
-    /// key. This is the partition shape the eventual JS workers (slice 5) will use.
-    SeparateMorton(usize),
-}
-
 pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, None)
+    run_sfcc_pipeline_impl(tree, cube, tuning, None)
 }
 
 /// Serial pipeline with phase wall-clock timing populated in the result's `phase_*_ms`
-/// fields. `now` is an injected monotonic-ish millisecond clock (the dep-free kernel has
-/// no time source): native callers pass an `Instant`/`SystemTime` closure, the wasm crate
-/// passes `js_sys::Date::now`. The mesh output is identical to [`run_sfcc_pipeline`];
-/// only the timing is captured. Used to measure the spatial-partition (#3) Amdahl ceiling
-/// — the parallelizable contour+cellmesh fraction vs the serial feature/octree/assemble.
+/// fields. `now` is an injected millisecond clock (the dep-free kernel has no time
+/// source): native callers pass an `Instant`/`SystemTime` closure, the wasm crate passes
+/// `js_sys::Date::now`. The mesh output is identical to [`run_sfcc_pipeline`]; only the
+/// timing is captured.
 pub fn run_sfcc_pipeline_profiled(
     tree: &CsgNode,
     cube: &SfccWorldCube,
     tuning: &PipelineTuning,
     now: &dyn Fn() -> f64,
 ) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, Some(now))
+    run_sfcc_pipeline_impl(tree, cube, tuning, Some(now))
 }
 
-/// Spatial-partition (#3 slice 1) in-process driver: mesh the surface leaves in
-/// `partitions` contiguous groups (shared face map + point table), instead of one
-/// pass, combining their partial contour/cell-mesh in group order. `partitions <=
-/// 1` is the serial path. The result is byte-identical to [`run_sfcc_pipeline`] for
-/// ANY `partitions` (contiguous groups preserve cell order, the shared face map
-/// stitches group boundaries + T-junctions) — this is the determinism substrate the
-/// eventual cross-worker, separate-table version (slices 2/4/5) must reproduce.
-pub fn run_sfcc_pipeline_partitioned(
-    tree: &CsgNode,
-    cube: &SfccWorldCube,
-    tuning: &PipelineTuning,
-    partitions: usize,
-) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Shared(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
-}
-
-/// Spatial-partition (#3 slice 3) in-process driver: mesh the surface leaves in
-/// `partitions` contiguous groups, each into its OWN, SEPARATE face map + point table
-/// (exactly what a Web Worker would hold — no shared state), then MERGE the partials
-/// by global provenance key into one mesh and run the shared S4 cleanups. This proves
-/// the separate-table decomposition (with halo-aware coarse-side sub-face contouring)
-/// reconstructs the serial mesh — the correctness gate the eventual JS worker
-/// orchestration (slice 5) needs before it can be trusted. The octree build (+ the
-/// re-refine loop) stays serial/global, as the design doc requires. `partitions <= 1`
-/// is the serial path. Result is mesh-equivalent to [`run_sfcc_pipeline`] for any N.
-pub fn run_sfcc_pipeline_separate_partitioned(
-    tree: &CsgNode,
-    cube: &SfccWorldCube,
-    tuning: &PipelineTuning,
-    partitions: usize,
-) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Separate(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
-}
-
-/// #3 slice 2: like [`run_sfcc_pipeline_partitioned`] (shared face map) but the leaves
-/// are grouped by **Morton/Z-order** — spatially compact AND count-balanced — instead
-/// of contiguous `(level,key)`-order index ranges. Mesh-equivalent to serial for any N
-/// (CANONICAL, not byte-identical: spatial grouping reorders the cell-processing order,
-/// hence the triangle buffer, but the point keys are global so the mesh is the same).
-pub fn run_sfcc_pipeline_partitioned_morton(
-    tree: &CsgNode,
-    cube: &SfccWorldCube,
-    tuning: &PipelineTuning,
-    partitions: usize,
-) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SharedMorton(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
-}
-
-/// #3 slice 2 over the slice-3 separate-table view: like
-/// [`run_sfcc_pipeline_separate_partitioned`] but with **Morton/Z-order** leaf groups
-/// — the spatially-compact, count-balanced partition shape the eventual JS Web Workers
-/// (slice 5) will hand to each instance (compact groups minimize each worker's halo +
-/// shared-boundary merge surface). Mesh-equivalent to serial for any N (canonical).
-pub fn run_sfcc_pipeline_separate_partitioned_morton(
-    tree: &CsgNode,
-    cube: &SfccWorldCube,
-    tuning: &PipelineTuning,
-    partitions: usize,
-) -> SfccPipelineResult {
-    let strategy =
-        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
-}
-
-/// One partial mesh's merge into the global point table is by GLOBAL provenance key:
-/// `Num`/`Str` keys dedup boundary crossings + feature pins/corners contoured from
-/// both sides; `Unkeyed` (cell-local) points are appended uniquely. Output is the
-/// merged point table + cell-mesh result, fed into the same S4 as every strategy.
-struct MergedSeparate {
-    points: PointTable,
-    cell_result: CellMeshResult,
-    multi_run_faces: usize,
-    boundary_violations: usize,
-}
-
-/// Mesh each leaf group into its own separate face map + point table, then merge the
-/// partials by global provenance key (`PointTable::key_at`). The merged triangle
-/// order equals the serial cell order (groups are contiguous and processed in order),
-/// and merged ids are key-consistent, so the S4 cleanups downstream behave identically.
-fn mesh_groups_separate(
-    oct: &SfccOctree,
-    tree: &CsgNode,
-    fc_opts: &FaceContourOptions,
-    cm_opts: &CellMeshOptions,
-    groups: &[&[SfccCell]],
-) -> MergedSeparate {
-    let mut merged = PointTable::new();
-    let mut tris: Vec<usize> = Vec::new();
-    let mut failed_cells: Vec<SfccCell> = Vec::new();
-    let mut fallback_cells: Vec<SfccCell> = Vec::new();
-    let mut multi_loop_cells = 0usize;
-    let mut edge_cells = 0usize;
-    let mut corner_cells = 0usize;
-    let mut feature_cell_fallbacks = 0usize;
-    let mut multi_run_faces = 0usize;
-    let mut boundary_violations = 0usize;
-
-    for &group in groups {
-        // Per-group separate state — mirrors one worker.
-        let mut pt = PointTable::new();
-        let mut fr = contour_subset_separate(oct, tree, &mut pt, fc_opts, group);
-        let cm = mesh_cells_subset(oct, &mut fr.faces, tree, &mut pt, cm_opts, group);
-        multi_run_faces += fr.multi_run_faces;
-        boundary_violations += fr.boundary_violations;
-
-        // Merge this partial into the global table by global provenance key.
-        let n = pt.count();
-        let mut local_to_global = vec![0usize; n];
-        for id in 0..n {
-            let (x, y, z) = (pt.x(id), pt.y(id), pt.z(id));
-            let (nx, ny, nz) = (pt.nx(id), pt.ny(id), pt.nz(id));
-            // Keyed points (boundary crossings, feature pins/corners, and the now
-            // face-scoped-keyed repair/splice midpoints) dedup across partitions by
-            // their GLOBAL key. Unkeyed points are cell-local (interior apex, feature
-            // polyline samples) — each cell lives in one group, so they're appended
-            // uniquely, exactly as the serial run keeps them distinct.
-            let gid = match pt.key_at(id).clone() {
-                PointKey::Num(k) => merged.get_or_create(k, || [x, y, z, nx, ny, nz]),
-                PointKey::Str(s) => merged.get_or_create_str(&s, || [x, y, z, nx, ny, nz]),
-                PointKey::Unkeyed => merged.add(x, y, z, nx, ny, nz),
-            };
-            local_to_global[id] = gid;
-        }
-        for &t in &cm.tris {
-            tris.push(local_to_global[t]);
-        }
-        failed_cells.extend(cm.failed_cells);
-        fallback_cells.extend(cm.fallback_cells);
-        multi_loop_cells += cm.multi_loop_cells;
-        edge_cells += cm.edge_cells;
-        corner_cells += cm.corner_cells;
-        feature_cell_fallbacks += cm.feature_cell_fallbacks;
-    }
-
-    MergedSeparate {
-        points: merged,
-        cell_result: CellMeshResult {
-            tris,
-            failed_cells,
-            multi_loop_cells,
-            edge_cells,
-            corner_cells,
-            feature_cell_fallbacks,
-            fallback_cells,
-        },
-        multi_run_faces,
-        boundary_violations,
-    }
-}
-
-/// Split `[0, n)` into `k` contiguous index ranges, as even as possible (the first
-/// `n % k` ranges get one extra element). The simplest spatial-partition leaf
-/// grouping; [`partition_morton`] (slice 2) is the spatially-compact alternative.
-fn partition_contiguous(n: usize, k: usize) -> Vec<std::ops::Range<usize>> {
-    let k = k.max(1);
-    let base = n / k;
-    let rem = n % k;
-    let mut ranges = Vec::with_capacity(k);
-    let mut start = 0usize;
-    for i in 0..k {
-        let len = base + if i < rem { 1 } else { 0 };
-        ranges.push(start..start + len);
-        start += len;
-    }
-    ranges
-}
-
-/// Interleave three coords (each ≤ 42 bits, ample for any lattice depth) into a 126-bit
-/// Morton (Z-order) code. Cells close in 3-space get close codes, so sorting by code
-/// then chunking yields spatially-compact groups.
-fn morton3(x: u64, y: u64, z: u64) -> u128 {
-    fn spread(v: u64) -> u128 {
-        let mut r: u128 = 0;
-        let mut b = 0u32;
-        while b < 42 {
-            r |= (((v >> b) & 1) as u128) << (3 * b);
-            b += 1;
-        }
-        r
-    }
-    spread(x) | (spread(y) << 1) | (spread(z) << 2)
-}
-
-/// Morton/Z-order leaf partition (#3 slice 2): group the octree leaves into `k`
-/// balanced, SPATIALLY-COMPACT chunks (returned as leaf-index lists). Each leaf is
-/// keyed by the Morton code of its min corner in max-depth lattice units (so a coarse
-/// cell and the fine cells around it sort together, ACROSS levels — unlike the
-/// `(level,key)`-ordered contiguous split, which groups whole levels), then the Morton
-/// order is split into `k` equal-count chunks. Spatial compactness shrinks each group's
-/// shared-boundary surface → smaller halo + cheaper merge; equal count load-balances
-/// the eventual workers. Deterministic (Morton, then leaf-index tie-break).
-///
-/// Correctness is grouping-INDEPENDENT: every leaf is meshed and the by-key merge (or
-/// the global shared face map) reconstructs the same mesh regardless of how leaves are
-/// grouped, so this only affects load balance + halo size, never the output. (Deferred
-/// refinement: balance by SURFACE-leaf count rather than all leaves — empty interior
-/// leaves are near-free to mesh, so count-balance slightly over-weights them.)
-fn partition_morton(oct: &SfccOctree, k: usize) -> Vec<Vec<usize>> {
-    let n = oct.leaves.len();
-    let code = |c: &SfccCell| -> u128 {
-        // min corner in max-depth lattice units: ix * (1 << (max_depth - level)).
-        let stride = stride_at_level(&oct.lat, c.level) as u64;
-        morton3(c.ix as u64 * stride, c.iy as u64 * stride, c.iz as u64 * stride)
-    };
-    let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| code(&oct.leaves[a]).cmp(&code(&oct.leaves[b])).then(a.cmp(&b)));
-    partition_contiguous(n, k).into_iter().map(|r| order[r].to_vec()).collect()
-}
-
-/// [`partition_morton`] then materialize each index group as an owned `Vec<SfccCell>`
-/// (Morton groups are non-contiguous, so they can't borrow a slice of `oct.leaves`).
-/// `SfccCell` is `Copy` and tiny, so this is a cheap gather; the caller borrows these
-/// as `&[&[SfccCell]]` for the shared- or separate-table meshers.
-fn gather_morton_groups(oct: &SfccOctree, k: usize) -> Vec<Vec<SfccCell>> {
-    partition_morton(oct, k)
-        .into_iter()
-        .map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect())
-        .collect()
-}
-
-/// Accumulate `now() - *last` into `bucket` and advance `*last` to `now()`, but only
-/// when a clock is injected. No-op (zero overhead, zero timing) when `now` is `None`.
+/// Accumulate `now() - *last` into `bucket` and advance `*last`, but only when a clock is
+/// injected. No-op (zero overhead, zero timing) when `now` is `None`.
 fn phase_mark(now: Option<&dyn Fn() -> f64>, last: &mut Option<f64>, bucket: &mut f64) {
     if let Some(f) = now {
         let n = f();
@@ -661,7 +409,6 @@ fn run_sfcc_pipeline_impl(
     tree: &CsgNode,
     cube: &SfccWorldCube,
     tuning: &PipelineTuning,
-    strategy: MeshStrategy,
     now: Option<&dyn Fn() -> f64>,
 ) -> SfccPipelineResult {
     // Phase wall-clock accumulators (populated only when `now` is Some).
@@ -864,73 +611,28 @@ fn run_sfcc_pipeline_impl(
         phase_mark(now, &mut ph_last, &mut ph_octree);
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
-        let fc_opts = FaceContourOptions { root_tol, features: Some(&features), recovery_cull: tuning.recovery_cull };
-        let cm_opts = CellMeshOptions {
-            surface_tol: tuning.surface_tol_mm,
-            interior_vertex_mode: tuning.interior_vertex_mode,
-            project_max_iters: tuning.project_max_iters,
-            curve_chord_tol: tuning.curve_chord_tol_mm,
-            max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
-            features: Some(&features),
-        };
-        match &strategy {
-            MeshStrategy::Serial => {
-                face_result = contour_all_faces(&oct, tree, &mut points, &fc_opts);
-                phase_mark(now, &mut ph_last, &mut ph_contour);
-                cell_result = mesh_all_cells(&oct, &mut face_result.faces, tree, &mut points, &cm_opts);
-                phase_mark(now, &mut ph_last, &mut ph_cellmesh);
-            }
-            MeshStrategy::Shared(n) => {
-                // #3 slice 1: mesh the surface leaves in N contiguous groups, sharing
-                // ONE face map + point table. Byte-identical to the serial path.
-                let groups = partition_contiguous(oct.leaves.len(), *n);
-                face_result = contour_faces_partitioned(&oct, tree, &mut points, &fc_opts, &groups);
-                cell_result = mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
-            }
-            MeshStrategy::Separate(n) => {
-                // #3 slice 3: mesh each contiguous group into its OWN separate face map
-                // + point table (the per-worker view, halo-aware), then merge by global
-                // provenance key. `points` is replaced by the merged table; the empty
-                // table created above is discarded. The face map is consumed inside the
-                // merge, so the post-loop face audit has nothing to walk (it runs on the
-                // shared/serial maps only) — the manifold check is the topology gate here.
-                let ranges = partition_contiguous(oct.leaves.len(), *n);
-                let leaf_groups: Vec<&[SfccCell]> = ranges.iter().map(|r| &oct.leaves[r.clone()]).collect();
-                let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &leaf_groups);
-                points = merged.points;
-                cell_result = merged.cell_result;
-                face_result = FaceContourResult {
-                    faces: [HashMap::new(), HashMap::new(), HashMap::new()],
-                    multi_run_faces: merged.multi_run_faces,
-                    boundary_violations: merged.boundary_violations,
-                    key_collisions: 0,
-                };
-            }
-            MeshStrategy::SharedMorton(n) => {
-                // #3 slice 2: Morton/Z-order groups (spatially compact + count-balanced)
-                // over the slice-1 shared face map. Same global keys → canonically equal
-                // to serial; the group order (hence triangle buffer) reorders.
-                let owned = gather_morton_groups(&oct, *n);
-                let leaf_groups: Vec<&[SfccCell]> = owned.iter().map(|g| g.as_slice()).collect();
-                face_result = contour_faces_for(&oct, tree, &mut points, &fc_opts, &leaf_groups);
-                cell_result = mesh_cells_for(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &leaf_groups);
-            }
-            MeshStrategy::SeparateMorton(n) => {
-                // #3 slice 2 over the slice-3 separate-table view: Morton/Z-order groups,
-                // each meshed into its own table (the worker view), merged by global key.
-                let owned = gather_morton_groups(&oct, *n);
-                let leaf_groups: Vec<&[SfccCell]> = owned.iter().map(|g| g.as_slice()).collect();
-                let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &leaf_groups);
-                points = merged.points;
-                cell_result = merged.cell_result;
-                face_result = FaceContourResult {
-                    faces: [HashMap::new(), HashMap::new(), HashMap::new()],
-                    multi_run_faces: merged.multi_run_faces,
-                    boundary_violations: merged.boundary_violations,
-                    key_collisions: 0,
-                };
-            }
-        }
+        face_result = contour_all_faces(
+            &oct,
+            tree,
+            &mut points,
+            &FaceContourOptions { root_tol, features: Some(&features), recovery_cull: tuning.recovery_cull },
+        );
+        phase_mark(now, &mut ph_last, &mut ph_contour);
+        cell_result = mesh_all_cells(
+            &oct,
+            &mut face_result.faces,
+            tree,
+            &mut points,
+            &CellMeshOptions {
+                surface_tol: tuning.surface_tol_mm,
+                interior_vertex_mode: tuning.interior_vertex_mode,
+                project_max_iters: tuning.project_max_iters,
+                curve_chord_tol: tuning.curve_chord_tol_mm,
+                max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
+                features: Some(&features),
+            },
+        );
+        phase_mark(now, &mut ph_last, &mut ph_cellmesh);
         // Failed cells re-refine every round; fallback cells get ONE forced round.
         let mut suspects: Vec<SfccCell> = Vec::new();
         for c in &cell_result.failed_cells {

@@ -138,13 +138,6 @@ pub struct SfccPipelineResult {
     pub stats: SfccStats,
     pub manifold: ManifoldReport,
     pub ok: bool,
-    /// Phase wall-clock split in ms (zeros unless run via [`run_sfcc_pipeline_profiled`]).
-    /// Measured from an injected clock so the dep-free kernel needs no time source.
-    pub phase_feature_ms: f64,
-    pub phase_octree_ms: f64,
-    pub phase_contour_ms: f64,
-    pub phase_cellmesh_ms: f64,
-    pub phase_assemble_ms: f64,
 }
 
 /// Remove coincident triangle pairs with opposite winding (zero-volume pancakes
@@ -376,49 +369,6 @@ struct ForcedMarker {
 /// featureless scene (no curves/corners) every feature path is inert, so the
 /// output equals the prior smooth-only driver byte-for-byte.
 pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, None)
-}
-
-/// Serial pipeline with phase wall-clock timing populated in the result's `phase_*_ms`
-/// fields. `now` is an injected millisecond clock (the dep-free kernel has no time
-/// source): native callers pass an `Instant`/`SystemTime` closure, the wasm crate passes
-/// `js_sys::Date::now`. The mesh output is identical to [`run_sfcc_pipeline`]; only the
-/// timing is captured.
-pub fn run_sfcc_pipeline_profiled(
-    tree: &CsgNode,
-    cube: &SfccWorldCube,
-    tuning: &PipelineTuning,
-    now: &dyn Fn() -> f64,
-) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, Some(now))
-}
-
-/// Accumulate `now() - *last` into `bucket` and advance `*last`, but only when a clock is
-/// injected. No-op (zero overhead, zero timing) when `now` is `None`.
-fn phase_mark(now: Option<&dyn Fn() -> f64>, last: &mut Option<f64>, bucket: &mut f64) {
-    if let Some(f) = now {
-        let n = f();
-        if let Some(l) = *last {
-            *bucket += n - l;
-        }
-        *last = Some(n);
-    }
-}
-
-fn run_sfcc_pipeline_impl(
-    tree: &CsgNode,
-    cube: &SfccWorldCube,
-    tuning: &PipelineTuning,
-    now: Option<&dyn Fn() -> f64>,
-) -> SfccPipelineResult {
-    // Phase wall-clock accumulators (populated only when `now` is Some).
-    let mut ph_feature = 0.0f64;
-    let mut ph_octree = 0.0f64;
-    let mut ph_contour = 0.0f64;
-    let mut ph_cellmesh = 0.0f64;
-    let mut ph_assemble = 0.0f64;
-    let mut ph_last: Option<f64> = now.map(|f| f());
-
     let pad = tuning.bounds_padding_mm;
     // Lattice-degeneracy guard: offset the root cube by distinct irrational
     // fractions of a max-depth cell so rational geometry never coincides with
@@ -520,7 +470,6 @@ fn run_sfcc_pipeline_impl(
     let mut face_result: FaceContourResult;
     let mut cell_result: CellMeshResult;
     let mut re_refine_rounds = 0u32;
-    phase_mark(now, &mut ph_last, &mut ph_feature);
     let mut round = 0u32;
     loop {
         let forced_snapshot = forced.clone();
@@ -608,7 +557,6 @@ fn run_sfcc_pipeline_impl(
                 CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
             },
         );
-        phase_mark(now, &mut ph_last, &mut ph_octree);
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
         face_result = contour_all_faces(
@@ -617,7 +565,6 @@ fn run_sfcc_pipeline_impl(
             &mut points,
             &FaceContourOptions { root_tol, features: Some(&features), recovery_cull: tuning.recovery_cull },
         );
-        phase_mark(now, &mut ph_last, &mut ph_contour);
         cell_result = mesh_all_cells(
             &oct,
             &mut face_result.faces,
@@ -632,7 +579,6 @@ fn run_sfcc_pipeline_impl(
                 features: Some(&features),
             },
         );
-        phase_mark(now, &mut ph_last, &mut ph_cellmesh);
         // Failed cells re-refine every round; fallback cells get ONE forced round.
         let mut suspects: Vec<SfccCell> = Vec::new();
         for c in &cell_result.failed_cells {
@@ -693,7 +639,6 @@ fn run_sfcc_pipeline_impl(
 
     let (verts, out_tris) = points.build_mesh(&flipped);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
-    phase_mark(now, &mut ph_last, &mut ph_assemble);
 
     let stats = SfccStats {
         leaves: oct.leaves.len(),
@@ -717,18 +662,7 @@ fn run_sfcc_pipeline_impl(
         && cell_result.failed_cells.is_empty()
         && face_result.boundary_violations == 0;
 
-    SfccPipelineResult {
-        verts,
-        tris: out_tris,
-        stats,
-        manifold,
-        ok,
-        phase_feature_ms: ph_feature,
-        phase_octree_ms: ph_octree,
-        phase_contour_ms: ph_contour,
-        phase_cellmesh_ms: ph_cellmesh,
-        phase_assemble_ms: ph_assemble,
-    }
+    SfccPipelineResult { verts, tris: out_tris, stats, manifold, ok }
 }
 
 fn hypot3(x: f64, y: f64, z: f64) -> f64 {

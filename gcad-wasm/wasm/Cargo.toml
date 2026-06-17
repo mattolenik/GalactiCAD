@@ -11,8 +11,6 @@ crate-type = ["cdylib", "rlib"]
 # The wasm boundary needs the kernel's JSON scene-bridge ingestion (serde feature).
 gcad-kernel = { path = "../kernel", features = ["serde"] }
 wasm-bindgen = "0.2"
-# Date.now() as the injected pipeline clock for phase-timing (export_sfcc).
-js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

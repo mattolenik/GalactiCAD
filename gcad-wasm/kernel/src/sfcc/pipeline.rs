@@ -15,8 +15,8 @@
 
 use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, SfccLattice};
 use crate::sdf::CsgNode;
-use crate::sfcc::cell_mesh::{mesh_all_cells, CellMeshOptions, CellMeshResult, InteriorVertexMode};
-use crate::sfcc::face_contour::{contour_all_faces, FaceContourOptions, FaceContourResult};
+use crate::sfcc::cell_mesh::{mesh_all_cells, mesh_cells_partitioned, CellMeshOptions, CellMeshResult, InteriorVertexMode};
+use crate::sfcc::face_contour::{contour_all_faces, contour_faces_partitioned, FaceContourOptions, FaceContourResult};
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions, SfccCell, SfccOctree};
@@ -369,6 +369,48 @@ struct ForcedMarker {
 /// featureless scene (no curves/corners) every feature path is inert, so the
 /// output equals the prior smooth-only driver byte-for-byte.
 pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
+    run_sfcc_pipeline_impl(tree, cube, tuning, 1)
+}
+
+/// Spatial-partition (#3 slice 1) in-process driver: mesh the surface leaves in
+/// `partitions` contiguous groups (shared face map + point table), instead of one
+/// pass, combining their partial contour/cell-mesh in group order. `partitions <=
+/// 1` is the serial path. The result is byte-identical to [`run_sfcc_pipeline`] for
+/// ANY `partitions` (contiguous groups preserve cell order, the shared face map
+/// stitches group boundaries + T-junctions) — this is the determinism substrate the
+/// eventual cross-worker, separate-table version (slices 2/4/5) must reproduce.
+pub fn run_sfcc_pipeline_partitioned(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    partitions: usize,
+) -> SfccPipelineResult {
+    run_sfcc_pipeline_impl(tree, cube, tuning, partitions.max(1))
+}
+
+/// Split `[0, n)` into `k` contiguous index ranges, as even as possible (the first
+/// `n % k` ranges get one extra element). The spatial-partition leaf grouping;
+/// Morton/Z-order load balancing (slice 2) replaces this contiguous split later.
+fn partition_contiguous(n: usize, k: usize) -> Vec<std::ops::Range<usize>> {
+    let k = k.max(1);
+    let base = n / k;
+    let rem = n % k;
+    let mut ranges = Vec::with_capacity(k);
+    let mut start = 0usize;
+    for i in 0..k {
+        let len = base + if i < rem { 1 } else { 0 };
+        ranges.push(start..start + len);
+        start += len;
+    }
+    ranges
+}
+
+fn run_sfcc_pipeline_impl(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    partitions: usize,
+) -> SfccPipelineResult {
     let pad = tuning.bounds_padding_mm;
     // Lattice-degeneracy guard: offset the root cube by distinct irrational
     // fractions of a max-depth cell so rational geometry never coincides with
@@ -559,26 +601,25 @@ pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &Pipeline
         );
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
-        face_result = contour_all_faces(
-            &oct,
-            tree,
-            &mut points,
-            &FaceContourOptions { root_tol, features: Some(&features), recovery_cull: tuning.recovery_cull },
-        );
-        cell_result = mesh_all_cells(
-            &oct,
-            &mut face_result.faces,
-            tree,
-            &mut points,
-            &CellMeshOptions {
-                surface_tol: tuning.surface_tol_mm,
-                interior_vertex_mode: tuning.interior_vertex_mode,
-                project_max_iters: tuning.project_max_iters,
-                curve_chord_tol: tuning.curve_chord_tol_mm,
-                max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
-                features: Some(&features),
-            },
-        );
+        let fc_opts = FaceContourOptions { root_tol, features: Some(&features), recovery_cull: tuning.recovery_cull };
+        let cm_opts = CellMeshOptions {
+            surface_tol: tuning.surface_tol_mm,
+            interior_vertex_mode: tuning.interior_vertex_mode,
+            project_max_iters: tuning.project_max_iters,
+            curve_chord_tol: tuning.curve_chord_tol_mm,
+            max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
+            features: Some(&features),
+        };
+        if partitions <= 1 {
+            face_result = contour_all_faces(&oct, tree, &mut points, &fc_opts);
+            cell_result = mesh_all_cells(&oct, &mut face_result.faces, tree, &mut points, &cm_opts);
+        } else {
+            // #3 slice 1: mesh the surface leaves in N contiguous groups, sharing
+            // ONE face map + point table. Byte-identical to the serial path.
+            let groups = partition_contiguous(oct.leaves.len(), partitions);
+            face_result = contour_faces_partitioned(&oct, tree, &mut points, &fc_opts, &groups);
+            cell_result = mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
+        }
         // Failed cells re-refine every round; fallback cells get ONE forced round.
         let mut suspects: Vec<SfccCell> = Vec::new();
         for c in &cell_result.failed_cells {

@@ -149,6 +149,58 @@ pub fn mesh_all_cells(
     points: &mut PointTable,
     opts: &CellMeshOptions,
 ) -> CellMeshResult {
+    mesh_cells_subset(oct, faces, tree, points, opts, &oct.leaves)
+}
+
+/// Spatial-partition (#3 slice 1): contour the cells of N disjoint, contiguous
+/// leaf groups into the shared face map (`faces`) + point table (`points`),
+/// sequentially, combining their partial results in group order. With contiguous
+/// groups the cell processing order equals the serial [`mesh_all_cells`] order, so
+/// the triangle buffer is byte-identical (proven by `tests/spatial_partition.rs`).
+/// `faces` must already be fully contoured (e.g. via `contour_faces_partitioned`),
+/// so every cell — coarse cells at T-junctions included — finds its (sub-)faces.
+pub fn mesh_cells_partitioned(
+    oct: &SfccOctree,
+    faces: &mut [HashMap<i64, FaceRecord>; 3],
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &CellMeshOptions,
+    groups: &[std::ops::Range<usize>],
+) -> CellMeshResult {
+    let mut combined = CellMeshResult {
+        tris: Vec::new(),
+        failed_cells: Vec::new(),
+        multi_loop_cells: 0,
+        edge_cells: 0,
+        corner_cells: 0,
+        feature_cell_fallbacks: 0,
+        fallback_cells: Vec::new(),
+    };
+    for r in groups {
+        let part = mesh_cells_subset(oct, faces, tree, points, opts, &oct.leaves[r.clone()]);
+        combined.tris.extend(part.tris);
+        combined.failed_cells.extend(part.failed_cells);
+        combined.multi_loop_cells += part.multi_loop_cells;
+        combined.edge_cells += part.edge_cells;
+        combined.corner_cells += part.corner_cells;
+        combined.feature_cell_fallbacks += part.feature_cell_fallbacks;
+        combined.fallback_cells.extend(part.fallback_cells);
+    }
+    combined
+}
+
+/// Mesh one leaf subset, reading the shared `faces` map and appending to the shared
+/// `points`. The body is the original `meshAllCells` cell loop; iterating a caller-
+/// supplied `leaves` slice is the only change, so passing `&oct.leaves` reproduces
+/// the serial result exactly.
+pub fn mesh_cells_subset(
+    oct: &SfccOctree,
+    faces: &mut [HashMap<i64, FaceRecord>; 3],
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &CellMeshOptions,
+    leaves: &[SfccCell],
+) -> CellMeshResult {
     let lat = oct.lat;
     let mut tris: Vec<usize> = Vec::new();
     let mut failed_cells: Vec<SfccCell> = Vec::new();
@@ -164,7 +216,7 @@ pub fn mesh_all_cells(
     // Lever 1: per-cell pruning gate (default OFF; see lever1_should_prune).
     let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
 
-    for cell in &oct.leaves {
+    for cell in leaves {
         segs.clear();
         pins.clear();
         gather_segments(faces, &lat, cell, &mut segs, &mut pins);

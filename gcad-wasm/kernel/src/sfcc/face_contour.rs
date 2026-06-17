@@ -29,7 +29,7 @@ use crate::math::grid::{
 use crate::sdf::{CsgNode, Pruned, SdfQuery};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::octree::LEVER1_MIN_LEAVES;
-use crate::sfcc::octree::SfccOctree;
+use crate::sfcc::octree::{SfccCell, SfccOctree};
 use crate::sfcc::point_table::{crossing_key, PointTable};
 use std::collections::HashMap;
 
@@ -1006,7 +1006,41 @@ pub fn contour_all_faces(
     points: &mut PointTable,
     opts: &FaceContourOptions,
 ) -> FaceContourResult {
-    let lat = oct.lat;
+    contour_faces_for(oct, tree, points, opts, &[oct.leaves.as_slice()])
+}
+
+/// Spatial-partition (#3 slice 1) entry: contour the faces of N disjoint leaf
+/// groups into ONE shared face map + point table, sequentially. The shared map
+/// dedups faces enumerated from both sides of a group boundary, and — crucially —
+/// resolves T-junctions for free: a coarse cell in group A skips its face toward a
+/// finer region (`is_internal`), and the finer cells (possibly in group B) contour
+/// the sub-faces into the same shared map, so cell-mesh later finds them. The
+/// global duplicate-segment repair runs ONCE after all groups. With contiguous
+/// groups this is byte-identical to the serial [`contour_all_faces`] (proven by
+/// `tests/spatial_partition.rs`); it's the in-process correctness substrate for the
+/// eventual separate-table cross-worker merge (which additionally needs halo-aware
+/// coarse-side sub-face contouring — see the design doc).
+pub fn contour_faces_partitioned(
+    oct: &SfccOctree,
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &FaceContourOptions,
+    groups: &[std::ops::Range<usize>],
+) -> FaceContourResult {
+    let leaf_groups: Vec<&[SfccCell]> = groups.iter().map(|r| &oct.leaves[r.clone()]).collect();
+    contour_faces_for(oct, tree, points, opts, &leaf_groups)
+}
+
+/// Shared contour driver: one face map + point table, fed by each group's cell
+/// loop, repaired once. The serial path passes one group (`&oct.leaves`); the
+/// partitioned path passes N leaf slices. Identical loop either way.
+fn contour_faces_for(
+    oct: &SfccOctree,
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &FaceContourOptions,
+    groups: &[&[SfccCell]],
+) -> FaceContourResult {
     let mut faces: [HashMap<i64, FaceRecord>; 3] = [HashMap::new(), HashMap::new(), HashMap::new()];
     let mut multi_run_faces = 0usize;
     let mut boundary_violations = 0usize;
@@ -1019,12 +1053,56 @@ pub fn contour_all_faces(
     // Lever 1: per-face pruning gate (default OFF; see lever1_should_prune).
     let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
 
-    // Shared sub-edge recovery + stratum-tag caches for this contouring pass.
+    // Shared sub-edge recovery + stratum-tag caches for the WHOLE pass (shared
+    // across groups — pure memoization, so sharing only saves recomputation).
     let mut caches = opts
         .features
         .map(|_| FeatureCaches { recovered: HashMap::new(), stratum_tags: HashMap::new() });
 
-    for cell in &oct.leaves {
+    for &group in groups {
+        let (mr, bv, kc) = contour_into(
+            oct,
+            tree,
+            grad_bound,
+            prune,
+            points,
+            opts,
+            group,
+            &mut faces,
+            caches.as_mut(),
+        );
+        multi_run_faces += mr;
+        boundary_violations += bv;
+        key_collisions += kc;
+    }
+
+    repair_face_duplicates(&mut faces, tree, points, opts);
+
+    FaceContourResult { faces, multi_run_faces, boundary_violations, key_collisions }
+}
+
+/// Contour the faces of one leaf subset into the shared `faces` map (+ `points`).
+/// Returns the (multi_run_faces, boundary_violations, key_collisions) deltas. A
+/// face already present (enumerated by an earlier cell/group) is skipped — first
+/// enumerator wins, and `contour_face` is pure of enumeration order, so the result
+/// is independent of how leaves are grouped.
+#[allow(clippy::too_many_arguments)]
+fn contour_into(
+    oct: &SfccOctree,
+    tree: &CsgNode,
+    grad_bound: f64,
+    prune: bool,
+    points: &mut PointTable,
+    opts: &FaceContourOptions,
+    leaves: &[SfccCell],
+    faces: &mut [HashMap<i64, FaceRecord>; 3],
+    mut caches: Option<&mut FeatureCaches>,
+) -> (usize, usize, usize) {
+    let lat = oct.lat;
+    let mut multi_run_faces = 0usize;
+    let mut boundary_violations = 0usize;
+    let mut key_collisions = 0usize;
+    for cell in leaves {
         let stride = stride_at_level(&lat, cell.level);
         let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
         for axis in 0..3usize {
@@ -1057,7 +1135,7 @@ pub fn contour_all_faces(
                     g[2],
                     stride,
                     opts,
-                    caches.as_mut(),
+                    caches.as_deref_mut(),
                 );
                 let seg_count = rec.segments.len();
                 let on_root_boundary = g[axis] == 0 || g[axis] == lat.res;
@@ -1071,10 +1149,19 @@ pub fn contour_all_faces(
             }
         }
     }
+    (multi_run_faces, boundary_violations, key_collisions)
+}
 
-    // Global duplicate-segment repair: two faces must never emit the same
-    // undirected (a, b) segment. Split EVERY occurrence with its own face-owned
-    // midpoint. Port of the `pairOwners` dedup pass.
+/// Global duplicate-segment repair: two faces must never emit the same undirected
+/// (a, b) segment. Split EVERY occurrence with its own face-owned midpoint. Port of
+/// the `pairOwners` dedup pass. Runs ONCE over the fully-populated face map (after
+/// all partition groups), so the result is partition-independent.
+fn repair_face_duplicates(
+    faces: &mut [HashMap<i64, FaceRecord>; 3],
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &FaceContourOptions,
+) {
     const EDGE_BASE: i64 = 0x8000000;
     let mut pair_owners: HashMap<i64, Vec<(usize, i64, usize)>> = HashMap::new(); // edge key → (axis, face key, seg idx)
     for (axis, per_axis) in faces.iter().enumerate() {
@@ -1102,6 +1189,4 @@ pub fn contour_all_faces(
             rec.consumed_rev.push(0);
         }
     }
-
-    FaceContourResult { faces, multi_run_faces, boundary_violations, key_collisions }
 }

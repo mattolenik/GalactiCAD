@@ -257,6 +257,29 @@ pub fn sfcc_worker_prepare(
     Ok(worker::prepare(&tree, &cube, &tuning.to_pipeline()))
 }
 
+/// Octree-DECISION worker primitive: decide cells `[start, end)` of a serialized
+/// frontier (the gate-measured ~50%-of-export parallelizable half). The main thread
+/// ships a round's frontier; each worker decides its contiguous slice independently
+/// (pure per-cell certs); the main thread concatenates + applies split+ripple. Returns
+/// the encoded decisions, copied into JS. Recomputes the CsgNode + feature set locally.
+#[wasm_bindgen]
+pub fn sfcc_decide_partition(
+    scene_json: &str,
+    tuning_json: &str,
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    size: f64,
+    frontier_bytes: &[u8],
+    start: usize,
+    end: usize,
+) -> Result<Vec<u8>, JsError> {
+    let tree = build_csg_tree_from_json(scene_json).map_err(|e| JsError::new(&e))?;
+    let tuning = parse_tuning(tuning_json)?;
+    let cube = SfccWorldCube { min_x, min_y, min_z, size };
+    Ok(worker::decide_partition_bytes(&tree, &cube, &tuning.to_pipeline(), frontier_bytes, start, end))
+}
+
 /// Phase 2 — `mesh_partition`: one worker's share. Reconstruct the octree from
 /// `leaves_bytes` (the `sfcc_worker_prepare` output), Morton-partition the surface
 /// leaves into `group_count` groups, and mesh ONLY `group_index` into its own table.

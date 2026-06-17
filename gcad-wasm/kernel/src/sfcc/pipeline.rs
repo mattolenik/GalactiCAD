@@ -511,6 +511,25 @@ impl<'a> PipelineContext<'a> {
             |cell, sampler| self.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced),
         )
     }
+
+    /// Decide a CONTIGUOUS slice `[start, end)` of a frontier — the worker-side
+    /// primitive for cross-instance octree-DECISION parallelism (the gate-measured
+    /// ~50%-of-export hot path). Uses a DIRECT (un-cached) sampler: the build's
+    /// [`crate::sfcc::octree::SampleView`] only ever caches raw `tree.f` values and
+    /// falls back to a raw `tree.f` on a miss, so a fresh-context worker recomputing
+    /// samples produces BIT-IDENTICAL decisions to the serial cached pass. `forced`
+    /// is empty (round-0 / single build, matching [`Self::build_tagged_octree`]).
+    /// Pure per cell: `decisions[i]` depends only on `frontier[start + i]`, so
+    /// concatenating N disjoint slices equals deciding the whole frontier — the
+    /// cross-worker split is exact by construction.
+    pub(crate) fn decide_partition(&self, frontier: &[SfccCell], start: usize, end: usize) -> Vec<CellDecision> {
+        let forced: Vec<ForcedMarker> = Vec::new();
+        let sample = |gx: i64, gy: i64, gz: i64| {
+            let w = crate::math::grid::point_to_world(&self.lat, gx, gy, gz);
+            self.tree.f([w[0], w[1], w[2]])
+        };
+        frontier[start..end].iter().map(|cell| self.decide_cell(cell, &sample, &forced)).collect()
+    }
 }
 
 /// Whether a leaf must be force-split by a prior round's marker (free function so

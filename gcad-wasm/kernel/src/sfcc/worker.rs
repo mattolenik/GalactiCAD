@@ -41,7 +41,7 @@ use crate::sfcc::cell_mesh::{mesh_cells_subset, CellMeshOptions};
 use crate::sfcc::face_contour::{contour_subset_separate, FaceContourOptions};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
-use crate::sfcc::octree::{rebuild_octree_from_leaves, SfccCell, SfccOctree};
+use crate::sfcc::octree::{rebuild_octree_from_leaves, CellDecision, SfccCell, SfccOctree};
 use crate::sfcc::pipeline::{
     build_pipeline_context, drop_coincident_triangle_pairs, drop_debris_components, morton_partition_indices,
     PipelineTuning, SfccWorldCube,
@@ -201,6 +201,69 @@ pub fn prepare(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) ->
     let ctx = build_pipeline_context(tree, cube, tuning);
     let oct = ctx.build_tagged_octree(tuning);
     encode_tagged_leaves(&oct.lat, &oct.leaves)
+}
+
+// ---------------------------------------------------------------------------
+// Octree-DECISION worker primitive — decide a frontier slice.
+// ---------------------------------------------------------------------------
+// The gate (commit 3a9ba4d6) measured `decide_frontier` (classify + smoothCrit) at
+// ~50% of total export and the serial apply+ripple at only ~10%. This primitive is
+// the parallelizable half: given a round's frontier and a contiguous `[start,end)`
+// slice, a worker (separate wasm instance) decides its slice independently; the main
+// thread concatenates the slices' decisions and applies split+ripple. The decision is
+// a pure per-cell function (no cross-cell reads, confluent), so the split is exact.
+
+const DECISIONS_MAGIC: u32 = 0x5346_4443; // "SFDC"
+
+/// Serialize a frontier's per-cell decisions. Layout: magic u32 | count u64 |
+/// per decision: split (u8 0/1), feature_curve (i64), feature_corner (i64).
+pub fn encode_decisions(decisions: &[CellDecision]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(12 + decisions.len() * 17);
+    put_u32(&mut out, DECISIONS_MAGIC);
+    put_u64(&mut out, decisions.len() as u64);
+    for d in decisions {
+        out.push(d.split as u8);
+        put_i64(&mut out, d.feature_curve);
+        put_i64(&mut out, d.feature_corner);
+    }
+    out
+}
+
+/// Inverse of [`encode_decisions`].
+pub fn decode_decisions(buf: &[u8]) -> Vec<CellDecision> {
+    let mut r = Reader::new(buf);
+    assert_eq!(r.u32(), DECISIONS_MAGIC, "worker: bad decisions buffer magic");
+    let n = r.u64() as usize;
+    let mut out = Vec::with_capacity(n);
+    for _ in 0..n {
+        let split = r.bytes(1)[0] != 0;
+        let feature_curve = r.i64();
+        let feature_corner = r.i64();
+        out.push(CellDecision { split, feature_curve, feature_corner });
+    }
+    out
+}
+
+/// Decide cells `[start, end)` of a serialized frontier (the `encode_tagged_leaves`
+/// wire format — input tags are ignored; the cells' level/ix/iy/iz are what matter).
+/// Rebuilds the pipeline context (CsgNode from the caller, feature set recompiled —
+/// the cheap ~6% phase, same as [`mesh_partition`]), then runs the pure per-cell
+/// DECISION over the slice via `PipelineContext::decide_partition` (a direct,
+/// un-cached sampler — bit-identical to the serial cached pass). Returns the encoded
+/// decisions for the slice; concatenating disjoint slices reconstructs the whole
+/// frontier's decisions exactly.
+pub fn decide_partition_bytes(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    frontier_bytes: &[u8],
+    start: usize,
+    end: usize,
+) -> Vec<u8> {
+    let ctx = build_pipeline_context(tree, cube, tuning);
+    let (_lat, frontier) = decode_tagged_leaves(frontier_bytes);
+    let decisions = ctx.decide_partition(&frontier, start, end);
+    encode_decisions(&decisions)
 }
 
 // ---------------------------------------------------------------------------

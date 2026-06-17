@@ -175,3 +175,66 @@ yet ruled out — rayon (atomics tax), generic pruning (build cost), and constan
 were measured net-negative; the analytic blend cert (position-aware) is the lone
 in-pipeline win. Spatial partitioning is the structural route, language-agnostic,
 worth building only when large-mesh export time is the binding constraint.
+
+---
+
+## Outcome — built the substrate, measured the ceiling, NO-GO (2026-06-16)
+
+Slices 1–4 were implemented in the Rust kernel (the in-process substrate, all
+proven equivalent to serial by `gcad-wasm/kernel/tests/spatial_partition.rs`; the
+serial shipping path stays byte-identical throughout):
+
+- **1** separable pipeline + shared-table partition — `bd0511ff` (byte-identical)
+- **2** Morton/Z-order load-balanced leaf partition — `afb5d58a` (canonical-equiv)
+- **3+4** separate-per-worker tables with halo-aware coarse-side T-junction
+  contouring + the by-key merge into the shared S4/manifold gate — `d3d99e9a`
+  (canonical-equiv)
+
+Before building slice 5 (the JS Web-Worker layer — the only place a speedup
+appears) we **measured the parallelizable fraction first** (phase wall-clock
+timing, `3870b456`: `run_sfcc_pipeline_profiled` + `js_sys::Date::now`, timing-only,
+mesh unchanged). `p = (contour + cell_mesh) / total`, in real wasm (single-thread
+shipping `pkg/`):
+
+| scene class | example | total | **p** | octree (serial) | Amdahl ceiling N=4 / 8 / ∞ |
+|---|---|---|---|---|---|
+| boolean+blend CAD | mech d7 | 4.5 s | **0.30** | 59% | 1.29× / 1.36× / 1.43× |
+| boolean+blend CAD | mech d8 | 11.4 s | **0.30** | 62% | 1.29× / 1.36× / 1.43× |
+| twisted extrude | polygon-twisted d10 | 0.77 s | **0.50** | 28% | 1.6× / 1.8× / 2.0× |
+| twisted extrude | sfcc-twisted-L d8 | 0.26 s | **0.63** | 22% | 1.9× / 2.2× / 2.7× |
+
+Ceilings are `1/((1−p) + p/N)`, **before** subtracting worker serialization
+(clone sdf_tree + feature_set + octree + halo to N instances) and the serial
+by-key merge of 90k–240k verts.
+
+**The double-bind that kills it.** This design parallelizes contour+cell_mesh and
+keeps the octree **serial** (global 2:1 balance ripple). But which phase dominates
+is scene-dependent, and the two regimes are mutually exclusive in exactly the
+wrong way:
+
+- **Large meshes** (where worker overhead would amortize) are **octree-dominated**
+  → ceiling ~1.3×.
+- **High-`p` meshes** (twisted, ceiling ~2×) are **small/fast** (260–770 ms) → the
+  serialize + spawn + merge overhead dominates and single-export goes *slower* —
+  the exact failure the earlier TS web-worker offload hit (warm-up cost; abandoned
+  2026-06-14).
+
+No scene is both large (amortizes overhead) **and** high-`p` (good ceiling). So
+slice 5 as designed loses universally.
+
+**Why the premise didn't hold.** This doc assumed contour dominates (`faceContour
+≈52%`, from *TS* profiling). In the Rust port the Illinois root-find + the
+crossings memo made `axis_plane_crossings` cheap, so the octree's cost shifted to
+**smoothCrit** (the ∇f cone over `.round()` blend bands). On the mech, octree is
+~60% and smoothCrit-bound — which is also why the crossings memo gave ~0% there.
+
+**Where the only worthwhile large-mesh lever actually is.** The octree *build*
+dominates large meshes and is the phase this design keeps serial. Its *decision*
+(`classify_cell_features` + smoothCrit certs) is per-cell-independent pure-read —
+so the route with a real ceiling is a tax-free **cross-instance per-wave
+scatter/gather of the decision** (not the meshing). That is a *different*
+architecture than these slices provide; in-module rayon for it is dead (atomics
+tax, measured separately). Not pursued here.
+
+**Verdict: NO-GO.** Slice 5 not built. The substrate (slices 1–4) + phase timing
+are committed, tested, and byte-identical, but unused.

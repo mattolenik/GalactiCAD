@@ -236,5 +236,46 @@ scatter/gather of the decision** (not the meshing). That is a *different*
 architecture than these slices provide; in-module rayon for it is dead (atomics
 tax, measured separately). Not pursued here.
 
-**Verdict: NO-GO.** Slice 5 not built. The substrate (slices 1–4) + phase timing
-are committed, tested, and byte-identical, but unused.
+**Verdict: NO-GO** (originally on the projected ceiling; now CONFIRMED by direct measurement below).
+
+---
+
+## Slice 5 BUILT and MEASURED — net-negative, worse than the estimate (2026-06-16)
+
+The projection above (~1.3× ceiling, ~1.2× realized) was not trusted on faith —
+slice 5 was fully implemented and measured. The boundary: `sfcc_worker_prepare`
+(main: feature compile + octree build → serialized tagged leaves), N real
+non-atomics WASM instances in Web Workers each running `sfcc_worker_mesh_partition`
+(one Morton group → partial), `sfcc_worker_merge` (main: by-key dedup + S4). Mesh
+proven byte-identical to serial (same PNG SHA-256; `partitions:N` + 4 worker wasm
+instances confirmed in the access log).
+
+**Measured `exportMs`, real wasm, warm steady-state** (median of warm renders; the
+pool is reused across exports):
+
+| config | mech d7 (~4.5 s) | mech d8 (~11.4 s) |
+|---|---|---|
+| serial (N=1) | 4470 (1.00×) | 11233 (1.00×) |
+| N=2 | 5078 (**0.88×**) | — |
+| N=4 | 4716 (**0.95×**) | 11355 (0.99×) |
+| N=8 | 4667 (**0.96×**) | 11095 (1.01×) |
+
+**Every configuration is net-negative-to-break-even** — slower on d7, inside noise
+on d8 — and it does NOT improve with mesh size (the overhead scales with the mesh).
+This is *worse* than the ~1.2× the Amdahl estimate projected: the estimate assumed
+~150–400 ms of overhead; the real overhead is larger because (a) `prepare` (the
+serial ~60%) is unchanged, (b) each worker RECOMPILES the feature set (~0.3 s,
+a Stage-A shortcut — workers receive tagged leaves but recompute curves/corners),
+(c) the 2.4 MB tagged-leaf buffer is structured-cloned to each of N workers and N
+partials are serialized back, and (d) the merge re-runs S4 + a cross-partition
+by-key dedup. The sum of (b)+(c)+(d) **exceeds** the contour+cell-mesh (~30%) being
+parallelized, so more workers only shrink the meshing slice toward zero while the
+floor `prepare + per-worker-overhead + merge` stays *above* serial. Even serializing
+the feature set to skip (b) would, at best, reach ~break-even — the serial `prepare`
+ceiling (60%) is fundamental.
+
+**Conclusion: measured, not estimated — spatial-partition workers do not speed up
+SFCC export. The decision was right; the gate's ~1.3× ceiling was if anything
+optimistic.** Slices 1–5 remain committed + tested behind the `sfccPartitions=N`
+flag (default off → serial path byte-identical); the feature is inert unless the
+flag is set.

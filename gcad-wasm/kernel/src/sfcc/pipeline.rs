@@ -15,12 +15,16 @@
 
 use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, SfccLattice};
 use crate::sdf::CsgNode;
-use crate::sfcc::cell_mesh::{mesh_all_cells, mesh_cells_partitioned, CellMeshOptions, CellMeshResult, InteriorVertexMode};
-use crate::sfcc::face_contour::{contour_all_faces, contour_faces_partitioned, FaceContourOptions, FaceContourResult};
+use crate::sfcc::cell_mesh::{
+    mesh_all_cells, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult, InteriorVertexMode,
+};
+use crate::sfcc::face_contour::{
+    contour_all_faces, contour_faces_partitioned, contour_subset_separate, FaceContourOptions, FaceContourResult,
+};
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions, SfccCell, SfccOctree};
-use crate::sfcc::point_table::PointTable;
+use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::refine_criteria::{
     classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
     SmoothCriteriaOptions,
@@ -368,8 +372,21 @@ struct ForcedMarker {
 /// Run the full feature-aware SFCC pipeline. Port of `runSfccPipeline`. On a
 /// featureless scene (no curves/corners) every feature path is inert, so the
 /// output equals the prior smooth-only driver byte-for-byte.
+/// How the per-cell meshing (contour + cell-mesh) is decomposed. The octree build +
+/// re-refine loop + S4 cleanups are identical across all three; only the meshing step
+/// differs, and all three produce the same mesh.
+enum MeshStrategy {
+    /// Single pass over all leaves (the original serial path).
+    Serial,
+    /// #3 slice 1: N contiguous groups sharing ONE face map + point table.
+    Shared(usize),
+    /// #3 slice 3: N contiguous groups, each meshed into its OWN face map + point
+    /// table (the per-worker view), then merged by global provenance key.
+    Separate(usize),
+}
+
 pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, 1)
+    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial)
 }
 
 /// Spatial-partition (#3 slice 1) in-process driver: mesh the surface leaves in
@@ -385,7 +402,114 @@ pub fn run_sfcc_pipeline_partitioned(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, partitions.max(1))
+    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Shared(partitions) };
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy)
+}
+
+/// Spatial-partition (#3 slice 3) in-process driver: mesh the surface leaves in
+/// `partitions` contiguous groups, each into its OWN, SEPARATE face map + point table
+/// (exactly what a Web Worker would hold — no shared state), then MERGE the partials
+/// by global provenance key into one mesh and run the shared S4 cleanups. This proves
+/// the separate-table decomposition (with halo-aware coarse-side sub-face contouring)
+/// reconstructs the serial mesh — the correctness gate the eventual JS worker
+/// orchestration (slice 5) needs before it can be trusted. The octree build (+ the
+/// re-refine loop) stays serial/global, as the design doc requires. `partitions <= 1`
+/// is the serial path. Result is mesh-equivalent to [`run_sfcc_pipeline`] for any N.
+pub fn run_sfcc_pipeline_separate_partitioned(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    partitions: usize,
+) -> SfccPipelineResult {
+    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Separate(partitions) };
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy)
+}
+
+/// One partial mesh's merge into the global point table is by GLOBAL provenance key:
+/// `Num`/`Str` keys dedup boundary crossings + feature pins/corners contoured from
+/// both sides; `Unkeyed` (cell-local) points are appended uniquely. Output is the
+/// merged point table + cell-mesh result, fed into the same S4 as every strategy.
+struct MergedSeparate {
+    points: PointTable,
+    cell_result: CellMeshResult,
+    multi_run_faces: usize,
+    boundary_violations: usize,
+}
+
+/// Mesh each leaf group into its own separate face map + point table, then merge the
+/// partials by global provenance key (`PointTable::key_at`). The merged triangle
+/// order equals the serial cell order (groups are contiguous and processed in order),
+/// and merged ids are key-consistent, so the S4 cleanups downstream behave identically.
+fn mesh_groups_separate(
+    oct: &SfccOctree,
+    tree: &CsgNode,
+    fc_opts: &FaceContourOptions,
+    cm_opts: &CellMeshOptions,
+    groups: &[std::ops::Range<usize>],
+) -> MergedSeparate {
+    let mut merged = PointTable::new();
+    let mut tris: Vec<usize> = Vec::new();
+    let mut failed_cells: Vec<SfccCell> = Vec::new();
+    let mut fallback_cells: Vec<SfccCell> = Vec::new();
+    let mut multi_loop_cells = 0usize;
+    let mut edge_cells = 0usize;
+    let mut corner_cells = 0usize;
+    let mut feature_cell_fallbacks = 0usize;
+    let mut multi_run_faces = 0usize;
+    let mut boundary_violations = 0usize;
+
+    for r in groups {
+        let group = &oct.leaves[r.clone()];
+        // Per-group separate state — mirrors one worker.
+        let mut pt = PointTable::new();
+        let mut fr = contour_subset_separate(oct, tree, &mut pt, fc_opts, group);
+        let cm = mesh_cells_subset(oct, &mut fr.faces, tree, &mut pt, cm_opts, group);
+        multi_run_faces += fr.multi_run_faces;
+        boundary_violations += fr.boundary_violations;
+
+        // Merge this partial into the global table by global provenance key.
+        let n = pt.count();
+        let mut local_to_global = vec![0usize; n];
+        for id in 0..n {
+            let (x, y, z) = (pt.x(id), pt.y(id), pt.z(id));
+            let (nx, ny, nz) = (pt.nx(id), pt.ny(id), pt.nz(id));
+            // Keyed points (boundary crossings, feature pins/corners, and the now
+            // face-scoped-keyed repair/splice midpoints) dedup across partitions by
+            // their GLOBAL key. Unkeyed points are cell-local (interior apex, feature
+            // polyline samples) — each cell lives in one group, so they're appended
+            // uniquely, exactly as the serial run keeps them distinct.
+            let gid = match pt.key_at(id).clone() {
+                PointKey::Num(k) => merged.get_or_create(k, || [x, y, z, nx, ny, nz]),
+                PointKey::Str(s) => merged.get_or_create_str(&s, || [x, y, z, nx, ny, nz]),
+                PointKey::Unkeyed => merged.add(x, y, z, nx, ny, nz),
+            };
+            local_to_global[id] = gid;
+        }
+        for &t in &cm.tris {
+            tris.push(local_to_global[t]);
+        }
+        failed_cells.extend(cm.failed_cells);
+        fallback_cells.extend(cm.fallback_cells);
+        multi_loop_cells += cm.multi_loop_cells;
+        edge_cells += cm.edge_cells;
+        corner_cells += cm.corner_cells;
+        feature_cell_fallbacks += cm.feature_cell_fallbacks;
+    }
+
+    MergedSeparate {
+        points: merged,
+        cell_result: CellMeshResult {
+            tris,
+            failed_cells,
+            multi_loop_cells,
+            edge_cells,
+            corner_cells,
+            feature_cell_fallbacks,
+            fallback_cells,
+        },
+        multi_run_faces,
+        boundary_violations,
+    }
 }
 
 /// Split `[0, n)` into `k` contiguous index ranges, as even as possible (the first
@@ -409,7 +533,7 @@ fn run_sfcc_pipeline_impl(
     tree: &CsgNode,
     cube: &SfccWorldCube,
     tuning: &PipelineTuning,
-    partitions: usize,
+    strategy: MeshStrategy,
 ) -> SfccPipelineResult {
     let pad = tuning.bounds_padding_mm;
     // Lattice-degeneracy guard: offset the root cube by distinct irrational
@@ -610,15 +734,36 @@ fn run_sfcc_pipeline_impl(
             max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
             features: Some(&features),
         };
-        if partitions <= 1 {
-            face_result = contour_all_faces(&oct, tree, &mut points, &fc_opts);
-            cell_result = mesh_all_cells(&oct, &mut face_result.faces, tree, &mut points, &cm_opts);
-        } else {
-            // #3 slice 1: mesh the surface leaves in N contiguous groups, sharing
-            // ONE face map + point table. Byte-identical to the serial path.
-            let groups = partition_contiguous(oct.leaves.len(), partitions);
-            face_result = contour_faces_partitioned(&oct, tree, &mut points, &fc_opts, &groups);
-            cell_result = mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
+        match &strategy {
+            MeshStrategy::Serial => {
+                face_result = contour_all_faces(&oct, tree, &mut points, &fc_opts);
+                cell_result = mesh_all_cells(&oct, &mut face_result.faces, tree, &mut points, &cm_opts);
+            }
+            MeshStrategy::Shared(n) => {
+                // #3 slice 1: mesh the surface leaves in N contiguous groups, sharing
+                // ONE face map + point table. Byte-identical to the serial path.
+                let groups = partition_contiguous(oct.leaves.len(), *n);
+                face_result = contour_faces_partitioned(&oct, tree, &mut points, &fc_opts, &groups);
+                cell_result = mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
+            }
+            MeshStrategy::Separate(n) => {
+                // #3 slice 3: mesh each contiguous group into its OWN separate face map
+                // + point table (the per-worker view, halo-aware), then merge by global
+                // provenance key. `points` is replaced by the merged table; the empty
+                // table created above is discarded. The face map is consumed inside the
+                // merge, so the post-loop face audit has nothing to walk (it runs on the
+                // shared/serial maps only) — the manifold check is the topology gate here.
+                let groups = partition_contiguous(oct.leaves.len(), *n);
+                let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &groups);
+                points = merged.points;
+                cell_result = merged.cell_result;
+                face_result = FaceContourResult {
+                    faces: [HashMap::new(), HashMap::new(), HashMap::new()],
+                    multi_run_faces: merged.multi_run_faces,
+                    boundary_violations: merged.boundary_violations,
+                    key_collisions: 0,
+                };
+            }
         }
         // Failed cells re-refine every round; fallback cells get ONE forced round.
         let mut suspects: Vec<SfccCell> = Vec::new();

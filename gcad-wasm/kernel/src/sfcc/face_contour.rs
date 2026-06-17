@@ -30,7 +30,7 @@ use crate::sdf::{CsgNode, Pruned, SdfQuery};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::octree::LEVER1_MIN_LEAVES;
 use crate::sfcc::octree::{SfccCell, SfccOctree};
-use crate::sfcc::point_table::{crossing_key, PointTable};
+use crate::sfcc::point_table::{crossing_key, PointKey, PointTable};
 use std::collections::HashMap;
 
 /// A directed contour segment (point ids); f < 0 on the left viewed from +axis.
@@ -863,7 +863,12 @@ fn contour_face(
         let se = node_side.get(&c.id).copied();
         if let (Some(p), Some(s)) = (partner, se) {
             if Some(s) == node_side.get(&p).copied() {
-                let mid = split_midpoint(q, points, c.id, p, opts.root_tol);
+                let fkey = pack_point(lat, gx, gy, gz);
+                let ta = point_merge_token(points, c.id);
+                let tb = point_merge_token(points, p);
+                let (lo, hi) = if ta <= tb { (&ta, &tb) } else { (&tb, &ta) };
+                let mid_key = format!("smid:{axis}:{fkey}:{lo}:{hi}");
+                let mid = split_midpoint(q, points, c.id, p, opts.root_tol, &mid_key);
                 record.segments.push(FaceSegment { a: c.id, b: mid });
                 record.segments.push(FaceSegment { a: mid, b: p });
                 record.consumed_fwd.push(0);
@@ -966,7 +971,35 @@ fn point_segment_dist(points: &PointTable, px: f64, py: f64, pz: f64, a: usize, 
 /// Face-owned midpoint between two crossings, Newton-projected onto the surface.
 /// Port of `splitMidpoint` (the `axis` arg is unused in TS too — full 3D
 /// projection is deliberate).
-fn split_midpoint<T: SdfQuery + ?Sized>(tree: &T, points: &mut PointTable, a_id: usize, b_id: usize, root_tol: f64) -> usize {
+/// A stable, partition-independent token for a point's GLOBAL identity. Used to key
+/// the repair / splice midpoints so the SAME midpoint on a boundary face — computed
+/// independently by two separate-table partitions — dedups, while midpoints on
+/// DIFFERENT faces (e.g. the two sides of a repaired non-manifold edge) stay distinct.
+fn point_merge_token(points: &PointTable, id: usize) -> String {
+    match points.key_at(id) {
+        PointKey::Num(k) => format!("n{k}"),
+        PointKey::Str(s) => format!("s{s}"),
+        // Cell-local (no global key) — fall back to the deterministic position so two
+        // partitions still agree if such a point ever anchors a split.
+        PointKey::Unkeyed => {
+            format!("p{}_{}_{}", points.x(id).to_bits(), points.y(id).to_bits(), points.z(id).to_bits())
+        }
+    }
+}
+
+/// Split a face segment with a surface-projected midpoint, created under the GLOBAL,
+/// face-scoped key `mid_key` (see [`point_merge_token`]) so the separate-table merge
+/// can dedup the same boundary-face midpoint across partitions. In the serial /
+/// shared-table paths each `mid_key` is created exactly once, so keying is a no-op
+/// there — the point + position are unchanged (byte-identical).
+fn split_midpoint<T: SdfQuery + ?Sized>(
+    tree: &T,
+    points: &mut PointTable,
+    a_id: usize,
+    b_id: usize,
+    root_tol: f64,
+    mid_key: &str,
+) -> usize {
     let mx = (points.x(a_id) + points.x(b_id)) / 2.0;
     let my = (points.y(a_id) + points.y(b_id)) / 2.0;
     let mz = (points.z(a_id) + points.z(b_id)) / 2.0;
@@ -995,7 +1028,7 @@ fn split_midpoint<T: SdfQuery + ?Sized>(tree: &T, points: &mut PointTable, a_id:
         q = [mx, my, mz];
     }
     let (_, grad) = tree.grad(q);
-    points.add(q[0], q[1], q[2], grad[0], grad[1], grad[2])
+    points.get_or_create_str(mid_key, || [q[0], q[1], q[2], grad[0], grad[1], grad[2]])
 }
 
 /// Enumerate canonical faces of all leaves and contour each exactly once.
@@ -1029,6 +1062,103 @@ pub fn contour_faces_partitioned(
 ) -> FaceContourResult {
     let leaf_groups: Vec<&[SfccCell]> = groups.iter().map(|r| &oct.leaves[r.clone()]).collect();
     contour_faces_for(oct, tree, points, opts, &leaf_groups)
+}
+
+/// Spatial-partition (#3 slice 3) entry: contour ONE leaf group into its OWN,
+/// SEPARATE face map + point table (the caller supplies a fresh `points`) — the
+/// per-worker view, no shared state. Unlike the shared-table path, a coarse cell in
+/// this group at a T-junction toward a FINER region cannot rely on the finer cells
+/// (which may live in another group) to populate the sub-faces: so this also
+/// contours those finer quarter sub-faces into THIS group's map — the **halo**. The
+/// quarter faces are exactly what [`crate::sfcc::cell_mesh::gather_segments`] will
+/// look up for the coarse cell, contoured by the identical [`contour_face`] call the
+/// finer cell would make (order-independent), so the group meshes bit-identically to
+/// the serial run. Crossings/pins carry GLOBAL keys, so merging N groups' partials by
+/// key (`PointTable::key_at`) reconstructs the serial mesh.
+pub fn contour_subset_separate(
+    oct: &SfccOctree,
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &FaceContourOptions,
+    group: &[SfccCell],
+) -> FaceContourResult {
+    let mut faces: [HashMap<i64, FaceRecord>; 3] = [HashMap::new(), HashMap::new(), HashMap::new()];
+    let grad_bound = tree.grad_bound();
+    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+    // Each separate partial owns its caches: `stratum_tags` is keyed by point id,
+    // which is table-local, so it cannot be shared across partials. Pure memoization
+    // (values are geometry-derived), so per-partial caches only forgo reuse.
+    let mut caches = opts
+        .features
+        .map(|_| FeatureCaches { recovered: HashMap::new(), stratum_tags: HashMap::new() });
+
+    // 1. The group's own faces (skips faces internal toward a finer region).
+    let (mut multi_run_faces, mut boundary_violations, key_collisions) =
+        contour_into(oct, tree, grad_bound, prune, points, opts, group, &mut faces, caches.as_mut());
+
+    // 2. Halo: contour the finer quarter sub-faces this group's coarse cells need.
+    let lat = oct.lat;
+    for cell in group {
+        let stride = stride_at_level(&lat, cell.level);
+        let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
+        for axis in 0..3usize {
+            let [u, v] = face_axes(axis);
+            for side in 0..=1 {
+                let mut ncoord = [cell.ix, cell.iy, cell.iz];
+                ncoord[axis] += if side == 1 { 1 } else { -1 };
+                // Only T-junctions toward a finer region: the coarse face was skipped
+                // in step 1; the finer cell that would fill the sub-faces may be in
+                // another group, so fill them here.
+                if !oct.is_internal(cell.level as i64, ncoord[0], ncoord[1], ncoord[2]) {
+                    continue;
+                }
+                let mut g = base;
+                if side == 1 {
+                    g[axis] += stride;
+                }
+                let half = stride / 2;
+                if half < 1 {
+                    continue;
+                }
+                for a in 0..=1i64 {
+                    for b in 0..=1i64 {
+                        let mut q = g;
+                        q[u] += a * half;
+                        q[v] += b * half;
+                        let qkey = pack_point(&lat, q[0], q[1], q[2]);
+                        if faces[axis].contains_key(&qkey) {
+                            continue; // already contoured (a finer cell in this group, or another quarter)
+                        }
+                        let rec = contour_face(
+                            oct,
+                            tree,
+                            grad_bound,
+                            prune,
+                            points,
+                            axis,
+                            q[0],
+                            q[1],
+                            q[2],
+                            half,
+                            opts,
+                            caches.as_mut(),
+                        );
+                        let seg_count = rec.segments.len();
+                        if (q[axis] == 0 || q[axis] == lat.res) && seg_count > 0 {
+                            boundary_violations += 1;
+                        }
+                        if seg_count >= 3 {
+                            multi_run_faces += 1;
+                        }
+                        faces[axis].insert(qkey, rec);
+                    }
+                }
+            }
+        }
+    }
+
+    repair_face_duplicates(&mut faces, tree, points, opts);
+    FaceContourResult { faces, multi_run_faces, boundary_violations, key_collisions }
 }
 
 /// Shared contour driver: one face map + point table, fed by each group's cell
@@ -1181,7 +1311,11 @@ fn repair_face_duplicates(
         list.sort_by_key(|x| std::cmp::Reverse(x.2));
         for (axis, fkey, idx) in list {
             let s = faces[axis].get(&fkey).unwrap().segments[idx];
-            let mid = split_midpoint(tree, points, s.a, s.b, opts.root_tol);
+            let ta = point_merge_token(points, s.a);
+            let tb = point_merge_token(points, s.b);
+            let (lo, hi) = if ta <= tb { (&ta, &tb) } else { (&tb, &ta) };
+            let mid_key = format!("rmid:{axis}:{fkey}:{lo}:{hi}");
+            let mid = split_midpoint(tree, points, s.a, s.b, opts.root_tol, &mid_key);
             let rec = faces[axis].get_mut(&fkey).unwrap();
             rec.segments[idx] = FaceSegment { a: s.a, b: mid };
             rec.segments.insert(idx + 1, FaceSegment { a: mid, b: s.b });

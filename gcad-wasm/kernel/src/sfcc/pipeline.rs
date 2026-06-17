@@ -13,13 +13,15 @@
 //! feature-hugging debris drop, and the forced-split re-refinement of failed +
 //! (round-0) fallback cells.
 
-use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, SfccLattice};
+use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, stride_at_level, SfccLattice};
 use crate::sdf::CsgNode;
 use crate::sfcc::cell_mesh::{
-    mesh_all_cells, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult, InteriorVertexMode,
+    mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult,
+    InteriorVertexMode,
 };
 use crate::sfcc::face_contour::{
-    contour_all_faces, contour_faces_partitioned, contour_subset_separate, FaceContourOptions, FaceContourResult,
+    contour_all_faces, contour_faces_for, contour_faces_partitioned, contour_subset_separate, FaceContourOptions,
+    FaceContourResult,
 };
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
@@ -383,6 +385,13 @@ enum MeshStrategy {
     /// #3 slice 3: N contiguous groups, each meshed into its OWN face map + point
     /// table (the per-worker view), then merged by global provenance key.
     Separate(usize),
+    /// #3 slice 2: N Morton/Z-order (spatially-compact, count-balanced) groups sharing
+    /// ONE face map + point table. Canonically equal to serial (cell order reorders).
+    SharedMorton(usize),
+    /// #3 slice 2 over the slice-3 separate-table view: N Morton/Z-order groups, each
+    /// meshed into its OWN face map + point table, then merged by global provenance
+    /// key. This is the partition shape the eventual JS workers (slice 5) will use.
+    SeparateMorton(usize),
 }
 
 pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
@@ -425,6 +434,37 @@ pub fn run_sfcc_pipeline_separate_partitioned(
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy)
 }
 
+/// #3 slice 2: like [`run_sfcc_pipeline_partitioned`] (shared face map) but the leaves
+/// are grouped by **Morton/Z-order** — spatially compact AND count-balanced — instead
+/// of contiguous `(level,key)`-order index ranges. Mesh-equivalent to serial for any N
+/// (CANONICAL, not byte-identical: spatial grouping reorders the cell-processing order,
+/// hence the triangle buffer, but the point keys are global so the mesh is the same).
+pub fn run_sfcc_pipeline_partitioned_morton(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    partitions: usize,
+) -> SfccPipelineResult {
+    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SharedMorton(partitions) };
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy)
+}
+
+/// #3 slice 2 over the slice-3 separate-table view: like
+/// [`run_sfcc_pipeline_separate_partitioned`] but with **Morton/Z-order** leaf groups
+/// — the spatially-compact, count-balanced partition shape the eventual JS Web Workers
+/// (slice 5) will hand to each instance (compact groups minimize each worker's halo +
+/// shared-boundary merge surface). Mesh-equivalent to serial for any N (canonical).
+pub fn run_sfcc_pipeline_separate_partitioned_morton(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    partitions: usize,
+) -> SfccPipelineResult {
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy)
+}
+
 /// One partial mesh's merge into the global point table is by GLOBAL provenance key:
 /// `Num`/`Str` keys dedup boundary crossings + feature pins/corners contoured from
 /// both sides; `Unkeyed` (cell-local) points are appended uniquely. Output is the
@@ -445,7 +485,7 @@ fn mesh_groups_separate(
     tree: &CsgNode,
     fc_opts: &FaceContourOptions,
     cm_opts: &CellMeshOptions,
-    groups: &[std::ops::Range<usize>],
+    groups: &[&[SfccCell]],
 ) -> MergedSeparate {
     let mut merged = PointTable::new();
     let mut tris: Vec<usize> = Vec::new();
@@ -458,8 +498,7 @@ fn mesh_groups_separate(
     let mut multi_run_faces = 0usize;
     let mut boundary_violations = 0usize;
 
-    for r in groups {
-        let group = &oct.leaves[r.clone()];
+    for &group in groups {
         // Per-group separate state — mirrors one worker.
         let mut pt = PointTable::new();
         let mut fr = contour_subset_separate(oct, tree, &mut pt, fc_opts, group);
@@ -513,8 +552,8 @@ fn mesh_groups_separate(
 }
 
 /// Split `[0, n)` into `k` contiguous index ranges, as even as possible (the first
-/// `n % k` ranges get one extra element). The spatial-partition leaf grouping;
-/// Morton/Z-order load balancing (slice 2) replaces this contiguous split later.
+/// `n % k` ranges get one extra element). The simplest spatial-partition leaf
+/// grouping; [`partition_morton`] (slice 2) is the spatially-compact alternative.
 fn partition_contiguous(n: usize, k: usize) -> Vec<std::ops::Range<usize>> {
     let k = k.max(1);
     let base = n / k;
@@ -527,6 +566,59 @@ fn partition_contiguous(n: usize, k: usize) -> Vec<std::ops::Range<usize>> {
         start += len;
     }
     ranges
+}
+
+/// Interleave three coords (each ≤ 42 bits, ample for any lattice depth) into a 126-bit
+/// Morton (Z-order) code. Cells close in 3-space get close codes, so sorting by code
+/// then chunking yields spatially-compact groups.
+fn morton3(x: u64, y: u64, z: u64) -> u128 {
+    fn spread(v: u64) -> u128 {
+        let mut r: u128 = 0;
+        let mut b = 0u32;
+        while b < 42 {
+            r |= (((v >> b) & 1) as u128) << (3 * b);
+            b += 1;
+        }
+        r
+    }
+    spread(x) | (spread(y) << 1) | (spread(z) << 2)
+}
+
+/// Morton/Z-order leaf partition (#3 slice 2): group the octree leaves into `k`
+/// balanced, SPATIALLY-COMPACT chunks (returned as leaf-index lists). Each leaf is
+/// keyed by the Morton code of its min corner in max-depth lattice units (so a coarse
+/// cell and the fine cells around it sort together, ACROSS levels — unlike the
+/// `(level,key)`-ordered contiguous split, which groups whole levels), then the Morton
+/// order is split into `k` equal-count chunks. Spatial compactness shrinks each group's
+/// shared-boundary surface → smaller halo + cheaper merge; equal count load-balances
+/// the eventual workers. Deterministic (Morton, then leaf-index tie-break).
+///
+/// Correctness is grouping-INDEPENDENT: every leaf is meshed and the by-key merge (or
+/// the global shared face map) reconstructs the same mesh regardless of how leaves are
+/// grouped, so this only affects load balance + halo size, never the output. (Deferred
+/// refinement: balance by SURFACE-leaf count rather than all leaves — empty interior
+/// leaves are near-free to mesh, so count-balance slightly over-weights them.)
+fn partition_morton(oct: &SfccOctree, k: usize) -> Vec<Vec<usize>> {
+    let n = oct.leaves.len();
+    let code = |c: &SfccCell| -> u128 {
+        // min corner in max-depth lattice units: ix * (1 << (max_depth - level)).
+        let stride = stride_at_level(&oct.lat, c.level) as u64;
+        morton3(c.ix as u64 * stride, c.iy as u64 * stride, c.iz as u64 * stride)
+    };
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| code(&oct.leaves[a]).cmp(&code(&oct.leaves[b])).then(a.cmp(&b)));
+    partition_contiguous(n, k).into_iter().map(|r| order[r].to_vec()).collect()
+}
+
+/// [`partition_morton`] then materialize each index group as an owned `Vec<SfccCell>`
+/// (Morton groups are non-contiguous, so they can't borrow a slice of `oct.leaves`).
+/// `SfccCell` is `Copy` and tiny, so this is a cheap gather; the caller borrows these
+/// as `&[&[SfccCell]]` for the shared- or separate-table meshers.
+fn gather_morton_groups(oct: &SfccOctree, k: usize) -> Vec<Vec<SfccCell>> {
+    partition_morton(oct, k)
+        .into_iter()
+        .map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect())
+        .collect()
 }
 
 fn run_sfcc_pipeline_impl(
@@ -753,8 +845,33 @@ fn run_sfcc_pipeline_impl(
                 // table created above is discarded. The face map is consumed inside the
                 // merge, so the post-loop face audit has nothing to walk (it runs on the
                 // shared/serial maps only) — the manifold check is the topology gate here.
-                let groups = partition_contiguous(oct.leaves.len(), *n);
-                let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &groups);
+                let ranges = partition_contiguous(oct.leaves.len(), *n);
+                let leaf_groups: Vec<&[SfccCell]> = ranges.iter().map(|r| &oct.leaves[r.clone()]).collect();
+                let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &leaf_groups);
+                points = merged.points;
+                cell_result = merged.cell_result;
+                face_result = FaceContourResult {
+                    faces: [HashMap::new(), HashMap::new(), HashMap::new()],
+                    multi_run_faces: merged.multi_run_faces,
+                    boundary_violations: merged.boundary_violations,
+                    key_collisions: 0,
+                };
+            }
+            MeshStrategy::SharedMorton(n) => {
+                // #3 slice 2: Morton/Z-order groups (spatially compact + count-balanced)
+                // over the slice-1 shared face map. Same global keys → canonically equal
+                // to serial; the group order (hence triangle buffer) reorders.
+                let owned = gather_morton_groups(&oct, *n);
+                let leaf_groups: Vec<&[SfccCell]> = owned.iter().map(|g| g.as_slice()).collect();
+                face_result = contour_faces_for(&oct, tree, &mut points, &fc_opts, &leaf_groups);
+                cell_result = mesh_cells_for(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &leaf_groups);
+            }
+            MeshStrategy::SeparateMorton(n) => {
+                // #3 slice 2 over the slice-3 separate-table view: Morton/Z-order groups,
+                // each meshed into its own table (the worker view), merged by global key.
+                let owned = gather_morton_groups(&oct, *n);
+                let leaf_groups: Vec<&[SfccCell]> = owned.iter().map(|g| g.as_slice()).collect();
+                let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &leaf_groups);
                 points = merged.points;
                 cell_result = merged.cell_result;
                 face_result = FaceContourResult {

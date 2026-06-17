@@ -167,6 +167,23 @@ pub fn mesh_cells_partitioned(
     opts: &CellMeshOptions,
     groups: &[std::ops::Range<usize>],
 ) -> CellMeshResult {
+    let leaf_groups: Vec<&[SfccCell]> = groups.iter().map(|r| &oct.leaves[r.clone()]).collect();
+    mesh_cells_for(oct, faces, tree, points, opts, &leaf_groups)
+}
+
+/// Mesh N caller-supplied leaf groups (each an arbitrary cell slice — contiguous
+/// index ranges OR Morton/Z-order chunks, #3 slice 2) into the shared `faces` map +
+/// `points`, sequentially, combining their partials in group order. The triangle
+/// buffer order follows the group order; with contiguous groups it equals the serial
+/// order (byte-identical), with Morton groups it reorders (canonically equal).
+pub(crate) fn mesh_cells_for(
+    oct: &SfccOctree,
+    faces: &mut [HashMap<i64, FaceRecord>; 3],
+    tree: &CsgNode,
+    points: &mut PointTable,
+    opts: &CellMeshOptions,
+    groups: &[&[SfccCell]],
+) -> CellMeshResult {
     let mut combined = CellMeshResult {
         tris: Vec::new(),
         failed_cells: Vec::new(),
@@ -176,8 +193,8 @@ pub fn mesh_cells_partitioned(
         feature_cell_fallbacks: 0,
         fallback_cells: Vec::new(),
     };
-    for r in groups {
-        let part = mesh_cells_subset(oct, faces, tree, points, opts, &oct.leaves[r.clone()]);
+    for &group in groups {
+        let part = mesh_cells_subset(oct, faces, tree, points, opts, group);
         combined.tris.extend(part.tris);
         combined.failed_cells.extend(part.failed_cells);
         combined.multi_loop_cells += part.multi_loop_cells;

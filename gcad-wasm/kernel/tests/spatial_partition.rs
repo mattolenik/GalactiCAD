@@ -22,8 +22,8 @@ use gcad_kernel::primitives::polygon2d::winding_sign;
 use gcad_kernel::sdf::{self, CsgNode, Leaf, Shape};
 use gcad_kernel::sfcc::feature_set::build_leaf_strata;
 use gcad_kernel::sfcc::pipeline::{
-    run_sfcc_pipeline, run_sfcc_pipeline_partitioned, run_sfcc_pipeline_separate_partitioned, PipelineTuning,
-    SfccWorldCube,
+    run_sfcc_pipeline, run_sfcc_pipeline_partitioned, run_sfcc_pipeline_partitioned_morton,
+    run_sfcc_pipeline_separate_partitioned, run_sfcc_pipeline_separate_partitioned_morton, PipelineTuning, SfccWorldCube,
 };
 
 fn attach_strata(node: &mut CsgNode, leaf_index: &mut usize, first_id: &mut usize) {
@@ -202,6 +202,77 @@ fn assert_separate_partition_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWo
             .unwrap_or_else(|e| panic!("{name}: separate partitions={n} NOT canonically identical to serial: {e}"));
     }
     println!("[separate-partition] {name}: separate(1,2,3,5,8) == serial (canonical, pos_eps=0)");
+}
+
+// ---------------------------------------------------------------------------
+// #3 slice 2 — MORTON/Z-order leaf partition (spatially compact, count-balanced),
+// over BOTH the shared-table (slice 1) and separate-table (slice 3) meshers.
+// ---------------------------------------------------------------------------
+
+/// Assert: Morton-partitioned meshing — leaves grouped by Z-order (spatially compact)
+/// instead of contiguous `(level,key)` ranges — is mesh-equivalent to the serial single
+/// pass for several N, for BOTH the shared face map and the separate-table+merge view.
+///
+/// CANONICAL equivalence (pos_eps = 0), not byte-identical: Morton reorders the cell
+/// processing order, so the triangle buffer reorders, but the global point keys make the
+/// reconstructed mesh identical up to canonical ordering. This proves slice 2's grouping
+/// is correctness-neutral (it only changes load balance / halo size) — the property the
+/// JS worker orchestration (slice 5) relies on when it hands each worker a Morton chunk.
+fn assert_morton_partition_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
+    let serial = run_sfcc_pipeline(tree, c, &tuning());
+    assert!(!serial.tris.is_empty(), "{name}: serial produced triangles");
+    assert!(serial.manifold.ok, "{name}: serial is a closed 2-manifold");
+    let exact = CanonicalizeOptions { pos_eps: 0.0, compare_normals: true, ..CanonicalizeOptions::default() };
+
+    for &n in &[2usize, 3, 5, 8] {
+        for (kind, part) in [
+            ("shared-morton", run_sfcc_pipeline_partitioned_morton(tree, c, &tuning(), n)),
+            ("separate-morton", run_sfcc_pipeline_separate_partitioned_morton(tree, c, &tuning(), n)),
+        ] {
+            assert!(
+                part.manifold.ok,
+                "{name}: {kind} partitions={n} not a closed manifold (open_edges={}, non_manifold_edges={}, misoriented={})",
+                part.manifold.open_edges,
+                part.manifold.non_manifold_edges,
+                part.manifold.misoriented_edges,
+            );
+            assert_eq!(
+                part.manifold.euler_per_component, serial.manifold.euler_per_component,
+                "{name}: {kind} partitions={n} Euler characteristic drifted"
+            );
+            assert_eq!(
+                part.tris.len(),
+                serial.tris.len(),
+                "{name}: {kind} partitions={n} triangle count differs from serial"
+            );
+            let sv: Vec<f64> = serial.verts.iter().map(|&f| f as f64).collect();
+            let pv: Vec<f64> = part.verts.iter().map(|&f| f as f64).collect();
+            meshes_equivalent(&sv, &serial.tris, &pv, &part.tris, &exact)
+                .unwrap_or_else(|e| panic!("{name}: {kind} partitions={n} NOT canonically identical to serial: {e}"));
+        }
+    }
+    println!("[morton-partition] {name}: shared+separate morton(2,3,5,8) == serial (canonical, pos_eps=0)");
+}
+
+#[test]
+fn box_morton_partition_equiv_serial() {
+    assert_morton_partition_equiv_serial("box", &box_scene(), &cube20());
+}
+
+#[test]
+fn box_minus_sphere_morton_partition_equiv_serial() {
+    assert_morton_partition_equiv_serial("box-minus-sphere", &box_minus_sphere_scene(), &cube20());
+}
+
+#[test]
+fn rounded_union_morton_partition_equiv_serial() {
+    assert_morton_partition_equiv_serial("rounded-union", &rounded_union_scene(), &cube20());
+}
+
+#[test]
+fn twisted_l_morton_partition_equiv_serial() {
+    let (tree, c) = twisted_l_scene();
+    assert_morton_partition_equiv_serial("twisted-l", &tree, &c);
 }
 
 #[test]

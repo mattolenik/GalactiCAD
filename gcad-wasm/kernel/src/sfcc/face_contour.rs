@@ -1164,7 +1164,7 @@ pub fn contour_subset_separate(
 /// Shared contour driver: one face map + point table, fed by each group's cell
 /// loop, repaired once. The serial path passes one group (`&oct.leaves`); the
 /// partitioned path passes N leaf slices. Identical loop either way.
-fn contour_faces_for(
+pub(crate) fn contour_faces_for(
     oct: &SfccOctree,
     tree: &CsgNode,
     points: &mut PointTable,

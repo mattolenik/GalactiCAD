@@ -157,7 +157,7 @@ pub struct SfccPipelineResult {
 
 /// Remove coincident triangle pairs with opposite winding (zero-volume pancakes
 /// whose every edge is non-manifold). Port of `dropCoincidentTrianglePairs`.
-fn drop_coincident_triangle_pairs(tris: &[usize]) -> Vec<usize> {
+pub(crate) fn drop_coincident_triangle_pairs(tris: &[usize]) -> Vec<usize> {
     // Group by UNORDERED vertex triple. The sorted triple is the key — packed
     // into a single i128 (ids stay small; an i128 product is always exact).
     let mut by_verts: HashMap<i128, Vec<usize>> = HashMap::new();
@@ -235,7 +235,7 @@ fn drop_coincident_triangle_pairs(tris: &[usize]) -> Vec<usize> {
 /// and feature-hugging tubes (small components, ≤ `hug_max_verts`, every vertex
 /// within `hug_dist` of a feature curve). Never drops the dominant component.
 /// Port of `dropDebrisComponents`.
-fn drop_debris_components(
+pub(crate) fn drop_debris_components(
     points: &PointTable,
     tris: &[usize],
     max_diag: f64,
@@ -378,6 +378,242 @@ struct ForcedMarker {
     y: f64,
     z: f64,
     level: u32,
+}
+
+/// The immutable per-export context the feature-aware needsSplit DECISION reads.
+/// Built once by [`build_pipeline_context`] and shared by BOTH the serial driver
+/// ([`run_sfcc_pipeline_impl`]) and the worker `prepare` path so the two can never
+/// drift — the decision (classify_cell_features + smoothCrit, the expensive ~60%)
+/// is computed by exactly one code path. Holds only borrows + cheap scalars; no
+/// per-round mutable state (the `forced` markers are passed separately, since they
+/// accumulate across re-refine rounds).
+pub(crate) struct PipelineContext<'a> {
+    pub lat: SfccLattice,
+    pub features: SfccFeatureSet,
+    feature_opts: FeatureCriteriaOptions,
+    smooth_opts: SmoothCriteriaOptions,
+    grad_bound: f64,
+    has_blend: bool,
+    prune: bool,
+    max_depth: u32,
+    total_size: f64,
+    tree: &'a CsgNode,
+}
+
+impl<'a> PipelineContext<'a> {
+    /// The feature-aware split DECISION for one frontier cell — the SINGLE source
+    /// of truth shared by the serial pipeline and the worker `prepare`. Mirrors
+    /// `runSfccPipeline`'s `needsSplit` exactly (classify (i)/(ii) → corner-claim
+    /// at max_depth → forced-split → corner exemption → sign-change gate →
+    /// per-stratum smoothCrit), returning the split flag + the tags to stamp.
+    ///
+    /// `forced` is the accumulated forced-split marker list for the current round
+    /// (empty on round 0 / the worker's single build); `sample` reads the shared
+    /// corner-sample cache (the [`crate::sfcc::octree::SampleView`] in the parallel
+    /// decision pass).
+    fn decide_cell<S: Fn(i64, i64, i64) -> f64>(
+        &self,
+        cell: &SfccCell,
+        sample: &S,
+        forced: &[ForcedMarker],
+    ) -> CellDecision {
+        let lat = &self.lat;
+        let features = &self.features;
+        let cls =
+            classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
+        if cls.split {
+            let mut feature_corner = cls.corner;
+            if cell.level >= self.max_depth && cls.corner < 0 {
+                // Multi-curve cell that can never split apart: claim a nearby corner
+                // if one exists (curves CONVERGE at corners).
+                let claim = cell_aabb(lat, cell.level, cell.ix, cell.iy, cell.iz);
+                let cell_size = cell_size_at_level(lat, cell.level);
+                let reach = cell_size * 1.25;
+                let mut best_corner: i64 = -1;
+                let mut best_d = f64::INFINITY;
+                let qmin = [claim[0] - reach, claim[1] - reach, claim[2] - reach];
+                let qmax = [claim[3] + reach, claim[4] + reach, claim[5] + reach];
+                for corner_id in features.index.corners_in_box(qmin, qmax) {
+                    let c = &features.corners[corner_id];
+                    let dx = (claim[0] - c.x).max(0.0).max(c.x - claim[3]);
+                    let dy = (claim[1] - c.y).max(0.0).max(c.y - claim[4]);
+                    let dz = (claim[2] - c.z).max(0.0).max(c.z - claim[5]);
+                    let d = (dx * dx + dy * dy + dz * dz).sqrt();
+                    if d < best_d {
+                        best_d = d;
+                        best_corner = corner_id as i64;
+                    }
+                }
+                if best_corner >= 0 && best_d <= reach {
+                    feature_corner = best_corner;
+                }
+            }
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
+        }
+        if forced_split(forced, cell, lat, self.total_size) {
+            // Forced split discards the cell (tags unused below max_depth; a
+            // degenerate forced cell at max_depth carried no cls tags in the serial
+            // path either, so keep them unset).
+            return CellDecision { split: true, feature_curve: -1, feature_corner: -1 };
+        }
+        // Lever 1: one pruned view over this cell's box, reused across the
+        // certificate evals (all query points lie inside the cell box, where the
+        // pruned view is bit-exact). Prune FRESH per cell.
+        let pruned: Option<crate::sdf::Pruned> = if self.prune {
+            let half = cell_size_at_level(lat, cell.level) / 2.0;
+            let c = crate::math::grid::cell_center_world(lat, cell.level, cell.ix, cell.iy, cell.iz);
+            Some(self.tree.prune_to_box(c, [half, half, half]))
+        } else {
+            None
+        };
+        let q: &dyn crate::sdf::SdfQuery = match &pruned {
+            Some(p) => p,
+            None => self.tree,
+        };
+        let probe = make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
+        if cls.corner >= 0 {
+            // Corner cells exempt from per-stratum + sign-change gates.
+            return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
+        }
+        if cls.curve >= 0 && !has_corner_sign_change(&probe) {
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+        }
+        let split = needs_split_smooth(q, &probe, &self.smooth_opts, self.grad_bound, self.has_blend);
+        CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
+    }
+
+    /// Build the tagged octree (round 0, empty forced markers) using this context's
+    /// shared [`Self::decide_cell`]. This is exactly the serial driver's first
+    /// `build_octree` call — the expensive per-cell DECISION + tag stamping — minus
+    /// the re-refine loop. Used by the worker [`crate::sfcc::worker::prepare`]; the
+    /// serial driver runs the equivalent `build_octree` inline (so it can re-refine).
+    pub(crate) fn build_tagged_octree(&self, tuning: &PipelineTuning) -> SfccOctree<'_> {
+        let forced: Vec<ForcedMarker> = Vec::new();
+        build_octree(
+            self.tree,
+            &self.lat,
+            OctreeBuildOptions {
+                depth_min: tuning.depth_min,
+                depth_max: self.max_depth,
+                enforce_edge_balance: tuning.enforce_edge_balance,
+            },
+            |cell, sampler| self.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced),
+        )
+    }
+}
+
+/// Whether a leaf must be force-split by a prior round's marker (free function so
+/// it's callable from both [`PipelineContext::decide_cell`] and the serial driver).
+fn forced_split(forced: &[ForcedMarker], cell: &SfccCell, lat: &SfccLattice, total_size: f64) -> bool {
+    if forced.is_empty() {
+        return false;
+    }
+    let size = total_size / ((1u64 << cell.level) as f64);
+    let min_x = lat.origin_x + cell.ix as f64 * size;
+    let min_y = lat.origin_y + cell.iy as f64 * size;
+    let min_z = lat.origin_z + cell.iz as f64 * size;
+    for f in forced {
+        if cell.level <= f.level
+            && f.x >= min_x
+            && f.x <= min_x + size
+            && f.y >= min_y
+            && f.y <= min_y + size
+            && f.z >= min_z
+            && f.z <= min_z + size
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Build the shared per-export context: lattice (with the degeneracy jitter),
+/// feature-set compilation, and all the cached split-decision advisories. Shared by
+/// the serial driver and the worker `prepare` so the expensive DECISION is defined
+/// in exactly one place. Returns the context (owning the compiled feature set) and
+/// the resolved `max_depth` ceiling.
+pub(crate) fn build_pipeline_context<'a>(
+    tree: &'a CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+) -> PipelineContext<'a> {
+    let pad = tuning.bounds_padding_mm;
+    // Lattice-degeneracy guard: offset the root cube by distinct irrational
+    // fractions of a max-depth cell so rational geometry never coincides with the
+    // dyadic lattice. Deterministic. (Same expression as the TS oracle.)
+    let total_size = cube.size + 2.0 * pad;
+    let step = total_size / ((1u64 << tuning.depth_max) as f64);
+    let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
+    let jy = (3.0f64.sqrt() - 1.0) * 0.25 * step;
+    let jz = (5.0f64.sqrt() - 2.0) * 0.25 * step;
+    let lat: SfccLattice = make_lattice(
+        tuning.depth_max,
+        cube.min_x - pad - jx,
+        cube.min_y - pad - jy,
+        cube.min_z - pad - jz,
+        total_size,
+    );
+
+    let scene_diag = hypot3(cube.size, cube.size, cube.size);
+    let sfcc_tuning = SfccTuning {
+        depth_min: tuning.depth_min,
+        depth_max: tuning.depth_max,
+        bounds_padding_mm: tuning.bounds_padding_mm,
+        enforce_edge_balance: tuning.enforce_edge_balance,
+        normal_variation_deg: tuning.normal_variation_deg,
+        blend_curvature_refine: tuning.blend_curvature_refine,
+        blend_curvature_deg: tuning.blend_curvature_deg,
+        blend_curvature_analytic: tuning.blend_curvature_analytic,
+        tangential_epsilon: tuning.tangential_epsilon,
+        feature_query_inflate: tuning.feature_query_inflate,
+        surface_tol_mm: tuning.surface_tol_mm,
+        curve_chord_tol_mm: tuning.curve_chord_tol_mm,
+        probe_delta_factor: tuning.probe_delta_factor,
+        min_dihedral_deg: tuning.min_dihedral_deg,
+        min_tangency_angle_deg: tuning.min_tangency_angle_deg,
+        corner_merge_tol_diag_fraction: tuning.corner_merge_tol_diag_fraction,
+        seed_cell_size_mm: tuning.seed_cell_size_mm,
+        max_trace_steps: tuning.max_trace_steps,
+    };
+    let tol = resolve_tolerances(&sfcc_tuning, scene_diag);
+    let (features, _diag) = compile_feature_set(tree, &tol);
+
+    let grad_bound = tree.grad_bound();
+    let has_blend = tree.has_blend();
+    let prune = crate::sdf::lever1_should_prune(tree, crate::sfcc::octree::LEVER1_MIN_LEAVES);
+    let blend_curvature_analytic = if tuning.blend_curvature_analytic && tuning.blend_curvature_refine {
+        tree.blend_curvature_bound()
+    } else {
+        None
+    };
+    let smooth_opts = SmoothCriteriaOptions {
+        normal_variation_cos: (tuning.normal_variation_deg * PI / 180.0).cos(),
+        blend_normal_variation_cos: if tuning.blend_curvature_refine {
+            (tuning.blend_curvature_deg * PI / 180.0).cos()
+        } else {
+            1.0 // ≥1 disables (iii-d)
+        },
+        blend_curvature_analytic,
+        normal_variation_analytic: tuning.normal_variation_analytic,
+    };
+    let feature_opts = FeatureCriteriaOptions {
+        feature_query_inflate: tuning.feature_query_inflate,
+        tangential_epsilon: tuning.tangential_epsilon,
+    };
+    let max_depth = tuning.depth_max.min(lat.max_depth);
+
+    PipelineContext {
+        lat,
+        features,
+        feature_opts,
+        smooth_opts,
+        grad_bound,
+        has_blend,
+        prune,
+        max_depth,
+        total_size,
+        tree,
+    }
 }
 
 /// Run the full feature-aware SFCC pipeline. Port of `runSfccPipeline`. On a
@@ -634,6 +870,14 @@ fn partition_morton(oct: &SfccOctree, k: usize) -> Vec<Vec<usize>> {
     partition_contiguous(n, k).into_iter().map(|r| order[r].to_vec()).collect()
 }
 
+/// Public re-export of [`partition_morton`] for the cross-instance worker mesher
+/// ([`crate::sfcc::worker::mesh_partition`]): the SAME Morton/Z-order leaf grouping
+/// the in-process `SeparateMorton` strategy uses, so a worker meshing `group_index`
+/// of `k` covers exactly one in-process group — the determinism this slice relies on.
+pub fn morton_partition_indices(oct: &SfccOctree, k: usize) -> Vec<Vec<usize>> {
+    partition_morton(oct, k)
+}
+
 /// [`partition_morton`] then materialize each index group as an owned `Vec<SfccCell>`
 /// (Morton groups are non-contiguous, so they can't borrow a slice of `oct.leaves`).
 /// `SfccCell` is `Copy` and tiny, so this is a cheap gather; the caller borrows these
@@ -672,101 +916,17 @@ fn run_sfcc_pipeline_impl(
     let mut ph_assemble = 0.0f64;
     let mut ph_last: Option<f64> = now.map(|f| f());
 
-    let pad = tuning.bounds_padding_mm;
-    // Lattice-degeneracy guard: offset the root cube by distinct irrational
-    // fractions of a max-depth cell so rational geometry never coincides with
-    // the dyadic lattice. Deterministic. (Same expression as the TS oracle.)
-    let total_size = cube.size + 2.0 * pad;
-    let step = total_size / ((1u64 << tuning.depth_max) as f64);
-    let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
-    let jy = (3.0f64.sqrt() - 1.0) * 0.25 * step;
-    let jz = (5.0f64.sqrt() - 2.0) * 0.25 * step;
-    let lat: SfccLattice = make_lattice(
-        tuning.depth_max,
-        cube.min_x - pad - jx,
-        cube.min_y - pad - jy,
-        cube.min_z - pad - jz,
-        total_size,
-    );
-
-    // Feature compilation (native curves + traced boolean seams, CSG-trimmed).
-    let scene_diag = hypot3(cube.size, cube.size, cube.size);
-    let sfcc_tuning = SfccTuning {
-        depth_min: tuning.depth_min,
-        depth_max: tuning.depth_max,
-        bounds_padding_mm: tuning.bounds_padding_mm,
-        enforce_edge_balance: tuning.enforce_edge_balance,
-        normal_variation_deg: tuning.normal_variation_deg,
-        blend_curvature_refine: tuning.blend_curvature_refine,
-        blend_curvature_deg: tuning.blend_curvature_deg,
-        blend_curvature_analytic: tuning.blend_curvature_analytic,
-        tangential_epsilon: tuning.tangential_epsilon,
-        feature_query_inflate: tuning.feature_query_inflate,
-        surface_tol_mm: tuning.surface_tol_mm,
-        curve_chord_tol_mm: tuning.curve_chord_tol_mm,
-        probe_delta_factor: tuning.probe_delta_factor,
-        min_dihedral_deg: tuning.min_dihedral_deg,
-        min_tangency_angle_deg: tuning.min_tangency_angle_deg,
-        corner_merge_tol_diag_fraction: tuning.corner_merge_tol_diag_fraction,
-        seed_cell_size_mm: tuning.seed_cell_size_mm,
-        max_trace_steps: tuning.max_trace_steps,
-    };
-    let tol = resolve_tolerances(&sfcc_tuning, scene_diag);
-    let (features, _diag) = compile_feature_set(tree, &tol);
-
-    let grad_bound = tree.grad_bound();
-    let has_blend = tree.has_blend();
-    // Lever 1: per-cell CSG pruning gate (default OFF; see lever1_should_prune).
-    let prune = crate::sdf::lever1_should_prune(tree, crate::sfcc::octree::LEVER1_MIN_LEAVES);
-    // Lever 2: analytic blend-curvature bound (default OFF). On only when the tuning
-    // flag is set AND every blend is analytic-eligible (round + plane/sphere/cylinder
-    // carriers); otherwise `None` → the proven sampled ∇f cone for the whole tree.
-    let blend_curvature_analytic = if tuning.blend_curvature_analytic && tuning.blend_curvature_refine {
-        tree.blend_curvature_bound()
-    } else {
-        None
-    };
-    let smooth_opts = SmoothCriteriaOptions {
-        normal_variation_cos: (tuning.normal_variation_deg * PI / 180.0).cos(),
-        blend_normal_variation_cos: if tuning.blend_curvature_refine {
-            (tuning.blend_curvature_deg * PI / 180.0).cos()
-        } else {
-            1.0 // ≥1 disables (iii-d)
-        },
-        blend_curvature_analytic,
-        normal_variation_analytic: tuning.normal_variation_analytic,
-    };
-    let feature_opts = FeatureCriteriaOptions {
-        feature_query_inflate: tuning.feature_query_inflate,
-        tangential_epsilon: tuning.tangential_epsilon,
-    };
-
-    let max_depth = tuning.depth_max.min(lat.max_depth);
+    // The shared per-export context (lattice + feature set + split-decision
+    // advisories). Identical to what the worker `prepare` builds — the DECISION
+    // closure below delegates to `ctx.decide_cell`, the single source of truth.
+    let ctx = build_pipeline_context(tree, cube, tuning);
+    let lat = ctx.lat;
+    let features = &ctx.features;
+    let total_size = ctx.total_size;
+    let max_depth = ctx.max_depth;
 
     // Forced-split markers accumulate across re-refine rounds.
     let mut forced: Vec<ForcedMarker> = Vec::new();
-    let forced_split = |forced: &[ForcedMarker], cell: &SfccCell| -> bool {
-        if forced.is_empty() {
-            return false;
-        }
-        let size = total_size / ((1u64 << cell.level) as f64);
-        let min_x = lat.origin_x + cell.ix as f64 * size;
-        let min_y = lat.origin_y + cell.iy as f64 * size;
-        let min_z = lat.origin_z + cell.iz as f64 * size;
-        for f in forced {
-            if cell.level <= f.level
-                && f.x >= min_x
-                && f.x <= min_x + size
-                && f.y >= min_y
-                && f.y <= min_y + size
-                && f.z >= min_z
-                && f.z <= min_z + size
-            {
-                return true;
-            }
-        }
-        false
-    };
 
     let mut oct: SfccOctree;
     let mut points: PointTable;
@@ -785,93 +945,25 @@ fn run_sfcc_pipeline_impl(
                 depth_max: max_depth,
                 enforce_edge_balance: tuning.enforce_edge_balance,
             },
-            // The full feature-aware needsSplit, mirroring runSfccPipeline. Pure
-            // read over the immutable feature set + the pre-populated sample cache,
-            // so the octree driver runs this DECISION over the round's frontier in
-            // parallel (rayon, `threads` feature) — the ~67% classifyCellFeatures
-            // hot path. Returns the split decision + the feature tags to stamp.
-            |cell, sampler| {
-                let cls = classify_cell_features(&features, &lat, cell.level, cell.ix, cell.iy, cell.iz, &feature_opts);
-                if cls.split {
-                    let mut feature_corner = cls.corner;
-                    if cell.level >= max_depth && cls.corner < 0 {
-                        // Multi-curve cell that can never split apart: claim a
-                        // nearby corner if one exists (curves CONVERGE at corners).
-                        let claim = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
-                        let cell_size = cell_size_at_level(&lat, cell.level);
-                        let reach = cell_size * 1.25;
-                        let mut best_corner: i64 = -1;
-                        let mut best_d = f64::INFINITY;
-                        let qmin = [claim[0] - reach, claim[1] - reach, claim[2] - reach];
-                        let qmax = [claim[3] + reach, claim[4] + reach, claim[5] + reach];
-                        for corner_id in features.index.corners_in_box(qmin, qmax) {
-                            let c = &features.corners[corner_id];
-                            let dx = (claim[0] - c.x).max(0.0).max(c.x - claim[3]);
-                            let dy = (claim[1] - c.y).max(0.0).max(c.y - claim[4]);
-                            let dz = (claim[2] - c.z).max(0.0).max(c.z - claim[5]);
-                            let d = (dx * dx + dy * dy + dz * dz).sqrt();
-                            if d < best_d {
-                                best_d = d;
-                                best_corner = corner_id as i64;
-                            }
-                        }
-                        if best_corner >= 0 && best_d <= reach {
-                            feature_corner = best_corner;
-                        }
-                    }
-                    return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
-                }
-                if forced_split(&forced_snapshot, cell) {
-                    // Forced split discards the cell (tags unused below max_depth;
-                    // a degenerate forced cell at max_depth carried no cls tags in
-                    // the serial path either, so keep them unset).
-                    return CellDecision { split: true, feature_curve: -1, feature_corner: -1 };
-                }
-                // Lever 1: one pruned view over this cell's box, reused across the
-                // certificate evals (all query points lie inside the cell box, where
-                // the pruned view is bit-exact). Prune FRESH per cell.
-                let pruned: Option<crate::sdf::Pruned> = if prune {
-                    let half = cell_size_at_level(&lat, cell.level) / 2.0;
-                    let c = crate::math::grid::cell_center_world(&lat, cell.level, cell.ix, cell.iy, cell.iz);
-                    Some(tree.prune_to_box(c, [half, half, half]))
-                } else {
-                    None
-                };
-                let q: &dyn crate::sdf::SdfQuery = match &pruned {
-                    Some(p) => p,
-                    None => tree,
-                };
-                let probe = make_probe(
-                    &lat,
-                    q,
-                    |gx, gy, gz| sampler.sample_at(gx, gy, gz),
-                    cell.level,
-                    cell.ix,
-                    cell.iy,
-                    cell.iz,
-                );
-                if cls.corner >= 0 {
-                    // Corner cells exempt from per-stratum + sign-change gates.
-                    return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
-                }
-                if cls.curve >= 0 && !has_corner_sign_change(&probe) {
-                    return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
-                }
-                let split = needs_split_smooth(q, &probe, &smooth_opts, grad_bound, has_blend);
-                CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
-            },
+            // The full feature-aware needsSplit, mirroring runSfccPipeline. Delegates
+            // to `ctx.decide_cell` — the SINGLE source of truth shared with the worker
+            // `prepare` path so the expensive DECISION (classify + smoothCrit) can
+            // never drift between serial and partitioned exports. Pure read over the
+            // immutable feature set + the pre-populated sample cache, so the octree
+            // driver runs it over the round's frontier in parallel (rayon, `threads`).
+            |cell, sampler| ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot),
         );
         phase_mark(now, &mut ph_last, &mut ph_octree);
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
-        let fc_opts = FaceContourOptions { root_tol, features: Some(&features), recovery_cull: tuning.recovery_cull };
+        let fc_opts = FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
         let cm_opts = CellMeshOptions {
             surface_tol: tuning.surface_tol_mm,
             interior_vertex_mode: tuning.interior_vertex_mode,
             project_max_iters: tuning.project_max_iters,
             curve_chord_tol: tuning.curve_chord_tol_mm,
             max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
-            features: Some(&features),
+            features: Some(features),
         };
         match &strategy {
             MeshStrategy::Serial => {
@@ -985,7 +1077,7 @@ fn run_sfcc_pipeline_impl(
     // S4 cleanups (same call order/args as the oracle so winding/topology match):
     // coincident-pair drop → debris drop → coincident-pair drop → sliver flip.
     let deduped1 = drop_coincident_triangle_pairs(&cell_result.tris);
-    let filtered = drop_debris_components(&points, &deduped1, lat.step * 4.0, &features, lat.step * 2.0, 600);
+    let filtered = drop_debris_components(&points, &deduped1, lat.step * 4.0, features, lat.step * 2.0, 600);
     let deduped2 = drop_coincident_triangle_pairs(&filtered);
     let (flipped, _flips) = flip_sliver_triangles(&points, &deduped2, 4);
 

@@ -34,3 +34,4 @@ pub mod sliver_flip;
 pub mod spatial_index;
 pub mod tree;
 pub mod trim;
+pub mod worker;

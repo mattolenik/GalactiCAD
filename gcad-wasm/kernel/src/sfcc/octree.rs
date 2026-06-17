@@ -202,6 +202,68 @@ impl<'a> SfccOctree<'a> {
     }
 }
 
+/// Reconstruct a usable [`SfccOctree`] from a tagged leaf set + its lattice — the
+/// worker-side counterpart of [`build_octree`] for slice 5 (the cross-instance
+/// spatial-partition mesher). The expensive per-cell refine DECISION already ran on
+/// the main thread (its result is baked into the leaf set + each leaf's
+/// `feature_curve` / `feature_corner` tags), so this does NO classification or
+/// smoothCrit work — it only re-derives the cheap lookup structure the meshing
+/// phases (`contour_subset_separate` + `mesh_cells_subset`) read:
+///
+///  * `cells_by_level` — each leaf re-bucketed by (level, min-corner key).
+///  * `internal_by_level` — every PROPER ANCESTOR of every leaf. A cell is internal
+///    iff it was split; the only split cells NOT covered here are those whose 8
+///    children were all certified-empty (no leaf descendants). Those are inert for
+///    contouring (their faces enclose no surface, so the halo sub-faces a coarse
+///    neighbor would contour produce zero crossings), so omitting them yields the
+///    same mesh — proven by the worker_partition equivalence test.
+///  * the sample cache — re-seeded with each leaf's 8 corner samples, EXACTLY as
+///    `Builder::make_leaf` populated it, so `has_sample_key` (hanging-node
+///    midpoint detection) behaves identically to the original build.
+///
+/// The leaf order is preserved as given (the caller serialized them in the same
+/// (level, key) sort `build_octree` emits), so downstream id-seeding order matches.
+pub fn rebuild_octree_from_leaves<'a>(
+    tree: &'a CsgNode,
+    lat: &'a SfccLattice,
+    leaves: Vec<SfccCell>,
+) -> SfccOctree<'a> {
+    let mut cells_by_level: Vec<HashMap<i64, SfccCell>> = (0..=lat.max_depth).map(|_| HashMap::new()).collect();
+    let mut internal_by_level: Vec<HashSet<i64>> = (0..=lat.max_depth).map(|_| HashSet::new()).collect();
+    let sampler = Sampler::new(tree, lat);
+    let mut degenerate_cells = 0usize;
+
+    for cell in &leaves {
+        cells_by_level[cell.level as usize].insert(cell.key, *cell);
+        if cell.degenerate {
+            degenerate_cells += 1;
+        }
+        // Re-seed the 8 corner samples (same lattice points make_leaf cached).
+        let stride = stride_at_level(lat, cell.level);
+        for c in 0..8 {
+            sampler.sample_at(
+                (cell.ix + (c & 1)) * stride,
+                (cell.iy + ((c >> 1) & 1)) * stride,
+                (cell.iz + ((c >> 2) & 1)) * stride,
+            );
+        }
+        // Mark every proper ancestor internal (level L−1 down to 0).
+        let mut level = cell.level;
+        let mut ix = cell.ix;
+        let mut iy = cell.iy;
+        let mut iz = cell.iz;
+        while level > 0 {
+            level -= 1;
+            ix >>= 1;
+            iy >>= 1;
+            iz >>= 1;
+            internal_by_level[level as usize].insert(cell_key(lat, level, ix, iy, iz));
+        }
+    }
+
+    SfccOctree { lat: *lat, cells_by_level, internal_by_level, leaves, degenerate_cells, sampler }
+}
+
 /// Lever 1 hard-tree leaf threshold, retained for a future (cheaper) prune gate.
 /// The shipping gate ([`crate::sdf::lever1_should_prune`]) is OFF by default because
 /// the measured integration was net-negative; this constant is the leaf count a

@@ -41,13 +41,14 @@ use crate::sfcc::cell_mesh::{mesh_cells_subset, CellMeshOptions};
 use crate::sfcc::face_contour::{contour_subset_separate, FaceContourOptions};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
-use crate::sfcc::octree::{rebuild_octree_from_leaves, CellDecision, SfccCell, SfccOctree};
+use crate::sfcc::octree::{rebuild_octree_from_leaves, CellDecision, ResumableOctreeBuild, SfccCell, SfccOctree};
 use crate::sfcc::pipeline::{
     build_pipeline_context, drop_coincident_triangle_pairs, drop_debris_components, morton_partition_indices,
     PipelineTuning, SfccWorldCube,
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::sliver_flip::flip_sliver_triangles;
+use std::cell::RefCell;
 
 // ---------------------------------------------------------------------------
 // Little-endian primitive readers/writers (no serde; dep-free default build).
@@ -601,4 +602,84 @@ pub fn merge_partials(
         cross_points: merged.count(),
         feature_curves: features.curves.len(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Slice 5b stage B2a — resumable octree-DECISION session (wasm-holdable).
+// ---------------------------------------------------------------------------
+// A single-slot, thread-local session holding the BORROW-FREE
+// `ResumableOctreeBuild` + the owned `CsgNode` + lattice ACROSS JS worker
+// round-trips — the wasm-side state the per-round BSP loop (stage B2b) drives:
+//   octree_session_begin → loop { current_frontier → (workers decide via
+//   `sfcc_decide_partition`) → apply_decisions until done } → finish → leaves → mesh.
+// The expensive DECISION runs worker-side; the main thread only begins, applies
+// split+ripple, and finishes. Byte-identical to serial `prepare` (the same tagged
+// leaves), proven by `tests/octree_session.rs`. Thread-local so it's sound under
+// cargo's per-test threads and the single-threaded wasm main thread alike; `begin`
+// overwrites any prior slot, so a panicked/abandoned session can't poison the next.
+
+struct OctreeSession {
+    tree: CsgNode,
+    lat: SfccLattice,
+    build: ResumableOctreeBuild,
+}
+
+thread_local! {
+    static OCTREE_SESSION: RefCell<Option<OctreeSession>> = const { RefCell::new(None) };
+}
+
+/// Begin a resumable octree-decision session: build the pipeline context (compile
+/// features + lattice — identical to `prepare`/serial), begin the borrow-free
+/// resumable build (descend to depth_min + snapshot round 0's frontier), and store it
+/// with the OWNED tree + lattice in the thread-local single slot (overwriting any
+/// prior session). The first frontier is then available via [`octree_session_current_frontier`].
+pub fn octree_session_begin(tree: CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) {
+    // Build the context transiently (borrows `&tree`) to derive the lattice + opts and
+    // begin the borrow-free build; both outputs are owned/Copy, so the `&tree` borrow
+    // is released before `tree` is moved into the session.
+    let (lat, build) = {
+        let ctx = build_pipeline_context(&tree, cube, tuning);
+        (ctx.lat, ctx.begin_resumable_octree(tuning))
+    };
+    OCTREE_SESSION.with(|s| *s.borrow_mut() = Some(OctreeSession { tree, lat, build }));
+}
+
+/// The current round's frontier — the cells to DECIDE — in the [`encode_tagged_leaves`]
+/// wire format (the same `sfcc_decide_partition` consumes). An empty leaf set means the
+/// build is complete (mirrors [`octree_session_apply_decisions`] returning `done`).
+pub fn octree_session_current_frontier() -> Vec<u8> {
+    OCTREE_SESSION.with(|s| {
+        let g = s.borrow();
+        let session = g.as_ref().expect("octree session: current_frontier with no active session");
+        encode_tagged_leaves(&session.lat, session.build.current_frontier())
+    })
+}
+
+/// Apply the current frontier's decisions (one per current-frontier cell, in order —
+/// the [`encode_decisions`] wire format the workers produce): stamp tags + split +
+/// 2:1-balance ripple on the main thread, then advance to the next round. Returns
+/// `true` when the build is complete (no further rounds → call [`octree_session_finish`]).
+pub fn octree_session_apply_decisions(decisions_bytes: &[u8]) -> bool {
+    let decisions = decode_decisions(decisions_bytes);
+    OCTREE_SESSION.with(|s| {
+        let mut g = s.borrow_mut();
+        let session = g.as_mut().expect("octree session: apply_decisions with no active session");
+        // Disjoint field borrows: &mut build + &tree.
+        session.build.apply_decisions(&session.tree, &decisions);
+        session.build.is_done()
+    })
+}
+
+/// Finish the session: assemble the tagged octree and return its leaves in the
+/// [`encode_tagged_leaves`] wire format — identical to [`prepare`]'s output, fed to the
+/// mesh phase. Consumes the session (the slot is left empty).
+pub fn octree_session_finish() -> Vec<u8> {
+    OCTREE_SESSION.with(|s| {
+        let session = s.borrow_mut().take().expect("octree session: finish with no active session");
+        let OctreeSession { tree, lat, build } = session;
+        // `tree`/`lat` are locals here; the borrowed `SfccOctree` is consumed by the
+        // encode before they drop at end of scope.
+        let oct = build.finish(&tree, &lat);
+        encode_tagged_leaves(&oct.lat, &oct.leaves)
+    })
 }

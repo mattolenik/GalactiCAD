@@ -538,13 +538,23 @@ impl<'a> PipelineContext<'a> {
     /// the in-process REFERENCE for the cross-worker per-round BSP build (slice 5b
     /// stage B): replace the inline `decide_partition` with a JS worker scatter/gather
     /// over a round's frontier and the resulting octree is unchanged.
-    pub(crate) fn build_tagged_octree_resumable(&self, tuning: &PipelineTuning) -> SfccOctree<'_> {
+    /// Create + begin the resumable octree build (descend to depth_min, snapshot the
+    /// first round's frontier) with the SAME opts as the serial / `prepare` build.
+    /// Returns the BORROW-FREE [`ResumableOctreeBuild`] so a wasm session can hold it
+    /// across JS worker round-trips, passing `self.tree`/`self.lat` back to its
+    /// `apply_decisions`/`finish`. Factored out of [`Self::build_tagged_octree_resumable`]
+    /// so the in-process reference and the wasm session share ONE begin (no divergence).
+    pub(crate) fn begin_resumable_octree(&self, tuning: &PipelineTuning) -> ResumableOctreeBuild {
         let opts = OctreeBuildOptions {
             depth_min: tuning.depth_min,
             depth_max: self.max_depth,
             enforce_edge_balance: tuning.enforce_edge_balance,
         };
-        let mut rb = ResumableOctreeBuild::begin(self.tree, &self.lat, &opts);
+        ResumableOctreeBuild::begin(self.tree, &self.lat, &opts)
+    }
+
+    pub(crate) fn build_tagged_octree_resumable(&self, tuning: &PipelineTuning) -> SfccOctree<'_> {
+        let mut rb = self.begin_resumable_octree(tuning);
         while !rb.is_done() {
             // Clone the frontier so the immutable borrow drops before the &mut apply
             // (the JS path copies it into a message buffer here regardless).

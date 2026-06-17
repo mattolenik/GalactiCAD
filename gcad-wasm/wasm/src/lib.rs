@@ -280,6 +280,54 @@ pub fn sfcc_decide_partition(
     Ok(worker::decide_partition_bytes(&tree, &cube, &tuning.to_pipeline(), frontier_bytes, start, end))
 }
 
+// --- Octree-decision SESSION (slice 5b stage B2a) -------------------------------
+// The wasm-holdable resumable build: the main thread keeps a borrow-free octree
+// build across JS worker round-trips. The per-round BSP loop (stage B2b) drives:
+//   sfcc_octree_begin → loop { sfcc_octree_current_frontier → scatter to workers
+//   (sfcc_decide_partition) → sfcc_octree_apply_decisions until `done` } →
+//   sfcc_octree_finish → leaves (then mesh). Single session at a time (one slot).
+
+/// Begin a resumable octree-decision session: build the tagged-octree machinery
+/// (features + lattice + round-0 frontier) and hold it on the main wasm instance.
+/// Call `sfcc_octree_current_frontier` next.
+#[wasm_bindgen]
+pub fn sfcc_octree_begin(
+    scene_json: &str,
+    tuning_json: &str,
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    size: f64,
+) -> Result<(), JsError> {
+    let tree = build_csg_tree_from_json(scene_json).map_err(|e| JsError::new(&e))?;
+    let tuning = parse_tuning(tuning_json)?;
+    let cube = SfccWorldCube { min_x, min_y, min_z, size };
+    worker::octree_session_begin(tree, &cube, &tuning.to_pipeline());
+    Ok(())
+}
+
+/// The current round's frontier to DECIDE (the `encode_tagged_leaves` wire format,
+/// fed to `sfcc_decide_partition`). An empty leaf set means the build is done.
+#[wasm_bindgen]
+pub fn sfcc_octree_current_frontier() -> Vec<u8> {
+    worker::octree_session_current_frontier()
+}
+
+/// Apply the current round's decisions (concatenated worker outputs, the
+/// `encode_decisions` wire format) on the main thread: split + 2:1 ripple, advance a
+/// round. Returns `true` when the build is complete (→ `sfcc_octree_finish`).
+#[wasm_bindgen]
+pub fn sfcc_octree_apply_decisions(decisions_bytes: &[u8]) -> bool {
+    worker::octree_session_apply_decisions(decisions_bytes)
+}
+
+/// Finish the session → the tagged leaves (same `encode_tagged_leaves` format as
+/// `sfcc_worker_prepare`, fed to the mesh phase). Consumes the session.
+#[wasm_bindgen]
+pub fn sfcc_octree_finish() -> Vec<u8> {
+    worker::octree_session_finish()
+}
+
 /// Phase 2 — `mesh_partition`: one worker's share. Reconstruct the octree from
 /// `leaves_bytes` (the `sfcc_worker_prepare` output), Morton-partition the surface
 /// leaves into `group_count` groups, and mesh ONLY `group_index` into its own table.

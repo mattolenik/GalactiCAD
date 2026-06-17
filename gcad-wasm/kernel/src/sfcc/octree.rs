@@ -165,6 +165,21 @@ pub struct OctreeBuildOptions {
     pub enforce_edge_balance: bool,
 }
 
+/// Per-round wall-clock split of the refinement loop (only populated under
+/// [`build_octree_profiled`]). Each round's frontier is DECIDED in one pass (the
+/// parallelizable per-cell cert section), then APPLIED serially (stamp tags +
+/// split + the inherently-serial 2:1 balance ripple). This measures how the
+/// octree build's time divides between the two — the input to deciding whether a
+/// cross-worker parallel-decision build is worth building.
+pub struct OctreeProfile {
+    /// Total ms spent in `decide_frontier` across all rounds (parallelizable).
+    pub decide_ms: f64,
+    /// Total ms spent in the serial apply+ripple loop across all rounds.
+    pub apply_ms: f64,
+    /// Per-round `(frontier_len, decide_ms, apply_ms)`, in round order.
+    pub rounds: Vec<(usize, f64, f64)>,
+}
+
 /// The built octree: leaf cells per level (by min-corner lattice key), the split
 /// (internal) cell key sets per level, and the flattened leaf list.
 pub struct SfccOctree<'a> {
@@ -175,6 +190,10 @@ pub struct SfccOctree<'a> {
     pub internal_by_level: Vec<HashSet<i64>>,
     pub leaves: Vec<SfccCell>,
     pub degenerate_cells: usize,
+    /// Refinement-loop decide/apply timing — `None` unless built via
+    /// [`build_octree_profiled`] (an injected clock). Timing-only; the leaf set is
+    /// byte-identical whether or not this is populated.
+    pub profile: Option<OctreeProfile>,
     sampler: Sampler<'a>,
 }
 
@@ -261,7 +280,7 @@ pub fn rebuild_octree_from_leaves<'a>(
         }
     }
 
-    SfccOctree { lat: *lat, cells_by_level, internal_by_level, leaves, degenerate_cells, sampler }
+    SfccOctree { lat: *lat, cells_by_level, internal_by_level, leaves, degenerate_cells, profile: None, sampler }
 }
 
 /// Lever 1 hard-tree leaf threshold, retained for a future (cheaper) prune gate.
@@ -424,6 +443,38 @@ pub fn build_octree<'a, F>(
 where
     F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
 {
+    build_octree_inner(tree, lat, opts, decide, None)
+}
+
+/// [`build_octree`] with an injected millisecond clock that times each round's
+/// `decide_frontier` (the parallelizable per-cell cert pass) vs the serial
+/// apply+ripple loop, stashing the split on [`SfccOctree::profile`]. Mesh output
+/// is byte-identical to [`build_octree`] — timing only. Mirrors the
+/// `run_sfcc_pipeline` / `run_sfcc_pipeline_profiled` split so existing
+/// `build_octree` callers stay untouched.
+pub fn build_octree_profiled<'a, F>(
+    tree: &'a CsgNode,
+    lat: &'a SfccLattice,
+    opts: OctreeBuildOptions,
+    decide: F,
+    now: &dyn Fn() -> f64,
+) -> SfccOctree<'a>
+where
+    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
+{
+    build_octree_inner(tree, lat, opts, decide, Some(now))
+}
+
+fn build_octree_inner<'a, F>(
+    tree: &'a CsgNode,
+    lat: &'a SfccLattice,
+    opts: OctreeBuildOptions,
+    decide: F,
+    now: Option<&dyn Fn() -> f64>,
+) -> SfccOctree<'a>
+where
+    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
+{
     assert!(
         opts.depth_max <= lat.max_depth,
         "sfcc octree: depth_max {} > lattice max_depth {}",
@@ -443,6 +494,11 @@ where
     // --- initial descent to depth_min ---------------------------------------
     b.descend(0, 0, 0, 0, opts.depth_min);
 
+    // Refinement-loop timing accumulators (only touched when `now` is Some).
+    let mut prof_decide_ms = 0.0f64;
+    let mut prof_apply_ms = 0.0f64;
+    let mut prof_rounds: Vec<(usize, f64, f64)> = Vec::new();
+
     // --- refinement worklist with balance ripple, ROUND-BATCHED -------------
     // Each round: (1) snapshot the current frontier (cells still live as leaves),
     // (2) DECIDE all of them — the parallel section (pure reads over the cache +
@@ -460,6 +516,9 @@ where
             continue;
         }
 
+        let frontier_len = frontier.len();
+        let decide_t0 = now.map(|f| f());
+
         // (2) DECIDE — pure-read over an immutable cache borrow (Sync). The corner
         // samples for every frontier cell are already in the cache (cell creation
         // populated them), so no writes occur; `decide` only reads.
@@ -468,6 +527,8 @@ where
             let view = SampleView { tree, lat, samples: &samples };
             decide_frontier(&frontier, &view, &decide)
         };
+
+        let apply_t0 = now.map(|f| f());
 
         // (3) APPLY serially, in frontier order (deterministic). Stamp the tags,
         // then split (+ ripple) cells that still exist as leaves.
@@ -495,6 +556,16 @@ where
             let live = b.cells_by_level[level as usize][&key];
             b.split(live);
         }
+
+        // Fold this round's decide/apply split into the profile (only when timed).
+        if let (Some(d0), Some(a0)) = (decide_t0, apply_t0) {
+            let now_fn = now.unwrap();
+            let decide_ms = a0 - d0;
+            let apply_ms = now_fn() - a0;
+            prof_decide_ms += decide_ms;
+            prof_apply_ms += apply_ms;
+            prof_rounds.push((frontier_len, decide_ms, apply_ms));
+        }
     }
 
     let mut leaves = Vec::new();
@@ -514,12 +585,19 @@ where
     // so this need not match the TS Map-insertion order — only be stable.
     leaves.sort_unstable_by_key(|c| (c.level, c.key));
 
+    let profile = now.map(|_| OctreeProfile {
+        decide_ms: prof_decide_ms,
+        apply_ms: prof_apply_ms,
+        rounds: prof_rounds,
+    });
+
     SfccOctree {
         lat: *lat,
         cells_by_level: b.cells_by_level,
         internal_by_level: b.internal_by_level,
         leaves,
         degenerate_cells,
+        profile,
         sampler: b.sampler,
     }
 }

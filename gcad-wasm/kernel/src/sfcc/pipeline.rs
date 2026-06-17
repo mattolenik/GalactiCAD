@@ -25,7 +25,9 @@ use crate::sfcc::face_contour::{
 };
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
-use crate::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions, SfccCell, SfccOctree};
+use crate::sfcc::octree::{
+    build_octree, build_octree_profiled, CellDecision, OctreeBuildOptions, SfccCell, SfccOctree,
+};
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::refine_criteria::{
     classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
@@ -153,6 +155,15 @@ pub struct SfccPipelineResult {
     pub phase_contour_ms: f64,
     pub phase_cellmesh_ms: f64,
     pub phase_assemble_ms: f64,
+    /// Within `phase_octree_ms`: the refinement loop's parallelizable per-cell
+    /// DECIDE pass vs the inherently-serial APPLY+ripple loop, summed across rounds
+    /// (and across re-refine rounds when there are several). Zero unless profiled.
+    pub phase_octree_decide_ms: f64,
+    pub phase_octree_apply_ms: f64,
+    /// Per-round `(frontier_len, decide_ms, apply_ms)` of the octree build, in round
+    /// order. Empty unless profiled. With re-refine rounds the rounds of every build
+    /// are concatenated (mech has reRefineRounds=0 → one build).
+    pub octree_rounds: Vec<(usize, f64, f64)>,
 }
 
 /// Remove coincident triangle pairs with opposite winding (zero-volume pancakes
@@ -914,6 +925,11 @@ fn run_sfcc_pipeline_impl(
     let mut ph_contour = 0.0f64;
     let mut ph_cellmesh = 0.0f64;
     let mut ph_assemble = 0.0f64;
+    // Octree refine-loop decide/apply split (within `ph_octree`), summed over every
+    // build (re-refine rounds concatenate). Populated only when `now` is Some.
+    let mut ph_oct_decide = 0.0f64;
+    let mut ph_oct_apply = 0.0f64;
+    let mut oct_rounds: Vec<(usize, f64, f64)> = Vec::new();
     let mut ph_last: Option<f64> = now.map(|f| f());
 
     // The shared per-export context (lattice + feature set + split-decision
@@ -937,22 +953,31 @@ fn run_sfcc_pipeline_impl(
     let mut round = 0u32;
     loop {
         let forced_snapshot = forced.clone();
-        oct = build_octree(
-            tree,
-            &lat,
-            OctreeBuildOptions {
-                depth_min: tuning.depth_min,
-                depth_max: max_depth,
-                enforce_edge_balance: tuning.enforce_edge_balance,
-            },
-            // The full feature-aware needsSplit, mirroring runSfccPipeline. Delegates
-            // to `ctx.decide_cell` — the SINGLE source of truth shared with the worker
-            // `prepare` path so the expensive DECISION (classify + smoothCrit) can
-            // never drift between serial and partitioned exports. Pure read over the
-            // immutable feature set + the pre-populated sample cache, so the octree
-            // driver runs it over the round's frontier in parallel (rayon, `threads`).
-            |cell, sampler| ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot),
-        );
+        let opts = OctreeBuildOptions {
+            depth_min: tuning.depth_min,
+            depth_max: max_depth,
+            enforce_edge_balance: tuning.enforce_edge_balance,
+        };
+        // The full feature-aware needsSplit, mirroring runSfccPipeline. Delegates
+        // to `ctx.decide_cell` — the SINGLE source of truth shared with the worker
+        // `prepare` path so the expensive DECISION (classify + smoothCrit) can
+        // never drift between serial and partitioned exports. Pure read over the
+        // immutable feature set + the pre-populated sample cache, so the octree
+        // driver runs it over the round's frontier in parallel (rayon, `threads`).
+        let decide_cb =
+            |cell: &SfccCell, sampler: &crate::sfcc::octree::SampleView<'_>| {
+                ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot)
+            };
+        oct = match now {
+            // Profiled: time each round's decide vs apply, then fold the split in.
+            Some(f) => build_octree_profiled(tree, &lat, opts, decide_cb, f),
+            None => build_octree(tree, &lat, opts, decide_cb),
+        };
+        if let Some(p) = oct.profile.take() {
+            ph_oct_decide += p.decide_ms;
+            ph_oct_apply += p.apply_ms;
+            oct_rounds.extend(p.rounds);
+        }
         phase_mark(now, &mut ph_last, &mut ph_octree);
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
@@ -1118,6 +1143,9 @@ fn run_sfcc_pipeline_impl(
         phase_contour_ms: ph_contour,
         phase_cellmesh_ms: ph_cellmesh,
         phase_assemble_ms: ph_assemble,
+        phase_octree_decide_ms: ph_oct_decide,
+        phase_octree_apply_ms: ph_oct_apply,
+        octree_rounds: oct_rounds,
     }
 }
 

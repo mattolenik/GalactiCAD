@@ -192,17 +192,26 @@ pub fn export_sfcc(
     let s = &result.stats;
     let m = &result.manifold;
     let euler: Vec<String> = m.euler_per_component.iter().map(|c| c.to_string()).collect();
+    // Per-round octree split as a compact `[frontier, decideMs(1dp), applyMs(1dp)]` array
+    // — the measurement input for "is parallelizing the per-cell decide worth it?".
+    let octree_rounds: Vec<String> = result
+        .octree_rounds
+        .iter()
+        .map(|(n, d, a)| format!("[{},{:.1},{:.1}]", n, d, a))
+        .collect();
     // Compact hand-rolled JSON of the stat fields the TS exporter logs (avoids a
     // serde-Serialize derive on the kernel SfccStats). The phase* ms are appended for
     // the spatial-partition (#3) ceiling measurement.
     let stats_json = format!(
-        "{{\"leaves\":{},\"faces\":{},\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"degenerateCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"reRefineRounds\":{},\"faceAuditFailures\":{},\"boundaryViolations\":{},\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}],\"phaseFeatureMs\":{},\"phaseOctreeMs\":{},\"phaseContourMs\":{},\"phaseCellmeshMs\":{},\"phaseAssembleMs\":{}}}",
+        "{{\"leaves\":{},\"faces\":{},\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"degenerateCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"reRefineRounds\":{},\"faceAuditFailures\":{},\"boundaryViolations\":{},\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}],\"phaseFeatureMs\":{},\"phaseOctreeMs\":{},\"phaseContourMs\":{},\"phaseCellmeshMs\":{},\"phaseAssembleMs\":{},\"phaseOctreeDecideMs\":{},\"phaseOctreeApplyMs\":{},\"octreeRounds\":[{}]}}",
         s.leaves, s.faces, s.cross_points, s.tris, s.failed_cells, s.degenerate_cells, s.feature_curves, s.edge_cells,
         s.corner_cells, s.feature_cell_fallbacks, s.re_refine_rounds, s.face_audit_failures, s.boundary_violations,
         m.ok, m.components, m.open_edges, m.non_manifold_edges, m.misoriented_edges, euler.join(","),
         result.phase_feature_ms.round() as i64, result.phase_octree_ms.round() as i64,
         result.phase_contour_ms.round() as i64, result.phase_cellmesh_ms.round() as i64,
-        result.phase_assemble_ms.round() as i64
+        result.phase_assemble_ms.round() as i64,
+        result.phase_octree_decide_ms.round() as i64, result.phase_octree_apply_ms.round() as i64,
+        octree_rounds.join(",")
     );
 
     Ok(SfccExportResult { verts: result.verts, tris: result.tris, ok: result.ok, stats_json })

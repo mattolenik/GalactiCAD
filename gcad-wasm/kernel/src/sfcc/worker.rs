@@ -203,6 +203,21 @@ pub fn prepare(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) ->
     encode_tagged_leaves(&oct.lat, &oct.leaves)
 }
 
+/// Slice 5b stage B gate / reference: drive the RESUMABLE per-round octree build to
+/// completion IN-PROCESS, deciding each round's frontier via the worker primitive
+/// ([`crate::sfcc::pipeline::PipelineContext::decide_partition`] — the same un-cached
+/// path a real worker uses). Returns the tagged leaves in the SAME
+/// [`encode_tagged_leaves`] wire format as [`prepare`], and BYTE-IDENTICAL to it
+/// (proven by `tests/octree_resumable.rs`). The JS per-round BSP orchestration (stage
+/// B proper) is this exact loop with the in-process `decide_partition` replaced by a
+/// scatter/gather over worker wasm instances — so this proves the round-by-round
+/// build reconstructs the serial octree before any JS exists.
+pub fn build_octree_resumable_inprocess(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> Vec<u8> {
+    let ctx = build_pipeline_context(tree, cube, tuning);
+    let oct = ctx.build_tagged_octree_resumable(tuning);
+    encode_tagged_leaves(&oct.lat, &oct.leaves)
+}
+
 // ---------------------------------------------------------------------------
 // Octree-DECISION worker primitive — decide a frontier slice.
 // ---------------------------------------------------------------------------

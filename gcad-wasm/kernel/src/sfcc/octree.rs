@@ -422,6 +422,72 @@ impl<'a> Builder<'a> {
             process(self, &EDGE_NEIGHBORS);
         }
     }
+
+    /// Apply one frontier cell's decision: stamp its feature tags, then split (+
+    /// ripple 2:1 balance) if the decision says split and the cell can still split.
+    /// Skips a cell a same-round ripple already split out. Extracted so the serial
+    /// round loop ([`build_octree_inner`]) and the resumable build
+    /// ([`ResumableOctreeBuild`]) share ONE apply body and cannot drift.
+    fn apply_decision(&mut self, cell: &SfccCell, dec: &CellDecision, depth_max: u32) {
+        let level = cell.level;
+        let key = cell.key;
+        // Skip cells a ripple already split out from under us this round.
+        if !self.cells_by_level[level as usize].contains_key(&key) {
+            return;
+        }
+        if let Some(c) = self.cells_by_level[level as usize].get_mut(&key) {
+            c.feature_curve = dec.feature_curve;
+            c.feature_corner = dec.feature_corner;
+        }
+        if !dec.split {
+            return;
+        }
+        if cell.level >= depth_max {
+            if let Some(c) = self.cells_by_level[level as usize].get_mut(&key) {
+                c.degenerate = true;
+            }
+            return;
+        }
+        // Re-read the (tag-stamped) live cell so split carries the tags.
+        let live = self.cells_by_level[level as usize][&key];
+        self.split(live);
+    }
+
+    /// Collect + deterministically sort the leaves and assemble the [`SfccOctree`]
+    /// (carrying the sampler cache for downstream meshing). Extracted so the serial
+    /// driver and the resumable build assemble the result identically.
+    fn finalize(self, profile: Option<OctreeProfile>) -> SfccOctree<'a> {
+        let mut leaves = Vec::new();
+        let mut degenerate_cells = 0usize;
+        for per_level in &self.cells_by_level {
+            for cell in per_level.values() {
+                leaves.push(*cell);
+                if cell.degenerate {
+                    degenerate_cells += 1;
+                }
+            }
+        }
+        // `HashMap::values()` iterates in an unspecified (run-varying) order, but the
+        // leaf order seeds new point-table ids during cell meshing — so it must be
+        // DETERMINISTIC for the double-run bit-identical guard. Sort by (level,
+        // min-corner key); the downstream mesh compare is order-insensitive.
+        leaves.sort_unstable_by_key(|c| (c.level, c.key));
+        SfccOctree {
+            lat: *self.lat,
+            cells_by_level: self.cells_by_level,
+            internal_by_level: self.internal_by_level,
+            leaves,
+            degenerate_cells,
+            profile,
+            sampler: self.sampler,
+        }
+    }
+
+    /// Decompose into owned state (dropping the tree/lattice borrows). Lets the
+    /// resumable build move state out of a transient borrowing [`Builder`].
+    fn into_state(self) -> (HashMap<i64, f64>, Vec<HashMap<i64, SfccCell>>, Vec<HashSet<i64>>, Vec<(u32, i64)>) {
+        (self.sampler.samples.into_inner(), self.cells_by_level, self.internal_by_level, self.worklist)
+    }
 }
 
 /// Build the certified adaptive octree over `tree`. `decide(cell, sampleView)`
@@ -531,30 +597,10 @@ where
         let apply_t0 = now.map(|f| f());
 
         // (3) APPLY serially, in frontier order (deterministic). Stamp the tags,
-        // then split (+ ripple) cells that still exist as leaves.
+        // then split (+ ripple) cells that still exist as leaves. The per-cell body
+        // is `Builder::apply_decision`, shared verbatim with the resumable build.
         for (cell, dec) in frontier.iter().zip(decisions.iter()) {
-            let level = cell.level;
-            let key = cell.key;
-            // Skip cells a ripple already split out from under us this round.
-            if !b.cells_by_level[level as usize].contains_key(&key) {
-                continue;
-            }
-            if let Some(c) = b.cells_by_level[level as usize].get_mut(&key) {
-                c.feature_curve = dec.feature_curve;
-                c.feature_corner = dec.feature_corner;
-            }
-            if !dec.split {
-                continue;
-            }
-            if cell.level >= opts.depth_max {
-                if let Some(c) = b.cells_by_level[level as usize].get_mut(&key) {
-                    c.degenerate = true;
-                }
-                continue;
-            }
-            // Re-read the (tag-stamped) live cell so split carries the tags.
-            let live = b.cells_by_level[level as usize][&key];
-            b.split(live);
+            b.apply_decision(cell, dec, opts.depth_max);
         }
 
         // Fold this round's decide/apply split into the profile (only when timed).
@@ -568,37 +614,139 @@ where
         }
     }
 
-    let mut leaves = Vec::new();
-    let mut degenerate_cells = 0usize;
-    for per_level in &b.cells_by_level {
-        for cell in per_level.values() {
-            leaves.push(*cell);
-            if cell.degenerate {
-                degenerate_cells += 1;
-            }
-        }
-    }
-    // `HashMap::values()` iterates in an unspecified (run-varying) order, but the
-    // leaf order seeds new point-table ids during cell meshing — so the order
-    // must be DETERMINISTIC for the double-run bit-identical guard. Sort by
-    // (level, min-corner key). The downstream mesh compare is order-insensitive,
-    // so this need not match the TS Map-insertion order — only be stable.
-    leaves.sort_unstable_by_key(|c| (c.level, c.key));
-
     let profile = now.map(|_| OctreeProfile {
         decide_ms: prof_decide_ms,
         apply_ms: prof_apply_ms,
         rounds: prof_rounds,
     });
+    b.finalize(profile)
+}
 
-    SfccOctree {
-        lat: *lat,
-        cells_by_level: b.cells_by_level,
-        internal_by_level: b.internal_by_level,
-        leaves,
-        degenerate_cells,
-        profile,
-        sampler: b.sampler,
+/// A RESUMABLE per-round octree build: the same certified refinement as
+/// [`build_octree`], but each round's per-cell DECISION is supplied by the caller
+/// between rounds instead of computed inline — so the parallelizable decision pass
+/// can run on separate worker wasm instances (cross-instance octree-decision
+/// parallelism), with the serial split + 2:1-balance ripple staying on the caller.
+///
+/// The state is BORROW-FREE (owns the lattice by value + the sample cache + the
+/// level maps), so it can be held across JS worker round-trips (e.g. in a wasm-side
+/// registry) — the `tree` is passed back in per call. Each method that samples the
+/// field (the initial descend, the split empty-cull) reconstructs a transient
+/// borrowing [`Builder`] over the passed `tree` and reuses the EXACT serial logic
+/// (`descend` / `apply_decision` / `split` / `ripple_balance` / `finalize`), so the
+/// result is byte-identical to the serial driver (gated by `tests/octree_resumable.rs`).
+///
+/// Round 0 / single build only: forced-split markers are the caller's concern (the
+/// supplied decisions already encode them), matching the slice-5 worker path.
+pub(crate) struct ResumableOctreeBuild {
+    lat: SfccLattice,
+    samples: HashMap<i64, f64>,
+    cells_by_level: Vec<HashMap<i64, SfccCell>>,
+    internal_by_level: Vec<HashSet<i64>>,
+    worklist: Vec<(u32, i64)>,
+    enforce_edge_balance: bool,
+    depth_max: u32,
+    current_frontier: Vec<SfccCell>,
+}
+
+impl ResumableOctreeBuild {
+    /// Start a build: descend to `depth_min`, then snapshot the first round's frontier.
+    pub(crate) fn begin(tree: &CsgNode, lat: &SfccLattice, opts: &OctreeBuildOptions) -> Self {
+        assert!(
+            opts.depth_max <= lat.max_depth,
+            "sfcc octree: depth_max {} > lattice max_depth {}",
+            opts.depth_max,
+            lat.max_depth
+        );
+        let mut rb = ResumableOctreeBuild {
+            lat: *lat,
+            samples: HashMap::new(),
+            cells_by_level: (0..=lat.max_depth).map(|_| HashMap::new()).collect(),
+            internal_by_level: (0..=lat.max_depth).map(|_| HashSet::new()).collect(),
+            worklist: Vec::new(),
+            enforce_edge_balance: opts.enforce_edge_balance,
+            depth_max: opts.depth_max,
+            current_frontier: Vec::new(),
+        };
+        let depth_min = opts.depth_min;
+        rb.with_builder(tree, |b| b.descend(0, 0, 0, 0, depth_min));
+        rb.snapshot_frontier();
+        rb
+    }
+
+    /// The current round's frontier cells (the slice to DECIDE). Empty ⇒ done.
+    pub(crate) fn current_frontier(&self) -> &[SfccCell] {
+        &self.current_frontier
+    }
+
+    /// Whether the build is complete (no more rounds).
+    pub(crate) fn is_done(&self) -> bool {
+        self.current_frontier.is_empty()
+    }
+
+    /// Apply the current frontier's decisions (one per `current_frontier` cell, in
+    /// order) — stamp tags + split + ripple exactly as the serial round loop — then
+    /// snapshot the next round's frontier.
+    pub(crate) fn apply_decisions(&mut self, tree: &CsgNode, decisions: &[CellDecision]) {
+        assert_eq!(
+            decisions.len(),
+            self.current_frontier.len(),
+            "resumable octree: decision count != frontier length"
+        );
+        let frontier = std::mem::take(&mut self.current_frontier);
+        let depth_max = self.depth_max;
+        self.with_builder(tree, |b| {
+            for (cell, dec) in frontier.iter().zip(decisions.iter()) {
+                b.apply_decision(cell, dec, depth_max);
+            }
+        });
+        self.snapshot_frontier();
+    }
+
+    /// Finish: assemble the [`SfccOctree`] (borrowing the passed `tree`/`lat` for the
+    /// downstream sampler cache). `tree`/`lat` must be the ones passed to [`Self::begin`].
+    pub(crate) fn finish<'a>(mut self, tree: &'a CsgNode, lat: &'a SfccLattice) -> SfccOctree<'a> {
+        let b = Builder {
+            lat,
+            sampler: Sampler { tree, lat, samples: RefCell::new(std::mem::take(&mut self.samples)) },
+            cells_by_level: std::mem::take(&mut self.cells_by_level),
+            internal_by_level: std::mem::take(&mut self.internal_by_level),
+            worklist: std::mem::take(&mut self.worklist),
+            enforce_edge_balance: self.enforce_edge_balance,
+        };
+        b.finalize(None)
+    }
+
+    /// Snapshot the worklist into `current_frontier` as the live leaf cells (skipping
+    /// any rippled away), matching the serial round loop's frontier snapshot.
+    fn snapshot_frontier(&mut self) {
+        let worklist = std::mem::take(&mut self.worklist);
+        self.current_frontier = worklist
+            .into_iter()
+            .filter_map(|(level, key)| self.cells_by_level[level as usize].get(&key).copied())
+            .collect();
+    }
+
+    /// Run `f` over a transient [`Builder`] borrowing `tree` + this build's lattice,
+    /// moving the owned state in and back out — so the borrow-free state can reuse the
+    /// serial build's `&mut Builder` methods without holding a `tree` borrow across calls.
+    fn with_builder<R>(&mut self, tree: &CsgNode, f: impl FnOnce(&mut Builder) -> R) -> R {
+        let lat = self.lat;
+        let mut b = Builder {
+            lat: &lat,
+            sampler: Sampler { tree, lat: &lat, samples: RefCell::new(std::mem::take(&mut self.samples)) },
+            cells_by_level: std::mem::take(&mut self.cells_by_level),
+            internal_by_level: std::mem::take(&mut self.internal_by_level),
+            worklist: std::mem::take(&mut self.worklist),
+            enforce_edge_balance: self.enforce_edge_balance,
+        };
+        let r = f(&mut b);
+        let (samples, cells, internal, worklist) = b.into_state();
+        self.samples = samples;
+        self.cells_by_level = cells;
+        self.internal_by_level = internal;
+        self.worklist = worklist;
+        r
     }
 }
 

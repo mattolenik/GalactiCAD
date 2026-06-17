@@ -26,7 +26,7 @@ use crate::sfcc::face_contour::{
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{
-    build_octree, build_octree_profiled, CellDecision, OctreeBuildOptions, SfccCell, SfccOctree,
+    build_octree, build_octree_profiled, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell, SfccOctree,
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::refine_criteria::{
@@ -529,6 +529,30 @@ impl<'a> PipelineContext<'a> {
             self.tree.f([w[0], w[1], w[2]])
         };
         frontier[start..end].iter().map(|cell| self.decide_cell(cell, &sample, &forced)).collect()
+    }
+
+    /// Build the tagged octree via the RESUMABLE per-round driver, deciding each
+    /// round's frontier through [`Self::decide_partition`] (the un-cached worker
+    /// path). Byte-identical to [`Self::build_tagged_octree`] — the same decisions,
+    /// applied by the same split+ripple, just yielded one round at a time. This is
+    /// the in-process REFERENCE for the cross-worker per-round BSP build (slice 5b
+    /// stage B): replace the inline `decide_partition` with a JS worker scatter/gather
+    /// over a round's frontier and the resulting octree is unchanged.
+    pub(crate) fn build_tagged_octree_resumable(&self, tuning: &PipelineTuning) -> SfccOctree<'_> {
+        let opts = OctreeBuildOptions {
+            depth_min: tuning.depth_min,
+            depth_max: self.max_depth,
+            enforce_edge_balance: tuning.enforce_edge_balance,
+        };
+        let mut rb = ResumableOctreeBuild::begin(self.tree, &self.lat, &opts);
+        while !rb.is_done() {
+            // Clone the frontier so the immutable borrow drops before the &mut apply
+            // (the JS path copies it into a message buffer here regardless).
+            let frontier = rb.current_frontier().to_vec();
+            let decisions = self.decide_partition(&frontier, 0, frontier.len());
+            rb.apply_decisions(self.tree, &decisions);
+        }
+        rb.finish(self.tree, &self.lat)
     }
 }
 

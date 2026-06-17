@@ -5,7 +5,7 @@
 //! WGSL strings are copied once across the boundary per rebuild.
 
 use gcad_kernel::scene_bridge::build_csg_tree_from_json;
-use gcad_kernel::sfcc::pipeline::{run_sfcc_pipeline, PipelineTuning, SfccWorldCube};
+use gcad_kernel::sfcc::pipeline::{run_sfcc_pipeline_profiled, PipelineTuning, SfccWorldCube};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
@@ -180,18 +180,28 @@ pub fn export_sfcc(
         serde_json::from_str(tuning_json).map_err(|e| JsError::new(&format!("tuning JSON parse error: {e}")))?
     };
     let cube = SfccWorldCube { min_x, min_y, min_z, size };
-    let result = run_sfcc_pipeline(&tree, &cube, &tuning.to_pipeline());
+    // Phase-timed run: `js_sys::Date::now()` is the injected clock (the dep-free kernel
+    // has no time source). Date.now has ~1ms resolution — ample for the 10s–1000s-of-ms
+    // phases; the mesh output is identical to the un-profiled `run_sfcc_pipeline`. The
+    // phase split measures the #3 spatial-partition Amdahl ceiling (parallelizable
+    // contour+cellmesh vs serial feature/octree/assemble).
+    let now = || js_sys::Date::now();
+    let result = run_sfcc_pipeline_profiled(&tree, &cube, &tuning.to_pipeline(), &now);
 
     let s = &result.stats;
     let m = &result.manifold;
     let euler: Vec<String> = m.euler_per_component.iter().map(|c| c.to_string()).collect();
     // Compact hand-rolled JSON of the stat fields the TS exporter logs (avoids a
-    // serde-Serialize derive on the kernel SfccStats).
+    // serde-Serialize derive on the kernel SfccStats). The phase* ms are appended for
+    // the spatial-partition (#3) ceiling measurement.
     let stats_json = format!(
-        "{{\"leaves\":{},\"faces\":{},\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"degenerateCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"reRefineRounds\":{},\"faceAuditFailures\":{},\"boundaryViolations\":{},\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}]}}",
+        "{{\"leaves\":{},\"faces\":{},\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"degenerateCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"reRefineRounds\":{},\"faceAuditFailures\":{},\"boundaryViolations\":{},\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}],\"phaseFeatureMs\":{},\"phaseOctreeMs\":{},\"phaseContourMs\":{},\"phaseCellmeshMs\":{},\"phaseAssembleMs\":{}}}",
         s.leaves, s.faces, s.cross_points, s.tris, s.failed_cells, s.degenerate_cells, s.feature_curves, s.edge_cells,
         s.corner_cells, s.feature_cell_fallbacks, s.re_refine_rounds, s.face_audit_failures, s.boundary_violations,
-        m.ok, m.components, m.open_edges, m.non_manifold_edges, m.misoriented_edges, euler.join(",")
+        m.ok, m.components, m.open_edges, m.non_manifold_edges, m.misoriented_edges, euler.join(","),
+        result.phase_feature_ms.round() as i64, result.phase_octree_ms.round() as i64,
+        result.phase_contour_ms.round() as i64, result.phase_cellmesh_ms.round() as i64,
+        result.phase_assemble_ms.round() as i64
     );
 
     Ok(SfccExportResult { verts: result.verts, tris: result.tris, ok: result.ok, stats_json })

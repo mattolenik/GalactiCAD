@@ -285,6 +285,18 @@ export class SDFRenderer {
         } catch {
             /* no location — leave the worker URL untouched. */
         }
+        // Slice 5: forward the `sfccPartitions=N` flag from the page URL onto the worker
+        // URL so the render worker routes SFCC-rs export through the partition worker pool
+        // (N separate non-atomics wasm instances). Inert unless the flag is present; the
+        // default render path (serial `export_sfcc`) is unaffected.
+        try {
+            if (typeof location !== "undefined") {
+                const p = new URLSearchParams(location.search).get("sfccPartitions")
+                if (p) workerUrl.searchParams.set("sfccPartitions", p)
+            }
+        } catch {
+            /* no location — leave the worker URL untouched. */
+        }
         this.#worker = new Worker(workerUrl, { type: "module" })
         this.#worker.onmessage = (e: MessageEvent<WorkerToMainMessage>) => this.#handleWorkerMessage(e.data)
 

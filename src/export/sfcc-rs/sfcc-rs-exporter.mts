@@ -13,7 +13,13 @@ import type { MeshExportContext, MeshExporter } from "../mesh-exporter.mjs"
 import type { MeshData } from "../export.mjs"
 import { DEFAULT_SFCC_TUNING, normalizeSfccTuning, type SfccTuning } from "../sfcc/sfcc-tuning.mjs"
 import { serializeSceneToBridgeJson } from "./scene-bridge.mjs"
-import { ensureWasmReady, export_sfcc } from "./wasm-loader.mjs"
+import {
+    ensureWasmReady,
+    export_sfcc,
+    sfcc_worker_prepare,
+    sfcc_worker_merge,
+} from "./wasm-loader.mjs"
+import { SfccPartitionPool } from "./sfcc-partition-pool.mjs"
 import { log } from "../../logging/debug-log.mjs"
 
 export const SFCC_RS_DISPLAY_NAME = "SFCC (Rust/WASM)"
@@ -53,25 +59,85 @@ async function resolveExportFn(): Promise<{ fn: typeof export_sfcc; threaded: bo
     return { fn: export_sfcc, threaded: false }
 }
 
-async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<MeshData> {
-    const { fn: exportFn, threaded } = await resolveExportFn()
+/**
+ * Slice 5: the `sfccPartitions=N` flag (forwarded onto the render-worker URL by
+ * `src/sdf.mts`) routes the Rust SFCC export through a pool of N separate (non-atomics)
+ * `pkg/` wasm instances in module workers. Main runs `sfcc_worker_prepare` once (the
+ * expensive ~60% octree decision), scatters N Morton partitions, then `sfcc_worker_merge`
+ * recombines the partials into the same `SfccExportResult` shape as `export_sfcc`. The
+ * mesh is identical to the serial path (correctness gate). Default (flag off): N=1, the
+ * untouched serial `export_sfcc` path.
+ */
+function partitionsRequested(): number {
+    try {
+        const raw = new URL(self.location.href).searchParams.get("sfccPartitions")
+        if (!raw) return 1
+        const n = Math.floor(Number(raw))
+        return Number.isFinite(n) && n >= 1 ? n : 1
+    } catch {
+        return 1
+    }
+}
 
+// Warm, module-scoped partition pool — reused across export calls. Rebuilt only when the
+// requested partition count changes (or the first call).
+let warmPool: SfccPartitionPool | null = null
+let warmPoolCount = 0
+
+function getOrCreatePartitionPool(count: number): SfccPartitionPool {
+    if (warmPool && warmPoolCount === count) return warmPool
+    if (warmPool) warmPool.destroy()
+    // `import.meta.url` here resolves to the render-worker bundle; the partition worker is
+    // emitted at its source-tree path under dist (mirrors iso-qef-worker URL formation).
+    const workerUrl = new URL("./export/sfcc-rs/partition-worker.js", import.meta.url)
+    warmPool = new SfccPartitionPool({ workerUrl, workerCount: count })
+    warmPoolCount = count
+    return warmPool
+}
+
+async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<MeshData> {
     // Serialize the live scene to the boundary shape (throws on unsupported nodes,
     // mirroring SfccUnsupportedError — the Rust side rejects the same set).
     const sceneJson = serializeSceneToBridgeJson(ctx.scene.root)
     const tuningJson = JSON.stringify(tuning)
-
     const cube = ctx.worldBoundsCube()
-    const t0 = performance.now()
-    const result = exportFn(
-        sceneJson,
-        tuningJson,
-        cube.min[0],
-        cube.min[1],
-        cube.min[2],
-        cube.max[0] - cube.min[0],
-    )
-    const elapsedMs = performance.now() - t0
+    const minX = cube.min[0]
+    const minY = cube.min[1]
+    const minZ = cube.min[2]
+    const size = cube.max[0] - cube.min[0]
+
+    const partitions = partitionsRequested()
+
+    let result: ReturnType<typeof export_sfcc>
+    let elapsedMs: number
+    let threaded = false
+    let partitionsUsed = 1
+
+    if (partitions > 1) {
+        // Partitioned path: prepare once, scatter N Morton groups across the warm pool,
+        // merge the partials. Same SfccExportResult shape as export_sfcc.
+        await ensureWasmReady()
+        const t0 = performance.now()
+        const leaves = sfcc_worker_prepare(sceneJson, tuningJson, minX, minY, minZ, size)
+        const pool = getOrCreatePartitionPool(partitions)
+        const partials = await pool.meshAll({
+            sceneJson,
+            tuningJson,
+            cube,
+            leaves,
+            count: partitions,
+        })
+        result = sfcc_worker_merge(sceneJson, tuningJson, minX, minY, minZ, size, partials)
+        elapsedMs = performance.now() - t0
+        partitionsUsed = partitions
+    } else {
+        // Serial path (flag off): byte-identical to the original export_sfcc flow.
+        const { fn: exportFn, threaded: t } = await resolveExportFn()
+        threaded = t
+        const t0 = performance.now()
+        result = exportFn(sceneJson, tuningJson, minX, minY, minZ, size)
+        elapsedMs = performance.now() - t0
+    }
 
     let stats: Record<string, unknown> = {}
     try {
@@ -95,6 +161,7 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
         exportMs: Math.round(elapsedMs),
         threaded,
         threads: threaded && typeof navigator !== "undefined" ? navigator.hardwareConcurrency : 1,
+        partitions: partitionsUsed,
     })
 
     const mesh: MeshData = { verts, tris }

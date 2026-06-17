@@ -118,6 +118,7 @@ const Options = {
         "./src/render-worker.mts",
         "./src/transpile-worker.mts",
         "./src/export/iso-simplicial/iso-qef-worker.mts",
+        "./src/export/sfcc-rs/partition-worker.mts",
     ],
     plugins: [
         threadedLoaderStubPlugin(),

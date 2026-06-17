@@ -13,7 +13,13 @@
  */
 
 // The generated ESM glue (default export = init) + the exported boundary fns.
-import init, { export_sfcc, version } from "../../../gcad-wasm/wasm/pkg/gcad_wasm.js"
+import init, {
+    export_sfcc,
+    version,
+    sfcc_worker_prepare,
+    sfcc_worker_mesh_partition,
+    sfcc_worker_merge,
+} from "../../../gcad-wasm/wasm/pkg/gcad_wasm.js"
 // esbuild `file` loader → a served URL string for the wasm binary.
 import wasmUrl from "../../../gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm"
 
@@ -27,4 +33,10 @@ export async function ensureWasmReady(): Promise<void> {
     return ready
 }
 
-export { export_sfcc, version }
+export {
+    export_sfcc,
+    version,
+    sfcc_worker_prepare,
+    sfcc_worker_mesh_partition,
+    sfcc_worker_merge,
+}

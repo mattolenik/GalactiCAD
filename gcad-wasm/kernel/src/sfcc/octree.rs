@@ -141,20 +141,27 @@ pub struct CellDecision {
 /// feature set behind the closure is immutable during refine — so this is
 /// data-race-free by construction. Falls back to a serial `iter()` when the
 /// `threads` feature is off (the default build stays single-threaded + stable).
+/// The per-cell decision-closure bound. Carries `Sync` ONLY on the `threads` build (the
+/// parallel `decide_frontier` requires it); on the default serial build it is plain `Fn`,
+/// so a decision context with interior-mutable state — e.g. the coarse-prune `RefCell`
+/// cache in `PipelineContext` — is permitted.
 #[cfg(feature = "threads")]
-fn decide_frontier<F>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision>
-where
-    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
-{
+pub trait DecideFn: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync {}
+#[cfg(feature = "threads")]
+impl<T: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync> DecideFn for T {}
+#[cfg(not(feature = "threads"))]
+pub trait DecideFn: Fn(&SfccCell, &SampleView<'_>) -> CellDecision {}
+#[cfg(not(feature = "threads"))]
+impl<T: Fn(&SfccCell, &SampleView<'_>) -> CellDecision> DecideFn for T {}
+
+#[cfg(feature = "threads")]
+fn decide_frontier<F: DecideFn>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision> {
     use rayon::prelude::*;
     frontier.par_iter().map(|cell| decide(cell, view)).collect()
 }
 
 #[cfg(not(feature = "threads"))]
-fn decide_frontier<F>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision>
-where
-    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision,
-{
+fn decide_frontier<F: DecideFn>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision> {
     frontier.iter().map(|cell| decide(cell, view)).collect()
 }
 
@@ -507,7 +514,7 @@ pub fn build_octree<'a, F>(
     decide: F,
 ) -> SfccOctree<'a>
 where
-    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
+    F: DecideFn,
 {
     build_octree_inner(tree, lat, opts, decide, None)
 }
@@ -526,7 +533,7 @@ pub fn build_octree_profiled<'a, F>(
     now: &dyn Fn() -> f64,
 ) -> SfccOctree<'a>
 where
-    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
+    F: DecideFn,
 {
     build_octree_inner(tree, lat, opts, decide, Some(now))
 }
@@ -539,7 +546,7 @@ fn build_octree_inner<'a, F>(
     now: Option<&dyn Fn() -> f64>,
 ) -> SfccOctree<'a>
 where
-    F: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync,
+    F: DecideFn,
 {
     assert!(
         opts.depth_max <= lat.max_depth,
@@ -761,6 +768,55 @@ pub fn build_uniform_octree<'a>(tree: &'a CsgNode, lat: &'a SfccLattice, leaf_de
     )
 }
 
+/// Coarse octree level for the DECIDE-phase prune-view reuse (mirrors the contour
+/// `CONTOUR_PRUNE_LEVEL`): one `prune_to_box` per surface coarse cell, reused across
+/// every certificate eval of every cell decided under it. The build cost (`prune_to_box`
+/// is `O(tree²)` per region) is what sank the per-cell Lever 1; amortizing it over a
+/// whole region is the fix (proven net-positive on the contour phase). Built ONCE up
+/// front so the read-only cache satisfies the `Fn + Sync` decide-callback bound.
+const OCTREE_PRUNE_LEVEL: u32 = 5;
+
+/// Pack a coarse cell `(level, ix, iy, iz)` into a cache key.
+fn octree_coarse_key_at(level: u32, ix: i64, iy: i64, iz: i64) -> u64 {
+    ((level as u64) << 60) | (((ix as u64) & 0xFFFFF) << 40) | (((iy as u64) & 0xFFFFF) << 20) | ((iz as u64) & 0xFFFFF)
+}
+
+/// Descend to [`OCTREE_PRUNE_LEVEL`], culling empty subtrees (interval excludes 0 — the
+/// same cull the octree build uses), and build one pruned view per surface coarse cell.
+/// Bit-exact: every decide eval of a cell under a coarse region queries inside that
+/// cell, hence inside the coarse ancestor's (slightly padded) box, where `prune_to_box`
+/// is bit-exact to the full tree.
+fn collect_coarse_prunes<'a>(
+    tree: &'a CsgNode,
+    lat: &SfccLattice,
+    level: u32,
+    ix: i64,
+    iy: i64,
+    iz: i64,
+    out: &mut HashMap<u64, Pruned<'a>>,
+) {
+    let half = cell_size_at_level(lat, level) / 2.0;
+    let c = cell_center_world(lat, level, ix, iy, iz);
+    let (lo, hi) = tree.interval_over_box(c, [half, half, half]);
+    if lo > 0.0 || hi < 0.0 {
+        return; // empty region — no surface, never decided
+    }
+    if level == OCTREE_PRUNE_LEVEL {
+        // Pad by 10% of the half-extent: the cone/owner probes sit on the cell faces, so
+        // fine cells on the coarse boundary query exactly on the box edge.
+        let ph = half * 1.1;
+        out.insert(octree_coarse_key_at(level, ix, iy, iz), tree.prune_to_box(c, [ph, ph, ph]));
+        return;
+    }
+    for dx in 0..2i64 {
+        for dy in 0..2i64 {
+            for dz in 0..2i64 {
+                collect_coarse_prunes(tree, lat, level + 1, ix * 2 + dx, iy * 2 + dy, iz * 2 + dz, out);
+            }
+        }
+    }
+}
+
 /// Build the certified adaptive octree with FEATURE-AWARE refinement: each leaf
 /// splits if `classify_cell_features` says split OR `needs_split_smooth` says
 /// split, and every surviving leaf is stamped with its `feature_curve` /
@@ -781,9 +837,18 @@ pub fn build_octree_feature_aware<'a>(
     // Tree-level advisories hoisted once (the callback is hot).
     let grad_bound = tree.grad_bound();
     let has_blend = tree.has_blend();
-    // Lever 1: per-cell CSG pruning gate (default OFF — the integration is wired and
-    // bit-exact but measured net-negative; see `crate::sdf::lever1_should_prune`).
-    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+    // Coarse-region CSG pruning (replaces the net-negative per-cell Lever 1): build one
+    // pruned view per surface coarse cell up front, reuse it across every cell decided
+    // under it. Read-only cache ⇒ the `Fn + Sync` decide callback can share `&`. Gated to
+    // non-trivial trees (a coarse cell must touch a small fraction of the tree to win).
+    let prune = tree.leaf_count() > LEVER1_MIN_LEAVES;
+    let coarse_prunes: HashMap<u64, Pruned> = if prune {
+        let mut m = HashMap::new();
+        collect_coarse_prunes(tree, lat, 0, 0, 0, 0, &mut m);
+        m
+    } else {
+        HashMap::new()
+    };
 
     build_octree(tree, lat, opts, |cell, sampler| {
         // Feature criteria (i)/(ii) first; on pass they classify the cell.
@@ -822,21 +887,17 @@ pub fn build_octree_feature_aware<'a>(
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
         }
         // (forcedSplit markers are empty at round 0 — omitted.)
-        // Lever 1: build ONE pruned view over this cell's box and reuse it across
-        // every certificate eval (center f + the per-stratum / blend-band ∇f and
-        // owner queries) — all of which query points inside the cell box, where the
-        // pruned view is bit-exact to the full tree. Prune FRESH per cell (the
-        // centered-form interval is not nested across centers).
-        let pruned: Option<Pruned> = if prune {
-            let half = cell_size_at_level(lat, cell.level) / 2.0;
-            let c = cell_center_world(lat, cell.level, cell.ix, cell.iy, cell.iz);
-            Some(tree.prune_to_box(c, [half, half, half]))
+        // The certificate evals (center f + per-stratum / blend-band ∇f + owner queries)
+        // all query inside the cell box, so the pre-built pruned view of this cell's
+        // coarse ancestor (level ≥ OCTREE_PRUNE_LEVEL) is bit-exact here and reused across
+        // the whole region. Cells above the prune level (and a cache miss) use the full
+        // tree — sound, just unpruned.
+        let q: &dyn crate::sdf::SdfQuery = if prune && cell.level >= OCTREE_PRUNE_LEVEL {
+            let s = cell.level - OCTREE_PRUNE_LEVEL;
+            let key = octree_coarse_key_at(OCTREE_PRUNE_LEVEL, cell.ix >> s, cell.iy >> s, cell.iz >> s);
+            coarse_prunes.get(&key).map(|p| p as &dyn crate::sdf::SdfQuery).unwrap_or(tree)
         } else {
-            None
-        };
-        let q: &dyn crate::sdf::SdfQuery = match &pruned {
-            Some(p) => p,
-            None => tree,
+            tree
         };
         let probe = make_probe(
             lat,

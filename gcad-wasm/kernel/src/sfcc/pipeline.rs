@@ -14,6 +14,8 @@
 //! (round-0) fallback cells.
 
 use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, stride_at_level, SfccLattice};
+#[cfg(not(feature = "threads"))]
+use crate::math::grid::point_to_world;
 use crate::sdf::CsgNode;
 use crate::sfcc::cell_mesh::{
     mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult,
@@ -405,10 +407,60 @@ pub(crate) struct PipelineContext<'a> {
     smooth_opts: SmoothCriteriaOptions,
     grad_bound: f64,
     has_blend: bool,
+    /// Coarse-prune gate (tree large enough to benefit) — drives `self.coarse` on the
+    /// serial build; the `threads` build never prunes (see `coarse`).
+    #[cfg(not(feature = "threads"))]
     prune: bool,
     max_depth: u32,
     total_size: f64,
     tree: &'a CsgNode,
+    /// Coarse-region pruned views, keyed by `OCTREE_PRUNE_LEVEL` ancestor and reused
+    /// across every leaf under that ancestor — amortizes the `O(tree²)` `prune_to_box`
+    /// build (the cost that sank the per-cell Lever 1). Lazy + serial: only built on the
+    /// non-threads build, where the decision pass runs serially (a `RefCell` field would
+    /// make the context `!Sync`); the `threads` build evaluates the full tree (bit-exact,
+    /// just unpruned). Mirrors the coarse contour prune (`face_contour::contour_into`).
+    #[cfg(not(feature = "threads"))]
+    coarse: std::cell::RefCell<std::collections::HashMap<u64, crate::sdf::Pruned<'a>>>,
+}
+
+/// Coarse octree level at which a cell's prune view is built and shared. Cells at
+/// `level ≥ OCTREE_PRUNE_LEVEL` share their level-`OCTREE_PRUNE_LEVEL` ancestor's view;
+/// coarser cells are their own region. Coarser = fewer `O(tree²)` builds (the dominant
+/// cost), which is what flips pruning net-positive (see `face_contour::CONTOUR_PRUNE_LEVEL`,
+/// L5 measured best for contour).
+#[cfg(not(feature = "threads"))]
+const OCTREE_PRUNE_LEVEL: u32 = 5;
+
+/// Cache key for a cell's coarse-prune region (its `OCTREE_PRUNE_LEVEL` ancestor).
+#[cfg(not(feature = "threads"))]
+fn octree_coarse_key(cell: &SfccCell) -> u64 {
+    let l = cell.level.min(OCTREE_PRUNE_LEVEL);
+    let s = cell.level - l;
+    let cix = ((cell.ix >> s) as u64) & 0xFFFFF;
+    let ciy = ((cell.iy >> s) as u64) & 0xFFFFF;
+    let ciz = ((cell.iz >> s) as u64) & 0xFFFFF;
+    ((l as u64) << 60) | (cix << 40) | (ciy << 20) | ciz
+}
+
+/// World box (center, half) of a cell's coarse-prune region: the coarse cell padded by a
+/// thin margin (decide evals sit on the cell's corners/center — inside the coarse cell —
+/// so only a boundary margin is needed). Bit-exact over this box ⇒ bit-exact for every
+/// `decide_cell` certificate eval of a cell under it.
+#[cfg(not(feature = "threads"))]
+fn octree_coarse_box(lat: &SfccLattice, cell: &SfccCell) -> ([f64; 3], [f64; 3]) {
+    let l = cell.level.min(OCTREE_PRUNE_LEVEL);
+    let s = cell.level - l;
+    let cix = cell.ix >> s;
+    let ciy = cell.iy >> s;
+    let ciz = cell.iz >> s;
+    let stride = stride_at_level(lat, l);
+    let wmin = point_to_world(lat, cix * stride, ciy * stride, ciz * stride);
+    let wmax = point_to_world(lat, (cix + 1) * stride, (ciy + 1) * stride, (ciz + 1) * stride);
+    let cs = wmax[0] - wmin[0]; // cubic lattice ⇒ uniform per axis
+    let m = cs * 0.1;
+    let center = [(wmin[0] + wmax[0]) * 0.5, (wmin[1] + wmax[1]) * 0.5, (wmin[2] + wmax[2]) * 0.5];
+    (center, [cs * 0.5 + m, cs * 0.5 + m, cs * 0.5 + m])
 }
 
 impl<'a> PipelineContext<'a> {
@@ -467,20 +519,34 @@ impl<'a> PipelineContext<'a> {
             // path either, so keep them unset).
             return CellDecision { split: true, feature_curve: -1, feature_corner: -1 };
         }
-        // Lever 1: one pruned view over this cell's box, reused across the
-        // certificate evals (all query points lie inside the cell box, where the
-        // pruned view is bit-exact). Prune FRESH per cell.
-        let pruned: Option<crate::sdf::Pruned> = if self.prune {
-            let half = cell_size_at_level(lat, cell.level) / 2.0;
-            let c = crate::math::grid::cell_center_world(lat, cell.level, cell.ix, cell.iy, cell.iz);
-            Some(self.tree.prune_to_box(c, [half, half, half]))
+        // Coarse-region prune (default/serial build): one pruned view per
+        // OCTREE_PRUNE_LEVEL ancestor, reused across all leaves under it — every
+        // certificate eval (center f + per-stratum / blend-band ∇f + owner queries)
+        // queries points inside this cell, hence inside the coarse cell, where the
+        // pruned view is bit-exact. Lazily built & cached on `self.coarse`. On the
+        // `threads` build the cache is absent (would be `!Sync`) → the full tree, which
+        // is bit-exact, so decisions are identical either way.
+        #[cfg(not(feature = "threads"))]
+        let coarse_view = if self.prune {
+            let key = octree_coarse_key(cell);
+            {
+                let mut m = self.coarse.borrow_mut();
+                if !m.contains_key(&key) {
+                    let (c, h) = octree_coarse_box(lat, cell);
+                    m.insert(key, self.tree.prune_to_box(c, h));
+                }
+            }
+            Some(self.coarse.borrow())
         } else {
             None
         };
-        let q: &dyn crate::sdf::SdfQuery = match &pruned {
-            Some(p) => p,
+        #[cfg(not(feature = "threads"))]
+        let q: &dyn crate::sdf::SdfQuery = match &coarse_view {
+            Some(m) => m.get(&octree_coarse_key(cell)).map(|p| p as &dyn crate::sdf::SdfQuery).unwrap_or(self.tree),
             None => self.tree,
         };
+        #[cfg(feature = "threads")]
+        let q: &dyn crate::sdf::SdfQuery = self.tree;
         let probe = make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
         if cls.corner >= 0 {
             // Corner cells exempt from per-stratum + sign-change gates.
@@ -644,7 +710,10 @@ pub(crate) fn build_pipeline_context<'a>(
 
     let grad_bound = tree.grad_bound();
     let has_blend = tree.has_blend();
-    let prune = crate::sdf::lever1_should_prune(tree, crate::sfcc::octree::LEVER1_MIN_LEAVES);
+    // Coarse-region pruning pays off only when a coarse cell touches a small fraction
+    // of the tree; below a handful of leaves the full-tree tight loop wins.
+    #[cfg(not(feature = "threads"))]
+    let prune = tree.leaf_count() > crate::sfcc::octree::LEVER1_MIN_LEAVES;
     let blend_curvature_analytic = if tuning.blend_curvature_analytic && tuning.blend_curvature_refine {
         tree.blend_curvature_bound()
     } else {
@@ -673,10 +742,13 @@ pub(crate) fn build_pipeline_context<'a>(
         smooth_opts,
         grad_bound,
         has_blend,
+        #[cfg(not(feature = "threads"))]
         prune,
         max_depth,
         total_size,
         tree,
+        #[cfg(not(feature = "threads"))]
+        coarse: std::cell::RefCell::new(std::collections::HashMap::new()),
     }
 }
 

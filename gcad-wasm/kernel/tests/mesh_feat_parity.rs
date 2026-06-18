@@ -14,7 +14,7 @@
 //! (run `tsx gcad-wasm/fixtures/dump-mesh-feat.mts`); the invariant + determinism
 //! checks run regardless.
 
-use gcad_kernel::parity::{load_fixture, meshes_equivalent, CanonicalizeOptions};
+use gcad_kernel::parity::{load_fixture, meshes_equivalent, meshes_geometric_match, CanonicalizeOptions};
 use gcad_kernel::sdf::{self, CsgNode, Leaf, Shape};
 use gcad_kernel::sfcc::feature_set::build_leaf_strata;
 use gcad_kernel::sfcc::manifold_check::check_manifold;
@@ -184,20 +184,15 @@ fn assert_ts_parity(name: &str, fixture: &str, r: &SfccPipelineResult) {
             return;
         }
     };
-    // pos_eps ≈ a small fraction of the scene scale: dwarfs cross-engine libm ULP
-    // drift + f32 fixture rounding, far below the cell size, so topology/winding
-    // can't slip. Topology, winding, and counts must match exactly.
-    let pos_eps = 1e-4 * 20.0;
-    let opts = CanonicalizeOptions { pos_eps, ..CanonicalizeOptions::default() };
+    // Geometric tolerant parity: the Rust `find_root` (Illinois) converges sub-root_tol
+    // away from the TS bisection oracle, so a vertex can straddle a quantization grid
+    // line; TS bit-parity is not a goal (the TS exporter is being replaced by this
+    // kernel). Mesh quality stays pinned by the manifold/χ/winding invariants above —
+    // this only certifies same-surface (vertex bijection within tolerance + ≤6%
+    // alternate-diagonal connectivity).
     let rv: Vec<f64> = r.verts.iter().map(|&f| f as f64).collect();
-    if let Err(e) = meshes_equivalent(&rv, &r.tris, &ts_verts, &ts_tris, &opts) {
-        panic!(
-            "{name}: Rust↔TS mesh mismatch (pos_eps={pos_eps}): {e}\n  rust: {} verts {} tris | ts: {} verts {} tris",
-            rv.len() / 8,
-            r.tris.len() / 3,
-            ts_verts.len() / 8,
-            ts_tris.len() / 3
-        );
+    if let Err(e) = meshes_geometric_match(&rv, &r.tris, &ts_verts, &ts_tris, 1e-3 * 20.0, 0.06) {
+        panic!("{name}: Rust↔TS geometric mesh parity failed: {e}");
     }
 }
 

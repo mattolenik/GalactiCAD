@@ -130,8 +130,18 @@ struct FeatureCaches {
 }
 
 /// Root-find the iso-crossing on a world segment with f0 < 0 ≤ f1 or vice versa.
-/// Bit-faithful port of `findRoot`. Writes the crossing position into `out[0..3]`
-/// and the tree gradient (unit normal) into `out[3..6]`.
+/// Writes the crossing position into `out[0..3]` and the tree gradient (unit
+/// normal) into `out[3..6]`.
+///
+/// Illinois (modified regula-falsi): a false-position step that halves a retained
+/// endpoint's f-value on its second consecutive retention. Converges
+/// superlinearly, reaching f64 precision in ~10 `tree.f` evals where the old plain
+/// bisection ran the full 60 (the smooth path passes `tol=0`, so the bracket test
+/// never early-exited). NOTE: this is intentionally NOT bit-faithful to the TS
+/// `findRoot` (bisection) anymore — the crossing differs by a sub-`root_tol`
+/// amount. It remains a deterministic pure function of its inputs, so
+/// [`canonical_edge_root`]'s direction-independence — the keyed-point-table weld
+/// invariant — is preserved.
 ///
 /// Call sites should use [`canonical_edge_root`] so the result is independent of
 /// endpoint order.
@@ -145,27 +155,62 @@ pub fn find_root<T: SdfQuery + ?Sized>(
     by: f64,
     bz: f64,
     f0: f64,
-    _f1: f64,
+    f1: f64,
     tol: f64,
     out: &mut [f64; 6],
 ) {
     let mut lo = 0.0f64;
     let mut hi = 1.0f64;
     let mut flo = f0;
+    let mut fhi = f1;
     let seg_len = ((bx - ax).powi(2) + (by - ay).powi(2) + (bz - az).powi(2)).sqrt();
-    let mut i = 0;
-    while i < 60 && (hi - lo) * seg_len > tol {
-        let mid = (lo + hi) / 2.0;
-        let fm = tree.f([ax + (bx - ax) * mid, ay + (by - ay) * mid, az + (bz - az) * mid]);
-        if (fm < 0.0) == (flo < 0.0) {
-            lo = mid;
-            flo = fm;
-        } else {
-            hi = mid;
+    // An endpoint that vanishes IS the crossing (false position can't bracket it);
+    // anchor exactly. Otherwise iter 1's interior step always sets `t` first.
+    let mut t = if f0 == 0.0 {
+        0.0
+    } else if f1 == 0.0 {
+        1.0
+    } else {
+        (lo + hi) / 2.0
+    };
+    if f0 != 0.0 && f1 != 0.0 {
+        let mut side = 0i32; // endpoint that moved last: -1 = lo, +1 = hi, 0 = none
+        let mut i = 0;
+        while i < 60 {
+            let denom = fhi - flo;
+            // False-position estimate; a degenerate denom (shouldn't occur for
+            // opposite-sign endpoints) falls back to the midpoint.
+            let cand = if denom != 0.0 { (lo * fhi - hi * flo) / denom } else { (lo + hi) / 2.0 };
+            // No strictly-interior step left ⇒ the bracket reached f64 precision.
+            if !(cand > lo && cand < hi) {
+                break;
+            }
+            t = cand;
+            let fm = tree.f([ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t]);
+            if fm == 0.0 {
+                break;
+            }
+            if (fm < 0.0) == (flo < 0.0) {
+                lo = t;
+                flo = fm;
+                if side == -1 {
+                    fhi *= 0.5; // hi retained a 2nd time → Illinois halving
+                }
+                side = -1;
+            } else {
+                hi = t;
+                fhi = fm;
+                if side == 1 {
+                    flo *= 0.5; // lo retained a 2nd time → Illinois halving
+                }
+                side = 1;
+            }
+            i += 1;
+            if (hi - lo) * seg_len <= tol {
+                break;
+            }
         }
-        i += 1;
     }
-    let t = (lo + hi) / 2.0;
     out[0] = ax + (bx - ax) * t;
     out[1] = ay + (by - ay) * t;
     out[2] = az + (bz - az) * t;

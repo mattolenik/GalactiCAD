@@ -377,10 +377,10 @@ class App {
      * Prefers exact match of function name range; falls back to position at selection start
      * (e.g. when double-click selection boundaries differ slightly from our ranges).
      */
-    #findNodeIdForSelection(selection: monaco.Selection): number | null {
-        const startLine = selection.startLineNumber
+    #findNodeIdForSelection(selection: { startLine: number; startColumn: number; endLine: number; endColumn: number }): number | null {
+        const startLine = selection.startLine
         const startColumn = selection.startColumn
-        const endLine = selection.endLineNumber
+        const endLine = selection.endLine
         const endColumn = selection.endColumn
 
         for (const [nodeId, location] of this.#sourceLocationMap.entries()) {
@@ -399,10 +399,10 @@ class App {
      * Find the ParsedShapeCall matching the editor selection.
      * Exact match first; falls back to the innermost (smallest) identifier range at the selection start.
      */
-    #findParsedCallForSelection(selection: monaco.Selection): ParsedShapeCall | null {
-        const startLine = selection.startLineNumber
+    #findParsedCallForSelection(selection: { startLine: number; startColumn: number; endLine: number; endColumn: number }): ParsedShapeCall | null {
+        const startLine = selection.startLine
         const startColumn = selection.startColumn
-        const endLine = selection.endLineNumber
+        const endLine = selection.endLine
         const endColumn = selection.endColumn
 
         for (const call of this.#parsedCalls) {
@@ -448,10 +448,13 @@ class App {
      * Try to open the polygon editor at the given source position.
      * Returns true if opened (polygon2d call found and editor opened).
      */
-    #tryOpenPolygonEditor(_line: number, _column: number): boolean {
-        // TODO(step 4 — source mutations): re-enable polygon editing once edits run
-        // through CodeEditor/EditorState instead of a Monaco ITextModel.
-        return false
+    #tryOpenPolygonEditor(line: number, column: number): boolean {
+        const src = this.editor.getValue()
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const info = this.#sourceParser.findPolygon2DAtPosition(src, line, column, cached ?? undefined)
+        if (!info) return false
+        this.#openPolygonEditor(info)
+        return true
     }
 
     /**
@@ -468,18 +471,56 @@ class App {
      * Handle push/pull completion: update the polygon2d vertex array in the source code.
      * The nodeId is the Polygon2D child node ID — look up its source location and replace the vertex array.
      */
-    #handlePushPullComplete(_nodeId: number, _vertices: [number, number][]) {
-        // TODO(step 4 — source mutations): write the polygon2d vertex array back to
-        // source via CodeEditor dispatch (was applyVertexUpdates on a Monaco model).
+    #handlePushPullComplete(nodeId: number, vertices: [number, number][]) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location || location.functionName !== "polygon2d") return
+
+        const src = this.editor.getValue()
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
+        if (!info) return
+
+        // CM6 history merges these rapid drag dispatches into one undo group by time.
+        applyVertexUpdates(this.editor.view, info, vertices)
     }
 
     /**
      * Handle cap push/pull completion: update the extrude/loft h value and position in source code.
      * nodeId is the Extrude or Loft node ID.
      */
-    #handleCapPullComplete(_nodeId: number, _newH: number, _newPosY: number) {
-        // TODO(step 4 — source mutations): write extrude/loft cap (h + position) back
-        // to source via CodeEditor dispatch (was applyExtrudeLoftCapUpdates on a model).
+    #handleCapPullComplete(nodeId: number, newH: number, newPosY: number) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location || (location.functionName !== "extrude" && location.functionName !== "loft" && location.functionName !== "threaded_rod")) return
+
+        const src = this.editor.getValue()
+        this.#sourceParser.parseShapeCalls(src)
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const info =
+            location.functionName === "threaded_rod"
+                ? this.#sourceParser.findThreadedRodAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
+                : this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
+        if (!info) return
+
+        const node = this.#sceneNodeMap.get(nodeId) as ExtrudeLikeNode | undefined
+        applyExtrudeLoftCapUpdates(this.editor.view, info, newH, newPosY, node)
+
+        // Re-parse source locations so subsequent drags find correct offsets.
+        const updatedSrc = this.editor.getValue()
+        const parsedCalls = this.#sourceParser.parseShapeCalls(updatedSrc)
+        this.#parsedCalls = parsedCalls
+        this.#parsedCallsWithRanges = parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }])
+        const prevMap = this.#sourceLocationMap
+        this.#sourceLocationMap = matchNodesToSource(
+            Array.from(this.#sceneNodeMap.values()),
+            parsedCalls,
+        )
+        // Preserve polygon2d entries that failed to match due to stale sceneNodeMap
+        // (e.g. polygon push/pull + cap pull in same debounce window).
+        for (const [nodeId, location] of prevMap.entries()) {
+            if (location.functionName === "polygon2d" && !this.#sourceLocationMap.has(nodeId)) {
+                this.#sourceLocationMap.set(nodeId, location)
+            }
+        }
     }
 
     /**
@@ -489,31 +530,53 @@ class App {
      * using AST containment rather than node matching (which is unreliable for composites).
      */
     #handleEditorSelection() {
-        // TODO(step 4 — selection sync): re-enable editor→3D selection once the CM6
-        // selection/mouse events are wired (was driven by Monaco onDidChangeCursorSelection).
+        if (this.#isUpdatingFromPreview) return
+
+        const lc = this.editor.getSelectionLineCol()
+        if (!lc) return
+        const sel = lc.sel
+        // Only act on a real (non-empty) selection; a bare cursor is ignored.
+        if (sel.startLine === sel.endLine && sel.startColumn === sel.endColumn) return
+
+        const clickedCall = this.#findParsedCallForSelection(sel)
+        if (!clickedCall) return
+
+        if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
+            // Variable-tracing: resolve logical leaf calls through variable references
+            const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
+            const leafIds = this.#getNodeIdsForCalls(leafCalls)
+            const idsWithRoot = this.renderer.getSelectionIdsWithRoot(leafIds)
+            this.renderer.setSelection(idsWithRoot)
+            this.#updateEditorHighlighting()
+            return
+        }
+
+        // For primitives and rendering composites (extrude, loft, etc.), use direct match
+        const nodeId = this.#findNodeIdForSelection(sel)
+        if (nodeId !== null) {
+            const node = this.#sceneNodeMap.get(nodeId)
+            this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
+            this.#updateEditorHighlighting()
+        }
     }
 
     /**
-     * Handle mouse click on the editor to check for color indicator clicks.
-     * For pure CSG operators, uses containment-based selection.
+     * Handle mouse-down on the editor to select the shape at the click.
+     * A single click only selects from the leading edge where the color indicator
+     * sits; a double-click selects the shape from anywhere on its function name.
      */
-    #handleEditorMouseDown(e: monaco.editor.IEditorMouseEvent) {
+    #handleEditorMouseDown(e: MouseEvent) {
         if (this.#isUpdatingFromPreview) return
-        if (e.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) return
+        const lc = this.editor.coordsToLineCol(e.clientX, e.clientY)
+        if (!lc) return
 
-        const position = e.target.position
-        if (!position) return
-
-        // Editor↔preview selection is two-way. A single click only selects from the leading edge
-        // where the color indicator sits; a double-click selects the shape from anywhere on its
-        // function name (Monaco reports click count via the browser event's `detail`).
-        const isDoubleClick = e.event.browserEvent.detail >= 2
+        const isDoubleClick = e.detail >= 2
         if (!isDoubleClick) {
-            const clickedCall = this.#findParsedCallAtPosition(position.lineNumber, position.column)
-            if (!clickedCall || position.column > clickedCall.location.startColumn) return
+            const clickedCall = this.#findParsedCallAtPosition(lc.line, lc.column)
+            if (!clickedCall || lc.column > clickedCall.location.startColumn) return
         }
 
-        this.#selectSceneNodeAtEditorPosition(position.lineNumber, position.column)
+        this.#selectSceneNodeAtEditorPosition(lc.line, lc.column)
     }
 
     /**
@@ -1027,9 +1090,71 @@ class App {
                 showPolygonMenu(loc, clientX, clientY)
             }
         })
-        // TODO(step 5 — custom context menu): re-add the editor-hover "Edit Polygon"
-        // menu for polygon2d calls. It relied on Monaco onMouseMove + getDomNode +
-        // MouseTargetType; CM6 needs domEventHandlers + view.posAtCoords.
+        // Editor-side interactions (CM6: DOM listeners on the editor element +
+        // view.posAtCoords, replacing Monaco onMouseMove/onMouseDown/MouseTargetType):
+        //   - hover "Edit Polygon" menu for polygon2d calls,
+        //   - mouse-down shape selection,
+        //   - editor→3D selection on a real (non-empty) text selection.
+        // All torn down together via #contextMenuEditorMoveDispose, which is disposed
+        // at the top of this method on re-wire (prevents duplicate listeners).
+        const CONTEXT_MENU_DELAY_MS = 350
+        const scheduleOrShowEditorMenu = (key: string, loc: SourceLocation, clientX: number, clientY: number) => {
+            if (key !== this.#contextMenuLastKey) {
+                if (this.#contextMenuShowTimer) clearTimeout(this.#contextMenuShowTimer)
+                this.#contextMenuLastKey = key
+                this.#contextMenuShowTimer = window.setTimeout(() => {
+                    this.#contextMenuShowTimer = null
+                    showPolygonMenu(loc, clientX, clientY)
+                }, CONTEXT_MENU_DELAY_MS)
+            }
+        }
+        const cancelEditorHover = () => {
+            if (this.#contextMenuShowTimer) {
+                clearTimeout(this.#contextMenuShowTimer)
+                this.#contextMenuShowTimer = null
+            }
+            this.#contextMenuLastKey = null
+            if (this.#contextMenu?.visible) return
+            this.#contextMenu?.hide()
+        }
+        const cancelEditorHoverForRightClick = () => {
+            if (this.#contextMenuShowTimer) {
+                clearTimeout(this.#contextMenuShowTimer)
+                this.#contextMenuShowTimer = null
+            }
+            this.#contextMenuLastKey = null
+            this.#contextMenu?.hide()
+        }
+        const editorDom = this.editor.dom
+        const onEditorContextMenu = () => cancelEditorHoverForRightClick()
+        const onEditorMouseMove = (e: MouseEvent) => {
+            const lc = this.editor.coordsToLineCol(e.clientX, e.clientY)
+            if (!lc) {
+                cancelEditorHover()
+                return
+            }
+            const call = this.#findParsedCallAtPosition(lc.line, lc.column)
+            if (call?.functionName === "polygon2d" && call.location) {
+                scheduleOrShowEditorMenu(`editor-${call.location.startLine}-${call.location.startColumn}`, call.location, e.clientX, e.clientY)
+            } else {
+                cancelEditorHover()
+            }
+        }
+        const onEditorMouseDown = (e: MouseEvent) => this.#handleEditorMouseDown(e)
+        editorDom.addEventListener("contextmenu", onEditorContextMenu)
+        editorDom.addEventListener("mousemove", onEditorMouseMove)
+        editorDom.addEventListener("mousedown", onEditorMouseDown)
+        const unsubEditorSelection = this.editor.onUpdate(u => {
+            if (u.selectionSet) this.#handleEditorSelection()
+        })
+        this.#contextMenuEditorMoveDispose = {
+            dispose: () => {
+                editorDom.removeEventListener("contextmenu", onEditorContextMenu)
+                editorDom.removeEventListener("mousemove", onEditorMouseMove)
+                editorDom.removeEventListener("mousedown", onEditorMouseDown)
+                unsubEditorSelection()
+            },
+        }
 
         this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
             this.#handlePushPullComplete(nodeId, vertices)
@@ -1040,18 +1165,12 @@ class App {
         })
 
         this.renderer.pushPullExit$.subscribe(() => {
-            if (this.#pushPullUndoOpen) {
-                // TODO(step 4 — source mutations): close the undo group via CodeEditor history.
-                this.#pushPullUndoOpen = false
-            }
+            // Undo grouping is handled by CM6's time-based history (rapid drag edits merge).
             if (this.#pushPullBuildPending) {
                 this.#pushPullBuildPending = false
                 this.build()
             }
         })
-
-        // TODO(step 4 — selection sync): wire editor→3D selection and editor mouse-down
-        // shape selection via CM6 updateListener + domEventHandlers + view.posAtCoords.
 
         xrayCheckbox.checked = this.renderer.xrayMode
         xrayCheckbox.onChange = (enabled) => {
@@ -1536,7 +1655,7 @@ class App {
         devTools.visible = devToolsEnabled
     }
 
-    #openPolygonEditor(info: Polygon2DCallInfo, model: monaco.editor.ITextModel) {
+    #openPolygonEditor(info: Polygon2DCallInfo) {
         if (this.#polygonEditor) {
             this.#polygonEditor.remove()
             this.#polygonEditor = null
@@ -1546,15 +1665,20 @@ class App {
         const arrayStart = info.arrayStartOffset
 
         polyEditor.onChange = (vertices) => {
-            const src = model.getValue()
-            const pos = model.getPositionAt(arrayStart)
+            const view = this.editor.view
+            const doc = view.state.doc
+            const src = doc.toString()
+            // arrayStart (the opening "[") stays valid across edits, which only touch
+            // the vertices after it; convert it to a 1-based line/col to re-find the call.
+            const off = Math.min(arrayStart, doc.length)
+            const l = doc.lineAt(off)
             const cached = this.#sourceParser.getCachedSourceFile(src)
-            const freshInfo = this.#sourceParser.findPolygon2DAtPosition(src, pos.lineNumber, pos.column, cached ?? undefined)
+            const freshInfo = this.#sourceParser.findPolygon2DAtPosition(src, l.number, off - l.from + 1, cached ?? undefined)
             if (!freshInfo) return
-            applyVertexUpdates(model, freshInfo, vertices)
+            applyVertexUpdates(view, freshInfo, vertices)
         }
 
-        // Hide Monaco and insert polygon editor in its place
+        // Hide the editor and insert the polygon editor in its place
         this.#editorContainer.style.display = "none"
         this.#editorContainer.parentElement!.insertBefore(polyEditor, this.#editorContainer)
 

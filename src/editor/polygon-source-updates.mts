@@ -3,7 +3,7 @@
  * Used when the user edits vertices in the polygon editor.
  */
 
-import * as monaco from "monaco-editor"
+import type { EditorView } from "@codemirror/view"
 import type { Polygon2DCallInfo } from "../parser/source-parser.mjs"
 
 export interface ArrayFormat {
@@ -40,45 +40,31 @@ export function formatVertices(vertices: [number, number][], format?: ArrayForma
 }
 
 /**
- * Apply vertex updates to the model. When vertex count matches, does surgical
- * in-place edits (no reformatting). Otherwise falls back to full replace with format preservation.
+ * Apply vertex updates to the document. When the vertex count matches, does
+ * surgical in-place edits (no reformatting); otherwise falls back to a full
+ * array replace with format preservation.
+ *
+ * The parser's offsets are already in user-source coordinates, and CodeMirror's
+ * document model is offset-based, so the edits dispatch directly (no line/column
+ * round-trip, no reverse-sort — CM6 maps all changes against the original doc).
+ * Undo grouping is handled by CM6's time-based history (rapid drag edits merge).
  */
 export function applyVertexUpdates(
-    model: monaco.editor.ITextModel,
+    view: EditorView,
     info: Polygon2DCallInfo,
     vertices: [number, number][],
-    groupEdits = false
 ): void {
     if (vertices.length === info.vertexRanges.length) {
-        const edits = vertices
-            .map((v, i) => {
-                const start = model.getPositionAt(info.vertexRanges[i].start)
-                const end = model.getPositionAt(info.vertexRanges[i].end)
-                return {
-                    range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
-                    text: formatVertex(v),
-                }
-            })
-            .sort((a, b) => {
-                const ap = a.range.getStartPosition()
-                const bp = b.range.getStartPosition()
-                return bp.lineNumber - ap.lineNumber || bp.column - ap.column
-            })
-        if (!groupEdits) model.pushStackElement()
-        model.pushEditOperations([], edits, () => null)
-        if (!groupEdits) model.pushStackElement()
+        const changes = vertices.map((v, i) => ({
+            from: info.vertexRanges[i].start,
+            to: info.vertexRanges[i].end,
+            insert: formatVertex(v),
+        }))
+        view.dispatch({ changes })
     } else {
-        const originalText = model.getValue().slice(info.arrayStartOffset, info.arrayEndOffset)
+        const originalText = view.state.doc.sliceString(info.arrayStartOffset, info.arrayEndOffset)
         const format = analyzeArrayFormatting(originalText)
         const newText = formatVertices(vertices, format)
-        const startPos = model.getPositionAt(info.arrayStartOffset)
-        const endPos = model.getPositionAt(info.arrayEndOffset)
-        const range = new monaco.Range(
-            startPos.lineNumber, startPos.column,
-            endPos.lineNumber, endPos.column
-        )
-        if (!groupEdits) model.pushStackElement()
-        model.pushEditOperations([], [{ range, text: newText }], () => null)
-        if (!groupEdits) model.pushStackElement()
+        view.dispatch({ changes: { from: info.arrayStartOffset, to: info.arrayEndOffset, insert: newText } })
     }
 }

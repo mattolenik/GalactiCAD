@@ -3,7 +3,7 @@
  * Updates the `height` value and `.shift([...])` in source when the user drags a cap.
  */
 
-import * as monaco from "monaco-editor"
+import type { EditorView } from "@codemirror/view"
 import type { ExtrudeLoftCallInfo } from "../parser/source-parser.mjs"
 
 export function formatNumber(n: number): string {
@@ -55,58 +55,36 @@ export interface ExtrudeLikeNode {
  * Also updates the in-memory node so the next drag starts from correct values.
  */
 export function applyExtrudeLoftCapUpdates(
-    model: monaco.editor.ITextModel,
+    view: EditorView,
     info: ExtrudeLoftCallInfo,
     newH: number,
     newPosY: number,
     node?: ExtrudeLikeNode,
-    groupEdits = false
 ): void {
     if (node && "h" in node) {
         node.h = newH
         node.pos.y = newPosY
     }
 
-    const src = model.getValue()
-    if (!groupEdits) model.pushStackElement()
-
-    const edits: { range: monaco.IRange; text: string }[] = []
+    const src = view.state.doc.toString()
+    // Parser offsets are user-source coordinates; dispatch them directly. CM6 maps
+    // all changes against the original doc, so no reverse-sort is needed.
+    const changes: { from: number; to: number; insert: string }[] = []
 
     // Update h value
-    const hStart = model.getPositionAt(info.hValueStart)
-    const hEnd = model.getPositionAt(info.hValueEnd)
-    edits.push({
-        range: new monaco.Range(hStart.lineNumber, hStart.column, hEnd.lineNumber, hEnd.column),
-        text: formatNumber(newH),
-    })
+    changes.push({ from: info.hValueStart, to: info.hValueEnd, insert: formatNumber(newH) })
 
     // Update position if it exists, or insert one if the Y component changed
     if (info.posArgStart !== null && info.posArgEnd !== null) {
         const posText = src.substring(info.posArgStart, info.posArgEnd)
         const updatedPosText = updatePosY(posText, newPosY)
         if (updatedPosText !== null) {
-            const posStart = model.getPositionAt(info.posArgStart)
-            const posEnd = model.getPositionAt(info.posArgEnd)
-            edits.push({
-                range: new monaco.Range(posStart.lineNumber, posStart.column, posEnd.lineNumber, posEnd.column),
-                text: updatedPosText,
-            })
+            changes.push({ from: info.posArgStart, to: info.posArgEnd, insert: updatedPosText })
         }
     } else if (Math.abs(newPosY) > 0.0005) {
         // No .shift() yet: append fluent `.shift([0, y, 0])` at the end of the full call (not object-style `pos:`).
-        const insertPos = model.getPositionAt(info.insertPosOffset)
-        edits.push({
-            range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column),
-            text: `.shift([0, ${formatNumber(newPosY)}, 0])`,
-        })
+        changes.push({ from: info.insertPosOffset, to: info.insertPosOffset, insert: `.shift([0, ${formatNumber(newPosY)}, 0])` })
     }
 
-    // Apply edits in reverse offset order so earlier edits don't shift later ones
-    edits.sort((a, b) => {
-        if (a.range.startLineNumber !== b.range.startLineNumber)
-            return b.range.startLineNumber - a.range.startLineNumber
-        return b.range.startColumn - a.range.startColumn
-    })
-    model.pushEditOperations([], edits, () => null)
-    if (!groupEdits) model.pushStackElement()
+    view.dispatch({ changes })
 }

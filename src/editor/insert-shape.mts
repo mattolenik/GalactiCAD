@@ -3,16 +3,17 @@
  * Used by the context menu "Insert shape" submenu.
  */
 
-import * as monaco from "monaco-editor"
+import { EditorSelection } from "@codemirror/state"
+import type { CodeEditor } from "./codemirror-editor.mjs"
 
 export function insertShapeDeclaration(
-    editor: monaco.editor.IStandaloneCodeEditor,
+    editor: CodeEditor,
     varNameBase: string,
     callText: string
 ): void {
-    const model = editor.getModel()
-    if (!model) return
-    const src = model.getValue()
+    const view = editor.view
+    const doc = view.state.doc
+    const src = doc.toString()
 
     const existing = new Set<string>()
     for (const m of src.matchAll(/(?:let|const|var)\s+(\w+)/g)) existing.add(m[1])
@@ -20,18 +21,20 @@ export function insertShapeDeclaration(
     for (let i = 2; existing.has(varName); i++) varName = varNameBase + i
 
     const declaration = `let ${varName} = ${callText}\n`
-    const varNameStartCol = 1 + "let ".length
-    const varNameEndCol = varNameStartCol + varName.length
 
-    const pos = editor.getPosition()
-    const cursorLine = pos?.lineNumber ?? 1
+    // Insert the declaration on the line above the cursor (or the first line).
+    const cursorLine = editor.getCursor()?.line ?? 1
     const insertLine = cursorLine > 1 ? cursorLine - 1 : 1
-    const insertCol = 1
+    const lineStart = doc.line(Math.min(Math.max(1, insertLine), doc.lines)).from
 
-    const range = new monaco.Range(insertLine, insertCol, insertLine, insertCol)
-    const nameSelection = new monaco.Selection(insertLine, varNameStartCol, insertLine, varNameEndCol)
+    // Select the new variable name (coordinates are in the resulting document).
+    const nameFrom = lineStart + "let ".length
+    const nameTo = nameFrom + varName.length
 
-    editor.executeEdits("insert-shape", [{ range, text: declaration }], [nameSelection])
+    view.dispatch({
+        changes: { from: lineStart, insert: declaration },
+        selection: EditorSelection.range(nameFrom, nameTo),
+    })
     editor.focus()
 }
 

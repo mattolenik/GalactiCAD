@@ -273,6 +273,12 @@ export class CodeEditor {
         return this.getSelectionLineCol()?.pos ?? null
     }
 
+    /** Map viewport client coordinates to a 1-based line/column, or null if not over text. */
+    coordsToLineCol(x: number, y: number): LineCol | null {
+        const offset = this.view.posAtCoords({ x, y })
+        return offset == null ? null : this.#offsetToLineCol(offset)
+    }
+
     /** Current cursor (head) and ordered selection range, or null if no document. */
     getSelectionLineCol(): { pos: LineCol; sel: LineColSelection } | null {
         const r = this.view.state.selection.main

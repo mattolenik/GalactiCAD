@@ -548,9 +548,8 @@ struct Crossing {
 #[allow(clippy::too_many_arguments)]
 fn contour_face(
     oct: &SfccOctree,
-    tree: &CsgNode,
+    q: &dyn SdfQuery,
     grad_bound: f64,
-    prune: bool,
     points: &mut PointTable,
     axis: usize,
     gx: i64,
@@ -564,31 +563,13 @@ fn contour_face(
     let [u, v] = face_axes(axis);
     let key = pack_point(lat, gx, gy, gz);
 
-    // Lever 1: build ONE pruned view over this face's box and reuse it across every
-    // per-face eval (the sub-edge root-finds + grads, the face-center / stratum-tag
-    // / recovery / split-midpoint queries). All those query points lie on the face
-    // or — for the Newton-projected split midpoint — within `seg_len + root_tol·8`
-    // of a face point (seg_len ≤ face diagonal). Prune over the face box inflated by
-    // ~2.5 face widths + that drift so the pruned view stays bit-exact everywhere it
-    // is queried. Prune FRESH per face (the centered-form interval is not nested
-    // across centers; a parent prune is unsound for a child box).
-    let face_w = len as f64 * lat.step;
-    let face_center = {
-        let mut w = point_to_world(lat, gx, gy, gz);
-        w[u] += face_w * 0.5;
-        w[v] += face_w * 0.5;
-        w
-    };
-    let pruned: Option<Pruned> = if prune {
-        let half = 2.5 * face_w + opts.root_tol * 8.0;
-        Some(tree.prune_to_box(face_center, [half, half, half]))
-    } else {
-        None
-    };
-    let q: &dyn SdfQuery = match &pruned {
-        Some(p) => p,
-        None => tree,
-    };
+    // `q` is the caller-supplied per-region query tree — the full tree, or a COARSE-cell
+    // pruned view built once and reused across all leaves under that coarse cell
+    // (`contour_into`). Every tree eval below — sub-edge root-finds, crossing grads,
+    // stratum tags, recovery samples, the face-center inside test — lies on THIS cell's
+    // faces or interior, hence inside the coarse cell, so a coarse-cell-box prune stays
+    // bit-exact here. (The `split_midpoint` Newton drift the old per-face prune guarded
+    // against lives in the separate global repair pass, which keeps the full tree.)
 
     let walks = [
         Walk { du: 0, dv: 0, ax: u, dir: 1 },
@@ -1129,7 +1110,7 @@ pub fn contour_subset_separate(
 ) -> FaceContourResult {
     let mut faces: [HashMap<i64, FaceRecord>; 3] = [HashMap::new(), HashMap::new(), HashMap::new()];
     let grad_bound = tree.grad_bound();
-    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+    let prune = contour_should_prune(tree);
     // Each separate partial owns its caches: `stratum_tags` is keyed by point id,
     // which is table-local, so it cannot be shared across partials. Pure memoization
     // (values are geometry-derived), so per-partial caches only forgo reuse.
@@ -1174,11 +1155,12 @@ pub fn contour_subset_separate(
                         if faces[axis].contains_key(&qkey) {
                             continue; // already contoured (a finer cell in this group, or another quarter)
                         }
+                        // Halo is a one-off face per coarse-side T-junction; no coarse
+                        // region to amortize over, so evaluate the full tree directly.
                         let rec = contour_face(
                             oct,
                             tree,
                             grad_bound,
-                            prune,
                             points,
                             axis,
                             q[0],
@@ -1225,8 +1207,8 @@ pub(crate) fn contour_faces_for(
     // gate the octree certificates use). `contour_face` builds a fresh per-face
     // pruned view when `prune` is set.
     let grad_bound = tree.grad_bound();
-    // Lever 1: per-face pruning gate (default OFF; see lever1_should_prune).
-    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+    // Coarse-region pruning gate (see `contour_should_prune`).
+    let prune = contour_should_prune(tree);
 
     // Shared sub-edge recovery + stratum-tag caches for the WHOLE pass (shared
     // across groups — pure memoization, so sharing only saves recomputation).
@@ -1261,6 +1243,57 @@ pub(crate) fn contour_faces_for(
 /// face already present (enumerated by an earlier cell/group) is skipped — first
 /// enumerator wins, and `contour_face` is pure of enumeration order, so the result
 /// is independent of how leaves are grouped.
+/// Coarse octree level at which the contour prune view is built and reused. A leaf at
+/// `level ≥ CONTOUR_PRUNE_LEVEL` shares the pruned view of its level-`CONTOUR_PRUNE_LEVEL`
+/// ancestor with every other leaf under that ancestor (amortizing the `prune_to_box`
+/// build — the cost that sank the per-cell Lever 1); a coarser leaf is its own region.
+///
+/// The level trades build count against prune tightness, and the build cost
+/// (`prune_to_box` is `O(tree²)` per region) dominates, so COARSER wins. MEASURED on mech
+/// (d4-9, ~240k crossings), contour phase vs the full-tree baseline (3863 ms): level 6 =
+/// +5% (too many builds, net-NEGATIVE), level 4 = −6%, **level 5 = −9% (3508 ms)** — the
+/// sweet spot (few enough builds, still prunes mech's spatially-distributed tree to a
+/// small local subset). Bit-exact (`tris` identical, all parity/determinism suites green).
+const CONTOUR_PRUNE_LEVEL: u32 = 5;
+
+/// Coarse-region pruning pays off only when the tree is large enough that a coarse cell
+/// touches a small fraction of it. Below a handful of leaves the full-tree tight loop
+/// wins (the per-region build + `Pruned::f` indirection never amortize). Unlike the
+/// per-cell Lever 1 (`lever1_should_prune`, OFF), the build here is shared across a whole
+/// coarse region's leaves, so the amortization that sank Lever 1 is no longer the issue.
+fn contour_should_prune(tree: &CsgNode) -> bool {
+    tree.leaf_count() > LEVER1_MIN_LEAVES
+}
+
+/// Cache key for a leaf's coarse-prune region (its `CONTOUR_PRUNE_LEVEL` ancestor).
+fn contour_coarse_key(cell: &SfccCell) -> u64 {
+    let l = cell.level.min(CONTOUR_PRUNE_LEVEL);
+    let s = cell.level - l;
+    let cix = ((cell.ix >> s) as u64) & 0xFFFFF;
+    let ciy = ((cell.iy >> s) as u64) & 0xFFFFF;
+    let ciz = ((cell.iz >> s) as u64) & 0xFFFFF;
+    ((l as u64) << 60) | (cix << 40) | (ciy << 20) | ciz
+}
+
+/// World box (center, half) of a leaf's coarse-prune region: the coarse cell, padded by
+/// a small margin (crossings/grads sit on the leaf's faces — inside the coarse cell — so
+/// only a thin boundary margin is needed for points exactly on a coarse face). Bit-exact
+/// over this box ⇒ bit-exact for every `contour_face` eval of a leaf under it.
+fn contour_coarse_box(lat: &SfccLattice, cell: &SfccCell, root_tol: f64) -> ([f64; 3], [f64; 3]) {
+    let l = cell.level.min(CONTOUR_PRUNE_LEVEL);
+    let s = cell.level - l;
+    let cix = cell.ix >> s;
+    let ciy = cell.iy >> s;
+    let ciz = cell.iz >> s;
+    let stride = stride_at_level(lat, l);
+    let wmin = point_to_world(lat, cix * stride, ciy * stride, ciz * stride);
+    let wmax = point_to_world(lat, (cix + 1) * stride, (ciy + 1) * stride, (ciz + 1) * stride);
+    let cs = wmax[0] - wmin[0]; // cubic lattice ⇒ uniform per axis
+    let m = cs * 0.1 + root_tol * 8.0;
+    let center = [(wmin[0] + wmax[0]) * 0.5, (wmin[1] + wmax[1]) * 0.5, (wmin[2] + wmax[2]) * 0.5];
+    (center, [cs * 0.5 + m, cs * 0.5 + m, cs * 0.5 + m])
+}
+
 #[allow(clippy::too_many_arguments)]
 fn contour_into(
     oct: &SfccOctree,
@@ -1277,9 +1310,20 @@ fn contour_into(
     let mut multi_run_faces = 0usize;
     let mut boundary_violations = 0usize;
     let mut key_collisions = 0usize;
+    // Coarse-region pruned views, built lazily on first touch and reused across every
+    // leaf under the same `CONTOUR_PRUNE_LEVEL` ancestor.
+    let mut prune_cache: HashMap<u64, Pruned> = HashMap::new();
     for cell in leaves {
         let stride = stride_at_level(&lat, cell.level);
         let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
+        let q: &dyn SdfQuery = if prune {
+            &*prune_cache.entry(contour_coarse_key(cell)).or_insert_with(|| {
+                let (c, h) = contour_coarse_box(&lat, cell, opts.root_tol);
+                tree.prune_to_box(c, h)
+            })
+        } else {
+            tree
+        };
         for axis in 0..3usize {
             for side in 0..=1 {
                 let mut ncoord = [cell.ix, cell.iy, cell.iz];
@@ -1300,9 +1344,8 @@ fn contour_into(
                 }
                 let rec = contour_face(
                     oct,
-                    tree,
+                    q,
                     grad_bound,
-                    prune,
                     points,
                     axis,
                     g[0],

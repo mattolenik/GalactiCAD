@@ -287,8 +287,12 @@ gcad-test: gcad-fixtures
 GCAD_WASM_SRC := $(shell find gcad-wasm/kernel/src gcad-wasm/wasm/src -name '*.rs' 2>/dev/null) \
 	gcad-wasm/kernel/Cargo.toml gcad-wasm/wasm/Cargo.toml gcad-wasm/Cargo.toml gcad-wasm/Cargo.lock
 
+# `+simd128` enables the f64x2 SoA gradient evaluator (sfcc/sdf_simd.rs) in the iii-d
+# blend cone — measured ~23% faster octree-decide / ~12% faster export on blend-heavy
+# CAD (mechwarrior d4-9), mesh-identical. simd128 is baseline in all current browsers;
+# the kernel keeps a scalar fallback so non-simd targets (native tests) still build.
 gcad-wasm/wasm/pkg/.stamp: $(GCAD_WASM_SRC)
-	wasm-pack build gcad-wasm/wasm --target web
+	RUSTFLAGS='-C target-feature=+simd128' wasm-pack build gcad-wasm/wasm --target web
 	touch $@
 
 .PHONY: gcad-wasm

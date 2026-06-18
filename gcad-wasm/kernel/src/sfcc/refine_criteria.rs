@@ -233,23 +233,52 @@ pub fn stratum_edge_crossings_ok(stratum: &Stratum, probe: &RefineProbe) -> bool
 /// where `active_strata` is empty (the blend band).
 pub fn tree_normal_variation_ok<T: SdfQuery + ?Sized>(tree: &T, probe: &RefineProbe, min_cos: f64, grad_bound: f64) -> bool {
     let reach = SQRT_3 * probe.cell_size * grad_bound;
-    let mut ns = [0.0f64; 27];
-    let mut k = 0usize;
+    let mut idx = [0usize; 9];
+    let mut m = 0usize;
     for i in 0..9 {
-        if probe.f[i].abs() >= reach {
-            continue;
+        if probe.f[i].abs() < reach {
+            idx[m] = i;
+            m += 1;
         }
-        let (_v, g) = tree.grad([probe.pts[i * 3], probe.pts[i * 3 + 1], probe.pts[i * 3 + 2]]);
-        let l = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
-        if l < 1e-12 {
-            continue;
-        }
-        ns[k * 3] = g[0] / l;
-        ns[k * 3 + 1] = g[1] / l;
-        ns[k * 3 + 2] = g[2] / l;
-        k += 1;
     }
+    let mut ns = [0.0f64; 27];
+    let k = cone_normals_via_pairs(tree, probe, &idx[..m], &mut ns);
     pairwise_cos_ok(&ns, k, min_cos)
+}
+
+/// Push the normalized tree-∇f normals for `idx` probe points into `ns`, returning the
+/// count kept (degenerate ∇f skipped). Evaluates in PAIRS via [`SdfQuery::grad_pair`]
+/// — the f64x2 SIMD hook on the concrete trees (scalar otherwise). Pairwise cos is
+/// order-independent, so packing kept normals contiguously is sound.
+fn cone_normals_via_pairs<T: SdfQuery + ?Sized>(
+    tree: &T,
+    probe: &RefineProbe,
+    idx: &[usize],
+    ns: &mut [f64; 27],
+) -> usize {
+    let pt = |i: usize| [probe.pts[i * 3], probe.pts[i * 3 + 1], probe.pts[i * 3 + 2]];
+    let mut k = 0usize;
+    let push = |g: [f64; 3], ns: &mut [f64; 27], k: &mut usize| {
+        let l = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+        if l >= 1e-12 {
+            ns[*k * 3] = g[0] / l;
+            ns[*k * 3 + 1] = g[1] / l;
+            ns[*k * 3 + 2] = g[2] / l;
+            *k += 1;
+        }
+    };
+    let mut j = 0usize;
+    while j + 1 < idx.len() {
+        let ((_, g0), (_, g1)) = tree.grad_pair(pt(idx[j]), pt(idx[j + 1]));
+        push(g0, ns, &mut k);
+        push(g1, ns, &mut k);
+        j += 2;
+    }
+    if j < idx.len() {
+        let (_, g) = tree.grad(pt(idx[j]));
+        push(g, ns, &mut k);
+    }
+    k
 }
 
 /// (iii-d, mixed-cell variant) blend curvature restricted to "blend-band" probe
@@ -261,8 +290,8 @@ pub fn tree_blend_band_normal_variation_ok<T: SdfQuery + ?Sized>(
     grad_bound: f64,
 ) -> bool {
     let reach = SQRT_3 * probe.cell_size * grad_bound;
-    let mut ns = [0.0f64; 27];
-    let mut k = 0usize;
+    let mut idx = [0usize; 9];
+    let mut m = 0usize;
     for i in 0..9 {
         if probe.f[i].abs() >= reach {
             continue;
@@ -273,16 +302,11 @@ pub fn tree_blend_band_normal_variation_ok<T: SdfQuery + ?Sized>(
         if !tree.active_owners_at([x, y, z], 0.0).is_empty() {
             continue; // analytic owner ⇒ not a blend-band point
         }
-        let (_v, g) = tree.grad([x, y, z]);
-        let l = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
-        if l < 1e-12 {
-            continue;
-        }
-        ns[k * 3] = g[0] / l;
-        ns[k * 3 + 1] = g[1] / l;
-        ns[k * 3 + 2] = g[2] / l;
-        k += 1;
+        idx[m] = i;
+        m += 1;
     }
+    let mut ns = [0.0f64; 27];
+    let k = cone_normals_via_pairs(tree, probe, &idx[..m], &mut ns);
     pairwise_cos_ok(&ns, k, min_cos)
 }
 

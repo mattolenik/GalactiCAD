@@ -1010,6 +1010,17 @@ pub trait SdfQuery {
     fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]);
     fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64);
     fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>>;
+    /// Value+unit-normal for TWO points at once — the SIMD hook for the iii-d cone.
+    /// Default is two scalar `grad` calls; [`CsgNode`]/[`Pruned`] override it with the
+    /// f64x2 evaluator on `wasm32 + simd128` (scalar otherwise). Returns
+    /// `((f0,n0),(f1,n1))`, bit-identical to scalar except for ~1 ULP SIMD rounding.
+    fn grad_pair(
+        &self,
+        p0: [f64; 3],
+        p1: [f64; 3],
+    ) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
+        (self.grad(p0), self.grad(p1))
+    }
 }
 
 impl SdfQuery for CsgNode {
@@ -1025,6 +1036,10 @@ impl SdfQuery for CsgNode {
     fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>> {
         CsgNode::active_owners_at(self, p, tol)
     }
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    fn grad_pair(&self, p0: [f64; 3], p1: [f64; 3]) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
+        crate::sfcc::sdf_simd::grad_pair_csg(self, p0, p1)
+    }
 }
 
 impl SdfQuery for Pruned<'_> {
@@ -1039,6 +1054,10 @@ impl SdfQuery for Pruned<'_> {
     }
     fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>> {
         Pruned::active_owners_at(self, p, tol)
+    }
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    fn grad_pair(&self, p0: [f64; 3], p1: [f64; 3]) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
+        crate::sfcc::sdf_simd::grad_pair_pruned(self, p0, p1)
     }
 }
 

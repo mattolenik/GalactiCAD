@@ -29,6 +29,7 @@ pub mod octree;
 pub mod pipeline;
 pub mod point_table;
 pub mod refine_criteria;
+pub mod sdf_simd;
 pub mod seam_trace;
 pub mod sliver_flip;
 pub mod spatial_index;

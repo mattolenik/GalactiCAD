@@ -253,6 +253,11 @@ export class CodeEditor {
         return { line: l.number, column: offset - l.from + 1 }
     }
 
+    /** Current cursor (head) as a 1-based line/column. */
+    getCursor(): LineCol | null {
+        return this.getSelectionLineCol()?.pos ?? null
+    }
+
     /** Current cursor (head) and ordered selection range, or null if no document. */
     getSelectionLineCol(): { pos: LineCol; sel: LineColSelection } | null {
         const r = this.view.state.selection.main
@@ -292,6 +297,11 @@ export class CodeEditor {
 
     focus(): void {
         this.view.focus()
+    }
+
+    /** Monaco-compat no-op: CodeMirror reflows to its container automatically. */
+    layout(): void {
+        this.view.requestMeasure()
     }
 
     undo(): void {

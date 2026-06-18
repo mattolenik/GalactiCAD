@@ -565,7 +565,7 @@ export class DevToolsPanel extends HTMLElement {
             if (model) {
                 suite.push({
                     name,
-                    source: model.getValue(),
+                    source: model.doc.toString(),
                     camera: docSettings.camera,
                     preview: docSettings.preview,
                 })

@@ -1,6 +1,7 @@
-import * as monaco from "monaco-editor"
-import { fromEventPattern, Subscription } from "rxjs"
-import { bufferTime, debounceTime } from "rxjs/operators"
+import { Subject, Subscription } from "rxjs"
+import { debounceTime, filter } from "rxjs/operators"
+import type { EditorState } from "@codemirror/state"
+import type { CodeEditor } from "../editor/codemirror-editor.mjs"
 import { OrderedMap } from "../collections/orderedMap.mjs"
 import { SettingsManager } from "../storage/settings.mjs"
 import { addRecentDocument, db, setDocFileBacked } from "../storage/db.mjs"
@@ -20,10 +21,13 @@ const DEBOUNCE_FILE_BACKED_MS = 500
 
 export class DocumentTabs extends HTMLElement {
     #active?: string
-    #docs = new OrderedMap<string, monaco.editor.ITextModel>()
+    #docs = new OrderedMap<string, EditorState>()
     #fileHandles = new Map<string, FileSystemFileHandle>()
-    #editor: monaco.editor.IStandaloneCodeEditor
-    #subscriptions = new Map<string, Subscription>()
+    #editor: CodeEditor
+    /** Per-doc change events fan in here (keyed by name) to drive debounced persistence. */
+    #change$ = new Subject<string>()
+    #persistSubs: Subscription[] = []
+    #editorUnsubscribe: (() => void) | null = null
     #tabContainer: HTMLElement
     #topUntitledIndex: number = 0
     #lastWrittenContent = new Map<string, string>()
@@ -43,9 +47,8 @@ export class DocumentTabs extends HTMLElement {
     #dragOffsetY = 0
     #dragTabWidth = 0
     #dragTabHeight = 0
-    #cursorDisposable: monaco.IDisposable | null = null
 
-    constructor(editor: monaco.editor.IStandaloneCodeEditor) {
+    constructor(editor: CodeEditor) {
         super()
         this.#editor = editor
 
@@ -187,27 +190,41 @@ export class DocumentTabs extends HTMLElement {
 
         this.#renderTabs()
 
-        this.#cursorDisposable = editor.onDidChangeCursorSelection(() => {
-            const sel = editor.getSelection()
-            const pos = editor.getPosition()
-            if (sel && pos && this.#active) {
-                SettingsManager.instance.setCursorAndSelection(
-                    { line: pos.lineNumber, column: pos.column },
-                    { startLine: sel.startLineNumber, startColumn: sel.startColumn, endLine: sel.endLineNumber, endColumn: sel.endColumn }
-                )
+        // A single update listener replaces Monaco's per-model onDidChangeContent
+        // and the editor-wide onDidChangeCursorSelection. Content changes keep the
+        // active doc's stored state in sync and fan into debounced persistence;
+        // selection changes persist the cursor/selection to SettingsManager.
+        this.#editorUnsubscribe = editor.onUpdate(u => {
+            if (!this.#active) return
+            if (u.docChanged) {
+                this.#docs.set(this.#active, u.state)
+                this.#change$.next(this.#active)
+            }
+            if (u.selectionSet) {
+                const cur = editor.getSelectionLineCol()
+                if (cur) SettingsManager.instance.setCursorAndSelection(cur.pos, cur.sel)
             }
         })
+
+        // File-backed docs persist to IndexedDB; storage-backed docs save to Dexie.
+        // Branch on the current file-backed status at emit time (it can change via saveAs).
+        this.#persistSubs.push(
+            this.#change$
+                .pipe(filter(name => this.#fileHandles.has(name)), debounceTime(DEBOUNCE_FILE_BACKED_MS))
+                .subscribe(name => this.#persistFileBacked(name)),
+            this.#change$
+                .pipe(filter(name => !this.#fileHandles.has(name)), debounceTime(DEBOUNCE_SAVE_MS))
+                .subscribe(name => this.#persistStorage(name)),
+        )
     }
 
     disconnectedCallback() {
         this.#preDragAc?.abort()
         this.#dragAc?.abort()
-        this.#cursorDisposable?.dispose()
-        this.#cursorDisposable = null
-        for (const sub of this.#subscriptions.values()) {
-            sub.unsubscribe()
-        }
-        this.#subscriptions.clear()
+        this.#editorUnsubscribe?.()
+        this.#editorUnsubscribe = null
+        for (const sub of this.#persistSubs) sub.unsubscribe()
+        this.#persistSubs = []
     }
 
     /** Current active document name (if any) */
@@ -215,13 +232,13 @@ export class DocumentTabs extends HTMLElement {
         return this.#active
     }
 
-    /** Retrieve a model by filename */
-    getByName(name: string): monaco.editor.ITextModel | undefined {
+    /** Retrieve a document's editor state by filename */
+    getByName(name: string): EditorState | undefined {
         return this.#docs.get(name)
     }
 
-    /** All documents in insertion order */
-    get allDocuments(): Iterable<monaco.editor.ITextModel> {
+    /** All document states in insertion order */
+    get allDocuments(): Iterable<EditorState> {
         return this.#docs.values()
     }
 
@@ -238,9 +255,9 @@ export class DocumentTabs extends HTMLElement {
     /** Whether the given file-backed document has unsaved changes (content differs from last disk write). */
     isDirty(name: string): boolean {
         if (!this.#fileHandles.has(name)) return false
-        const model = this.#docs.get(name)
+        const state = this.#docs.get(name)
         const lastWritten = this.#lastWrittenContent.get(name)
-        return model !== undefined && lastWritten !== undefined && model.getValue() !== lastWritten
+        return state !== undefined && lastWritten !== undefined && state.doc.toString() !== lastWritten
     }
 
     /** Names of file-backed documents that have unsaved changes. */
@@ -340,16 +357,14 @@ export class DocumentTabs extends HTMLElement {
             lastWritten = resolved.lastWritten
             lastSyncWithDisk = resolved.lastSyncWithDisk
         }
-        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-        const model = monaco.editor.createModel(resolvedContent, "typescript", uri)
-        this.#docs.set(name, model)
+        this.#docs.set(name, this.#editor.createState(resolvedContent))
         if (handle) {
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, lastWritten)
             void db.docFiles.put({ name, handle })
             await setDocFileBacked(name, resolvedContent, lastWritten, undefined, lastSyncWithDisk)
         }
-        this.#watchModel(name, model)
+        this.#registerDoc(name)
         void this.switchTo(name)
         void this.#updateStoredOrder()
     }
@@ -386,10 +401,8 @@ export class DocumentTabs extends HTMLElement {
         }
         const row = await db.documents.get(name)
         if (!row) return
-        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-        const model = monaco.editor.createModel(row.content, "typescript", uri)
-        this.#docs.set(name, model)
-        this.#watchModel(name, model)
+        this.#docs.set(name, this.#editor.createState(row.content))
+        this.#registerDoc(name)
         await this.switchTo(name)
         await this.#updateStoredOrder()
     }
@@ -416,10 +429,8 @@ export class DocumentTabs extends HTMLElement {
             : defaultName
         if (!name) return undefined
 
-        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-        const model = monaco.editor.createModel(content, "typescript", uri)
-        this.#docs.set(name, model)
-        this.#watchModel(name, model)
+        this.#docs.set(name, this.#editor.createState(content))
+        this.#registerDoc(name)
         await this.switchTo(name)
         await this.#updateStoredOrder()
         return name
@@ -437,27 +448,22 @@ export class DocumentTabs extends HTMLElement {
     /** Load all .gcad files from a directory. Clears current docs. Persists the folder handle for restore on reload. */
     async loadFromFolder(dirHandle: FileSystemDirectoryHandle): Promise<void> {
         for (const name of Array.from(this.#docs.keys())) {
-            this.#subscriptions.get(name)?.unsubscribe()
-            this.#subscriptions.delete(name)
             this.#fileHandles.delete(name)
             this.#lastWrittenContent.delete(name)
-            this.#docs.get(name)?.dispose()
             this.#docs.delete(name)
         }
         this.#active = undefined
-        this.#editor.setModel(null!)
+        this.#editor.clear()
 
         const entries = await listGcadFileHandles(dirHandle)
         for (const { name, handle } of entries) {
             const resolved = await this.#resolveFileContent(name, handle)
-            const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-            const model = monaco.editor.createModel(resolved.content, "typescript", uri)
-            this.#docs.set(name, model)
+            this.#docs.set(name, this.#editor.createState(resolved.content))
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, resolved.lastWritten)
             await db.docFiles.put({ name, handle })
             await setDocFileBacked(name, resolved.content, resolved.lastWritten, undefined, resolved.lastSyncWithDisk)
-            this.#watchModel(name, model)
+            this.#registerDoc(name)
         }
         const first = this.#docs.keys().next().value
         if (first) await this.switchTo(first)
@@ -474,9 +480,9 @@ export class DocumentTabs extends HTMLElement {
     /** Write current content of a file-backed doc to disk. Handles external changes with overwrite/revert/cancel dialog. */
     async saveToDisk(name: string): Promise<boolean> {
         const handle = this.#fileHandles.get(name)
-        const model = this.#docs.get(name)
-        if (!handle || !model) return false
-        const editorContent = model.getValue()
+        const state = this.#docs.get(name)
+        if (!handle || !state) return false
+        const editorContent = state.doc.toString()
         try {
             const file = await handle.getFile()
             const diskContent = await file.text()
@@ -487,7 +493,7 @@ export class DocumentTabs extends HTMLElement {
                 const choice = await new FileConflictDialog(name).show()
                 if (choice === "cancel") return false
                 if (choice === "revert") {
-                    model.setValue(diskContent)
+                    this.#setDocText(name, diskContent)
                     this.#lastWrittenContent.set(name, diskContent)
                     await setDocFileBacked(name, diskContent, diskContent, undefined, file.lastModified)
                     this.#renderTabs()
@@ -512,15 +518,15 @@ export class DocumentTabs extends HTMLElement {
 
     /** Discard unsaved changes and reload from disk (file-backed) or IndexedDB (storage-backed). Returns true if reverted. */
     async revertTab(name: string): Promise<boolean> {
-        const model = this.#docs.get(name)
-        if (!model) return false
+        const state = this.#docs.get(name)
+        if (!state) return false
         let hasChanges = false
         if (this.#fileHandles.has(name)) {
             const lastWritten = this.#lastWrittenContent.get(name)
-            hasChanges = lastWritten !== undefined && model.getValue() !== lastWritten
+            hasChanges = lastWritten !== undefined && state.doc.toString() !== lastWritten
         } else {
             const row = await db.documents.get(name)
-            hasChanges = row != null && model.getValue() !== row.content
+            hasChanges = row != null && state.doc.toString() !== row.content
         }
         if (!hasChanges) return false
         const confirmed = await new YesNoDialog(`Discard unsaved changes to ${name}?`).show()
@@ -529,12 +535,12 @@ export class DocumentTabs extends HTMLElement {
             const handle = this.#fileHandles.get(name)!
             const file = await handle.getFile()
             const diskContent = await file.text()
-            model.setValue(diskContent)
+            this.#setDocText(name, diskContent)
             this.#lastWrittenContent.set(name, diskContent)
             await setDocFileBacked(name, diskContent, diskContent, undefined, file.lastModified)
         } else {
             const row = await db.documents.get(name)
-            if (row) model.setValue(row.content)
+            if (row) this.#setDocText(name, row.content)
         }
         this.#renderTabs()
         return true
@@ -542,9 +548,9 @@ export class DocumentTabs extends HTMLElement {
 
     /** Save current doc to a new file. Associates handle and converts to file-backed. Returns true if saved, false if user cancels. */
     async saveAs(name: string): Promise<boolean> {
-        const model = this.#docs.get(name)
-        if (!model) return false
-        const content = model.getValue()
+        const state = this.#docs.get(name)
+        if (!state) return false
+        const content = state.doc.toString()
         const handle = await saveAsGcad(name)
         if (!handle) return false
         await writeToFile(handle, content)
@@ -555,25 +561,21 @@ export class DocumentTabs extends HTMLElement {
         const oldIndex = Array.from(this.#docs.keys()).indexOf(name)
         const wasActive = this.#active === name
 
-        this.#subscriptions.get(name)?.unsubscribe()
-        this.#subscriptions.delete(name)
         this.#fileHandles.delete(name)
         this.#lastWrittenContent.delete(name)
-        this.#docs.get(name)?.dispose()
         this.#docs.delete(name)
         await db.documents.delete(name)
         await db.docFiles.delete(name)
 
         await SettingsManager.instance.renameDocument(name, newName)
 
-        const uri = monaco.Uri.parse(`inmemory://model/${newName}.ts`)
-        const newModel = monaco.editor.createModel(content, "typescript", uri)
-        this.#docs.set(newName, newModel)
+        const newState = this.#editor.createState(content)
+        this.#docs.set(newName, newState)
         this.#fileHandles.set(newName, handle)
         this.#lastWrittenContent.set(newName, content)
         await db.docFiles.put({ name: newName, handle })
         await setDocFileBacked(newName, content, content, Date.now(), Date.now())
-        this.#watchModel(newName, newModel)
+        this.#registerDoc(newName)
 
         if (oldIndex >= 0) {
             const newIndex = Array.from(this.#docs.keys()).indexOf(newName)
@@ -583,7 +585,7 @@ export class DocumentTabs extends HTMLElement {
         if (wasActive) {
             this.#active = newName
             await db.preferences.put({ key: "activeDocument", value: newName })
-            this.#editor.setModel(newModel)
+            this.#editor.setState(newState)
         }
 
         await this.#updateStoredOrder()
@@ -597,12 +599,8 @@ export class DocumentTabs extends HTMLElement {
     async restore(): Promise<boolean> {
         // clear existing
         for (const name of Array.from(this.#docs.keys())) {
-            const sub = this.#subscriptions.get(name)
-            if (sub) sub.unsubscribe()
-            this.#subscriptions.delete(name)
             this.#fileHandles.delete(name)
             this.#lastWrittenContent.delete(name)
-            this.#docs.get(name)?.dispose()
             this.#docs.delete(name)
         }
 
@@ -637,30 +635,24 @@ export class DocumentTabs extends HTMLElement {
                     if (fileHandle) {
                         const docRow = await db.documents.get(name)
                         const resolved = await this.#resolveFileContent(name, fileHandle, docRow)
-                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                        const model = monaco.editor.createModel(resolved.content, "typescript", uri)
-                        this.#docs.set(name, model)
+                        this.#docs.set(name, this.#editor.createState(resolved.content))
                         this.#fileHandles.set(name, fileHandle)
                         this.#lastWrittenContent.set(name, resolved.lastWritten)
                         await db.docFiles.put({ name, handle: fileHandle })
                         await setDocFileBacked(name, resolved.content, resolved.lastWritten, docRow?.lastWriteToDisk, resolved.lastSyncWithDisk)
-                        this.#watchModel(name, model)
+                        this.#registerDoc(name)
                     } else {
                         const docRow = await db.documents.get(name)
                         if (docRow) {
-                            const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                            const model = monaco.editor.createModel(docRow.content, "typescript", uri)
-                            this.#docs.set(name, model)
-                            this.#watchModel(name, model)
+                            this.#docs.set(name, this.#editor.createState(docRow.content))
+                            this.#registerDoc(name)
                         }
                     }
                 } catch {
                     const docRow = await db.documents.get(name)
                     if (docRow) {
-                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                        const model = monaco.editor.createModel(docRow.content, "typescript", uri)
-                        this.#docs.set(name, model)
-                        this.#watchModel(name, model)
+                        this.#docs.set(name, this.#editor.createState(docRow.content))
+                        this.#registerDoc(name)
                     }
                 }
             }
@@ -675,23 +667,19 @@ export class DocumentTabs extends HTMLElement {
         for (const name of storedOrder) {
             const docRow = await db.documents.get(name)
             if (docRow) {
-                const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                const model = monaco.editor.createModel(docRow.content, "typescript", uri)
-                this.#docs.set(name, model)
-                this.#watchModel(name, model)
+                this.#docs.set(name, this.#editor.createState(docRow.content))
+                this.#registerDoc(name)
             } else {
                 const docFileRow = await db.docFiles.get(name)
                 if (docFileRow?.handle) {
                     try {
                         const docRow = await db.documents.get(name)
                         const resolved = await this.#resolveFileContent(name, docFileRow.handle, docRow)
-                        const uri = monaco.Uri.parse(`inmemory://model/${name}.ts`)
-                        const model = monaco.editor.createModel(resolved.content, "typescript", uri)
-                        this.#docs.set(name, model)
+                        this.#docs.set(name, this.#editor.createState(resolved.content))
                         this.#fileHandles.set(name, docFileRow.handle)
                         this.#lastWrittenContent.set(name, resolved.lastWritten)
                         await setDocFileBacked(name, resolved.content, resolved.lastWritten, docRow?.lastWriteToDisk, resolved.lastSyncWithDisk)
-                        this.#watchModel(name, model)
+                        this.#registerDoc(name)
                     } catch {
                         // Handle may be stale (file moved/deleted)
                     }
@@ -709,31 +697,34 @@ export class DocumentTabs extends HTMLElement {
     }
 
     /** Observe model changes and save debounced. File-backed docs sync content to IndexedDB; storage-backed docs save to Dexie. */
-    #watchModel(name: string, model: monaco.editor.ITextModel) {
-        this.#subscriptions.get(name)?.unsubscribe()
-        const isFileBacked = this.#fileHandles.has(name)
-        const change$ = fromEventPattern<monaco.editor.IModelContentChangedEvent>(
-            handler => model.onDidChangeContent(handler),
-            (_handler, subscription) => (subscription as monaco.IDisposable).dispose()
-        )
-        const sub = isFileBacked
-            ? change$.pipe(debounceTime(DEBOUNCE_FILE_BACKED_MS)).subscribe(() => {
-                const content = model.getValue()
-                const lastWritten = this.#lastWrittenContent.get(name)
-                void db.documents.update(name, { content, lastWrittenContent: lastWritten })
-                this.#renderTabs()
-            })
-            : change$.pipe(bufferTime(DEBOUNCE_SAVE_MS)).subscribe(() => {
-                void db.documents.put({ name, content: model.getValue() })
-            })
-        this.#subscriptions.set(name, sub)
-        if (isFileBacked) {
-            const content = model.getValue()
-            const lastWritten = this.#lastWrittenContent.get(name)
-            void db.documents.update(name, { content, lastWrittenContent: lastWritten })
+    /** Persist a freshly-added/opened doc immediately so it lands in storage even without edits. */
+    #registerDoc(name: string): void {
+        if (this.#fileHandles.has(name)) this.#persistFileBacked(name)
+        else this.#persistStorage(name)
+    }
+
+    /** Replace a document's full text (revert / external reload), whether active or not. */
+    #setDocText(name: string, text: string): void {
+        if (name === this.#active) {
+            this.#editor.setValue(text)
+            this.#docs.set(name, this.#editor.view.state)
         } else {
-            void db.documents.put({ name, content: model.getValue() })
+            this.#docs.set(name, this.#editor.createState(text))
         }
+    }
+
+    #persistFileBacked(name: string): void {
+        const content = this.#docs.get(name)?.doc.toString()
+        if (content === undefined) return
+        const lastWritten = this.#lastWrittenContent.get(name)
+        void db.documents.update(name, { content, lastWrittenContent: lastWritten })
+        this.#renderTabs()
+    }
+
+    #persistStorage(name: string): void {
+        const content = this.#docs.get(name)?.doc.toString()
+        if (content === undefined) return
+        void db.documents.put({ name, content })
     }
 
     closeCurrentTab(): Promise<boolean> {
@@ -794,12 +785,8 @@ export class DocumentTabs extends HTMLElement {
 
     #doCloseTab(name: string): void {
         const wasActive = name === this.#active
-        const sub = this.#subscriptions.get(name)
-        if (sub) sub.unsubscribe()
-        this.#subscriptions.delete(name)
         this.#fileHandles.delete(name)
         this.#lastWrittenContent.delete(name)
-        this.#docs.get(name)?.dispose()
         this.#docs.delete(name)
         this.#renderTabs()
         void this.#updateStoredOrder()
@@ -810,7 +797,7 @@ export class DocumentTabs extends HTMLElement {
             else {
                 this.#active = undefined
                 this.dispatchEvent(new CustomEvent("activeTabChanged", { detail: undefined }))
-                this.#editor.setModel(null!)
+                this.#editor.clear()
                 this.#renderTabs()
             }
         }
@@ -841,10 +828,10 @@ export class DocumentTabs extends HTMLElement {
         if (!this.#active) return undefined
 
         await SettingsManager.instance.flushDocNow()
-        const model = this.#docs.get(this.#active)
-        if (!model) return undefined
+        const state = this.#docs.get(this.#active)
+        if (!state) return undefined
 
-        const content = model.getValue()
+        const content = state.doc.toString()
         const settings = await SettingsManager.instance.getDocumentSettings(this.#active)
 
         const newName = window.prompt("Name for duplicated scene", this.#active)?.trim()
@@ -855,10 +842,8 @@ export class DocumentTabs extends HTMLElement {
             return undefined
         }
 
-        const uri = monaco.Uri.parse(`inmemory://model/${newName}.ts`)
-        const newModel = monaco.editor.createModel(content, "typescript", uri)
-        this.#docs.set(newName, newModel)
-        this.#watchModel(newName, newModel)
+        this.#docs.set(newName, this.#editor.createState(content))
+        this.#registerDoc(newName)
         await db.docSettings.put({
             name: newName,
             settings: settings as unknown as Record<string, unknown>,
@@ -870,8 +855,8 @@ export class DocumentTabs extends HTMLElement {
 
     /** Rename a tab, prompting the user for a new name */
     async renameTab(oldName: string): Promise<boolean> {
-        const model = this.#docs.get(oldName)
-        if (!model) return false
+        const state = this.#docs.get(oldName)
+        if (!state) return false
 
         const newName = window.prompt("Enter new name for the scene", oldName)?.trim()
         if (!newName || newName === oldName) return false
@@ -915,12 +900,7 @@ export class DocumentTabs extends HTMLElement {
             }
         }
 
-        // Update subscription key and file handle
-        const sub = this.#subscriptions.get(oldName)
-        if (sub) {
-            this.#subscriptions.delete(oldName)
-            this.#subscriptions.set(newName, sub)
-        }
+        // Move file handle and dirty-tracking to the new name.
         const handle = this.#fileHandles.get(oldName)
         if (handle) {
             this.#fileHandles.delete(oldName)
@@ -931,9 +911,6 @@ export class DocumentTabs extends HTMLElement {
             this.#lastWrittenContent.delete(oldName)
             this.#lastWrittenContent.set(newName, lastWritten)
         }
-
-        // Re-watch model with new name for future saves
-        this.#watchModel(newName, model)
 
         // Update active tab if it was the renamed one
         if (this.#active === oldName) {
@@ -949,39 +926,23 @@ export class DocumentTabs extends HTMLElement {
     }
 
     async switchTo(name: string, save = false): Promise<void> {
-        const model = this.#docs.get(name)
-        if (!model) return
+        const state = this.#docs.get(name)
+        if (!state) return
 
-        // Save current doc's cursor and selection before switching (updates in-memory; switchDocument will flush)
-        const sel = this.#editor.getSelection()
-        const pos = this.#editor.getPosition()
-        if (sel && pos && this.#active) {
-            SettingsManager.instance.setCursorAndSelection(
-                { line: pos.lineNumber, column: pos.column },
-                { startLine: sel.startLineNumber, startColumn: sel.startColumn, endLine: sel.endLineNumber, endColumn: sel.endColumn }
-            )
+        // Save the outgoing doc's cursor/selection before switching (in-memory; switchDocument flushes).
+        if (this.#active && this.#active !== name) {
+            const cur = this.#editor.getSelectionLineCol()
+            if (cur) SettingsManager.instance.setCursorAndSelection(cur.pos, cur.sel)
         }
 
         this.#active = name
         await SettingsManager.instance.switchDocument(name)
-        this.#editor.setModel(model)
+        this.#editor.setState(state)
 
-        // Restore selection for new doc (clamp to valid range)
+        // Restore selection for the new doc (CodeEditor clamps to the valid range).
         const s = SettingsManager.instance.getSelection()
-        const lineCount = model.getLineCount()
-        const clampLine = (l: number) => Math.min(Math.max(1, l), lineCount)
-        const clampCol = (ln: number, c: number) => Math.min(Math.max(1, c), model.getLineMaxColumn(ln))
-        const startLine = clampLine(s.startLine)
-        const endLine = clampLine(s.endLine)
-        const startColumn = clampCol(startLine, s.startColumn)
-        const endColumn = clampCol(endLine, s.endColumn)
-        this.#editor.setSelection({
-            startLineNumber: startLine,
-            startColumn,
-            endLineNumber: endLine,
-            endColumn,
-        })
-        this.#editor.revealLineInCenterIfOutsideViewport(endLine)
+        this.#editor.setSelectionLineCol(s)
+        this.#editor.revealLineCenterIfOutside(s.endLine)
 
         this.#renderTabs()
         if (save) {

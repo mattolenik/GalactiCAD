@@ -1,7 +1,7 @@
 import "monaco-editor-env" // must run before monaco-editor so globalAPI is set for console access
 import * as monaco from "monaco-editor"
 import { CAD_TYPES_DECL } from "./scene/cad-types-decl.mjs"
-import { debounceTime, fromEventPattern } from "rxjs"
+import { debounceTime, Subject } from "rxjs"
 import type { Subscription } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
 import { MenuButton } from "./components/menu-button.mjs"
@@ -24,7 +24,8 @@ import type { CameraSettings, EditorSettings, ThemeMode } from "./storage/settin
 import type { MeshData } from "./export/export.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
-import { MonacoHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/monaco-highlighter.mjs"
+import { CadHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/cad-highlighter.mjs"
+import { CodeEditor } from "./editor/codemirror-editor.mjs"
 import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
 import { matchNodesToSource, PURE_CSG_TYPES } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
@@ -120,7 +121,7 @@ const MESH_UPDATE_DEBOUNCE_MS = 250
 const SELECTION_FEEDBACK_DELAY_MS = 50
 
 class App {
-    editor!: monaco.editor.IStandaloneCodeEditor
+    editor!: CodeEditor
     renderer!: SDFRenderer
     #tabs: DocumentTabs
     #mesh: MeshViewer | null = null
@@ -139,7 +140,7 @@ class App {
     #parsedCalls: ParsedShapeCall[] = []
     #parsedCallsWithRanges: [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }][] = []
     #sceneNodeMap: Map<number, NodeStub> = new Map()  // nodeId -> NodeStub for symbol lookup
-    #monacoHighlighter: MonacoHighlighter
+    #highlighter: CadHighlighter
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
     #pushPullBuildPending = false
     #pushPullUndoOpen = false
@@ -174,9 +175,8 @@ class App {
         let src = ""
         const wallStart = performance.now()
         try {
-            const model = this.editor.getModel()
-            if (!model) {
-                // No active model - don't try to build
+            if (!this.#tabs.active) {
+                // No active document - don't try to build
                 return
             }
             src = this.editor.getValue()
@@ -186,7 +186,7 @@ class App {
             const tParse0 = performance.now()
             const parsedCalls = this.#sourceParser.parseShapeCalls(src)
             const fluentLocations = this.#sourceParser.findFluentMethods(styleInfo.FluentMethods)
-            this.#monacoHighlighter.setFluentMethodDecorations(fluentLocations)
+            this.#highlighter.setFluentMethodDecorations(fluentLocations)
             const parseAndDecorateMs = Math.round((performance.now() - tParse0) * 100) / 100
 
             // Build the scene (uses cache when switching back to a tab with unchanged content).
@@ -197,7 +197,6 @@ class App {
             // Guard: user may have closed the tab or switched documents while build was in flight.
             // The renderer skips applying stale buildComplete, but we must not overwrite state here.
             if (documentName !== (this.#tabs.active ?? undefined)) return
-            if (this.editor.getModel() !== model) return
 
             const tPost0 = performance.now()
             // Get all scene nodes and build a map for quick lookup
@@ -223,9 +222,9 @@ class App {
                 if (survivors.length !== this.renderer.isolatedIds.length) this.#applyIsolation(survivors)
             }
             // Refresh the "over isolatable" context key against the rebuilt source map.
-            const isoPos = this.editor.getPosition()
+            const isoPos = this.editor.getCursor()
             this.#overIsolatableKey?.set(
-                isoPos ? this.#findIsolatableNodeIdAtPosition(isoPos.lineNumber, isoPos.column) !== null : false,
+                isoPos ? this.#findIsolatableNodeIdAtPosition(isoPos.line, isoPos.column) !== null : false,
             )
 
             this.renderer.startLoop()
@@ -283,7 +282,7 @@ class App {
             })
         }
 
-        this.#monacoHighlighter.setColorIndicators(indicators, getShapePalette(this.#effectiveTheme))
+        this.#highlighter.setColorIndicators(indicators, getShapePalette(this.#effectiveTheme))
     }
 
     /**
@@ -294,7 +293,7 @@ class App {
         const { primary, children } = this.renderer.getSelectionPrimaryAndChildIds()
 
         if (primary.length === 0 && children.length === 0) {
-            this.#monacoHighlighter.clearHighlighting()
+            this.#highlighter.clearHighlighting()
             return
         }
 
@@ -315,9 +314,9 @@ class App {
 
         if (primaryRanges.length > 0 || childRanges.length > 0) {
             const overviewRulerColor = this.#effectiveTheme === "dark" ? "#ffff00" : "#8b6914"
-            this.#monacoHighlighter.highlightRanges(primaryRanges, childRanges, overviewRulerColor)
+            this.#highlighter.highlightRanges(primaryRanges, childRanges, overviewRulerColor)
         } else {
-            this.#monacoHighlighter.clearHighlighting()
+            this.#highlighter.clearHighlighting()
         }
     }
 
@@ -353,8 +352,8 @@ class App {
         // isolatable symbol under the caret, else the last isolated survivors.
         const selected = this.renderer.selectedObjectIds.filter(id => this.#sceneNodeMap.has(id))
         if (selected.length > 0) return selected
-        const pos = this.editor.getPosition()
-        const atCursor = pos ? this.#findIsolatableNodeIdAtPosition(pos.lineNumber, pos.column) : null
+        const pos = this.editor.getCursor()
+        const atCursor = pos ? this.#findIsolatableNodeIdAtPosition(pos.line, pos.column) : null
         if (atCursor) return [atCursor]
         const survivors = this.#lastIsolatedIds.filter(id => this.#sceneNodeMap.has(id))
         return survivors
@@ -447,15 +446,10 @@ class App {
      * Try to open the polygon editor at the given source position.
      * Returns true if opened (polygon2d call found and editor opened).
      */
-    #tryOpenPolygonEditor(line: number, column: number): boolean {
-        const model = this.editor.getModel()
-        if (!model) return false
-        const src = model.getValue()
-        const cached = this.#sourceParser.getCachedSourceFile(src)
-        const info = this.#sourceParser.findPolygon2DAtPosition(src, line, column, cached ?? undefined)
-        if (!info) return false
-        this.#openPolygonEditor(info, model)
-        return true
+    #tryOpenPolygonEditor(_line: number, _column: number): boolean {
+        // TODO(step 4 — source mutations): re-enable polygon editing once edits run
+        // through CodeEditor/EditorState instead of a Monaco ITextModel.
+        return false
     }
 
     /**
@@ -472,69 +466,18 @@ class App {
      * Handle push/pull completion: update the polygon2d vertex array in the source code.
      * The nodeId is the Polygon2D child node ID — look up its source location and replace the vertex array.
      */
-    #handlePushPullComplete(nodeId: number, vertices: [number, number][]) {
-        const location = this.#sourceLocationMap.get(nodeId)
-        if (!location || location.functionName !== "polygon2d") return
-
-        const model = this.editor.getModel()
-        if (!model) return
-
-        const src = model.getValue()
-        const cached = this.#sourceParser.getCachedSourceFile(src)
-        const info = this.#sourceParser.findPolygon2DAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
-        if (!info) return
-
-        if (!this.#pushPullUndoOpen) {
-            model.pushStackElement()
-            this.#pushPullUndoOpen = true
-        }
-        applyVertexUpdates(model, info, vertices, true)
+    #handlePushPullComplete(_nodeId: number, _vertices: [number, number][]) {
+        // TODO(step 4 — source mutations): write the polygon2d vertex array back to
+        // source via CodeEditor dispatch (was applyVertexUpdates on a Monaco model).
     }
 
     /**
      * Handle cap push/pull completion: update the extrude/loft h value and position in source code.
      * nodeId is the Extrude or Loft node ID.
      */
-    #handleCapPullComplete(nodeId: number, newH: number, newPosY: number) {
-        const location = this.#sourceLocationMap.get(nodeId)
-        if (!location || (location.functionName !== "extrude" && location.functionName !== "loft" && location.functionName !== "threaded_rod")) return
-
-        const model = this.editor.getModel()
-        if (!model) return
-
-        const src = model.getValue()
-        this.#sourceParser.parseShapeCalls(src)
-        const cached = this.#sourceParser.getCachedSourceFile(src)
-        const info =
-            location.functionName === "threaded_rod"
-                ? this.#sourceParser.findThreadedRodAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
-                : this.#sourceParser.findExtrudeLoftAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
-        if (!info) return
-
-        if (!this.#pushPullUndoOpen) {
-            model.pushStackElement()
-            this.#pushPullUndoOpen = true
-        }
-        const node = this.#sceneNodeMap.get(nodeId) as ExtrudeLikeNode | undefined
-        applyExtrudeLoftCapUpdates(model, info, newH, newPosY, node, true)
-
-        // Re-parse source locations so subsequent drags find correct offsets.
-        const updatedSrc = model.getValue()
-        const parsedCalls = this.#sourceParser.parseShapeCalls(updatedSrc)
-        this.#parsedCalls = parsedCalls
-        this.#parsedCallsWithRanges = parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }])
-        const prevMap = this.#sourceLocationMap
-        this.#sourceLocationMap = matchNodesToSource(
-            Array.from(this.#sceneNodeMap.values()),
-            parsedCalls,
-        )
-        // Preserve polygon2d entries that failed to match due to stale sceneNodeMap
-        // (e.g. polygon push/pull + cap pull in same debounce window).
-        for (const [nodeId, location] of prevMap.entries()) {
-            if (location.functionName === "polygon2d" && !this.#sourceLocationMap.has(nodeId)) {
-                this.#sourceLocationMap.set(nodeId, location)
-            }
-        }
+    #handleCapPullComplete(_nodeId: number, _newH: number, _newPosY: number) {
+        // TODO(step 4 — source mutations): write extrude/loft cap (h + position) back
+        // to source via CodeEditor dispatch (was applyExtrudeLoftCapUpdates on a model).
     }
 
     /**
@@ -544,31 +487,8 @@ class App {
      * using AST containment rather than node matching (which is unreliable for composites).
      */
     #handleEditorSelection() {
-        if (this.#isUpdatingFromPreview) return
-
-        const selection = this.editor.getSelection()
-        if (!selection || selection.isEmpty()) return
-
-        const clickedCall = this.#findParsedCallForSelection(selection)
-        if (!clickedCall) return
-
-        if (PURE_CSG_TYPES.has(clickedCall.functionName)) {
-            // Variable-tracing: resolve logical leaf calls through variable references
-            const leafCalls = this.#sourceParser.resolveLogicalLeafCalls(clickedCall)
-            const leafIds = this.#getNodeIdsForCalls(leafCalls)
-            const idsWithRoot = this.renderer.getSelectionIdsWithRoot(leafIds)
-            this.renderer.setSelection(idsWithRoot)
-            this.#updateEditorHighlighting()
-            return
-        }
-
-        // For primitives and rendering composites (extrude, loft, etc.), use direct match
-        const nodeId = this.#findNodeIdForSelection(selection)
-        if (nodeId !== null) {
-            const node = this.#sceneNodeMap.get(nodeId)
-            this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [nodeId]) : [nodeId])
-            this.#updateEditorHighlighting()
-        }
+        // TODO(step 4 — selection sync): re-enable editor→3D selection once the CM6
+        // selection/mouse events are wired (was driven by Monaco onDidChangeCursorSelection).
     }
 
     /**
@@ -630,7 +550,7 @@ class App {
 
         this.#setupEditorPanel(editorContainer)
         this.#sourceParser = new SourceParser()
-        this.#monacoHighlighter = new MonacoHighlighter()
+        this.#highlighter = new CadHighlighter()
 
         const existingMesh = document.getElementById("mesh")
         if (existingMesh) existingMesh.remove()
@@ -640,10 +560,7 @@ class App {
         this.#tabs = new DocumentTabs(this.editor)
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
-        installDevActiveSceneSourceGetter(() => {
-            const model = this.editor.getModel()
-            return model ? model.getValue() : ""
-        })
+        installDevActiveSceneSourceGetter(() => this.editor.getValue())
 
         this.#injectStyles()
         const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)
@@ -686,10 +603,11 @@ class App {
                 this.#wireGlobalUndoRedo()
                 this.#wireMenu(menu)
                 this.#wireSaveShortcut()
-                fromEventPattern<monaco.editor.IModelContentChangedEvent>(
-                    h => this.editor.onDidChangeModelContent(h),
-                    (_, disp) => disp.dispose()
-                )
+                const docChange$ = new Subject<void>()
+                this.editor.onUpdate(u => {
+                    if (u.docChanged) docChange$.next()
+                })
+                docChange$
                     .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
                     .subscribe(() => {
                         if (this.renderer.isPushPullActive) {
@@ -728,113 +646,19 @@ class App {
         editorContainer.insertBefore(codeDiv, this.log)
         editorContainer.appendChild(this.log)
 
-        const cadCompilerOptions: monaco.typescript.CompilerOptions = {
-            target: monaco.typescript.ScriptTarget.ESNext,
-            strict: false,
-            noImplicitAny: false,
-            noUnusedLocals: false,
-            noUnusedParameters: false,
-            allowUnreachableCode: true,
-            module: monaco.typescript.ModuleKind.None,
-            // Omit default "dom" lib so tab completion isn't flooded with DOM junk
-            lib: ["esnext"],
-        }
-        monaco.typescript.typescriptDefaults.setCompilerOptions(cadCompilerOptions)
-        monaco.typescript.javascriptDefaults.setCompilerOptions(cadCompilerOptions)
-        monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
-            noSemanticValidation: false,
-            noSyntaxValidation: false,
-            diagnosticCodesToIgnore: [1108],
-        })
-        monaco.typescript.typescriptDefaults.addExtraLib(CAD_TYPES_DECL, "file:///cad-api.d.ts")
-        initCadDocumentHighlights()
-
-        monaco.editor.defineTheme("galacticad-dark", GALACTICAD_DARK_THEME)
-        monaco.editor.defineTheme("galacticad-light", GALACTICAD_LIGHT_THEME)
+        // The TypeScript language service (compiler options, diagnostics, the CAD
+        // ambient .d.ts via addExtraLib, and the custom document-highlight provider)
+        // is reintroduced in the "TS language service" migration step via a worker.
         const editorOpts = this.#settings.getGlobal().app.editor
-        this.editor = monaco.editor.create(codeDiv, {
-            "semanticHighlighting.enabled": true,
-            occurrencesHighlight: "off",
-            selectionHighlight: false,
-            autoClosingBrackets: "beforeWhitespace",
-            autoClosingDelete: "always",
-            autoClosingOvertype: "always",
-            autoClosingQuotes: "beforeWhitespace",
-            autoIndent: "advanced",
-            automaticLayout: true,
-            colorDecorators: true,
-            colorDecoratorsActivatedOn: "click",
-            copyWithSyntaxHighlighting: false,
-            detectIndentation: true,
-            folding: editorOpts.folding,
-            fontFamily: "FiraCode",
-            fontLigatures: true,
-            fontSize: editorOpts.fontSize,
-            fontVariations: true,
-            formatOnPaste: true,
-            formatOnType: false,
-            language: "typescript",
-            lineNumbers: editorOpts.lineNumbers,
-            minimap: { enabled: editorOpts.minimap },
-            model: null,
-            renderWhitespace: editorOpts.renderWhitespace,
-            scrollBeyondLastLine: false,
-            showFoldingControls: "always",
-            showUnused: true,
-            stickyTabStops: true,
-            tabSize: editorOpts.tabSize,
-            useTabStops: true,
-            wordWrap: editorOpts.wordWrap,
-            wrappingIndent: "indent",
-            wrappingStrategy: "advanced",
-        })
+        const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)
+        this.editor = new CodeEditor(codeDiv, editorOpts, initialTheme)
     }
 
     #setupEditorActions() {
-        this.editor.addAction({
-            id: "galacticad.editPolygon",
-            label: "Edit polygon",
-            contextMenuGroupId: "0_shapes",
-            contextMenuOrder: 0,
-            run: (ed) => {
-                const pos = ed.getPosition()
-                if (!pos) return
-                this.#tryOpenPolygonEditor(pos.lineNumber, pos.column)
-            },
-        })
-
-        // "View Isolated": shown only when the caret is over an isolatable symbol.
-        // Right-click moves the caret first, so the context key is fresh when the menu opens.
-        this.#overIsolatableKey = this.editor.createContextKey<boolean>("galacticad.overIsolatable", false)
-        this.editor.onDidChangeCursorPosition((e) => {
-            this.#overIsolatableKey?.set(
-                this.#findIsolatableNodeIdAtPosition(e.position.lineNumber, e.position.column) !== null,
-            )
-        })
-        this.editor.addAction({
-            id: "galacticad.viewIsolated",
-            label: "View Isolated",
-            contextMenuGroupId: "0_shapes",
-            contextMenuOrder: 0.5,
-            precondition: "galacticad.overIsolatable",
-            run: (ed) => {
-                const pos = ed.getPosition()
-                if (!pos) return
-                const id = this.#findIsolatableNodeIdAtPosition(pos.lineNumber, pos.column)
-                if (id) this.#applyIsolation([id])
-            },
-        })
-
-        addContextSubmenu(this.editor, {
-            title: "Insert shape",
-            group: "0_shapes",
-            order: 1,
-            actions: SHAPE_INSERTIONS.map(({ id, label, varBase, call }) => ({
-                id,
-                label,
-                run: (ed: monaco.editor.IStandaloneCodeEditor) => insertShapeDeclaration(ed, varBase, call),
-            })),
-        })
+        // TODO(step 5 — custom context menu): re-add "Edit polygon" / "View Isolated" /
+        // "Insert shape" as a custom DOM context menu. Monaco's addAction + the
+        // internal-API submenu (context-menu-submenu.mts) and createContextKey gating
+        // have no CM6 equivalent; the overIsolatable check moves to app-side state.
     }
 
     #resolveAnchor(): string | null {
@@ -966,7 +790,7 @@ class App {
         for (const [key, value] of Object.entries(palette)) {
             root.style.setProperty(key, value)
         }
-        monaco.editor.setTheme(effective === "dark" ? "galacticad-dark" : "galacticad-light")
+        this.editor.setTheme(effective)
         this.#tabs.style.setProperty("--active-bg", palette[__active_bg])
         this.renderer?.setShapePalette(getShapePalette(effective))
         this.renderer?.setSelectionStyles(getSelectionStylesForTheme(effective))
@@ -1096,10 +920,7 @@ class App {
 
         const narrowMedia = window.matchMedia("(max-width: 600px)")
         const updateLineNumbers = () => {
-            const preferred = this.#settings.getGlobal().app.editor.lineNumbers
-            this.editor.updateOptions({
-                lineNumbers: narrowMedia.matches ? "off" : preferred,
-            })
+            this.editor.setLineNumbersForcedOff(narrowMedia.matches)
         }
         narrowMedia.addEventListener("change", updateLineNumbers)
         updateLineNumbers()
@@ -1118,7 +939,7 @@ class App {
         preview.setThemeMode(this.#settings.getGlobal().app.theme)
         preview.onThemeCycle = () => this.#cycleTheme()
 
-        this.#monacoHighlighter.setEditor(this.editor)
+        this.#highlighter.setEditor(this.editor)
 
         this.renderer.selectionChange$.subscribe(() => {
             this.#isUpdatingFromPreview = true
@@ -1188,61 +1009,9 @@ class App {
                 showPolygonMenu(loc, clientX, clientY)
             }
         })
-        const CONTEXT_MENU_DELAY_MS = 350
-        const scheduleOrShowMonaco = (key: string, loc: SourceLocation, clientX: number, clientY: number) => {
-            if (key !== this.#contextMenuLastKey) {
-                if (this.#contextMenuShowTimer) clearTimeout(this.#contextMenuShowTimer)
-                this.#contextMenuLastKey = key
-                this.#contextMenuShowTimer = window.setTimeout(() => {
-                    this.#contextMenuShowTimer = null
-                    showPolygonMenu(loc, clientX, clientY)
-                }, CONTEXT_MENU_DELAY_MS)
-            }
-        }
-        const cancelMonacoHover = () => {
-            if (this.#contextMenuShowTimer) {
-                clearTimeout(this.#contextMenuShowTimer)
-                this.#contextMenuShowTimer = null
-            }
-            this.#contextMenuLastKey = null
-            if (this.#contextMenu?.visible) return
-            this.#contextMenu?.hide()
-        }
-        const cancelMonacoHoverForRightClick = () => {
-            if (this.#contextMenuShowTimer) {
-                clearTimeout(this.#contextMenuShowTimer)
-                this.#contextMenuShowTimer = null
-            }
-            this.#contextMenuLastKey = null
-            this.#contextMenu?.hide()
-        }
-        const editorDom = this.editor.getDomNode()
-        const onEditorContextMenu = () => cancelMonacoHoverForRightClick()
-        editorDom?.addEventListener("contextmenu", onEditorContextMenu)
-        const moveDispose = this.editor.onMouseMove(e => {
-            if (e.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) {
-                cancelMonacoHover()
-                return
-            }
-            const pos = e.target.position
-            if (!pos) {
-                cancelMonacoHover()
-                return
-            }
-            const call = this.#findParsedCallAtPosition(pos.lineNumber, pos.column)
-            if (call?.functionName === "polygon2d" && call.location) {
-                const be = e.event.browserEvent
-                scheduleOrShowMonaco(`monaco-${call.location.startLine}-${call.location.startColumn}`, call.location, be.clientX, be.clientY)
-            } else {
-                cancelMonacoHover()
-            }
-        })
-        this.#contextMenuEditorMoveDispose = {
-            dispose: () => {
-                moveDispose.dispose()
-                editorDom?.removeEventListener("contextmenu", onEditorContextMenu)
-            },
-        }
+        // TODO(step 5 — custom context menu): re-add the editor-hover "Edit Polygon"
+        // menu for polygon2d calls. It relied on Monaco onMouseMove + getDomNode +
+        // MouseTargetType; CM6 needs domEventHandlers + view.posAtCoords.
 
         this.renderer.pushPullComplete$.subscribe(({ nodeId, vertices }) => {
             this.#handlePushPullComplete(nodeId, vertices)
@@ -1254,7 +1023,7 @@ class App {
 
         this.renderer.pushPullExit$.subscribe(() => {
             if (this.#pushPullUndoOpen) {
-                this.editor.getModel()?.pushStackElement()
+                // TODO(step 4 — source mutations): close the undo group via CodeEditor history.
                 this.#pushPullUndoOpen = false
             }
             if (this.#pushPullBuildPending) {
@@ -1263,13 +1032,8 @@ class App {
             }
         })
 
-        this.editor.onDidChangeCursorSelection(() => {
-            this.#handleEditorSelection()
-        })
-
-        this.editor.onMouseDown((e) => {
-            this.#handleEditorMouseDown(e)
-        })
+        // TODO(step 4 — selection sync): wire editor→3D selection and editor mouse-down
+        // shape selection via CM6 updateListener + domEventHandlers + view.posAtCoords.
 
         xrayCheckbox.checked = this.renderer.xrayMode
         xrayCheckbox.onChange = (enabled) => {
@@ -1390,7 +1154,7 @@ class App {
             if (!this.#meshViewerEnabled || !this.#mesh) return
             const m = this.#tabs.active ? this.#tabs.getByName(this.#tabs.active) : null
             if (!m) return
-            this.#scheduleMeshUpdate(m.getValue())
+            this.#scheduleMeshUpdate(m.doc.toString())
         }
         devTools.onMeshExporterChange = remeshIfMeshViewerOn
         devTools.onIsoSimplicialTuningChange = remeshIfMeshViewerOn
@@ -1415,7 +1179,7 @@ class App {
             const pos = this.renderer.controls.cameraPosition
             return {
                 name: active,
-                source: model.getValue(),
+                source: model.doc.toString(),
                 camera: {
                     position: [pos.x, pos.y, pos.z],
                     translation: [state.translation.x, state.translation.y, state.translation.z],
@@ -1482,7 +1246,7 @@ class App {
                     history.pushState(null, "", url)
                 }
             }
-            this.#monacoHighlighter.clearHighlighting()
+            this.#highlighter.clearHighlighting()
             if (name !== undefined) {
                 requestAnimationFrame(() => {
                     void this.build()
@@ -1525,7 +1289,8 @@ class App {
             if (e.key.toLowerCase() !== "z") return
 
             e.preventDefault()
-            this.editor.trigger("keyboard", e.shiftKey ? "redo" : "undo", null)
+            if (e.shiftKey) this.editor.redo()
+            else this.editor.undo()
         })
     }
 
@@ -1669,15 +1434,8 @@ class App {
             settings => {
                 this.#settings.updateGlobal({ app: { editor: settings } })
                 const narrow = window.matchMedia("(max-width: 600px)").matches
-                this.editor.updateOptions({
-                    lineNumbers: narrow ? "off" : settings.lineNumbers,
-                    wordWrap: settings.wordWrap,
-                    minimap: { enabled: settings.minimap },
-                    fontSize: settings.fontSize,
-                    renderWhitespace: settings.renderWhitespace,
-                    folding: settings.folding,
-                    tabSize: settings.tabSize,
-                })
+                this.editor.setOptions(settings)
+                this.editor.setLineNumbersForcedOff(narrow)
             }
         )
         await modal.show()
@@ -1827,7 +1585,7 @@ class App {
         const viewportWidth = canvasRect.width > 0 ? Math.round(canvasRect.width) : undefined
         const viewportHeight = canvasRect.height > 0 ? Math.round(canvasRect.height) : undefined
         return buildAgentTestcase({
-            sourceUtf8: model.getValue(),
+            sourceUtf8: model.doc.toString(),
             camera: {
                 position: [pos.x, pos.y, pos.z],
                 translation: [state.translation.x, state.translation.y, state.translation.z],

@@ -206,7 +206,8 @@ class App {
             this.#updateColorIndicators()
 
             this.renderer.startLoop()
-            this.#scheduleMeshUpdate(src)
+            // Mesh export no longer auto-runs on scene build; use the dev-tools
+            // "Re-export mesh" button to refresh the mesh viewer.
             this.log.innerText = ""
             this.log.classList.remove("has-error")
 
@@ -1235,22 +1236,15 @@ class App {
         devTools.syncSfccTuningFromSettings(this.#settings.getSfccTuning())
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getMdcExportLevers())
-        // Re-mesh live when the mesh exporter or any exporter tuning knob
-        // changes, so the mesh viewer reflects edits immediately. The
-        // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
-        const remeshIfMeshViewerOn = () => {
+        // Mesh export is MANUAL: the dev-tools "Re-export mesh" button re-runs the
+        // export with the current scene + tuning. It no longer auto-runs on scene
+        // edits or per-knob tuning changes (meshing — especially SFCC — is expensive).
+        devTools.onReExportRequest = () => {
             if (!this.#meshViewerEnabled || !this.#mesh) return
             const m = this.#tabs.active ? this.#tabs.getByName(this.#tabs.active) : null
             if (!m) return
             this.#scheduleMeshUpdate(m.getValue())
         }
-        devTools.onMeshExporterChange = remeshIfMeshViewerOn
-        devTools.onIsoSimplicialTuningChange = remeshIfMeshViewerOn
-        devTools.onShrecTuningChange = remeshIfMeshViewerOn
-        devTools.onFlexiCubesTuningChange = remeshIfMeshViewerOn
-        devTools.onSfccTuningChange = remeshIfMeshViewerOn
-        devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
-        devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getDebugLogModules())
         devTools.onDebugLogModulesChange = () => {

@@ -75,6 +75,9 @@ export class DevToolsPanel extends HTMLElement {
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
     onMeshExporterChange?: (exporter: ExporterKind) => void
+    /** Manual mesh re-export request (the "Re-export mesh" button). Mesh export no
+     * longer auto-runs on scene edits or tuning changes — this is the only trigger. */
+    onReExportRequest?: () => void
     onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
     onMeshViewerOverlayChange?: (settings: GlobalSettings["meshViewer"]) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
@@ -365,9 +368,17 @@ export class DevToolsPanel extends HTMLElement {
             return wrap
         }
 
+        const reExportButton = document.createElement("button")
+        reExportButton.textContent = "Re-export mesh"
+        reExportButton.title =
+            "Re-run the mesh export with the current scene + tuning and update the mesh viewer. " +
+            "Mesh export no longer runs automatically on scene edits or tuning changes."
+        reExportButton.addEventListener("click", () => this.onReExportRequest?.())
+
         const meshExportSection = mkSection(
             "Mesh export",
             DEVTOOLS_COLLAPSE.panelMeshExport,
+            reExportButton,
             this.#exporterSelect,
             mkNested("MDC mesh export", DEVTOOLS_COLLAPSE.panelMeshExportMdc, this.#mdcExportSection),
             mkNested("SHREC export", DEVTOOLS_COLLAPSE.panelMeshExportShrec, this.#shrecExportSection),

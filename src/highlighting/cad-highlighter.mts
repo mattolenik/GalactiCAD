@@ -72,17 +72,21 @@ const fluentField = decoField(setFluent)
 /** The extension installed into the editor (all three decoration layers). */
 const decorationsExtension: Extension = [indicatorsField, selectionField, fluentField]
 
+/** Stable class on every shape-icon widget (used to detect "hovering the symbol"). */
+export const SHAPE_ICON_CLASS = "cad-shape-icon"
+
 /** Leading shape icon, rendered as a widget so the caret sits to its left. */
 class IconWidget extends WidgetType {
-    constructor(readonly iconClass: string) {
+    constructor(readonly iconClass: string, readonly nodeId: number) {
         super()
     }
     override eq(other: IconWidget): boolean {
-        return other.iconClass === this.iconClass
+        return other.iconClass === this.iconClass && other.nodeId === this.nodeId
     }
     override toDOM(): HTMLElement {
         const span = document.createElement("span")
-        span.className = this.iconClass
+        span.className = `${SHAPE_ICON_CLASS} ${this.iconClass}`
+        span.dataset.nodeId = String(this.nodeId)
         span.setAttribute("aria-hidden", "true")
         return span
     }
@@ -182,7 +186,7 @@ export class CadHighlighter {
             const to = this.#offset(doc, indicator.endLine, indicator.endColumn)
             const out = []
             // Leading icon before the name (side -1 → caret sits left of the icon).
-            out.push(Decoration.widget({ widget: new IconWidget(iconClass), side: -1 }).range(from))
+            out.push(Decoration.widget({ widget: new IconWidget(iconClass, indicator.nodeId), side: -1 }).range(from))
             if (to > from) out.push(Decoration.mark({ class: textClass }).range(from, to))
             return out
         })

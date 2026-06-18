@@ -16,11 +16,28 @@
  */
 
 import type { Extension } from "@codemirror/state"
+import { EditorView, hoverTooltip } from "@codemirror/view"
 import { javascriptLanguage } from "@codemirror/lang-javascript"
-import { tsAutocompleteWorker, tsFacetWorker, tsHoverWorker, tsLinterWorker } from "@valtown/codemirror-ts"
+import { tsAutocompleteWorker, tsFacetWorker, tsLinterWorker } from "@valtown/codemirror-ts"
 import type { WorkerShape } from "@valtown/codemirror-ts/worker"
 import * as Comlink from "comlink"
 import { CAD_DOC_PATH, DIAGNOSTIC_CODES_TO_IGNORE } from "./ts-shared.mjs"
+import { SHAPE_ICON_CLASS } from "../highlighting/cad-highlighter.mjs"
+
+/** Minimal quick-info renderer (mirrors @valtown/codemirror-ts's defaultRenderer,
+ *  which isn't exported from the package root). */
+interface QuickInfoLike {
+    quickInfo?: { displayParts?: { kind: string; text: string }[] }
+}
+function renderHoverTooltip(info: QuickInfoLike): { dom: HTMLElement } {
+    const div = document.createElement("div")
+    for (const part of info.quickInfo?.displayParts ?? []) {
+        const span = div.appendChild(document.createElement("span"))
+        span.className = `quick-info-${part.kind}`
+        span.innerText = part.text
+    }
+    return { dom: div }
+}
 
 export interface CadTsLanguage {
     extension: Extension
@@ -45,11 +62,43 @@ export function createCadTsLanguageExtension(): CadTsLanguage {
         void whenReady.then(() => worker.updateFile({ path: CAD_DOC_PATH, code }))
     }
 
+    // The shape-icon widgets sit at the same offset as the function name, so the
+    // TS hover would otherwise fire when hovering an icon. Track whether the pointer
+    // is over an icon and suppress the definition tooltip there — the icon's only
+    // popup is the custom "Edit polygon" menu (app.mts).
+    let pointerOverShapeIcon = false
+    const trackIconHover = EditorView.domEventHandlers({
+        mousemove(e) {
+            const t = e.target as HTMLElement | null
+            pointerOverShapeIcon = !!t?.closest?.("." + SHAPE_ICON_CLASS)
+            return false
+        },
+        mouseleave() {
+            pointerOverShapeIcon = false
+            return false
+        },
+    })
+
+    // Reimplements @valtown/codemirror-ts's tsHoverWorker with the icon guard.
+    const tsHover = hoverTooltip(async (view, pos) => {
+        if (pointerOverShapeIcon) return null
+        const config = view.state.facet(tsFacetWorker)
+        if (!config) return null
+        const hoverData = await config.worker.getHover({ path: config.path, pos })
+        if (!hoverData) return null
+        return {
+            pos: hoverData.start,
+            end: hoverData.end,
+            create: () => renderHoverTooltip(hoverData as QuickInfoLike),
+        }
+    })
+
     const extension: Extension = [
         tsFacetWorker.of({ worker, path: CAD_DOC_PATH }),
         tsLinterWorker({ diagnosticCodesToIgnore: DIAGNOSTIC_CODES_TO_IGNORE }),
         javascriptLanguage.data.of({ autocomplete: tsAutocompleteWorker() }),
-        tsHoverWorker(),
+        trackIconHover,
+        tsHover,
     ]
     return { extension, sync, whenReady }
 }

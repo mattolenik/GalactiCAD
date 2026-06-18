@@ -24,7 +24,7 @@ import type { CameraSettings, EditorSettings, ThemeMode } from "./storage/settin
 import type { MeshData } from "./export/export.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
-import { CadHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/cad-highlighter.mjs"
+import { CadHighlighter, SHAPE_ICON_CLASS, type HighlightRange, type ShapeIndicator } from "./highlighting/cad-highlighter.mjs"
 import { CodeEditor } from "./editor/codemirror-editor.mjs"
 import { createCadTsLanguageExtension } from "./editor/ts-language.mjs"
 import { forceLinting } from "@codemirror/lint"
@@ -1149,14 +1149,17 @@ class App {
             this.#contextMenu?.showAt(e.clientX, e.clientY)
         }
         const onEditorMouseMove = (e: MouseEvent) => {
-            const lc = this.editor.coordsToLineCol(e.clientX, e.clientY)
-            if (!lc) {
+            // The "Edit polygon" popup is tied to the visual shape icon (the widget),
+            // not the operator/shape text. Only fire when hovering an icon element.
+            const iconEl = (e.target as HTMLElement | null)?.closest?.("." + SHAPE_ICON_CLASS) as HTMLElement | null
+            if (!iconEl) {
                 cancelEditorHover()
                 return
             }
-            const call = this.#findParsedCallAtPosition(lc.line, lc.column)
-            if (call?.functionName === "polygon2d" && call.location) {
-                scheduleOrShowEditorMenu(`editor-${call.location.startLine}-${call.location.startColumn}`, call.location, e.clientX, e.clientY)
+            const nodeId = Number(iconEl.dataset.nodeId)
+            const loc = Number.isFinite(nodeId) ? this.#sourceLocationMap.get(nodeId) : undefined
+            if (loc?.functionName === "polygon2d") {
+                scheduleOrShowEditorMenu(`editor-${loc.startLine}-${loc.startColumn}`, loc, e.clientX, e.clientY)
             } else {
                 cancelEditorHover()
             }

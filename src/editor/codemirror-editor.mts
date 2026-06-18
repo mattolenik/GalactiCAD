@@ -99,6 +99,9 @@ export class CodeEditor {
     /** Current language-service extension (TS service); reapplied on every setState. */
     #languageServiceExt: Extension = []
 
+    /** Current decorations extension (shape/selection highlights); reapplied on every setState. */
+    #decorationsExt: Extension = []
+
     /** Current option values, used so newly-created and swapped-in states match. */
     #opts: EditorSettings
     #theme: ThemeName
@@ -131,7 +134,7 @@ export class CodeEditor {
             // language-service compartment layers completion/hover/lint on top.
             javascript({ typescript: true }),
             this.#cLanguage.of(this.#languageServiceExt),
-            this.#cDecorations.of([]),
+            this.#cDecorations.of(this.#decorationsExt),
 
             // Core editing behavior.
             history(),
@@ -178,6 +181,7 @@ export class CodeEditor {
             this.#cFont.reconfigure(fontExt(this.#opts.fontSize)),
             this.#cTheme.reconfigure(editorThemeExtension(this.#theme)),
             this.#cLanguage.reconfigure(this.#languageServiceExt),
+            this.#cDecorations.reconfigure(this.#decorationsExt),
         ]
     }
 
@@ -243,8 +247,10 @@ export class CodeEditor {
         this.view.dispatch({ effects: this.#cLanguage.reconfigure(ext) })
     }
 
-    /** Replace the decorations extension (decorations step). */
+    /** Replace the decorations extension (shape/selection highlights). Persists
+     *  across tab swaps because setState re-applies it via #optionEffects. */
     setDecorationsExtension(ext: Extension): void {
+        this.#decorationsExt = ext
         this.view.dispatch({ effects: this.#cDecorations.reconfigure(ext) })
     }
 

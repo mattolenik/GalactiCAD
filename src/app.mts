@@ -789,6 +789,12 @@ class App {
                     repeating-linear-gradient(45deg, transparent 0 4.4px, rgba(255, 255, 0, 0.11) 4.4px 5px),
                     repeating-linear-gradient(-45deg, transparent 0 4.4px, rgba(255, 255, 0, 0.11) 4.4px 5px);
             }
+            /* Selection-linked underline modifiers (currentColor picks up the shape
+               indicator's color; white in dark theme). Solid = primary, dashed = child. */
+            .shape-indicator-selected { border-bottom: 3px solid currentColor; }
+            [data-theme="dark"] .shape-indicator-selected { border-bottom-color: #fff; }
+            .shape-indicator-selected-child { border-bottom: 2px dashed currentColor; }
+            [data-theme="dark"] .shape-indicator-selected-child { border-bottom-color: #fff; }
         `
         document.body.appendChild(style)
     }

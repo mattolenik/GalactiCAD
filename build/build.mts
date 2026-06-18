@@ -45,6 +45,7 @@ const Options = {
         "./src/components/mesh-viewer.mts",
         "./src/render-worker.mts",
         "./src/transpile-worker.mts",
+        "./src/editor/ts-worker.mts",
         "./src/export/iso-simplicial/iso-qef-worker.mts",
     ],
     plugins: [

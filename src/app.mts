@@ -27,6 +27,7 @@ import { SettingsManager } from "./storage/settings.mjs"
 import { CadHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/cad-highlighter.mjs"
 import { CodeEditor } from "./editor/codemirror-editor.mjs"
 import { createCadTsLanguageExtension } from "./editor/ts-language.mjs"
+import { forceLinting } from "@codemirror/lint"
 import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
 import { matchNodesToSource, PURE_CSG_TYPES } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
@@ -659,6 +660,10 @@ class App {
         this.editor.setLanguageExtension(tsLang.extension)
         tsLang.sync(this.editor.getValue())
         this.editor.onUpdate(u => tsLang.sync(u.state.doc.toString()))
+        // The worker boots asynchronously; the editor's first lint pass runs before it's
+        // ready (→ no diagnostics). Force a re-lint once the env is up so squiggles appear
+        // on the initial document without requiring an edit.
+        void tsLang.whenReady.then(() => forceLinting(this.editor.view))
     }
 
     #setupEditorActions() {

@@ -1,5 +1,5 @@
 /**
- * On-thread TypeScript language-service environment for the CAD DSL, backed by
+ * TypeScript language-service environment for the CAD DSL, backed by
  * @typescript/vfs. This restores the IntelliSense Monaco's ts.worker used to
  * provide (completion, hover, type-error diagnostics) without Monaco.
  *
@@ -8,10 +8,10 @@
  * The lib.*.d.ts files are bundled locally via the `ts-libs` virtual module
  * (build/ts-libs-plugin.mts), so type-checking works fully offline.
  *
- * NOTE: the environment runs on the main thread (the `typescript` compiler is
- * already in the bundle). Moving it into a Web Worker via @valtown/codemirror-ts's
- * `*Worker` variants + comlink is a possible follow-up if large documents cause
- * UI jank; the CAD documents are small, so on-thread is fine for now.
+ * This module is bundled into the language-service Web Worker (ts-worker.mts), so
+ * the `typescript` compiler + the lib payload stay off the main thread and out of
+ * app.js. The main-thread client (ts-language.mts) only imports the lightweight
+ * constants from ts-shared.mts.
  */
 
 import * as ts from "typescript"
@@ -23,16 +23,7 @@ import {
 import libs from "ts-libs"
 import { CAD_TYPES_DECL } from "../scene/cad-types-decl.mjs"
 
-/** Virtual path of the editor's active document inside the TS environment. */
-export const CAD_DOC_PATH = "/cad-document.ts"
 const CAD_TYPES_PATH = "/cad-api.d.ts"
-
-/**
- * 1108 = "A 'return' statement can only be used within a function body" — the user
- * can write a top-level `return` (legal once the source is wrapped in `function _(){}`
- * at execution time), so this diagnostic is suppressed (matches the old Monaco config).
- */
-export const DIAGNOSTIC_CODES_TO_IGNORE = [1108]
 
 /** Compiler options mirror the former Monaco `cadCompilerOptions` (app.mts). DOM lib
  *  is omitted on purpose so completions aren't flooded with DOM globals. */

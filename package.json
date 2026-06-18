@@ -50,6 +50,7 @@
         "@lezer/highlight": "^1.2.3",
         "@typescript/vfs": "^1.6.4",
         "@valtown/codemirror-ts": "^2.3.1",
+        "comlink": "^4.4.2",
         "dexie": "^4.4.3",
         "js-yaml": "^4.2.0",
         "meshoptimizer": "^1.1.1",

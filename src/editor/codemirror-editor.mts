@@ -96,6 +96,9 @@ export class CodeEditor {
     #cLanguage = new Compartment()
     #cDecorations = new Compartment()
 
+    /** Current language-service extension (TS service); reapplied on every setState. */
+    #languageServiceExt: Extension = []
+
     /** Current option values, used so newly-created and swapped-in states match. */
     #opts: EditorSettings
     #theme: ThemeName
@@ -124,7 +127,10 @@ export class CodeEditor {
             this.#cTab.of(tabExt(this.#opts.tabSize)),
             this.#cFont.of(fontExt(this.#opts.fontSize)),
             this.#cTheme.of(editorThemeExtension(this.#theme)),
-            this.#cLanguage.of(javascript({ typescript: true })),
+            // Always-on TS/JS grammar (Lezer highlighting, indent, brackets). The
+            // language-service compartment layers completion/hover/lint on top.
+            javascript({ typescript: true }),
+            this.#cLanguage.of(this.#languageServiceExt),
             this.#cDecorations.of([]),
 
             // Core editing behavior.
@@ -171,6 +177,7 @@ export class CodeEditor {
             this.#cTab.reconfigure(tabExt(this.#opts.tabSize)),
             this.#cFont.reconfigure(fontExt(this.#opts.fontSize)),
             this.#cTheme.reconfigure(editorThemeExtension(this.#theme)),
+            this.#cLanguage.reconfigure(this.#languageServiceExt),
         ]
     }
 
@@ -229,8 +236,10 @@ export class CodeEditor {
 
     // ── Forward hooks (filled in by later migration steps) ──────────────────
 
-    /** Replace the language-layer extension (TS language service step). */
+    /** Replace the language-service extension (completion/hover/lint). Persists
+     *  across tab swaps because setState re-applies it via #optionEffects. */
     setLanguageExtension(ext: Extension): void {
+        this.#languageServiceExt = ext
         this.view.dispatch({ effects: this.#cLanguage.reconfigure(ext) })
     }
 

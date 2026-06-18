@@ -8,6 +8,7 @@ import { debounceTime } from "rxjs/operators"
 import { DevServer, type RunFileData, AGENT_MODE } from "./devserver.mjs"
 import { fileListerPlugin } from "./file-lister.mjs"
 import monacoEditorPlugin from "./monaco-plugin.mjs"
+import tsLibsPlugin from "./ts-libs-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
 import { versionPlugin } from "./version-plugin.mjs"
 import wgslLoader from "./wgsl-loader.mjs"
@@ -52,6 +53,7 @@ const Options = {
         await fileListerPlugin(),
         staticBundler(Static, log),
         monacoEditorPlugin({ urlPrefix: "/editor" }),
+        tsLibsPlugin(),
     ],
     outDir: `${DIST_ROOT}/site`,
     isProd: IS_PROD,

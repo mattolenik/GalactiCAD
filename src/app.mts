@@ -26,6 +26,7 @@ import { exportStlBinary } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { CadHighlighter, type HighlightRange, type ShapeIndicator } from "./highlighting/cad-highlighter.mjs"
 import { CodeEditor } from "./editor/codemirror-editor.mjs"
+import { createCadTsLanguageExtension } from "./editor/ts-language.mjs"
 import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
 import { matchNodesToSource, PURE_CSG_TYPES } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
@@ -652,6 +653,12 @@ class App {
         const editorOpts = this.#settings.getGlobal().app.editor
         const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)
         this.editor = new CodeEditor(codeDiv, editorOpts, initialTheme)
+        // TypeScript IntelliSense (completion / hover / type-error diagnostics) for the
+        // CAD DSL, seeded with the ambient CAD API types (replaces Monaco's ts.worker).
+        const tsLang = createCadTsLanguageExtension()
+        this.editor.setLanguageExtension(tsLang.extension)
+        tsLang.sync(this.editor.getValue())
+        this.editor.onUpdate(u => tsLang.sync(u.state.doc.toString()))
     }
 
     #setupEditorActions() {

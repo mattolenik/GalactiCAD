@@ -52,8 +52,7 @@ import toolbarIsolateIcon from "./assets/toolbar-isolate.svg"
 import toolbarFullscreenEnterIcon from "./assets/toolbar-fullscreen-enter.svg"
 import toolbarFullscreenExitIcon from "./assets/toolbar-fullscreen-exit.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
-import { ContextMenu } from "./components/context-menu.mjs"
-import { addContextSubmenu } from "./editor/context-menu-submenu.mjs"
+import { ContextMenu, type ContextMenuItem } from "./components/context-menu.mjs"
 import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
@@ -170,8 +169,6 @@ class App {
     }
     /** Most-recently-isolated node id (session only); re-isolated when the toggle is turned on off a shape. */
     #lastIsolatedIds: number[] = []
-    /** Editor context key gating the "View Isolated" menu item (true when the caret is over an isolatable symbol). */
-    #overIsolatableKey?: monaco.editor.IContextKey<boolean>
 
     async build() {
         let src = ""
@@ -223,12 +220,6 @@ class App {
                 const survivors = this.renderer.isolatedIds.filter(id => this.#sceneNodeMap.has(id))
                 if (survivors.length !== this.renderer.isolatedIds.length) this.#applyIsolation(survivors)
             }
-            // Refresh the "over isolatable" context key against the rebuilt source map.
-            const isoPos = this.editor.getCursor()
-            this.#overIsolatableKey?.set(
-                isoPos ? this.#findIsolatableNodeIdAtPosition(isoPos.line, isoPos.column) !== null : false,
-            )
-
             this.renderer.startLoop()
             this.#scheduleMeshUpdate(src)
             this.log.innerText = ""
@@ -620,8 +611,6 @@ class App {
         const existingMesh = document.getElementById("mesh")
         if (existingMesh) existingMesh.remove()
 
-        this.#setupEditorActions()
-
         this.#tabs = new DocumentTabs(this.editor)
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
@@ -729,11 +718,34 @@ class App {
         void tsLang.whenReady.then(() => forceLinting(this.editor.view))
     }
 
-    #setupEditorActions() {
-        // TODO(step 5 — custom context menu): re-add "Edit polygon" / "View Isolated" /
-        // "Insert shape" as a custom DOM context menu. Monaco's addAction + the
-        // internal-API submenu (context-menu-submenu.mts) and createContextKey gating
-        // have no CM6 equivalent; the overIsolatable check moves to app-side state.
+    /**
+     * Build the editor right-click menu items for a 1-based source position. Replaces
+     * Monaco's addAction items + the internal-API "Insert shape" submenu. "Edit polygon"
+     * and "View Isolated" are gated by what sits at the click (app-side, replacing the
+     * `overIsolatable` context key); "Insert shape" is always offered.
+     */
+    #buildEditorContextMenuItems(line: number, column: number): ContextMenuItem[] {
+        const items: ContextMenuItem[] = []
+
+        const parsedCall = this.#findParsedCallAtPosition(line, column)
+        if (parsedCall?.functionName === "polygon2d") {
+            items.push({ label: "Edit polygon", action: () => this.#tryOpenPolygonEditor(line, column) })
+        }
+
+        const isolatableId = this.#findIsolatableNodeIdAtPosition(line, column)
+        if (isolatableId !== null) {
+            items.push({ label: "View Isolated", action: () => this.#applyIsolation([isolatableId]) })
+        }
+
+        items.push({
+            label: "Insert shape",
+            children: SHAPE_INSERTIONS.map(({ label, varBase, call }) => ({
+                label,
+                action: () => insertShapeDeclaration(this.editor, varBase, call),
+            })),
+        })
+
+        return items
     }
 
     #resolveAnchor(): string | null {
@@ -1126,7 +1138,16 @@ class App {
             this.#contextMenu?.hide()
         }
         const editorDom = this.editor.dom
-        const onEditorContextMenu = () => cancelEditorHoverForRightClick()
+        const onEditorContextMenu = (e: MouseEvent) => {
+            cancelEditorHoverForRightClick()
+            const lc = this.editor.coordsToLineCol(e.clientX, e.clientY) ?? this.editor.getCursor()
+            if (!lc) return
+            const items = this.#buildEditorContextMenuItems(lc.line, lc.column)
+            if (items.length === 0) return
+            e.preventDefault()
+            this.#contextMenu?.setItems(items)
+            this.#contextMenu?.showAt(e.clientX, e.clientY)
+        }
         const onEditorMouseMove = (e: MouseEvent) => {
             const lc = this.editor.coordsToLineCol(e.clientX, e.clientY)
             if (!lc) {

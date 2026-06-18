@@ -2,7 +2,10 @@ import { __fg_color, __tone_2, __tone_3 } from "../style/style.mjs"
 
 export interface ContextMenuItem {
     label: string
-    action: () => void
+    /** Leaf action. Omit when `children` is set (the item becomes a submenu parent). */
+    action?: () => void
+    /** When present, the item opens a hover flyout submenu instead of running an action. */
+    children?: ContextMenuItem[]
 }
 
 export class ContextMenu extends HTMLElement {
@@ -55,6 +58,34 @@ export class ContextMenu extends HTMLElement {
                 color: var(${__fg_color});
                 background: var(${__tone_3});
             }
+
+            .menu li.has-submenu {
+                position: relative;
+            }
+
+            .menu li.has-submenu::after {
+                content: "▸";
+                float: right;
+                margin-left: 12px;
+                opacity: 0.7;
+            }
+
+            .submenu {
+                position: absolute;
+                left: 100%;
+                top: 0;
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                background: var(${__tone_2});
+                min-width: 160px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                display: none;
+            }
+
+            .menu li.has-submenu:hover > .submenu {
+                display: block;
+            }
         `
         shadow.appendChild(style)
 
@@ -83,14 +114,29 @@ export class ContextMenu extends HTMLElement {
     setItems(items: ContextMenuItem[]) {
         this.#menuContainer.innerHTML = ""
         for (const item of items) {
-            const li = document.createElement("li")
-            li.textContent = item.label
+            this.#menuContainer.appendChild(this.#buildItem(item))
+        }
+    }
+
+    /** Build a menu `<li>` for an item; items with `children` render a hover flyout submenu. */
+    #buildItem(item: ContextMenuItem): HTMLLIElement {
+        const li = document.createElement("li")
+        const label = document.createElement("span")
+        label.textContent = item.label
+        li.appendChild(label)
+        if (item.children && item.children.length > 0) {
+            li.classList.add("has-submenu")
+            const submenu = document.createElement("ul")
+            submenu.classList.add("submenu")
+            for (const child of item.children) submenu.appendChild(this.#buildItem(child))
+            li.appendChild(submenu)
+        } else {
             li.onclick = () => {
-                item.action()
+                item.action?.()
                 this.hide()
             }
-            this.#menuContainer.appendChild(li)
         }
+        return li
     }
 
     /**

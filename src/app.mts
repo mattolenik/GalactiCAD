@@ -998,11 +998,13 @@ class App {
         }
         this.#updateViewCenter = updateViewCenter
 
+        // The editor is an absolute overlay — resizing it never changes the preview
+        // canvas size, so it must NOT shift the scene framing. Only reframe on real
+        // canvas resizes (the window / #main-panels), not on editor drags; otherwise
+        // dragging the editor split makes the scene slide under the cursor.
         const resizeObserver = new ResizeObserver(() => {
-            this.editor.layout()
             updateViewCenter()
         })
-        resizeObserver.observe(editorContainer)
         resizeObserver.observe(mainPanels)
 
         const narrowMedia = window.matchMedia("(max-width: 600px)")

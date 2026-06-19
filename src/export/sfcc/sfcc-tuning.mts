@@ -38,6 +38,20 @@ export interface SfccTuning {
     blendCurvatureRefine: boolean
     /** Max surface-normal variation (deg) across a blend cell before it splits (anti-diamond on fillets). */
     blendCurvatureDeg: number
+    /**
+     * Lever 2 (sfcc-rs ONLY): certify blend curvature from the closed-form analytic
+     * bound `κ ≤ 1/r (+ κ_carrier on grooves)` instead of the sampled ∇f cone — no
+     * per-cell owner/grad probe cone. Sound (never under-refines), but a constant κ
+     * over-refines curved-carrier fillets, so it ships OFF by default and is wired for
+     * A/B. The TS `sfcc` exporter ignores this knob; only the Rust kernel reads it.
+     */
+    blendCurvatureAnalytic: boolean
+    /**
+     * Lever 2: use the analytic per-stratum curvature bound (κ·cellSize) for the
+     * smoothCrit (iii-b) refinement cert instead of the sampled ∇f normal cone.
+     * Ships OFF by default; only the Rust (`sfcc-rs`) kernel reads it.
+     */
+    normalVariationAnalytic: boolean
     /** |tangent·faceNormal| below this counts as a tangential face crossing → split. */
     tangentialEpsilon: number
     /** Feature query AABB inflation, in fractions of the cell size. */
@@ -117,6 +131,8 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     normalVariationDeg: 18,
     blendCurvatureRefine: true,
     blendCurvatureDeg: 18,
+    blendCurvatureAnalytic: false,
+    normalVariationAnalytic: false,
     tangentialEpsilon: 0.05,
     featureQueryInflate: 0.25,
 
@@ -173,6 +189,8 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         normalVariationDeg: num(o.normalVariationDeg, d.normalVariationDeg, 5, 90),
         blendCurvatureRefine: bool(o.blendCurvatureRefine, d.blendCurvatureRefine),
         blendCurvatureDeg: num(o.blendCurvatureDeg, d.blendCurvatureDeg, 1, 90),
+        blendCurvatureAnalytic: bool(o.blendCurvatureAnalytic, d.blendCurvatureAnalytic),
+        normalVariationAnalytic: bool(o.normalVariationAnalytic, d.normalVariationAnalytic),
         tangentialEpsilon: num(o.tangentialEpsilon, d.tangentialEpsilon, 0, 1),
         featureQueryInflate: num(o.featureQueryInflate, d.featureQueryInflate, 0, 4),
 

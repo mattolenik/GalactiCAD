@@ -780,7 +780,11 @@ export class DevServer {
         }
 
         if (AGENT_MODE && options) {
-            const url = `http://127.0.0.1:${actualPort}/`
+            // Optional query string appended to the headless tab URL so page-load
+            // flags (e.g. `?sfccThreads=1` for the M6d rayon export path) can be
+            // exercised headlessly. Inert unless GCAD_AGENT_PAGE_QUERY is set.
+            const pageQuery = process.env.GCAD_AGENT_PAGE_QUERY?.trim()
+            const url = `http://127.0.0.1:${actualPort}/${pageQuery ? `?${pageQuery.replace(/^\?/, "")}` : ""}`
             try {
                 const executablePath = await resolveChromiumExecutable()
                 if (!executablePath) {
@@ -885,6 +889,7 @@ function createHttpServer(
         ".json": "application/json",
         ".png": "image/png",
         ".svg": "image/svg+xml",
+        ".wasm": "application/wasm",
     }
 
     const defaultContentType = "application/octet-stream"
@@ -1231,8 +1236,13 @@ function createHttpServer(
             let data = await fs.readFile(file)
             res.writeHead(200, {
                 "content-type": contentType[path.extname(file)] || defaultContentType,
+                // Cross-origin isolation → crossOriginIsolated === true →
+                // SharedArrayBuffer + wasm atomics (rayon thread pool, M6b).
                 "Cross-Origin-Opener-Policy": "same-origin",
-                "Cross-Origin-Embedder-Policy": "credentialless",
+                "Cross-Origin-Embedder-Policy": "require-corp",
+                // Same-origin assets are exempt; this lets any cross-origin
+                // sub-resource that opts in load under require-corp.
+                "Cross-Origin-Resource-Policy": "cross-origin",
             })
             if (path.extname(file) === ".html") {
                 let doc = data.toString()
@@ -1251,7 +1261,8 @@ function createHttpServer(
                 res.writeHead(404, {
                     "content-type": "text/plain",
                     "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "credentialless",
+                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    "Cross-Origin-Resource-Policy": "cross-origin",
                 })
                 res.end(`404 not found: ${pathname}`)
             } else {
@@ -1259,7 +1270,8 @@ function createHttpServer(
                 res.writeHead(500, {
                     "content-type": "text/plain",
                     "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "credentialless",
+                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    "Cross-Origin-Resource-Policy": "cross-origin",
                 })
                 res.end("500 unknown server error")
             }

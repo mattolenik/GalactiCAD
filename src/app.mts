@@ -6,6 +6,7 @@ import { MeshViewer } from "./components/mesh-viewer.mjs"
 import type { PreviewWindow } from "./components/preview-window.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import { styleInfo } from "./scene/scene.mjs"
+import { MeshExportCancelledError } from "./export/mesh-exporter.mjs"
 import { SDFRenderer, type NodeStub } from "./sdf.mjs"
 import { __active_bg, __bg_color, __bg_color_dark, __fg_color, __preview_bg, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import {
@@ -125,6 +126,8 @@ class App {
     #mesh: MeshViewer | null = null
     #meshUpdateToken = 0
     #meshUpdateTimer: number | null = null
+    /** True once Cancel was clicked for the in-flight export (label shows "Cancelling…"). */
+    #exportCancelling = false
     #viewports: HTMLElement
     #settings: SettingsManager
     #meshViewerEnabled = false
@@ -219,7 +222,8 @@ class App {
                 if (survivors.length !== this.renderer.isolatedIds.length) this.#applyIsolation(survivors)
             }
             this.renderer.startLoop()
-            this.#scheduleMeshUpdate(src)
+            // Mesh export no longer auto-runs on scene build; use the dev-tools
+            // "Re-export mesh" button to refresh the mesh viewer.
             this.log.innerText = ""
             this.log.classList.remove("has-error")
 
@@ -1331,22 +1335,15 @@ class App {
         devTools.syncSfccTuningFromSettings(this.#settings.getSfccTuning())
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getMdcExportLevers())
-        // Re-mesh live when the mesh exporter or any exporter tuning knob
-        // changes, so the mesh viewer reflects edits immediately. The
-        // `#scheduleMeshUpdate` debounce avoids re-meshing per slider tick.
-        const remeshIfMeshViewerOn = () => {
+        // Mesh export is MANUAL: the dev-tools "Re-export mesh" button re-runs the
+        // export with the current scene + tuning. It no longer auto-runs on scene
+        // edits or per-knob tuning changes (meshing — especially SFCC — is expensive).
+        devTools.onReExportRequest = () => {
             if (!this.#meshViewerEnabled || !this.#mesh) return
             const m = this.#tabs.active ? this.#tabs.getByName(this.#tabs.active) : null
             if (!m) return
             this.#scheduleMeshUpdate(m.doc.toString())
         }
-        devTools.onMeshExporterChange = remeshIfMeshViewerOn
-        devTools.onIsoSimplicialTuningChange = remeshIfMeshViewerOn
-        devTools.onShrecTuningChange = remeshIfMeshViewerOn
-        devTools.onFlexiCubesTuningChange = remeshIfMeshViewerOn
-        devTools.onSfccTuningChange = remeshIfMeshViewerOn
-        devTools.onSimplifyTuningChange = remeshIfMeshViewerOn
-        devTools.onMdcExportLeversChange = remeshIfMeshViewerOn
 
         devTools.syncDebugLogModulesFromSettings(this.#settings.getDebugLogModules())
         devTools.onDebugLogModulesChange = () => {
@@ -1819,11 +1816,37 @@ class App {
 
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
-            this.#mesh?.setExportSpinning(true)
+            const exportStart = performance.now()
+            // Latest phase the exporter reported (sfcc-rs emits phase boundaries; other
+            // exporters leave it empty → the line shows just a live elapsed clock).
+            let phase = ""
+            this.#exportCancelling = false
+            this.#mesh?.showExportProgress({
+                cancellable: this.renderer.meshExportCancellable,
+                onCancel: () => {
+                    this.#exportCancelling = true
+                    this.renderer.cancelMeshExport()
+                },
+            })
+            // Tick the elapsed clock (whole seconds) between the sparse phase messages.
+            // Display only — no QoS keepalive (the earlier "slow when idle" was an artifact).
+            const renderTick = () => {
+                const secs = Math.round((performance.now() - exportStart) / 1000)
+                const label = this.#exportCancelling ? "Cancelling…" : phase || "Exporting"
+                this.#mesh?.setExportStatus(`${label} • ${secs}s`)
+            }
+            renderTick()
+            const elapsedTimer = window.setInterval(renderTick, 250)
             try {
                 const documentName = this.#tabs.active
                 const options = this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools)
-                const mesh = await this.renderer.renderMesh(src, documentName, options)
+                const mesh = await this.renderer.renderMesh(src, documentName, {
+                    ...options,
+                    onProgress: (p) => {
+                        phase = p.phase
+                        renderTick()
+                    },
+                })
                 if (token !== this.#meshUpdateToken) return
                 if (this.#mesh) {
                     await this.#mesh.setMesh(mesh)
@@ -1831,12 +1854,18 @@ class App {
                     this.#cachedMeshForExportKey = this.#meshCacheKey(src, documentName, this.#toolbarRefs.devTools)
                 }
             } catch (err) {
-                // Mesh generation failing shouldn't break the live SDF preview.
-                debugLog("App").error("Mesh update failed:", err)
+                // A user-cancelled export keeps the previous mesh and is not an error; only
+                // a real failure is logged (and never breaks the live SDF preview).
+                if (!(err instanceof MeshExportCancelledError)) {
+                    debugLog("App").error("Mesh update failed:", err)
+                }
             } finally {
-                // Only the latest request owns the spinner; a superseded export
-                // must not hide a spinner a newer in-flight export still needs.
-                if (token === this.#meshUpdateToken) this.#mesh?.setExportSpinning(false)
+                window.clearInterval(elapsedTimer)
+                // Only the latest request owns the indicator/spinner; a superseded export
+                // must not hide one a newer in-flight export still needs.
+                if (token === this.#meshUpdateToken) {
+                    this.#mesh?.hideExportProgress()
+                }
             }
         }, MESH_UPDATE_DEBOUNCE_MS)
     }

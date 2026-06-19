@@ -64,8 +64,8 @@ async function handleAppRequest(request) {
     const headers = new Headers(upstream.headers)
     // Mirror dist/_headers so crossOriginIsolated turns on in the renderer.
     headers.set("Cross-Origin-Opener-Policy", "same-origin")
-    headers.set("Cross-Origin-Embedder-Policy", "credentialless")
-    // Required for every sub-resource under active COEP.
+    headers.set("Cross-Origin-Embedder-Policy", "require-corp")
+    // Required for every sub-resource under active COEP (require-corp).
     headers.set("Cross-Origin-Resource-Policy", "cross-origin")
 
     return new Response(upstream.body, {

@@ -122,10 +122,6 @@ class App {
     #mesh: MeshViewer | null = null
     #meshUpdateToken = 0
     #meshUpdateTimer: number | null = null
-    /** Bottom-left viewport export indicator (spinner + phase/elapsed text + Cancel). */
-    #exportIndicator: HTMLElement | null = null
-    #exportIndicatorText: HTMLElement | null = null
-    #exportIndicatorCancel: HTMLButtonElement | null = null
     /** True once Cancel was clicked for the in-flight export (label shows "Cancelling…"). */
     #exportCancelling = false
     #viewports: HTMLElement
@@ -1692,14 +1688,25 @@ class App {
             this.#mesh?.setExportSpinning(true)
             const exportStart = performance.now()
             // Latest phase the exporter reported (sfcc-rs emits phase boundaries; other
-            // exporters leave it empty → the indicator shows just a live elapsed clock).
+            // exporters leave it empty → the line shows just a live elapsed clock).
             let phase = ""
-            this.#showExportIndicator()
-            // Tick the elapsed clock between the (sparse) phase messages. Display only —
-            // no QoS keepalive (the earlier "slow when idle" report was a logging artifact).
-            const renderTick = () => this.#updateExportIndicator(phase, performance.now() - exportStart)
+            this.#exportCancelling = false
+            this.#preview.showExportProgress({
+                cancellable: this.renderer.meshExportCancellable,
+                onCancel: () => {
+                    this.#exportCancelling = true
+                    this.renderer.cancelMeshExport()
+                },
+            })
+            // Tick the elapsed clock (whole seconds) between the sparse phase messages.
+            // Display only — no QoS keepalive (the earlier "slow when idle" was an artifact).
+            const renderTick = () => {
+                const secs = Math.round((performance.now() - exportStart) / 1000)
+                const label = this.#exportCancelling ? "Cancelling…" : phase || "Exporting"
+                this.#preview.setExportProgressText(`${label} • ${secs}s`)
+            }
             renderTick()
-            const elapsedTimer = window.setInterval(renderTick, 100)
+            const elapsedTimer = window.setInterval(renderTick, 250)
             try {
                 const documentName = this.#tabs.active
                 const options = this.#meshRenderOptionsForExport(this.#toolbarRefs.devTools)
@@ -1727,78 +1734,11 @@ class App {
                 // Only the latest request owns the indicator/spinner; a superseded export
                 // must not hide one a newer in-flight export still needs.
                 if (token === this.#meshUpdateToken) {
-                    this.#hideExportIndicator()
+                    this.#preview.hideExportProgress()
                     this.#mesh?.setExportSpinning(false)
                 }
             }
         }, MESH_UPDATE_DEBOUNCE_MS)
-    }
-
-    /** Lazily build the bottom-left viewport export indicator (spinner + phase/elapsed
-     *  text + Cancel). Cancel only appears when the build can actually cancel the export
-     *  (needs shared memory for the flag the worker polls). */
-    #ensureExportIndicator(): void {
-        if (this.#exportIndicator) return
-        // The indicator is absolutely positioned within the viewport area.
-        if (getComputedStyle(this.#viewports).position === "static") {
-            this.#viewports.style.position = "relative"
-        }
-        if (!document.getElementById("export-indicator-style")) {
-            const style = document.createElement("style")
-            style.id = "export-indicator-style"
-            style.textContent = "@keyframes export-indicator-spin{to{transform:rotate(360deg)}}"
-            document.head.append(style)
-        }
-        const el = document.createElement("div")
-        el.className = "export-indicator"
-        el.style.cssText =
-            "position:absolute;left:12px;bottom:12px;z-index:20;display:none;align-items:center;gap:8px;" +
-            "padding:6px 10px;border-radius:6px;background:rgba(0,0,0,0.62);color:#fff;" +
-            "font:12px/1.2 system-ui,sans-serif;pointer-events:auto;user-select:none;"
-        const spinner = document.createElement("div")
-        spinner.style.cssText =
-            "width:12px;height:12px;flex:none;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;" +
-            "border-radius:50%;animation:export-indicator-spin 0.8s linear infinite;"
-        const text = document.createElement("span")
-        text.className = "export-indicator-text"
-        const cancel = document.createElement("button")
-        cancel.className = "export-indicator-cancel"
-        cancel.textContent = "Cancel"
-        cancel.style.cssText =
-            "margin-left:4px;padding:2px 8px;border:1px solid rgba(255,255,255,0.45);border-radius:4px;" +
-            "background:transparent;color:#fff;font:inherit;cursor:pointer;"
-        cancel.addEventListener("click", () => {
-            this.#exportCancelling = true
-            cancel.disabled = true
-            this.renderer.cancelMeshExport()
-        })
-        el.append(spinner, text, cancel)
-        this.#viewports.append(el)
-        this.#exportIndicator = el
-        this.#exportIndicatorText = text
-        this.#exportIndicatorCancel = cancel
-    }
-
-    #showExportIndicator(): void {
-        this.#ensureExportIndicator()
-        this.#exportCancelling = false
-        if (this.#exportIndicator) this.#exportIndicator.style.display = "flex"
-        if (this.#exportIndicatorCancel) {
-            // Cancel needs the shared flag the export worker polls.
-            this.#exportIndicatorCancel.style.display = this.renderer.meshExportCancellable ? "" : "none"
-            this.#exportIndicatorCancel.disabled = false
-        }
-    }
-
-    #updateExportIndicator(phase: string, elapsedMs: number): void {
-        if (!this.#exportIndicatorText) return
-        const secs = elapsedMs >= 9950 ? `${Math.round(elapsedMs / 1000)}s` : `${(elapsedMs / 1000).toFixed(1)}s`
-        const label = this.#exportCancelling ? "Cancelling…" : phase || "Exporting"
-        this.#exportIndicatorText.textContent = `${label} • ${secs}`
-    }
-
-    #hideExportIndicator(): void {
-        if (this.#exportIndicator) this.#exportIndicator.style.display = "none"
     }
 
     #setMeshViewerEnabled(enabled: boolean) {

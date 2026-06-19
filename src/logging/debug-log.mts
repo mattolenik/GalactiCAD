@@ -25,7 +25,7 @@ export const DEBUG_LOG_MODULES = [
     "NodeMatcher",
     "SourceParser",
     "RenderWorker",
-    "MonacoHighlighter",
+    "CadHighlighter",
     "WelcomeScreen",
     "MeshExport",
     "MdcExport",

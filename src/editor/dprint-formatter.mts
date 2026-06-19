@@ -5,9 +5,8 @@
  * from node_modules). dprint only does full-document formatting, so both the
  * format command and format-on-paste reformat the whole document.
  *
- * Replaces the old Monaco `registerDocument*FormattingEditProvider` registrations
- * with a CM6 keymap command + paste handler. (The only remaining `monaco.languages.*`
- * caller is the now-dead cad-document-highlights.mts, removed in the teardown step.)
+ * Exposed as a CM6 keymap command (Shift-Alt-F) + paste handler, replacing the
+ * old editor's document-formatting providers.
  */
 
 import { EditorView, keymap } from "@codemirror/view"

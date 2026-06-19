@@ -7,7 +7,6 @@ import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import { DevServer, type RunFileData, AGENT_MODE } from "./devserver.mjs"
 import { fileListerPlugin } from "./file-lister.mjs"
-import monacoEditorPlugin from "./monaco-plugin.mjs"
 import tsLibsPlugin from "./ts-libs-plugin.mjs"
 import staticBundler from "./static-bundler.mjs"
 import { versionPlugin } from "./version-plugin.mjs"
@@ -18,10 +17,9 @@ const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigat
 
 const IS_PROD = !!process.env.PRODUCTION
 
-// Monaco is consumed purely as ESM: the editor is bundled into app.js and its CSS
-// into app.css (loaded via <link> in index.html), and the editor/ts workers are
-// pre-bundled to /editor/ by monacoEditorPlugin. The legacy AMD `min/vs` distribution
-// is therefore not shipped — only app.css was ever applied at runtime anyway.
+// The editor (CodeMirror 6) bundles as plain ESM into app.js — no worker-bundling
+// plugin and no MonacoEnvironment shim. The only editor worker is the TypeScript
+// language service (ts-worker), a normal esbuild entry point emitted to /editor/.
 const Static = {
     "src/index.html": "/",
     "src/index.css": "/",
@@ -53,7 +51,6 @@ const Options = {
         await versionPlugin(),
         await fileListerPlugin(),
         staticBundler(Static, log),
-        monacoEditorPlugin({ urlPrefix: "/editor" }),
         tsLibsPlugin(),
     ],
     outDir: `${DIST_ROOT}/site`,

@@ -1,6 +1,3 @@
-import "monaco-editor-env" // must run before monaco-editor so globalAPI is set for console access
-import * as monaco from "monaco-editor"
-import { CAD_TYPES_DECL } from "./scene/cad-types-decl.mjs"
 import { debounceTime, Subject } from "rxjs"
 import type { Subscription } from "rxjs"
 import { DocumentTabs } from "./components/document-tabs.mjs"
@@ -19,7 +16,6 @@ import {
 } from "./style/theme.mjs"
 import { getShapePalette } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
-import { GALACTICAD_DARK_THEME, GALACTICAD_LIGHT_THEME } from "./themes.mjs"
 import type { CameraSettings, EditorSettings, ThemeMode } from "./storage/settings.mjs"
 import type { MeshData } from "./export/export.mjs"
 import { exportStlBinary } from "./export/stl.mjs"
@@ -65,7 +61,6 @@ import {
     visiblePreviewRegion,
     visibleRegionForCanvas,
 } from "./layout/editor-layout.mjs"
-import { initCadDocumentHighlights } from "./editor/cad-document-highlights.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad, openSingleScad } from "./fs/file-picker.mjs"
@@ -150,7 +145,7 @@ class App {
     #contextMenuHoverSub: Subscription | null = null
     #contextMenuShowTimer: number | null = null
     #contextMenuLastKey: string | null = null
-    #contextMenuEditorMoveDispose: monaco.IDisposable | null = null
+    #contextMenuEditorMoveDispose: { dispose(): void } | null = null
     #contextMenuSafeZoneCleanup: (() => void) | null = null
     #editorContainer!: HTMLDivElement
     #welcomeScreen: WelcomeScreen | null = null

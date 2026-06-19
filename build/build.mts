@@ -249,14 +249,8 @@ async function build() {
             alias: { path: NODE_EMPTY_STUB, fs: NODE_EMPTY_STUB },
             mainFields: ["browser", "module", "main"],
             assetNames: "assets/[name]-[hash]",
-            loader: {
-                ".css": "css",
-                ".ttf": "file",
-                ".woff": "file",
-                ".woff2": "file",
-                ".gcad": "text",
-                ".svg": "text",
-            },
+            // Loader map comes from SharedEsbuildOptions (spread above), which includes
+            // the `.wasm` → file loader the sfcc-rs exporter needs; no inline override.
             plugins: Options.plugins,
         })
         // M6b threaded SFCC: emit the rayon pool-worker self-spawn target

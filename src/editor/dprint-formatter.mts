@@ -1,9 +1,17 @@
 /**
- * dprint-based TypeScript formatter for Monaco editor.
- * Loads the WASM plugin from /assets/dprint-typescript.wasm (copied by build from node_modules).
+ * dprint-based TypeScript formatter, wired into CodeMirror 6.
+ *
+ * Loads the WASM plugin from /assets/dprint-typescript.wasm (copied by the build
+ * from node_modules). dprint only does full-document formatting, so both the
+ * format command and format-on-paste reformat the whole document.
+ *
+ * Replaces the old Monaco `registerDocument*FormattingEditProvider` registrations
+ * with a CM6 keymap command + paste handler. (The only remaining `monaco.languages.*`
+ * caller is the now-dead cad-document-highlights.mts, removed in the teardown step.)
  */
 
-import * as monaco from "monaco-editor"
+import { EditorView, keymap } from "@codemirror/view"
+import type { Extension } from "@codemirror/state"
 import { createStreaming } from "@dprint/formatter"
 
 const WASM_URL = "/assets/dprint-typescript.wasm"
@@ -21,7 +29,7 @@ const PLUGIN_CONFIG = {
     useBraces: "preferNone",
     preferHanging: true,
     "arrowFunction.useParentheses": "preferNone",
-    "ignoreNodeCommentText": "no-format"
+    "ignoreNodeCommentText": "no-format",
 }
 
 let formatter: { formatText: (req: { filePath: string; fileText: string }) => string } | null = null
@@ -34,45 +42,59 @@ async function loadFormatter(): Promise<typeof formatter> {
     return formatter
 }
 
-function formatWithDprint(model: monaco.editor.ITextModel): string | null {
+/** Format source text with dprint, or null if the formatter isn't ready / it failed. */
+function formatText(src: string): string | null {
     if (!formatter) return null
     try {
-        const filePath = model.uri.path || "document.ts"
-        const fileText = model.getValue()
-        return formatter.formatText({ filePath, fileText })
+        return formatter.formatText({ filePath: "document.ts", fileText: src })
     } catch {
         return null
     }
 }
 
-function createEdits(model: monaco.editor.ITextModel, token: monaco.CancellationToken): monaco.languages.TextEdit[] | null {
-    if (token.isCancellationRequested) return null
-    const formatted = formatWithDprint(model)
-    if (formatted === null) return null
-    if (token.isCancellationRequested) return null
-    const range = model.getFullModelRange()
-    return [{ range, text: formatted }]
+/**
+ * Format the whole document in the view (no-op until the WASM formatter loads).
+ * Returns true if the document changed.
+ */
+export function formatDocument(view: EditorView): boolean {
+    const src = view.state.doc.toString()
+    const formatted = formatText(src)
+    if (formatted === null || formatted === src) return false
+    const head = view.state.selection.main.head
+    view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: formatted },
+        // Crude cursor preservation: clamp the old offset into the new text.
+        selection: { anchor: Math.min(head, formatted.length) },
+    })
+    return true
+}
+
+/** Start loading the dprint WASM formatter (non-blocking). */
+export function initDprintFormatting(): void {
+    void loadFormatter()
 }
 
 /**
- * Initialize dprint formatting and register Monaco providers.
- * Call without awaiting for non-blocking startup; format uses Monaco built-in until ready.
+ * CM6 extension: a format command (Shift-Alt-F) plus format-on-paste, mirroring
+ * Monaco's `formatOnPaste: true`. Both reformat the whole document via dprint.
  */
-export async function initDprintFormatting(): Promise<void> {
-    await loadFormatter()
-    if (!formatter) return
-
-    monaco.languages.registerDocumentFormattingEditProvider("typescript", {
-        provideDocumentFormattingEdits(model, _options, token) {
-            return createEdits(model, token)
-        },
-    })
-
-    monaco.languages.registerDocumentRangeFormattingEditProvider("typescript", {
-        provideDocumentRangeFormattingEdits(_model, _range, _options, token) {
-            // dprint only supports full-document formatting; format entire document
-            const model = _model
-            return createEdits(model, token)
-        },
-    })
+export function dprintFormatting(): Extension {
+    return [
+        keymap.of([
+            {
+                key: "Shift-Alt-f",
+                run: view => {
+                    formatDocument(view)
+                    return true
+                },
+            },
+        ]),
+        EditorView.domEventHandlers({
+            paste(_event, view) {
+                // Format after the paste is applied to the document.
+                setTimeout(() => formatDocument(view), 0)
+                return false
+            },
+        }),
+    ]
 }

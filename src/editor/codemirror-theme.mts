@@ -54,12 +54,16 @@ const darkHighlight = HighlightStyle.define([
     { tag: [t.string, t.special(t.string)], color: "#ce9178" },
     { tag: [t.number, t.bool, t.null], color: "#b5cea8" },
     { tag: t.keyword, color: "#569cd6" },
+    { tag: [t.controlKeyword, t.moduleKeyword], color: "#c586c0" },
+    { tag: t.self, color: "#569cd6" },
     { tag: [t.operator, t.operatorKeyword], color: "#d4d4d4" },
     { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "#dcdcaa" },
     { tag: [t.typeName, t.className, t.namespace], color: "#4ec9b0" },
     { tag: [t.variableName, t.propertyName], color: "#9cdcfe" },
     { tag: [t.definition(t.variableName)], color: "#9cdcfe" },
     { tag: t.constant(t.variableName), color: "#4fc1ff" },
+    { tag: t.regexp, color: "#d16969" },
+    { tag: t.escape, color: "#d7ba7d" },
     // Echoes the Monaco `delimiter.parenthesis.ts → #555555` rule.
     { tag: [t.paren, t.brace, t.squareBracket], color: "#555555" },
     { tag: t.invalid, color: "#f44747" },
@@ -92,6 +96,8 @@ const lightHighlight = HighlightStyle.define([
     { tag: [t.typeName, t.className], color: "#8000c0" },
     { tag: [t.definitionKeyword, t.modifier], color: "#a08000" },
     { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "#800000" },
+    { tag: [t.regexp, t.escape], color: "#c03030" },
+    { tag: t.constant(t.variableName), color: "#0080a0" },
     { tag: t.invalid, color: "#c03030" },
 ])
 

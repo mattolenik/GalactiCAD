@@ -30,6 +30,8 @@ import {
     drawSelection,
     dropCursor,
     EditorView,
+    gutter,
+    GutterMarker,
     highlightActiveLine,
     highlightActiveLineGutter,
     highlightSpecialChars,
@@ -54,6 +56,7 @@ import { lintKeymap } from "@codemirror/lint"
 import { javascript } from "@codemirror/lang-javascript"
 import type { EditorSettings } from "../storage/settings.mjs"
 import { editorThemeExtension, type ThemeName } from "./codemirror-theme.mjs"
+import { dprintFormatting } from "./dprint-formatter.mjs"
 
 /** 1-based line/column position (matches Monaco + SettingsManager conventions). */
 export interface LineCol {
@@ -70,11 +73,43 @@ export interface LineColSelection {
 }
 
 // ── Option → extension builders ─────────────────────────────────────────────
-// "relative" line numbers are mapped to "on" for now (CM6 needs a custom
-// formatter; tracked for the theme-polish step).
+
+// Relative line numbers: the active line shows its absolute number, others show
+// the distance from the cursor (Vim "hybrid" style). The built-in lineNumbers
+// gutter only re-renders on config/doc/viewport changes, so this custom gutter
+// forces a re-render on selection change (lineMarkerChange: selectionSet).
+class RelativeLineMarker extends GutterMarker {
+    constructor(readonly text: string) {
+        super()
+    }
+    override eq(other: RelativeLineMarker): boolean {
+        return other.text === this.text
+    }
+    override toDOM(): Node {
+        return document.createTextNode(this.text)
+    }
+}
+const relativeLineNumberGutter = gutter({
+    class: "cm-lineNumbers",
+    lineMarker(view, line) {
+        const doc = view.state.doc
+        const lineNo = doc.lineAt(line.from).number
+        const cursorLine = doc.lineAt(view.state.selection.main.head).number
+        return new RelativeLineMarker(lineNo === cursorLine ? String(lineNo) : String(Math.abs(lineNo - cursorLine)))
+    },
+    lineMarkerChange: update => update.selectionSet,
+    initialSpacer: view => new RelativeLineMarker(String(view.state.doc.lines)),
+    updateSpacer: (spacer, update) => {
+        const max = String(update.view.state.doc.lines)
+        return spacer instanceof RelativeLineMarker && spacer.text === max ? spacer : new RelativeLineMarker(max)
+    },
+})
+
 const lineNumbersExt = (mode: EditorSettings["lineNumbers"]): Extension =>
-    mode === "off" ? [] : lineNumbers()
+    mode === "off" ? [] : mode === "relative" ? relativeLineNumberGutter : lineNumbers()
 const wrapExt = (w: EditorSettings["wordWrap"]): Extension => (w === "on" ? EditorView.lineWrapping : [])
+// CM6 only supports all-or-nothing whitespace rendering; Monaco's "boundary"/
+// "selection" modes have no equivalent, so any non-"none" value renders all.
 const whitespaceExt = (mode: EditorSettings["renderWhitespace"]): Extension =>
     mode === "none" ? [] : highlightWhitespace()
 const foldExt = (on: boolean): Extension => (on ? [codeFolding(), foldGutter()] : [])
@@ -149,6 +184,8 @@ export class CodeEditor {
             bracketMatching(),
             closeBrackets(),
             autocompletion(),
+            // dprint format command (Shift-Alt-F) + format-on-paste.
+            dprintFormatting(),
             EditorState.allowMultipleSelections.of(true),
             EditorView.updateListener.of(u => {
                 for (const l of this.#updateListeners) l(u)

@@ -49,6 +49,8 @@ export interface AgentTestcase {
     isolatedIds?: number[]
     /** Object ids to render as selected, for headless verification of the selection pattern. */
     selectedObjectIds?: number[]
+    /** Force the deferred geometry→shade path on/off (SDF mode; A/B verification of selection shading). */
+    deferredShading?: boolean
 }
 
 export interface BuildAgentTestcaseInput {
@@ -238,6 +240,8 @@ export interface AgentRenderRequest {
     isolatedIds?: number[]
     /** Object ids to render as selected, for verifying the selection pattern. `mode: "sdf"` only. */
     selectedObjectIds?: number[]
+    /** Force the deferred geometry→shade path on/off. `mode: "sdf"` only. */
+    deferredShading?: boolean
 }
 
 /** Merge saved testcase YAML (in-memory `AgentTestcase`) with optional overrides (GET query / POST body). */
@@ -247,6 +251,7 @@ export function mergeAgentRenderRequest(
         viewportWidth?: number
         viewportHeight?: number
         meshOverlay?: AgentMeshOverlay
+        deferredShading?: boolean
     },
 ): AgentRenderRequest {
     assertAgentTestcaseSchema(testcase)
@@ -278,5 +283,10 @@ export function mergeAgentRenderRequest(
         ...(testcase.selectedObjectIds !== undefined
             ? { selectedObjectIds: [...testcase.selectedObjectIds] }
             : {}),
+        ...(() => {
+            const deferredShading =
+                overrides.deferredShading !== undefined ? overrides.deferredShading : testcase.deferredShading
+            return deferredShading !== undefined ? { deferredShading } : {}
+        })(),
     }
 }

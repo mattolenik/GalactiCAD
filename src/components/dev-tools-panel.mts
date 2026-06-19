@@ -69,8 +69,10 @@ export class DevToolsPanel extends HTMLElement {
     onCameraOptimizationChange?: (enabled: boolean) => void
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
-    onFeatureGraphOverlayChange?: (enabled: boolean) => void
+    onFeatureGraphLineWidthChange?: (px: number) => void
+    onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
+    onDeferredShadingChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
@@ -130,12 +132,20 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.bvhOptimization = enabled
     }
 
-    get featureGraphOverlay(): boolean {
-        return this.#appSection.featureGraphOverlay
+    get featureGraphLineWidth(): number {
+        return this.#appSection.featureGraphLineWidth
     }
 
-    set featureGraphOverlay(enabled: boolean) {
-        this.#appSection.featureGraphOverlay = enabled
+    set featureGraphLineWidth(px: number) {
+        this.#appSection.featureGraphLineWidth = px
+    }
+
+    get featureGraphDifferentiateSegments(): boolean {
+        return this.#appSection.featureGraphDifferentiateSegments
+    }
+
+    set featureGraphDifferentiateSegments(on: boolean) {
+        this.#appSection.featureGraphDifferentiateSegments = on
     }
 
     get renderNormals(): boolean {
@@ -152,6 +162,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set stepHeatmap(enabled: boolean) {
         this.#appSection.stepHeatmap = enabled
+    }
+
+    get deferredShading(): boolean {
+        return this.#appSection.deferredShading
+    }
+
+    set deferredShading(enabled: boolean) {
+        this.#appSection.deferredShading = enabled
     }
 
     get showFps(): boolean {
@@ -339,8 +357,10 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
         this.#appSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
         this.#appSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
-        this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
+        this.#appSection.onFeatureGraphLineWidthChange = v => this.onFeatureGraphLineWidthChange?.(v)
+        this.#appSection.onFeatureGraphDifferentiateSegmentsChange = v => this.onFeatureGraphDifferentiateSegmentsChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
+        this.#appSection.onDeferredShadingChange = v => this.onDeferredShadingChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)
 

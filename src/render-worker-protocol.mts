@@ -10,6 +10,9 @@ import type { MeshData } from "./export/export.mjs"
 // `src/export/mesh-exporter.mts` + the `*-tuning.mts` files); the `renderMesh`
 // message carries them as an opaque `exporterTuning` blob keyed by kind.
 import type { ExporterKind } from "./export/mesh-exporter.mjs"
+import type { FeatureGraphOcclusionMode } from "./feature-graph/feature-graph-overlay.mjs"
+
+export type { FeatureGraphOcclusionMode }
 
 /**
  * Post-MDC meshoptimizer simplification (QEM). Used when mesh export runs the MDC
@@ -221,6 +224,8 @@ export type MainToWorkerMessage =
           isolatedIds?: number[]
           /** Object ids to render as selected, for headless verification of the selection pattern. */
           selectedObjectIds?: number[]
+          /** Force the deferred geometry→shade path on/off for this headless render (A/B verification). */
+          deferredShading?: boolean
           cameraState: CameraState
           viewTransform: Float32Array
           cameraPosition: [number, number, number]
@@ -236,9 +241,13 @@ export type MainToWorkerMessage =
     // "View Isolated" toggle/retarget. The worker recompiles the preview SDF from
     // the isolated subtree(s) as root (empty = full scene) — see recompileIsolation.
     | { type: "setIsolatedIds"; isolatedIds: number[] }
-    | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
+    | { type: "setFeatureGraphOcclusionMode"; mode: FeatureGraphOcclusionMode }
+    | { type: "setFeatureGraphLineWidth"; px: number }
+    | { type: "setFeatureGraphDifferentiateSegments"; on: boolean }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
+    | { type: "setDeferredShading"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
+    | { type: "clearFgSelection" }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]

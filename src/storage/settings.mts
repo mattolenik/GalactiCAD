@@ -8,7 +8,7 @@ import {
     DEVTOOLS_SECTION_APP,
     DEVTOOLS_SECTION_LOGS,
 } from "../components/dev-tools-protocol.mjs"
-import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning } from "../render-worker-protocol.mjs"
+import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning, type FeatureGraphOcclusionMode } from "../render-worker-protocol.mjs"
 import { EXPORTER_KINDS, isValidExporter, type ExporterKind } from "../export/mesh-exporter.mjs"
 import { DEFAULT_MDC_TUNING, normalizeMdcTuning, type MdcTuning } from "../export/mdc-tuning.mjs"
 import { DEFAULT_SHREC_TUNING, normalizeShrecTuning, type ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
@@ -66,8 +66,19 @@ export interface PreviewSettings {
     cameraOptimization: boolean
     beamOptimization: boolean
     bvhOptimization: boolean
-    /** Draw the FeatureGraph debug overlay (alive crease/corner edges) over the scene. */
-    featureGraphOverlay: boolean
+    /**
+     * Occlusion mode for the always-on FeatureGraph overlay (toolbar toggle):
+     * "hard" hides features behind the SDF surface (default), "dim" fades them.
+     * ("off" remains a valid value but is no longer reachable from the UI.)
+     */
+    featureGraphOcclusion: FeatureGraphOcclusionMode
+    /** Edge line width (framebuffer px) for the FeatureGraph overlay. */
+    featureGraphLineWidth: number
+    /**
+     * Color original (emitted) crease edges green vs subdivided edges cyan in
+     * the overlay. Default false ⇒ all edges cyan.
+     */
+    featureGraphDifferentiateSegments: boolean
 }
 
 export interface LayoutSettings {
@@ -89,7 +100,7 @@ export interface DocumentSettings {
     selection: EditorSelection
 }
 
-export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
+export type SelectionMode = "object" | "seam" | "edge" | "corner" | "face" | "auto"
 
 export type CameraRotationMethod = "rounded_arcball" | "azel"
 
@@ -186,7 +197,9 @@ function defaultPreview(): PreviewSettings {
         cameraOptimization: true,
         beamOptimization: true,
         bvhOptimization: true,
-        featureGraphOverlay: true,
+        featureGraphOcclusion: "hard",
+        featureGraphLineWidth: 2,
+        featureGraphDifferentiateSegments: false,
     }
 }
 

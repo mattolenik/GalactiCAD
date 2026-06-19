@@ -152,6 +152,33 @@ export function emptyFeatureGraphCpu(): FeatureGraphCpu {
 }
 
 // -----------------------------------------------------------------------------
+// Alive-feature enumeration — the canonical iteration order shared by the
+// overlay's instance upload, the chain grouping, and the CPU hit-tester. The
+// s-th alive edge returned here IS overlay instance index `s`; keeping this in
+// one place guarantees the instance buffer, the chain `edgeInstanceToChain`
+// map, and the hit-tester all agree on indexing.
+// -----------------------------------------------------------------------------
+
+/** Indices `e` of edges with `FG_FLAG_ALIVE`, ascending — overlay instance order. */
+export function enumerateAliveEdges(cpu: FeatureGraphCpu): Uint32Array {
+    const out: number[] = []
+    for (let e = 0; e < cpu.edgeCount; e++) {
+        if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) !== 0) out.push(e)
+    }
+    return Uint32Array.from(out)
+}
+
+/** Vertex indices `v` that are alive *corners* (0D features), ascending — overlay corner-instance order. */
+export function enumerateAliveCorners(cpu: FeatureGraphCpu): Uint32Array {
+    const mask = FG_FLAG_ALIVE | FG_FLAG_CORNER
+    const out: number[] = []
+    for (let i = 0; i < cpu.vertexCount; i++) {
+        if ((cpu.vertexFlags[i]! & mask) === mask) out.push(i)
+    }
+    return Uint32Array.from(out)
+}
+
+// -----------------------------------------------------------------------------
 // Mat4 helpers — column-major Float32Array(16), matching WGSL `mat4x4f` layout.
 // Kept local rather than reaching for `Mat4x4f` so the builder has no external
 // runtime deps; the math is small and only runs at scene-build time.

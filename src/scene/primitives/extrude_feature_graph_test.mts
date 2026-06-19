@@ -176,10 +176,10 @@ test("Extrude with .twist(45): top corners rotated, bottom corners unrotated", (
     const cpu = builder.finish()
 
     // 3 polygon vertices × (top + bottom corners) + helical intermediate
-    // vertices on the 3 side edges. At 45°, helixSegments = ceil(45/15) = 3,
-    // so each side edge contributes (3 - 1) = 2 intermediate vertices.
-    // 6 corners + 3 × 2 intermediates = 12 vertices.
-    assert.equal(cpu.vertexCount, 12, "6 corners + 6 helical intermediates")
+    // vertices on the 3 side edges. At 45°, helixSegments = ceil(45/10) = 5,
+    // so each side edge contributes (5 - 1) = 4 intermediate vertices.
+    // 6 corners + 3 × 4 intermediates = 18 vertices.
+    assert.equal(cpu.vertexCount, 18, "6 corners + 12 helical intermediates")
 
     // Bottom corners are unrotated — match the original polygon (with pos).
     // Vertex emission order is interleaved (top, bot) per polygon vertex.
@@ -251,4 +251,58 @@ test("Extrude under Scale: transform stack records scale matrix", () => {
     assert.equal(cpu.transforms[1 * 16 + 0]!, 2, "scale frame m[0] = sx")
     assert.equal(cpu.transforms[1 * 16 + 5]!, 1, "scale frame m[5] = sy")
     assert.equal(cpu.transforms[1 * 16 + 10]!, 1, "scale frame m[10] = sz")
+})
+
+/**
+ * A square with an extra COLLINEAR midpoint on the bottom edge. Polygon vertex
+ * 1 = [5, 0] lies on the straight run [0,0]→[10,0], so its turn is ~0 and it is
+ * NOT sharp; the four square corners are sharp (90°). Emission order is
+ * top/bottom per polygon vertex, so polygon vertex 1 → vertex indices 2 (top)
+ * and 3 (bottom).
+ */
+const SQUARE_WITH_COLLINEAR: [number, number][] = [
+    [0, 0],
+    [5, 0],
+    [10, 0],
+    [10, 10],
+    [0, 10],
+]
+
+test("Extrude.accumulateFeatureGraph: real-turn vertices cast a side edge; collinear vertices do not", () => {
+    const root = extrude.profile(polygon2d(SQUARE_WITH_COLLINEAR)).height(5)
+    const builder = new FeatureGraphBuilder()
+    root.accumulateFeatureGraph(builder)
+    const cpu = builder.finish()
+
+    // 5 polygon vertices × (top + bottom) — every vertex is emitted so cap
+    // edges/loops have valid endpoints, even the collinear one.
+    assert.equal(cpu.vertexCount, 10)
+    // 5 top cap + 5 bottom cap + 4 vertical: the four square corners turn (any
+    // turn counts — no sharpness floor), but the collinear midpoint is flat and
+    // casts no vertical crease.
+    assert.equal(cpu.edgeCount, 14, "5 top + 5 bottom + 4 vertical (collinear midpoint skipped)")
+
+    // The collinear vertex (polygon vertex 1 → vert indices 2, 3) is NOT a
+    // corner and casts NO vertical side edge — the surface is flat there.
+    assert.equal(cpu.vertexFlags[2]! & FG_FLAG_CORNER, 0, "collinear vertex top: not a corner")
+    assert.equal(cpu.vertexFlags[3]! & FG_FLAG_CORNER, 0, "collinear vertex bottom: not a corner")
+    let hasCollinearSideEdge = false
+    for (let e = 0; e < cpu.edgeCount; e++) {
+        const a = cpu.edgeEndpoints[e * 2]!
+        const b = cpu.edgeEndpoints[e * 2 + 1]!
+        if ((a === 2 && b === 3) || (a === 3 && b === 2)) hasCollinearSideEdge = true
+    }
+    assert.ok(!hasCollinearSideEdge, "collinear vertex casts no vertical side edge")
+
+    // A real (90°) corner — polygon vertex 0 → vert indices 0 (top), 1 (bottom)
+    // — IS flagged a corner and DOES cast a vertical edge (0 ↔ 1).
+    assert.ok((cpu.vertexFlags[0]! & FG_FLAG_CORNER) !== 0, "square corner top: corner flag set")
+    assert.ok((cpu.vertexFlags[1]! & FG_FLAG_CORNER) !== 0, "square corner bottom: corner flag set")
+    let hasCornerSideEdge = false
+    for (let e = 0; e < cpu.edgeCount; e++) {
+        const a = cpu.edgeEndpoints[e * 2]!
+        const b = cpu.edgeEndpoints[e * 2 + 1]!
+        if ((a === 0 && b === 1) || (a === 1 && b === 0)) hasCornerSideEdge = true
+    }
+    assert.ok(hasCornerSideEdge, "real corner casts a vertical side edge")
 })

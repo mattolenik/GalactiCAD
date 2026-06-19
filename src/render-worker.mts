@@ -208,14 +208,26 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
                 runNextJob()
             }
             break
-        case "setFeatureGraphOverlayEnabled":
-            if (core) core.setFeatureGraphOverlayEnabled(msg.enabled)
+        case "setFeatureGraphOcclusionMode":
+            if (core) core.setFeatureGraphOcclusionMode(msg.mode)
+            break
+        case "setFeatureGraphLineWidth":
+            if (core) core.setFeatureGraphLineWidth(msg.px)
+            break
+        case "setFeatureGraphDifferentiateSegments":
+            if (core) core.setFeatureGraphDifferentiateSegments(msg.on)
             break
         case "setStepHeatmapEnabled":
             if (core) core.setStepHeatmapEnabled(msg.enabled)
             break
+        case "setDeferredShading":
+            if (core) core.setDeferredShading(msg.enabled)
+            break
         case "setDebugLogModules":
             applyDebugLogModules(msg.modules)
+            break
+        case "clearFgSelection":
+            if (core) core.clearFgSelection()
             break
         default:
             log("RenderWorker").info("unknown message", (msg as { type: string }).type)

@@ -580,17 +580,18 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     /**
      * Emit feature-graph features for this extruded polygon:
      *  - **Top/bottom corner vertices** at each polygon vertex (local position
-     *    bakes in `this.pos`). Marked {@link FG_FLAG_CORNER} only when the
-     *    polygon turn is sharp by the same `EXTRUDE_MDC_FEATURE_DOT` /
-     *    `EXTRUDE_MDC_VERTEX_TURN_MIN` thresholds the MDC mid-feature pass
-     *    uses — smooth polygon vertices are still emitted so cap edges have
-     *    valid endpoints, just without the corner flag. Each vertex carries
-     *    three source-face normals: cap (±Y) and the two adjacent side faces.
-     *  - **Vertical side edges** at sharp polygon vertices only — these are
-     *    where two side faces meet at a real dihedral. Under twist, these
-     *    become helices and are pre-subdivided into a chain at extraction
-     *    time so the visualised overlay traces the helix instead of cutting
-     *    a chord through it.
+     *    bakes in `this.pos`). Marked {@link FG_FLAG_CORNER} at every vertex
+     *    with a real turn — any nonzero turn angle, with NO dihedral/sharpness
+     *    floor; only perfectly-collinear vertices (a midpoint on a straight
+     *    side) stay un-flagged. Collinear vertices are still emitted so cap
+     *    edges have valid endpoints, just without the corner flag. Each vertex
+     *    carries three source-face normals: cap (±Y) and the two adjacent side
+     *    faces.
+     *  - **Vertical side edges** at every vertex with a real turn — each such
+     *    vertex casts a feature line no matter how gentle the turn (no sharpness
+     *    threshold); collinear vertices cast none. Under twist, these become
+     *    helices and are pre-subdivided into a chain at extraction time so the
+     *    visualised overlay traces the helix instead of cutting a chord through it.
      *  - **Cap edges** along each polygon segment, top and bottom — always
      *    emitted. With twist, the top cap is the polygon rotated by the full
      *    twist angle; its edges are still straight in 3D (it's a planar
@@ -675,10 +676,15 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             const prevOutL = edgeOutwardLocal[(k - 1 + N) % N]!
             const nextOutL = edgeOutwardLocal[k]!
 
-            // Polygon-turn sharpness — same predicate as the MDC mid-feature
-            // pass. Turn angle is invariant to twist (twist rotates all
-            // side surfaces together; the dihedral between adjacent sides
-            // doesn't change).
+            // Turn angle at this polygon vertex (invariant to twist — twist
+            // rotates all side surfaces together, so the dihedral between
+            // adjacent sides doesn't change). A vertex casts a feature
+            // (vertical crease line + 0D corner) iff it has a REAL turn: any
+            // nonzero turn angle, with no sharpness/dihedral floor. Perfectly-
+            // collinear vertices (turn ≈ 0, e.g. a midpoint on a straight side)
+            // are flat and cast nothing. The dot-based EXTRUDE_MDC_FEATURE_DOT
+            // threshold still gates the separate MDC mid-feature WGSL path
+            // (compileAux), not this FeatureGraph path.
             const [pvx, pvz] = verts[(k - 1 + N) % N]!
             const [nvx, nvz] = verts[(k + 1) % N]!
             let pdx = vx - pvx, pdz = vz - pvz
@@ -688,9 +694,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             const nLen = Math.sqrt(ndx * ndx + ndz * ndz) || 1
             ndx /= nLen; ndz /= nLen
             const turn = Math.abs(pdx * ndz - pdz * ndx)
-            const dotN = prevOutL.x * nextOutL.x + prevOutL.z * nextOutL.z
-            const sharp = turn >= EXTRUDE_MDC_VERTEX_TURN_MIN && dotN < EXTRUDE_MDC_FEATURE_DOT
-            sharpAt[k] = sharp
+            const hasTurn = turn >= EXTRUDE_MDC_VERTEX_TURN_MIN
+            sharpAt[k] = hasTurn
 
             // Bottom corner: untwisted (angle = 0).
             const lxBot = vx + px, lzBot = vz + pz
@@ -698,7 +703,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             const [twx, twz] = rotXZ(vx, vz, caTop, saTop)
             const lxTop = twx + px, lzTop = twz + pz
 
-            const baseFlags = FG_FLAG_CREASE_ORIGINAL | (sharp ? FG_FLAG_CORNER : 0)
+            const baseFlags = FG_FLAG_CREASE_ORIGINAL | (hasTurn ? FG_FLAG_CORNER : 0)
             const prevOutTop = rotNormalY(prevOutL, caTop, saTop)
             const nextOutTop = rotNormalY(nextOutL, caTop, saTop)
 
@@ -715,10 +720,11 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         }
 
         // Pass 2: emit edges.
-        // Helical side-edge resolution: ~1 segment per 15° of twist (min 1
-        // = straight edge when untwisted). Cheap visual approximation; the
+        // Helical side-edge resolution: ~1 segment per 10° of twist (min 1
+        // = straight edge when untwisted). Cheap visual approximation that
+        // keeps twisted side-creases smooth in the FeatureGraph overlay; the
         // stage-3 subdivision pass refines further by chord length.
-        const helixSegments = hasTwist ? Math.max(1, Math.ceil(Math.abs(this.twistDegrees) / 15)) : 1
+        const helixSegments = hasTwist ? Math.max(1, Math.ceil(Math.abs(this.twistDegrees) / 10)) : 1
 
         for (let k = 0; k < N; k++) {
             const kNext = (k + 1) % N
@@ -727,7 +733,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             builder.emitEdge(topIdx[k]!, topIdx[kNext]!, FG_FLAG_CREASE_ORIGINAL)
             builder.emitEdge(botIdx[k]!, botIdx[kNext]!, FG_FLAG_CREASE_ORIGINAL)
 
-            // Side edge — only at sharp polygon vertices.
+            // Side edge — only at vertices with a real turn (`sharpAt[k]`);
+            // collinear vertices are flat and cast no vertical crease.
             if (!sharpAt[k]) continue
 
             if (helixSegments === 1) {

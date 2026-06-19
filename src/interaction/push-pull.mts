@@ -64,6 +64,14 @@ export class PushPullController {
     #sideHighlightOnly: { extrude: Extrude; faceIndex: number; angle: number } | null = null
     /** Primitive face highlight only (Box, Cylinder, Cone). */
     #primitiveHighlightOnly: { node: Box | Cylinder | Cone; faceIndex: number } | null = null
+    /**
+     * True when the current highlight is a *pure surface selection* (e.g. the
+     * SDFPreview "Face" selection mode) rather than a push/pull affordance. It
+     * makes the shader paint the selection CROSS-HATCH instead of the push/pull
+     * DOT dither (`faceSelection.pushPullActive = 0`). Reset whenever push/pull
+     * activates or the selection is dropped.
+     */
+    #selectionOnlyHighlight = false
     #dragging = false
     #dragStartScreen = vec2(0, 0)
     #dragOffset = 0
@@ -82,9 +90,10 @@ export class PushPullController {
     }
 
     /** Highlight a side face for surface selection only (single-click). Does not activate push/pull. */
-    highlightSideFace(extrude: Extrude, hitPos: Vec3f): void {
+    highlightSideFace(extrude: Extrude, hitPos: Vec3f, selectionOnly = false): void {
         this.#capHighlightOnly = null
         this.#primitiveHighlightOnly = null
+        this.#selectionOnlyHighlight = selectionOnly
         // Un-twist the world hit into polygon (profile) space so the edge match
         // works "through" the twist; angle = 0 when the extrude isn't twisted.
         const angle = twistAngleAt(extrude, hitPos.y)
@@ -161,6 +170,7 @@ export class PushPullController {
     selectFace(extrude: Extrude, hitPos: Vec3f): void {
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
+        this.#selectionOnlyHighlight = false
 
         // Un-twist the world hit into polygon (profile) space (polygon lives in
         // XZ). angle = 0 when the extrude isn't twisted, so this is a no-op then.
@@ -192,18 +202,22 @@ export class PushPullController {
     }
 
     /** Highlight a primitive face (Box, Cylinder, Cone) for surface selection only. */
-    highlightPrimitiveFace(node: Box | Cylinder | Cone, faceIndex: number): void {
+    highlightPrimitiveFace(node: Box | Cylinder | Cone, faceIndex: number, selectionOnly = false): void {
         this.#primitiveHighlightOnly = { node, faceIndex }
+        this.#sideHighlightOnly = null
+        this.#capHighlightOnly = null
+        this.#selectionOnlyHighlight = selectionOnly
         const mode = node instanceof Box ? 4 : node instanceof Cylinder ? 5 : 6
         this.#writeFaceSelection(node.id, faceIndex, mode, 0)
         this.#host.requestRender()
     }
 
     /** Highlight a cap for surface selection only (single-click). Does not activate push/pull. */
-    highlightCapFace(node: PushPullCapNode, isTop: boolean): void {
+    highlightCapFace(node: PushPullCapNode, isTop: boolean, selectionOnly = false): void {
         this.#capHighlightOnly = { node, isTop }
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
+        this.#selectionOnlyHighlight = selectionOnly
         const mode = isTop ? 2 : 3
         this.#writeFaceSelection(node.id, 0, mode, 0)
         const selData = new Uint32Array(1024)
@@ -218,7 +232,7 @@ export class PushPullController {
         this.#capHighlightOnly = null
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
-        this.#primitiveHighlightOnly = null
+        this.#selectionOnlyHighlight = false
         // basePosYDelta = offset from compiled position. When compiledPosY is missing (e.g. node
         // not in map after tab switch or build race), use 0 to avoid the whole object jumping.
         const compiledPosY = this.#host.hasCompiledPosY(node.id)
@@ -243,8 +257,10 @@ export class PushPullController {
         this.#host.requestRender()
     }
 
-    /** Drop from active push/pull back to highlight-only, keeping the surface visually selected. */
+    /** Drop from active push/pull back to highlight-only, keeping the surface visually selected (cross-hatch). */
     dropToHighlight(): void {
+        // After a push/pull the surface reverts to a plain selection → cross-hatch.
+        this.#selectionOnlyHighlight = true
         if (this.#face) {
             const { extrude, faceIndex, angle } = this.#face
             this.#face = null
@@ -272,6 +288,8 @@ export class PushPullController {
     /** Promote highlight-only state to fully active push/pull (face or cap selected). */
     promoteToActive(): boolean {
         if (this.isActive) return true
+        // Promotion to a real push/pull → restore the DOT dither.
+        this.#selectionOnlyHighlight = false
         if (this.#sideHighlightOnly) {
             const { extrude, faceIndex, angle } = this.#sideHighlightOnly
             this.#sideHighlightOnly = null
@@ -317,6 +335,26 @@ export class PushPullController {
     }
 
     /** Deselect any active face or cap highlight. */
+    /**
+     * Drop a highlight-only face preview (hover / Face-mode surface select)
+     * WITHOUT firing `onDeselect` — so a transient hover-out doesn't push an undo
+     * step or kick a rebuild. No-op during active push/pull (those aren't
+     * highlight-only states). Callers restore the real object-selection buffer.
+     */
+    clearFaceHighlight(): void {
+        if (this.#face || this.#cap) return
+        if (!this.#capHighlightOnly && !this.#sideHighlightOnly && !this.#primitiveHighlightOnly) return
+        this.#capHighlightOnly = null
+        this.#sideHighlightOnly = null
+        this.#primitiveHighlightOnly = null
+        this.#selectionOnlyHighlight = false
+        this.#writeFaceSelection(0, 0)
+        this.#host.writeBuffers({
+            selectedObjectIds: { offset: FACE_HIGHLIGHT_BOTTOM * 4, data: new Uint32Array([0, 0]).buffer },
+        })
+        this.#host.requestRender()
+    }
+
     deselect(): void {
         if (!this.#face && !this.#cap && !this.#capHighlightOnly && !this.#sideHighlightOnly && !this.#primitiveHighlightOnly) return
         this.#face = null
@@ -324,6 +362,7 @@ export class PushPullController {
         this.#capHighlightOnly = null
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
+        this.#selectionOnlyHighlight = false
         this.#dragging = false
 
         // Clear face selection on GPU
@@ -467,7 +506,9 @@ export class PushPullController {
         u32[1] = faceIndex
         u32[2] = mode
         f32[3] = extrudeOffset
-        u32[4] = this.getFaceSelection() !== null ? 1 : 0
+        // pushPullActive drives the DOT dither; a pure selection (selectionOnly)
+        // shows the CROSS-HATCH instead (pushPullActive = 0).
+        u32[4] = this.getFaceSelection() !== null && !this.#selectionOnlyHighlight ? 1 : 0
         this.#host.writeBuffers({ faceSelection: data })
     }
 

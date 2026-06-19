@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { cylinder } from "../scene.mjs"
+import { RING_SEGMENTS } from "./cylinder.mjs"
 import {
     FeatureGraphBuilder,
     FG_FLAG_ALIVE,
@@ -8,18 +9,16 @@ import {
     FG_FLAG_CREASE_ORIGINAL,
 } from "../feature-graph-buffer.mjs"
 
-const RING_SEGMENTS = 32
-
-test("Cylinder.accumulateFeatureGraph: discretises both cap rings into 32-segment polylines", () => {
+test(`Cylinder.accumulateFeatureGraph: discretises both cap rings into ${RING_SEGMENTS}-segment polylines`, () => {
     const root = cylinder.radius(5)
     root.h = 10
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
 
-    // 2 caps × 32 ring vertices each
+    // 2 caps × RING_SEGMENTS ring vertices each
     assert.equal(cpu.vertexCount, 2 * RING_SEGMENTS)
-    // 2 caps × 32 closing edges
+    // 2 caps × RING_SEGMENTS closing edges
     assert.equal(cpu.edgeCount, 2 * RING_SEGMENTS)
     // 2 cap loops (top + bottom)
     assert.equal(cpu.loopCount, 2)
@@ -50,7 +49,7 @@ test("Cylinder.accumulateFeatureGraph: ring vertices lie on the circle at y = ±
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
 
-    // Top ring is emitted first (indices 0..31).
+    // Top ring is emitted first (indices 0..RING_SEGMENTS-1).
     for (let i = 0; i < RING_SEGMENTS; i++) {
         const x = cpu.vertexPositions[i * 3]!
         const y = cpu.vertexPositions[i * 3 + 1]!
@@ -58,7 +57,7 @@ test("Cylinder.accumulateFeatureGraph: ring vertices lie on the circle at y = ±
         assert.ok(Math.abs(Math.sqrt(x * x + z * z) - r) < 1e-5, `vertex ${i} on radius ${r}`)
         assert.ok(Math.abs(y - h) < 1e-5, `vertex ${i} at top y = ${h}`)
     }
-    // Bottom ring (indices 32..63).
+    // Bottom ring (indices RING_SEGMENTS..2*RING_SEGMENTS-1).
     for (let i = 0; i < RING_SEGMENTS; i++) {
         const slot = RING_SEGMENTS + i
         const y = cpu.vertexPositions[slot * 3 + 1]!

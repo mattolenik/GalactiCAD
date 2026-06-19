@@ -53,8 +53,11 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #cameraOptimization$: BehaviorSubject<boolean>
     #beamOptimization$: BehaviorSubject<boolean>
     #bvhOptimization$: BehaviorSubject<boolean>
-    #fgOverlay$: BehaviorSubject<boolean>
+    #fgLineWidth$: BehaviorSubject<number>
+    #fgLineWidthInput?: HTMLInputElement
+    #fgDifferentiate$: BehaviorSubject<boolean>
     #stepHeatmap$: BehaviorSubject<boolean>
+    #deferredShading$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
     #upscaleState: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
@@ -65,8 +68,10 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onCameraOptimizationChange?: (enabled: boolean) => void
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
-    onFeatureGraphOverlayChange?: (enabled: boolean) => void
+    onFeatureGraphLineWidthChange?: (px: number) => void
+    onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
+    onDeferredShadingChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
 
@@ -124,12 +129,33 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#bvhOptimization$.next(enabled)
     }
 
-    get featureGraphOverlay(): boolean {
-        return this.#fgOverlay$.value
+    get featureGraphLineWidth(): number {
+        return this.#fgLineWidth$.value
     }
 
-    set featureGraphOverlay(enabled: boolean) {
-        this.#fgOverlay$.next(enabled)
+    /** Sync the input from the renderer/settings without re-dispatching. */
+    set featureGraphLineWidth(px: number) {
+        this.#applying = true
+        try {
+            this.#fgLineWidth$.next(px)
+            if (this.#fgLineWidthInput) this.#fgLineWidthInput.value = String(px)
+        } finally {
+            this.#applying = false
+        }
+    }
+
+    get featureGraphDifferentiateSegments(): boolean {
+        return this.#fgDifferentiate$.value
+    }
+
+    /** Sync the checkbox from the renderer/settings without re-dispatching. */
+    set featureGraphDifferentiateSegments(on: boolean) {
+        this.#applying = true
+        try {
+            this.#fgDifferentiate$.next(on)
+        } finally {
+            this.#applying = false
+        }
     }
 
     get stepHeatmap(): boolean {
@@ -138,6 +164,14 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
     set stepHeatmap(enabled: boolean) {
         this.#stepHeatmap$.next(enabled)
+    }
+
+    get deferredShading(): boolean {
+        return this.#deferredShading$.value
+    }
+
+    set deferredShading(enabled: boolean) {
+        this.#deferredShading$.next(enabled)
     }
 
     get meshViewer(): boolean {
@@ -185,10 +219,15 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
-        this.#fgOverlay$ = new BehaviorSubject(true)
+        this.#fgLineWidth$ = new BehaviorSubject(2)
+        this.#fgDifferentiate$ = new BehaviorSubject(false)
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
+        // Deferred selection shading: off by default (single-pass fragmentMain).
+        // When on, selection/hover repaints skip the SDF march — big win on deep
+        // scenes; ~+200MB G-buffer VRAM and a tiny extra pass on full frames.
+        this.#deferredShading$ = new BehaviorSubject(false)
 
         const persist = () => {
             if (this.#applying) return
@@ -215,10 +254,46 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.dispatchEvent(new CustomEvent("galacticad-show-fps-change", { bubbles: true, composed: true }))
         })
 
-        const fgOverlayCb = this.#addCheckbox(viewportBox, "FeatureGraph overlay", this.#fgOverlay$.value)
-        this.#subscriptions.push(connectCheckbox(fgOverlayCb, this.#fgOverlay$))
+        // FeatureGraph overlay is always on (mode driven by the toolbar occlusion
+        // toggle); the enable checkbox + occlusion dropdown were retired here.
+
+        // Overlay edge line width (framebuffer px), in the same viewport box.
+        {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = "Overlay line width"
+            const input = document.createElement("input")
+            input.type = "number"
+            input.min = "0.5"
+            input.max = "8"
+            input.step = "0.5"
+            input.value = String(this.#fgLineWidth$.value)
+            input.style.cssText = "width:60px;font-size:11px;"
+            input.addEventListener("change", () => {
+                const v = parseFloat(input.value)
+                if (!Number.isFinite(v)) return
+                this.#fgLineWidth$.next(v)
+            })
+            this.#fgLineWidthInput = input
+            row.append(lab, input)
+            viewportBox.appendChild(row)
+            this.#subscriptions.push(
+                this.#fgLineWidth$.pipe(skip(1)).subscribe(v => {
+                    if (!this.#applying) this.onFeatureGraphLineWidthChange?.(v)
+                }),
+            )
+        }
+
+        // Color original (emitted) creases green vs subdivided cyan. Off by
+        // default ⇒ all overlay edges are cyan.
+        const fgDiffCb = this.#addCheckbox(viewportBox, "Differentiate segments", this.#fgDifferentiate$.value)
+        this.#subscriptions.push(connectCheckbox(fgDiffCb, this.#fgDifferentiate$))
         this.#subscriptions.push(
-            this.#fgOverlay$.pipe(skip(1)).subscribe(v => this.onFeatureGraphOverlayChange?.(v)),
+            this.#fgDifferentiate$.pipe(skip(1)).subscribe(v => {
+                if (!this.#applying) this.onFeatureGraphDifferentiateSegmentsChange?.(v)
+            }),
         )
 
         const perfBox = document.createElement("dev-tools-collapse")
@@ -286,6 +361,12 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(connectCheckbox(stepHeatmapCb, this.#stepHeatmap$))
         this.#subscriptions.push(
             this.#stepHeatmap$.pipe(skip(1)).subscribe(v => this.onStepHeatmapChange?.(v)),
+        )
+
+        const deferredShadingCb = this.#addCheckbox(perfBox, "Deferred selection shading", this.#deferredShading$.value)
+        this.#subscriptions.push(connectCheckbox(deferredShadingCb, this.#deferredShading$))
+        this.#subscriptions.push(
+            this.#deferredShading$.pipe(skip(1)).subscribe(v => this.onDeferredShadingChange?.(v)),
         )
 
         const rayMarchKnobs: { key: keyof RayMarchParams; label: string; min: number; max: number; step: number }[] = [

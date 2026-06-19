@@ -152,6 +152,12 @@ async function build() {
             outdir: Options.outDir,
             platform: "browser",
             format: "esm",
+            // Factor code shared across entry points (notably the ~3.5 MB TypeScript
+            // compiler used by app.js, transpile-worker, and ts-worker) into shared
+            // chunks instead of inlining a copy in each. All entries + workers are ESM
+            // module workers, so they can import the chunks. Chunks land at the outdir
+            // root, so the import.meta.url-relative worker URLs still resolve.
+            splitting: true,
             alias: { path: NODE_EMPTY_STUB, fs: NODE_EMPTY_STUB },
             mainFields: ["browser", "module", "main"],
             assetNames: "assets/[name]-[hash]",

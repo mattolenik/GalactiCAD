@@ -3,6 +3,7 @@ import { EventName } from "chokidar/handler.js"
 import * as esbuild from "esbuild"
 import fs from "fs/promises"
 import nodePath from "node:path"
+import { fileURLToPath } from "node:url"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import { DevServer, type RunFileData, AGENT_MODE } from "./devserver.mjs"
@@ -16,6 +17,11 @@ const log = (msg: any) => console.log(`${new Date().toLocaleTimeString(navigator
 const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigator.language, { hour12: false })} ${msg}`)
 
 const IS_PROD = !!process.env.PRODUCTION
+
+// @typescript/vfs lazily requires node `path`/`fs` in Node-only paths we never hit in
+// the browser; the prod minifier folds its obfuscated requires into static ones, so
+// alias both to an empty module to keep the bundle resolvable. See node-empty-stub.mjs.
+const NODE_EMPTY_STUB = fileURLToPath(new URL("./node-empty-stub.mjs", import.meta.url))
 
 // The editor (CodeMirror 6) bundles as plain ESM into app.js — no worker-bundling
 // plugin and no environment shim. The only editor worker is the TypeScript
@@ -146,6 +152,7 @@ async function build() {
             outdir: Options.outDir,
             platform: "browser",
             format: "esm",
+            alias: { path: NODE_EMPTY_STUB, fs: NODE_EMPTY_STUB },
             mainFields: ["browser", "module", "main"],
             assetNames: "assets/[name]-[hash]",
             loader: {

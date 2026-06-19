@@ -241,7 +241,6 @@ export type MainToWorkerMessage =
     // "View Isolated" toggle/retarget. The worker recompiles the preview SDF from
     // the isolated subtree(s) as root (empty = full scene) — see recompileIsolation.
     | { type: "setIsolatedIds"; isolatedIds: number[] }
-    | { type: "setFeatureGraphOverlayEnabled"; enabled: boolean }
     | { type: "setFeatureGraphOcclusionMode"; mode: FeatureGraphOcclusionMode }
     | { type: "setFeatureGraphLineWidth"; px: number }
     | { type: "setFeatureGraphDifferentiateSegments"; on: boolean }

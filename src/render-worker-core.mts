@@ -272,16 +272,15 @@ export class RenderWorkerCore {
     /** Currently hovered chain / corner-vertex (-1 = none). */
     #fgHoverChain = -1
     #fgHoverCorner = -1
-    /** Toggle for the debug overlay; default ON, updated by view settings. */
-    #featureGraphOverlayEnabled = true
     /**
-     * Overlay depth-occlusion mode: 0 = off (draw on top, the default), 1 =
-     * hard (hide occluded edges), 2 = dim (fade occluded edges). When non-zero
+     * Overlay depth-occlusion mode: 0 = off (draw on top), 1 = hard (hide
+     * occluded edges, the default), 2 = dim (fade occluded edges). When non-zero
      * the renderer runs an extra depth-only raymarch pass ({@link #depthPipeline})
      * into {@link #sceneDepthTexture} so the overlay can depth-sort its lines
-     * against the SDF surface. Zero ⇒ no extra pass, identical to legacy behavior.
+     * against the SDF surface. The always-on overlay defaults to hard; "off" is
+     * no longer set from the app (kept for completeness).
      */
-    #featureGraphOcclusionMode = 0
+    #featureGraphOcclusionMode = 1
     /** Edge line width (framebuffer px) for the FeatureGraph overlay. */
     #featureGraphLineWidth = 2
     /** Color original creases green vs subdivided cyan in the overlay (default off ⇒ all cyan). */
@@ -683,8 +682,7 @@ export class RenderWorkerCore {
      * Toggle the per-pixel `sceneSDF_fast` step-count heatmap in the preview
      * shader. Picked up on the next render frame; no immediate re-render is
      * triggered (the user typically toggles and then interacts, which kicks
-     * a render naturally — matching the {@link setFeatureGraphOverlayEnabled}
-     * convention).
+     * a render naturally).
      */
     setStepHeatmapEnabled(enabled: boolean): void {
         if (this.#stepHeatmapEnabled === enabled) return
@@ -695,25 +693,12 @@ export class RenderWorkerCore {
         this.#forceNextRender = true
     }
 
-    /** Toggle the FeatureGraph debug overlay. Renders alive crease/corner edges over the scene. */
-    setFeatureGraphOverlayEnabled(enabled: boolean): void {
-        const wasEnabled = this.#featureGraphOverlayEnabled
-        if (wasEnabled === enabled) return
-        this.#featureGraphOverlayEnabled = enabled
-        this.#forceNextRender = true
-        // Enabling mid-session: lazily kick a build against the current scene
-        // so the overlay populates without waiting for the next source edit.
-        if (!wasEnabled && enabled && this.#scene && this.#builtStructuralFingerprint) {
-            this.#kickFeatureGraphBuild(this.#scene, this.#builtStructuralFingerprint)
-        }
-    }
 
     /**
-     * Set the FeatureGraph overlay's depth-occlusion mode. Off (default) draws
-     * lines on top as before; "hard" hides edges behind the SDF surface; "dim"
-     * fades them. Picked up on the next frame (no immediate re-render kick, same
-     * convention as {@link setFeatureGraphOverlayEnabled}); the depth pipeline +
-     * texture are allocated lazily on first non-off frame.
+     * Set the FeatureGraph overlay's depth-occlusion mode (toolbar toggle):
+     * "hard" hides edges behind the SDF surface (default), "dim" fades them
+     * ("off" draws on top but is no longer set from the app). Picked up on the
+     * next frame; the depth pipeline + texture are allocated lazily.
      */
     setFeatureGraphOcclusionMode(mode: FeatureGraphOcclusionMode): void {
         const next = occlusionModeToInt(mode)
@@ -1112,7 +1097,6 @@ export class RenderWorkerCore {
         sceneHeight: number,
         deferred = false,
     ): void {
-        if (!this.#featureGraphOverlayEnabled) return
         const overlay = this.#featureGraphOverlay
         if (!overlay || !overlay.hasAliveFeatures) return
         // Per-mode feature-type gate: each selection mode draws only its own
@@ -1472,7 +1456,6 @@ export class RenderWorkerCore {
      * still queued.
      */
     #kickFeatureGraphBuild(scene: SceneInfo, fingerprint: string): void {
-        if (!this.#featureGraphOverlayEnabled) return
         this.#fgGeneration++
         const gen = this.#fgGeneration
         const prev = this.#fgBuildLock
@@ -1481,7 +1464,6 @@ export class RenderWorkerCore {
             // Skip stale kicks queued behind a newer one — only the latest
             // kick should pay for the GPU compute + readback round-trip.
             if (gen !== this.#fgGeneration) return
-            if (!this.#featureGraphOverlayEnabled) return
             // If a structural rebuild landed since the kick was scheduled
             // (`fingerprint` no longer matches what's compiled), let the
             // newer kick take it — bail rather than build against a stale

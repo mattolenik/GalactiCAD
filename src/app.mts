@@ -47,6 +47,7 @@ import toolbarCameraViewsIcon from "./assets/toolbar-camera-views.svg"
 import toolbarXrayIcon from "./assets/toolbar-xray.svg"
 import toolbarPreviewNormalIcon from "./assets/toolbar-preview-normal.svg"
 import toolbarIsolateIcon from "./assets/toolbar-isolate.svg"
+import toolbarOcclusionIcon from "./assets/toolbar-occlusion.svg"
 import toolbarFullscreenEnterIcon from "./assets/toolbar-fullscreen-enter.svg"
 import toolbarFullscreenExitIcon from "./assets/toolbar-fullscreen-exit.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
@@ -163,6 +164,7 @@ class App {
         previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
+        occlusionToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         exportBtn: import("./components/toolbar.mjs").ToolbarButton
         devTools: DevToolsPanel
     }
@@ -664,13 +666,13 @@ class App {
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
-        const { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, exportBtn, devTools } = this.#toolbarRefs
+        const { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
                 .ready()
             this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
             this.renderer.setShapePalette(getShapePalette(this.#effectiveTheme))
-            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio)
+            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle)
             this.#updateViewCenter?.()
             if (isInitial) {
                 this.#wireEditorAndTabs()
@@ -1003,6 +1005,13 @@ class App {
             ],
             this.#settings.getGlobal().preview.selectionMode
         )
+        // Feature-overlay occlusion: hide (default) vs dim features behind the
+        // surface. Always-on overlay, so this is the only occlusion control.
+        const occlusionToggle = toolbar.addToggleButton(
+            toolbarOcclusionIcon,
+            "Occlusion: dim features behind the surface (off = hide them, the default)",
+            this.#settings.getPreview().featureGraphOcclusion === "dim",
+        )
         toolbar.addSeparator()
         const exportBtn = toolbar.addButton("STL", "Export STL")
         const fullscreenBtn = toolbar.addButton("", "Toggle fullscreen")
@@ -1024,7 +1033,7 @@ class App {
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
 
-        return { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, exportBtn, devTools }
+        return { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools }
     }
 
     #setupLayoutObservers(editorContainer: HTMLDivElement) {
@@ -1091,7 +1100,8 @@ class App {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton,
         previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
-        selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
+        selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>,
+        occlusionToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
     ) {
         preview.setThemeMode(this.#settings.getGlobal().app.theme)
         preview.onThemeCycle = () => this.#cycleTheme()
@@ -1294,11 +1304,15 @@ class App {
             this.renderer.setSelectionMode(value)
         }
 
+        // Occlusion toggle: checked = dim features behind the surface, unchecked = hide (default).
+        occlusionToggle.checked = this.renderer.featureGraphOcclusion === "dim"
+        occlusionToggle.onChange = (checked) => {
+            this.renderer.featureGraphOcclusion = checked ? "dim" : "hard"
+        }
+
         devTools.cameraOptimization = this.renderer.cameraOptimization
         devTools.beamOptimization = this.renderer.beamEnabled
         devTools.bvhOptimization = this.renderer.bvhEnabled
-        devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
-        devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
         devTools.featureGraphLineWidth = this.renderer.featureGraphLineWidth
         devTools.featureGraphDifferentiateSegments = this.renderer.featureGraphDifferentiateSegments
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
@@ -1312,12 +1326,6 @@ class App {
         devTools.onBvhOptimizationChange = (enabled) => {
             this.renderer.bvhEnabled = enabled
             void this.build()
-        }
-        devTools.onFeatureGraphOverlayChange = (enabled) => {
-            this.renderer.featureGraphOverlayEnabled = enabled
-        }
-        devTools.onFeatureGraphOcclusionChange = (mode) => {
-            this.renderer.featureGraphOcclusion = mode
         }
         devTools.onFeatureGraphLineWidthChange = (px) => {
             this.renderer.featureGraphLineWidth = px
@@ -1349,11 +1357,10 @@ class App {
             devTools.renderNormals = this.renderer.previewNormalShading
             if (this.#mesh) this.#mesh.renderNormals = this.renderer.previewNormalShading
             selectionModeRadio.value = this.renderer.selectionMode
+            occlusionToggle.checked = this.renderer.featureGraphOcclusion === "dim"
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
-            devTools.featureGraphOverlay = this.renderer.featureGraphOverlayEnabled
-            devTools.featureGraphOcclusion = this.renderer.featureGraphOcclusion
             devTools.featureGraphLineWidth = this.renderer.featureGraphLineWidth
             devTools.featureGraphDifferentiateSegments = this.renderer.featureGraphDifferentiateSegments
         })
@@ -1425,7 +1432,6 @@ class App {
                     cameraOptimization: this.renderer.cameraOptimization,
                     beamOptimization: this.renderer.beamEnabled,
                     bvhOptimization: this.renderer.bvhEnabled,
-                    featureGraphOverlay: this.renderer.featureGraphOverlayEnabled,
                     featureGraphOcclusion: this.renderer.featureGraphOcclusion,
                     featureGraphLineWidth: this.renderer.featureGraphLineWidth,
                     featureGraphDifferentiateSegments: this.renderer.featureGraphDifferentiateSegments,

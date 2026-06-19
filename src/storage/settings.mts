@@ -66,11 +66,10 @@ export interface PreviewSettings {
     cameraOptimization: boolean
     beamOptimization: boolean
     bvhOptimization: boolean
-    /** Draw the FeatureGraph debug overlay (alive crease/corner edges) over the scene. */
-    featureGraphOverlay: boolean
     /**
-     * Depth-occlusion mode for the FeatureGraph overlay: "off" draws lines on
-     * top (legacy), "hard" hides edges behind the SDF surface, "dim" fades them.
+     * Occlusion mode for the always-on FeatureGraph overlay (toolbar toggle):
+     * "hard" hides features behind the SDF surface (default), "dim" fades them.
+     * ("off" remains a valid value but is no longer reachable from the UI.)
      */
     featureGraphOcclusion: FeatureGraphOcclusionMode
     /** Edge line width (framebuffer px) for the FeatureGraph overlay. */
@@ -198,8 +197,7 @@ function defaultPreview(): PreviewSettings {
         cameraOptimization: true,
         beamOptimization: true,
         bvhOptimization: true,
-        featureGraphOverlay: true,
-        featureGraphOcclusion: "off",
+        featureGraphOcclusion: "hard",
         featureGraphLineWidth: 2,
         featureGraphDifferentiateSegments: false,
     }

@@ -153,8 +153,7 @@ export class SDFRenderer {
     #upscaleParams: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
     #previewNormalShading = false
     #bvhEnabled = true
-    #featureGraphOverlayEnabled = true
-    #featureGraphOcclusion: FeatureGraphOcclusionMode = "off"
+    #featureGraphOcclusion: FeatureGraphOcclusionMode = "hard"
     #featureGraphLineWidth = 2
     #featureGraphDifferentiateSegments = false
     #stepHeatmapEnabled = false
@@ -411,7 +410,6 @@ export class SDFRenderer {
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
         this.#bvhEnabled = prev.bvhOptimization
-        this.#featureGraphOverlayEnabled = prev.featureGraphOverlay
         this.#featureGraphOcclusion = prev.featureGraphOcclusion
         this.#featureGraphLineWidth = prev.featureGraphLineWidth
         this.#featureGraphDifferentiateSegments = prev.featureGraphDifferentiateSegments
@@ -427,10 +425,6 @@ export class SDFRenderer {
                 break
             case "ready":
                 this.#worker.postMessage({ type: "setBvhEnabled", enabled: this.#bvhEnabled })
-                this.#worker.postMessage({
-                    type: "setFeatureGraphOverlayEnabled",
-                    enabled: this.#featureGraphOverlayEnabled,
-                })
                 this.#worker.postMessage({
                     type: "setFeatureGraphOcclusionMode",
                     mode: this.#featureGraphOcclusion,
@@ -1659,17 +1653,6 @@ export class SDFRenderer {
     }
     get bvhEnabled(): boolean {
         return this.#bvhEnabled
-    }
-
-    set featureGraphOverlayEnabled(enabled: boolean) {
-        if (this.#featureGraphOverlayEnabled === enabled) return
-        this.#featureGraphOverlayEnabled = enabled
-        this.#settings.updatePreview("featureGraphOverlay", enabled)
-        this.#worker.postMessage({ type: "setFeatureGraphOverlayEnabled", enabled })
-        this.#needsRender = true
-    }
-    get featureGraphOverlayEnabled(): boolean {
-        return this.#featureGraphOverlayEnabled
     }
 
     set featureGraphOcclusion(mode: FeatureGraphOcclusionMode) {

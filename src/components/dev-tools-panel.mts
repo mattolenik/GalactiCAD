@@ -8,7 +8,7 @@ import {
     formatBenchmarkResultsHtml,
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
-import type { FeatureGraphOcclusionMode, RayMarchParams, SimplifyTuning, UpscaleParams } from "../render-worker-protocol.mjs"
+import type { RayMarchParams, SimplifyTuning, UpscaleParams } from "../render-worker-protocol.mjs"
 import type { ExporterKind } from "../export/mesh-exporter.mjs"
 import type { MdcTuning } from "../export/mdc-tuning.mjs"
 import type { ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
@@ -69,8 +69,6 @@ export class DevToolsPanel extends HTMLElement {
     onCameraOptimizationChange?: (enabled: boolean) => void
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
-    onFeatureGraphOverlayChange?: (enabled: boolean) => void
-    onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
     onFeatureGraphLineWidthChange?: (px: number) => void
     onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
@@ -132,22 +130,6 @@ export class DevToolsPanel extends HTMLElement {
 
     set bvhOptimization(enabled: boolean) {
         this.#appSection.bvhOptimization = enabled
-    }
-
-    get featureGraphOverlay(): boolean {
-        return this.#appSection.featureGraphOverlay
-    }
-
-    set featureGraphOverlay(enabled: boolean) {
-        this.#appSection.featureGraphOverlay = enabled
-    }
-
-    get featureGraphOcclusion(): FeatureGraphOcclusionMode {
-        return this.#appSection.featureGraphOcclusion
-    }
-
-    set featureGraphOcclusion(mode: FeatureGraphOcclusionMode) {
-        this.#appSection.featureGraphOcclusion = mode
     }
 
     get featureGraphLineWidth(): number {
@@ -375,8 +357,6 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onCameraOptimizationChange = v => this.onCameraOptimizationChange?.(v)
         this.#appSection.onBeamOptimizationChange = v => this.onBeamOptimizationChange?.(v)
         this.#appSection.onBvhOptimizationChange = v => this.onBvhOptimizationChange?.(v)
-        this.#appSection.onFeatureGraphOverlayChange = v => this.onFeatureGraphOverlayChange?.(v)
-        this.#appSection.onFeatureGraphOcclusionChange = v => this.onFeatureGraphOcclusionChange?.(v)
         this.#appSection.onFeatureGraphLineWidthChange = v => this.onFeatureGraphLineWidthChange?.(v)
         this.#appSection.onFeatureGraphDifferentiateSegmentsChange = v => this.onFeatureGraphDifferentiateSegmentsChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)

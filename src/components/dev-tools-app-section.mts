@@ -5,7 +5,6 @@ import { SettingsManager, type GlobalSettings } from "../storage/settings.mjs"
 import {
     DEFAULT_RAY_MARCH_PARAMS,
     DEFAULT_UPSCALE_PARAMS,
-    type FeatureGraphOcclusionMode,
     type RayMarchParams,
     type UpscaleMode,
     type UpscaleParams,
@@ -54,9 +53,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #cameraOptimization$: BehaviorSubject<boolean>
     #beamOptimization$: BehaviorSubject<boolean>
     #bvhOptimization$: BehaviorSubject<boolean>
-    #fgOverlay$: BehaviorSubject<boolean>
-    #fgOcclusion$: BehaviorSubject<FeatureGraphOcclusionMode>
-    #fgOcclusionSelect?: HTMLSelectElement
     #fgLineWidth$: BehaviorSubject<number>
     #fgLineWidthInput?: HTMLInputElement
     #fgDifferentiate$: BehaviorSubject<boolean>
@@ -72,8 +68,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onCameraOptimizationChange?: (enabled: boolean) => void
     onBeamOptimizationChange?: (enabled: boolean) => void
     onBvhOptimizationChange?: (enabled: boolean) => void
-    onFeatureGraphOverlayChange?: (enabled: boolean) => void
-    onFeatureGraphOcclusionChange?: (mode: FeatureGraphOcclusionMode) => void
     onFeatureGraphLineWidthChange?: (px: number) => void
     onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
@@ -133,29 +127,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
     set bvhOptimization(enabled: boolean) {
         this.#bvhOptimization$.next(enabled)
-    }
-
-    get featureGraphOverlay(): boolean {
-        return this.#fgOverlay$.value
-    }
-
-    set featureGraphOverlay(enabled: boolean) {
-        this.#fgOverlay$.next(enabled)
-    }
-
-    get featureGraphOcclusion(): FeatureGraphOcclusionMode {
-        return this.#fgOcclusion$.value
-    }
-
-    /** Sync the select from the renderer/settings without re-dispatching. */
-    set featureGraphOcclusion(mode: FeatureGraphOcclusionMode) {
-        this.#applying = true
-        try {
-            this.#fgOcclusion$.next(mode)
-            if (this.#fgOcclusionSelect) this.#fgOcclusionSelect.value = mode
-        } finally {
-            this.#applying = false
-        }
     }
 
     get featureGraphLineWidth(): number {
@@ -248,8 +219,6 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#cameraOptimization$ = new BehaviorSubject(true)
         this.#beamOptimization$ = new BehaviorSubject(false)
         this.#bvhOptimization$ = new BehaviorSubject(true)
-        this.#fgOverlay$ = new BehaviorSubject(true)
-        this.#fgOcclusion$ = new BehaviorSubject<FeatureGraphOcclusionMode>("off")
         this.#fgLineWidth$ = new BehaviorSubject(2)
         this.#fgDifferentiate$ = new BehaviorSubject(false)
         // Debug-only; not persisted across sessions. Defaults off so the user
@@ -285,35 +254,10 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             this.dispatchEvent(new CustomEvent("galacticad-show-fps-change", { bubbles: true, composed: true }))
         })
 
-        const fgOverlayCb = this.#addCheckbox(viewportBox, "FeatureGraph overlay", this.#fgOverlay$.value)
-        this.#subscriptions.push(connectCheckbox(fgOverlayCb, this.#fgOverlay$))
-        this.#subscriptions.push(
-            this.#fgOverlay$.pipe(skip(1)).subscribe(v => this.onFeatureGraphOverlayChange?.(v)),
-        )
+        // FeatureGraph overlay is always on (mode driven by the toolbar occlusion
+        // toggle); the enable checkbox + occlusion dropdown were retired here.
 
-        // Depth-sort the overlay against the SDF surface: off (draw on top),
-        // hide-behind (hard occlude), or dim-behind (fade occluded edges).
-        this.#fgOcclusionSelect = this.#addSelect(
-            viewportBox,
-            "Overlay occlusion",
-            [
-                { value: "off", label: "Off (on top)" },
-                { value: "hard", label: "Hide behind" },
-                { value: "dim", label: "Dim behind" },
-            ],
-            this.#fgOcclusion$.value,
-        )
-        this.#fgOcclusionSelect.addEventListener("change", () => {
-            this.#fgOcclusion$.next(this.#fgOcclusionSelect!.value as FeatureGraphOcclusionMode)
-        })
-        this.#subscriptions.push(
-            this.#fgOcclusion$.pipe(skip(1)).subscribe(v => {
-                if (!this.#applying) this.onFeatureGraphOcclusionChange?.(v)
-            }),
-        )
-
-        // Overlay edge line width (framebuffer px). Sibling of the two controls
-        // above, in the same viewport box.
+        // Overlay edge line width (framebuffer px), in the same viewport box.
         {
             const row = document.createElement("div")
             row.className = "shade-row"

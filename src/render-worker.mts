@@ -223,8 +223,14 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setStepHeatmapEnabled":
             if (core) core.setStepHeatmapEnabled(msg.enabled)
             break
+        case "setDeferredShading":
+            if (core) core.setDeferredShading(msg.enabled)
+            break
         case "setDebugLogModules":
             applyDebugLogModules(msg.modules)
+            break
+        case "clearFgSelection":
+            if (core) core.clearFgSelection()
             break
         default:
             log("RenderWorker").info("unknown message", (msg as { type: string }).type)

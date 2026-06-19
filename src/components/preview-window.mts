@@ -21,6 +21,17 @@ export interface FaceSelectionInfo {
 export interface HoverInfo {
     objectId: number
     edges: EdgeSelectionInfo[]
+    /** World hit position under the cursor — drives face-hover preview resolution. */
+    hitPos?: [number, number, number]
+}
+
+/** FeatureGraph (polyline/ring/corner) selection summary for the debug readout. */
+export interface FgFeatureInfo {
+    polylines: number
+    rings: number
+    corners: number
+    hoverKind?: "polyline" | "ring" | "corner" | null
+    hoverId?: number
 }
 
 export type SelectionInfo = {
@@ -29,6 +40,7 @@ export type SelectionInfo = {
     edges: EdgeSelectionInfo[]
     face: FaceSelectionInfo | null
     hover: HoverInfo | null
+    fgFeatures?: FgFeatureInfo | null
 }
 
 const THEME_CYCLE: ThemeMode[] = ["light", "dark", "auto"]
@@ -233,6 +245,18 @@ export class PreviewWindow extends HTMLElement {
                 hoverParts.push(edgeLabels.join(" "))
             }
             parts.push(`Hover: ${hoverParts.join(" · ")}`)
+        }
+        if (info.fgFeatures) {
+            const f = info.fgFeatures
+            const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+            const sel: string[] = []
+            if (f.polylines > 0) sel.push(plural(f.polylines, "polyline"))
+            if (f.rings > 0) sel.push(plural(f.rings, "ring"))
+            if (f.corners > 0) sel.push(plural(f.corners, "corner"))
+            if (sel.length > 0) parts.push(`Features: ${sel.join(", ")}`)
+            if (f.hoverKind) {
+                parts.push(`Hover: ${f.hoverKind}${f.hoverId !== undefined ? ` [${f.hoverId}]` : ""}`)
+            }
         }
         this.#selInfo.textContent = parts.join(" · ")
         this.#selInfo.style.visibility = parts.length > 0 ? "visible" : "hidden"

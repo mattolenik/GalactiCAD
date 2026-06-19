@@ -8,7 +8,7 @@ import { fromEvent } from "rxjs"
 import { throttleTime } from "rxjs"
 import type { Subscription } from "rxjs"
 import { SettingsManager, type CameraSettings } from "./storage/settings.mjs"
-import { PreviewWindow } from "./components/preview-window.mjs"
+import { PreviewWindow, type HoverInfo } from "./components/preview-window.mjs"
 import { CameraController, DOLLY_REF } from "./controls/camera-controller.mjs"
 import type { CameraState } from "./controls/camera-controller.mjs"
 import type { Vec2f, Vec3f } from "./vecmat/vector.mjs"
@@ -56,7 +56,7 @@ import { computeAgentPreviewCameraParams } from "./agent-autotest/agent-preview-
 import { captureAgentMeshImageData, captureMeshThumbnailImageData } from "./agent-autotest/agent-mesh-capture.mjs"
 import type { AgentMeshOverlay } from "./agent-autotest/agent-testcase.mjs"
 
-export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
+export type SelectionMode = "object" | "seam" | "edge" | "corner" | "face" | "auto"
 export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 export { EdgeKind } from "./edge-kind.mjs"
 
@@ -120,6 +120,14 @@ export class SDFRenderer {
     #selectedEdges: SelectedEdgePayload[] = []
     #hoveredObjectId = 0
     #hoveredEdges: SelectedEdgePayload[] = []
+    /** A transient face-hover preview highlight is currently shown (face/auto mode). */
+    #faceHoverActive = false
+    /** Node id whose face the hover preview is currently highlighting (0 = none).
+     *  Used to resolve the FACE_HIGHLIGHT sentinel (1022/1023) the GPU reports
+     *  when the cursor sits on the already-highlighted face — see #resolveFaceSentinel. */
+    #faceHoverNodeId = 0
+    /** A face was committed by a click (so hover-out restores it instead of clearing). */
+    #faceClickCommitted = false
     /** Last hover screen position and altKey, cached for replay when camera movement stops. */
     #lastHoverScreenPos: { x: number; y: number } | null = null
     #lastHoverAltKey = false
@@ -150,6 +158,7 @@ export class SDFRenderer {
     #featureGraphLineWidth = 2
     #featureGraphDifferentiateSegments = false
     #stepHeatmapEnabled = false
+    #deferredShadingEnabled = false
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
     #viewCenter = vec2(0.5, 0.5)
@@ -198,6 +207,7 @@ export class SDFRenderer {
             viewCenter?: [number, number]
             isolatedIds?: number[]
             selectedObjectIds?: number[]
+            deferredShading?: boolean
         }
     >()
     #pendingBuild = new Map<number, { resolve: (applied: boolean) => void; reject: (err: unknown) => void }>()
@@ -489,6 +499,25 @@ export class SDFRenderer {
             case "selectionInfo":
                 if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
                 if (msg.hoverRequestId !== undefined && msg.hoverRequestId !== this.#latestHoverRequestId) return
+                // The GPU reports FACE_HIGHLIGHT_ID (1023/1022) for pixels on an
+                // already-highlighted face. Left as-is it makes hover fight its own
+                // highlight — the readback flips 6↔1023 every frame, tearing the
+                // highlight down and back up (flicker) and flashing "Object 1023 (?)".
+                // Resolve the sentinel back to the highlight's real owner.
+                if (msg.info.hover) {
+                    const raw = msg.info.hover.objectId
+                    const resolved = this.#resolveFaceSentinel(raw)
+                    if (resolved !== raw) {
+                        if (resolved > 0) {
+                            msg.info.hover.objectId = resolved
+                            if (msg.info.objectNames[resolved] === undefined) {
+                                msg.info.objectNames[resolved] = this.#getNode(resolved)?.getShapeType?.() ?? "?"
+                            }
+                        } else {
+                            msg.info.hover = null
+                        }
+                    }
+                }
                 this.#hoveredObjectId = msg.info.hover?.objectId ?? 0
                 this.#hoveredEdges = msg.info.hover?.edges?.map(e => ({
                     kind: e.kind,
@@ -503,6 +532,7 @@ export class SDFRenderer {
                     seedNormal: e.seedNormal,
                 })) ?? []
                 this.#preview.updateSelectionInfo(msg.info)
+                this.#updateFaceHover(msg.info.hover ?? null)
                 if (this.#lastHoverScreenPos) {
                     this.hoverInfo$.next({ objectId: this.#hoveredObjectId, screenPos: this.#lastHoverScreenPos })
                 }
@@ -680,6 +710,7 @@ export class SDFRenderer {
                 viewCenter: vc,
                 isolatedIds: pending.isolatedIds ?? [],
                 selectedObjectIds: pending.selectedObjectIds ?? [],
+                deferredShading: pending.deferredShading,
             })
         }
     }
@@ -716,11 +747,27 @@ export class SDFRenderer {
 
     #handleClickResult(clickedId: number, edgeHits: EdgeHitData[], shiftKey: boolean, altKey: boolean): void {
         const effectiveMode = this.#getEffectiveMode(altKey)
-        if (effectiveMode === "seam" || effectiveMode === "edge") {
-            const edgeFilter =
-                effectiveMode === "seam"
-                    ? (h: EdgeHitData) => h.kind === EdgeKind.Seam
-                    : (h: EdgeHitData) => h.kind === EdgeKind.Primitive || h.kind === EdgeKind.SeamSegment
+        // Face mode = pure surface selection of an extrude SIDE or CAP, painted
+        // with the selection cross-hatch (NOT push/pull dots, WITHOUT activating
+        // push/pull). Edge/corner are handled in the worker via the FeatureGraph
+        // hit-tester and never produce a `clickResult`. Auto also reaches here
+        // only when the worker found NO edge/corner feature near the cursor — so
+        // an auto `clickResult` means "select the face/surface under the cursor".
+        if (effectiveMode === "face" || effectiveMode === "auto") {
+            // A click supersedes the hover preview and commits (or clears) the face.
+            this.#faceHoverActive = false
+            if (clickedId !== 0 && this.#lastClickHitPos) {
+                this.#faceClickCommitted = this.#tryHighlightPushPullFromSelection(true)
+            } else {
+                this.#faceClickCommitted = false
+                this.#pushPullController?.deselect()
+                this.#pushSelectionInfo()
+            }
+            this.#needsRender = true
+            return
+        }
+        if (effectiveMode === "seam") {
+            const edgeFilter = (h: EdgeHitData) => h.kind === EdgeKind.Seam
             const filtered = edgeHits.filter(edgeFilter)
             if (filtered.length > 0) {
                 if (shiftKey) {
@@ -847,31 +894,105 @@ export class SDFRenderer {
         this.#worker.postMessage({ type: "cancelBuilds" })
     }
 
-    /** Show face highlight (without activating drag) for the currently selected object. */
-    #tryHighlightPushPullFromSelection(): boolean {
+    /**
+     * Show face highlight (without activating drag) for the currently selected
+     * object. Handles extrude SIDE faces and extrude/loft CAPS.
+     *
+     * `selectionOnly` = true marks it a pure surface selection (the "Face"
+     * selection mode): the shader paints the selection cross-hatch instead of
+     * the push/pull dot dither.
+     */
+    #tryHighlightPushPullFromSelection(selectionOnly = false): boolean {
+        const ok = this.#highlightFaceAt(this.#lastClickedId, this.#lastClickHitPos, selectionOnly)
+        if (ok) this.#pushSelectionInfo()
+        return ok
+    }
+
+    /**
+     * Highlight the extrude SIDE or extrude/loft CAP face under `hitPos` for the
+     * given node, without activating push/pull. Pure uniform write + render (no
+     * rebuild), so it's cheap enough to drive from hover. Returns false when the
+     * node isn't a push/pull face host or push/pull is active. Shared by the
+     * click-commit path ({@link #tryHighlightPushPullFromSelection}) and the
+     * face-hover preview ({@link #updateFaceHover}).
+     */
+    #highlightFaceAt(nodeId: number, hitPos: [number, number, number] | null, selectionOnly: boolean): boolean {
         if (!this.#pushPullController || this.#pushPullController.isActive) return false
-        const nodeId = this.#lastClickedId
-        const hitPos = this.#lastClickHitPos
         if (!nodeId || !hitPos) return false
         const node = this.#pushPullNodes.get(nodeId)
         if (!node) return false
         const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
         if (node.type === "extrude") {
             // Twisted extrudes supported — see #handleObjectDoubleClick.
-            this.#pushPullController.highlightSideFace(node as unknown as Parameters<PushPullController["highlightSideFace"]>[0], hitVec)
-            this.#pushSelectionInfo()
+            this.#pushPullController.highlightSideFace(node as unknown as Parameters<PushPullController["highlightSideFace"]>[0], hitVec, selectionOnly)
             return true
         }
         if (node.type === "virtualCap" || node.type === "polygon2d") {
             const parent = this.#findCapParent(nodeId)
             if (parent) {
                 const isTop = node.type === "virtualCap" ? node.isTop : (hitVec.y - parent.node.pos.y) >= 0
-                this.#pushPullController.highlightCapFace(parent.node as unknown as Parameters<PushPullController["highlightCapFace"]>[0], isTop)
-                this.#pushSelectionInfo()
+                this.#pushPullController.highlightCapFace(parent.node as unknown as Parameters<PushPullController["highlightCapFace"]>[0], isTop, selectionOnly)
                 return true
             }
         }
         return false
+    }
+
+    /**
+     * Face-hover preview (Face / Auto modes): highlight the face under the cursor
+     * as a transient preview that follows the pointer; on hover-out restore the
+     * clicked face (if one is committed) or clear. No-op outside face/auto mode
+     * or while push/pull is active. Reuses the same surface cross-hatch as the
+     * committed selection.
+     */
+    /** Map the FACE_HIGHLIGHT sentinel (1023 side/top, 1022 bottom) — which the GPU
+     *  returns for pixels on an already-highlighted face — back to the node that
+     *  owns the current highlight (the hover preview's node, else the committed
+     *  clicked node). Non-sentinel ids pass through unchanged. */
+    #resolveFaceSentinel(rawId: number): number {
+        if (rawId !== 1023 && rawId !== 1022) return rawId
+        if (this.#faceHoverActive && this.#faceHoverNodeId > 0) return this.#faceHoverNodeId
+        if (this.#faceClickCommitted && this.#lastClickedId > 0) return this.#lastClickedId
+        return 0
+    }
+
+    #updateFaceHover(hover: HoverInfo | null): void {
+        const mode = this.#getEffectiveMode(this.#lastHoverAltKey)
+        const inFaceContext = (mode === "face" || mode === "auto") && !!this.#pushPullController && !this.#pushPullController.isActive
+        if (!inFaceContext) {
+            if (this.#faceHoverActive) {
+                this.#faceHoverActive = false
+                this.#faceHoverNodeId = 0
+                this.#restoreCommittedFace()
+                this.#needsRender = true
+            }
+            return
+        }
+        const objId = hover?.objectId ?? 0
+        const hp = hover?.hitPos ?? null
+        if (objId > 0 && hp && this.#highlightFaceAt(objId, hp, true)) {
+            this.#faceHoverActive = true
+            this.#faceHoverNodeId = objId
+            this.#needsRender = true
+        } else if (this.#faceHoverActive) {
+            this.#faceHoverActive = false
+            this.#faceHoverNodeId = 0
+            this.#restoreCommittedFace()
+            this.#needsRender = true
+        }
+    }
+
+    /** Re-apply the clicked face highlight (if any) after a hover preview ends.
+     *  Uses the quiet clear (not deselect()) so a transient hover-out doesn't
+     *  fire pushPullExit$ (undo push / rebuild). */
+    #restoreCommittedFace(): void {
+        if (this.#faceClickCommitted && this.#highlightFaceAt(this.#lastClickedId, this.#lastClickHitPos, true)) {
+            this.#pushSelectionInfo()
+            return
+        }
+        this.#pushPullController?.clearFaceHighlight()
+        this.#writeSelectionBuffer()
+        this.#pushSelectionInfo()
     }
 
     #writeSelectionBuffer(): void {
@@ -1185,19 +1306,26 @@ export class SDFRenderer {
         }
         const canvas = this.#preview.canvas
         canvas.addEventListener("click", (e: MouseEvent) => {
-            if (this.#pushPullController?.isActive || this.#pushPullController?.getFaceSelection() !== null) {
+            // Swallow the click during an active push/pull drag, or a shift+click
+            // that promotes a selected face to push/pull — but let plain clicks
+            // through so face/object selection works normally.
+            if (
+                this.#pushPullController?.isActive ||
+                (e.shiftKey && this.#pushPullController?.getFaceSelection?.() != null)
+            ) {
                 e.stopImmediatePropagation()
             }
         }, { capture: true })
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
-            // If shift is held and we have a highlight-only state, promote to full push/pull selection
-            if (e.shiftKey && this.#pushPullController && !this.#pushPullController.isActive) {
+            // Push/pull is a FACE / AUTO-mode workflow (object mode never
+            // push/pulls). Shift + drag a selected face → push/pull it.
+            const ppMode = this.#selectionMode === "face" || this.#selectionMode === "auto"
+            if (e.shiftKey && ppMode && this.#pushPullController && !this.#pushPullController.isActive) {
                 let activated = false
                 if (this.#pushPullController.getFaceSelection() !== null) {
-                    // Already have a highlight — promote directly from existing highlight state
+                    // Promote the existing (cross-hatch) face selection to push/pull.
                     activated = this.#pushPullController.promoteToActive()
                 } else {
-                    // No highlight yet — derive from last click
                     activated = this.#tryActivatePushPullFromSelection()
                 }
                 if (activated) this.#cancelBuildsForPushPull()
@@ -1227,25 +1355,21 @@ export class SDFRenderer {
             }
         }, { capture: true })
         document.addEventListener("keydown", (e: KeyboardEvent) => {
+            // Escape/etc. while a push/pull drag is active.
             if (this.#pushPullController?.isActive) {
                 this.#pushPullController.handleKeyDown(e)
             }
-            // Shift held: enter push/pull highlight mode on the selected object
-            if (e.key === "Shift" && !e.repeat && !this.#pushPullController?.isActive) {
-                if (this.#tryHighlightPushPullFromSelection()) {
-                    this.#cancelBuildsForPushPull()
-                }
-            }
         })
         document.addEventListener("keyup", (e: KeyboardEvent) => {
-            // Shift released: exit push/pull mode (active or highlight-only)
-            if (e.key === "Shift" && this.#pushPullController) {
-                if (this.#pushPullController.isActive || this.#pushPullController.getFaceSelection() !== null) {
-                    this.#pushPullController.deselect()
-                    this.#writeSelectionBuffer()
-                    this.#pushSelectionInfo()
-                    this.#needsRender = true
-                }
+            // Releasing shift ends an armed-but-not-yet-dragging push/pull and
+            // reverts to the plain (cross-hatch) face selection. An in-progress
+            // drag finishes on pointerup. Push/pull lives only in face/auto modes.
+            if (e.key !== "Shift" || !this.#pushPullController) return
+            const ppMode = this.#selectionMode === "face" || this.#selectionMode === "auto"
+            if (ppMode && this.#pushPullController.isActive && !this.#pushPullController.isDragging) {
+                this.#pushPullController.dropToHighlight()
+                this.#pushSelectionInfo()
+                this.#needsRender = true
             }
         })
     }
@@ -1585,11 +1709,32 @@ export class SDFRenderer {
         return this.#stepHeatmapEnabled
     }
 
+    /**
+     * Deferred selection shading: route the scene pass through geometryMain
+     * (SDF → G-buffer) + shadeMain (G-buffer → frame) so selection/hover
+     * repaints reuse the retained G-buffer and skip the SDF march. Off by
+     * default; debug-only (not persisted).
+     */
+    set deferredShadingEnabled(enabled: boolean) {
+        if (this.#deferredShadingEnabled === enabled) return
+        this.#deferredShadingEnabled = enabled
+        this.#worker.postMessage({ type: "setDeferredShading", enabled })
+        this.#needsRender = true
+    }
+    get deferredShadingEnabled(): boolean {
+        return this.#deferredShadingEnabled
+    }
+
     setSelectionMode(mode: SelectionMode): void {
         this.#selectionMode = mode
         this.#settings.updateGlobal({ preview: { selectionMode: mode } })
         this.#selectedObjectIds.fill(false)
         this.#selectedEdges = []
+        // Drop any face/cap surface selection and interactive FeatureGraph
+        // (edge/corner/auto) selection + overlay highlight so each mode switch
+        // starts clean.
+        this.#pushPullController?.deselect()
+        this.#worker.postMessage({ type: "clearFgSelection" })
         this.#selectionDirty = true
         this.selectionChange$.next([])
         this.#pushSelectionInfo()
@@ -1708,7 +1853,9 @@ export class SDFRenderer {
         p.selectionState.hoveredEdges = this.#hoveredEdges
         p.viewSettings.xrayMode = this.#xrayMode
         p.viewSettings.beamEnabled = this.#beamEnabled
-        p.viewSettings.selectionMode = { object: 0, seam: 1, edge: 2, face: 3, auto: 4 }[this.#selectionMode]
+        // corner appended as 5 (not renumbered) to keep existing values stable
+        // in the SAB 3-bit field and the preview shader.
+        p.viewSettings.selectionMode = { object: 0, seam: 1, edge: 2, face: 3, auto: 4, corner: 5 }[this.#selectionMode]
         p.viewSettings.outlineMode = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
         p.viewSettings.outlineThickness = this.#outlineThickness
         p.viewSettings.outlineColor = this.#outlineColor
@@ -1980,6 +2127,7 @@ export class SDFRenderer {
         documentName?: string,
         isolatedIds: number[] = [],
         selectedObjectIds: number[] = [],
+        deferredShading?: boolean,
     ): Promise<ImageData> {
         await this.#readyPromise
         const trimmed = src.trim()
@@ -1999,6 +2147,7 @@ export class SDFRenderer {
                 viewCenter: params.viewCenter,
                 isolatedIds,
                 selectedObjectIds,
+                deferredShading,
             })
             return await new Promise<ImageData>((resolve, reject) => {
                 this.#pendingThumbnail.set(requestId, { resolve, reject, skipDocumentGuard: true })

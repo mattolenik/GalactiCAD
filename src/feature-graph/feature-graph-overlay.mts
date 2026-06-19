@@ -36,7 +36,11 @@
 import type { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import overlayShaderSource from "../shaders/feature_graph_overlay.wgsl"
-import { FG_FLAG_ALIVE, FG_FLAG_CORNER, type FeatureGraphCpu } from "../scene/feature-graph-buffer.mjs"
+import {
+    enumerateAliveCorners,
+    enumerateAliveEdges,
+    type FeatureGraphCpu,
+} from "../scene/feature-graph-buffer.mjs"
 import type { FeatureGraphWorldPositions } from "./feature-graph-stages.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 
@@ -113,7 +117,18 @@ export class FeatureGraphOverlay {
     #instanceCapacity = 0
     #cornerBuffer?: GPUBuffer
     #cornerCapacity = 0
-    /** Single bind group (camera uniform + scene-depth tex) shared by both pipelines. */
+    /**
+     * Per-instance highlight state (0 none / 1 hover / 2 selected), one u32 per
+     * alive edge / corner, indexed by `@builtin(instance_index)`. Separate from
+     * the position instance buffers so hover/select recolor is a tiny
+     * `writeBuffer` with no position re-upload. Always allocated (the bind group
+     * requires valid bindings even when a count is 0).
+     */
+    #edgeStateBuffer?: GPUBuffer
+    #edgeStateCapacity = 0
+    #cornerStateBuffer?: GPUBuffer
+    #cornerStateCapacity = 0
+    /** Single bind group (camera uniform + scene-depth tex + state buffers) shared by both pipelines. */
     #bindGroup?: GPUBindGroup
     /** Number of alive-edge instances uploaded; `draw(6, edgeCount)`. */
     #edgeCount = 0
@@ -197,6 +212,18 @@ export class FeatureGraphOverlay {
                     visibility: GPUShaderStage.FRAGMENT,
                     texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
                 },
+                {
+                    // Per-edge highlight state (read in the vertex stage, flat-passed to fragment).
+                    binding: 2,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: { type: "read-only-storage" },
+                },
+                {
+                    // Per-corner highlight state.
+                    binding: 3,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: { type: "read-only-storage" },
+                },
             ],
         })
         const pipelineLayout = this.#device.createPipelineLayout({
@@ -260,22 +287,21 @@ export class FeatureGraphOverlay {
     upload(cpu: FeatureGraphCpu, world: FeatureGraphWorldPositions): void {
         this.#edgeCount = 0
         this.#cornerCount = 0
-        if (cpu.vertexCount === 0) return
+
+        // Canonical alive enumeration shared with the chain grouping + hit-tester:
+        // the s-th alive edge here IS overlay instance index `s`.
+        const aliveEdges = enumerateAliveEdges(cpu)
+        const aliveCorners = enumerateAliveCorners(cpu)
 
         // --- Edges: one instance per alive edge ---
-        let aliveEdgeCount = 0
-        for (let e = 0; e < cpu.edgeCount; e++) {
-            if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) !== 0) aliveEdgeCount++
-        }
-        if (aliveEdgeCount > 0) {
-            const instanceBytes = aliveEdgeCount * INSTANCE_STRIDE
+        if (aliveEdges.length > 0) {
+            const instanceBytes = aliveEdges.length * INSTANCE_STRIDE
             this.#ensureInstanceBuffer(instanceBytes)
             const buf = new ArrayBuffer(instanceBytes)
             const f32 = new Float32Array(buf)
             const u32 = new Uint32Array(buf)
-            let s = 0
-            for (let e = 0; e < cpu.edgeCount; e++) {
-                if ((cpu.edgeFlags[e]! & FG_FLAG_ALIVE) === 0) continue
+            for (let s = 0; s < aliveEdges.length; s++) {
+                const e = aliveEdges[s]!
                 const a = cpu.edgeEndpoints[e * 2]!
                 const b = cpu.edgeEndpoints[e * 2 + 1]!
                 const o = s * 8
@@ -287,32 +313,52 @@ export class FeatureGraphOverlay {
                 f32[o + 5] = world.positions[b * 3 + 2]!
                 // Endpoint A's crease flags drive the line color. Slot o+7 is pad.
                 u32[o + 6] = cpu.vertexFlags[a] ?? 0
-                s++
             }
             this.#device.queue.writeBuffer(this.#instanceBuffer!, 0, buf)
-            this.#edgeCount = aliveEdgeCount
+            this.#edgeCount = aliveEdges.length
         }
 
         // --- Corners: one marker per alive 0D-feature vertex ---
-        const cornerMask = FG_FLAG_ALIVE | FG_FLAG_CORNER
-        let cornerCount = 0
-        for (let i = 0; i < cpu.vertexCount; i++) {
-            if ((cpu.vertexFlags[i]! & cornerMask) === cornerMask) cornerCount++
-        }
-        if (cornerCount > 0) {
-            const cornerBytes = cornerCount * CORNER_STRIDE
+        if (aliveCorners.length > 0) {
+            const cornerBytes = aliveCorners.length * CORNER_STRIDE
             this.#ensureCornerBuffer(cornerBytes)
-            const cbuf = new Float32Array(cornerCount * 3)
-            let c = 0
-            for (let i = 0; i < cpu.vertexCount; i++) {
-                if ((cpu.vertexFlags[i]! & cornerMask) !== cornerMask) continue
+            const cbuf = new Float32Array(aliveCorners.length * 3)
+            for (let c = 0; c < aliveCorners.length; c++) {
+                const i = aliveCorners[c]!
                 cbuf[c * 3 + 0] = world.positions[i * 3 + 0]!
                 cbuf[c * 3 + 1] = world.positions[i * 3 + 1]!
                 cbuf[c * 3 + 2] = world.positions[i * 3 + 2]!
-                c++
             }
             this.#device.queue.writeBuffer(this.#cornerBuffer!, 0, cbuf)
-            this.#cornerCount = cornerCount
+            this.#cornerCount = aliveCorners.length
+        }
+
+        // --- Highlight state: always allocate (bind group needs valid bindings),
+        // reset to all-zero (no hover/select) since each FG rebuild clears selection.
+        this.#ensureEdgeStateBuffer(Math.max(aliveEdges.length, 1) * 4)
+        this.#ensureCornerStateBuffer(Math.max(aliveCorners.length, 1) * 4)
+        if (this.#edgeCount > 0) {
+            this.#device.queue.writeBuffer(this.#edgeStateBuffer!, 0, new Uint32Array(this.#edgeCount))
+        }
+        if (this.#cornerCount > 0) {
+            this.#device.queue.writeBuffer(this.#cornerStateBuffer!, 0, new Uint32Array(this.#cornerCount))
+        }
+    }
+
+    /**
+     * Update per-instance highlight state (0 none / 1 hover / 2 selected). One
+     * small `writeBuffer` per array; positions are untouched. Pass `null` to
+     * leave that channel as-is. Arrays are interpreted in alive-instance order
+     * (see {@link enumerateAliveEdges} / {@link enumerateAliveCorners}).
+     */
+    setHighlights(edgeStates: Uint32Array<ArrayBuffer> | null, cornerStates: Uint32Array<ArrayBuffer> | null): void {
+        if (edgeStates && this.#edgeStateBuffer && this.#edgeCount > 0) {
+            const n = Math.min(edgeStates.length, this.#edgeCount)
+            if (n > 0) this.#device.queue.writeBuffer(this.#edgeStateBuffer, 0, edgeStates, 0, n)
+        }
+        if (cornerStates && this.#cornerStateBuffer && this.#cornerCount > 0) {
+            const n = Math.min(cornerStates.length, this.#cornerCount)
+            if (n > 0) this.#device.queue.writeBuffer(this.#cornerStateBuffer, 0, cornerStates, 0, n)
         }
     }
 
@@ -456,6 +502,8 @@ export class FeatureGraphOverlay {
                 entries: [
                     { binding: 0, resource: { buffer: this.#cameraBuffer } },
                     { binding: 1, resource: this.#depthView },
+                    { binding: 2, resource: { buffer: this.#edgeStateBuffer! } },
+                    { binding: 3, resource: { buffer: this.#cornerStateBuffer! } },
                 ],
             })
         }
@@ -482,10 +530,16 @@ export class FeatureGraphOverlay {
         this.#dummyDepthTexture.destroy()
         this.#instanceBuffer?.destroy()
         this.#cornerBuffer?.destroy()
+        this.#edgeStateBuffer?.destroy()
+        this.#cornerStateBuffer?.destroy()
         this.#instanceBuffer = undefined
         this.#cornerBuffer = undefined
+        this.#edgeStateBuffer = undefined
+        this.#cornerStateBuffer = undefined
         this.#instanceCapacity = 0
         this.#cornerCapacity = 0
+        this.#edgeStateCapacity = 0
+        this.#cornerStateCapacity = 0
         this.#bindGroup = undefined
         this.#edgeCount = 0
         this.#cornerCount = 0
@@ -513,5 +567,30 @@ export class FeatureGraphOverlay {
             size: this.#cornerCapacity,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         })
+    }
+
+    #ensureEdgeStateBuffer(minBytes: number): void {
+        if (this.#edgeStateBuffer && this.#edgeStateCapacity >= minBytes) return
+        this.#edgeStateBuffer?.destroy()
+        this.#edgeStateCapacity = Math.max(minBytes, this.#edgeStateCapacity * 2 || 4096)
+        this.#edgeStateBuffer = this.#device.createBuffer({
+            label: "FeatureGraphOverlay.EdgeState",
+            size: this.#edgeStateCapacity,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        })
+        // State buffer is part of the bind group — force a rebind next render.
+        this.#bindGroup = undefined
+    }
+
+    #ensureCornerStateBuffer(minBytes: number): void {
+        if (this.#cornerStateBuffer && this.#cornerStateCapacity >= minBytes) return
+        this.#cornerStateBuffer?.destroy()
+        this.#cornerStateCapacity = Math.max(minBytes, this.#cornerStateCapacity * 2 || 4096)
+        this.#cornerStateBuffer = this.#device.createBuffer({
+            label: "FeatureGraphOverlay.CornerState",
+            size: this.#cornerStateCapacity,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        })
+        this.#bindGroup = undefined
     }
 }

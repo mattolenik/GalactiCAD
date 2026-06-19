@@ -177,6 +177,36 @@ struct SelectionStyles {
 }
 @group(0) @binding(18) var<uniform> selectionStyles: SelectionStyles;
 
+// ── Deferred selection shading G-buffer ───────────────────────────────────
+// One entry per pixel (linear index = py*width + px at scene resolution).
+// Written by `geometryMain` (the expensive SDF march + AO + lighting), read by
+// `shadeMain` (the cheap selection-dependent tail). GPU-internal: never mapped
+// or read by the CPU, so the byte layout lives only here. `_pad*` round the
+// struct to a 16-byte multiple. Used only when RenderWorkerCore #deferredShading
+// is on; otherwise unbound and unallocated.
+struct GBufferPixel {
+    shadedColor: vec3f,   // pre-selection lit colour (shadeHitBase output)
+    t: f32,               // hit ray param; <= 0 => miss
+    n: vec3f,             // surface normal (drives primitiveFaceIndexFromNormal)
+    blend: f32,           // smooth-blend weight
+    seamTangent: vec3f,   // seam tangent — magnitude matters for edge distance
+    seamGap: f32,
+    id: u32,
+    id2: u32,
+    seamA: u32,
+    seamB: u32,
+    seamOp: u32,
+    steps: u32,           // cumulative sceneSDF_fast calls (debug heatmap)
+    _pad0: u32,
+    _pad1: u32,
+}
+@group(0) @binding(26) var<storage, read_write> gbuffer: array<GBufferPixel>;
+
+// Linear G-buffer index from the fragment's framebuffer position (px+0.5, py+0.5).
+fn gbufferIndex(pos: vec4f) -> u32 {
+    return u32(pos.y) * u32(camera.res.x) + u32(pos.x);
+}
+
 const FACE_HIGHLIGHT_ID: u32 = 1023u;       // Side/edge face highlight (unchanged)
 const FACE_HIGHLIGHT_TOP: u32 = 1023u;     // Top cap when selected
 const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;  // Bottom cap when selected (distinct from top)
@@ -782,53 +812,14 @@ fn hitNormalToRgb(nScene: vec3f) -> vec3f {
 //   be overridden by face-highlight matching below.
 // stepCount: cumulative sceneSDF_fast counter; passed to AO so the heatmap
 //   covers AO-dominated pixels (typical near contact zones / fillets).
-fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, hitSel: f32, stepCount: ptr<function, u32>) -> ShadeResult {
-    let normal = select(hit.n, -hit.n, flipNormal);
-    if (camera.previewShade2.z > 0.5) {
-        let nrm = hitNormalToRgb(normal);
-        var sel1 = hitSel;
-        let bw = hit.blend;
-        if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id && bw < 0.01) {
-            let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
-            if (faceIdx == faceSelection.faceIndex) {
-                sel1 = 1.0;
-            }
-        }
-        var selBlend = sel1;
-        if (bw > 0.0) {
-            var sel2 = f32(selectedObjectIds[hit.id2] != 0u);
-            if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id2 && bw > 0.99) {
-                let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
-                if (faceIdx == faceSelection.faceIndex) {
-                    sel2 = 1.0;
-                }
-            }
-            selBlend = mix(sel1, sel2, bw);
-        }
-        let selectedColor = nrm * selectionStyles.faceDarken + selectionStyles.faceTint;
-        let color = nrm * (1.0 - selBlend) + selectedColor * selBlend;
-        return ShadeResult(color, selBlend);
-    }
-    // AO should sample away from the actual surface, not the x-ray lighting normal.
-    // For back/exit surfaces, the flipped shading normal points into the solid and
-    // creates contour-like bands inside the volume.
-    let aoNormal = hit.n;
-
-    let diffuse = lightingDiffuse(normal);
-    let specRim = specularAndFresnelRim(normal, viewDir);
-    let ao = sdfAmbientOcclusion(worldPos, aoNormal, stepCount);
-
-    // Color and selection: only do second lookups when blending is active
-    let color1 = colorPalette[hit.id & 31u];
-    let bw = hit.blend;
-    var baseColor = color1;
-    if (bw > 0.0) {
-        let color2 = colorPalette[hit.id2 & 31u];
-        baseColor = color1 * (1.0 - bw) + color2 * bw;
-    }
-    let shadedColor = baseColor * diffuse * ao + specRim;
-
+// Face/object selection weight for a hit. Pure function of HitData + the
+// selection uniforms (selectedObjectIds, faceSelection) — NO SDF. Shared by the
+// inline shadeHit and the deferred shadeMain so both tint identically. The
+// normal-RGB and lit branches of shadeHit used byte-identical copies of this
+// logic; it is hoisted here once.
+fn computeSelBlend(hit: HitData, hitSel: f32) -> f32 {
     var sel1 = hitSel;
+    let bw = hit.blend;
     // Primitive face selection (mode 4=box, 5=cylinder, 6=cone)
     if (faceSelection.mode >= 4u && faceSelection.nodeId == hit.id && bw < 0.01) {
         let faceIdx = primitiveFaceIndexFromNormal(hit.n, faceSelection.mode);
@@ -847,9 +838,50 @@ fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, hit
         }
         selBlend = mix(sel1, sel2, bw);
     }
+    return selBlend;
+}
+
+// Pre-selection lit surface colour: everything shadeHit computes EXCEPT the
+// selection tint. This is the only part that touches the SDF (via AO), so the
+// deferred geometry pass runs it once and bakes the result into the G-buffer;
+// a selection-only repaint then re-tints without re-marching.
+fn shadeHitBase(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, stepCount: ptr<function, u32>) -> vec3f {
+    let normal = select(hit.n, -hit.n, flipNormal);
+    if (camera.previewShade2.z > 0.5) {
+        return hitNormalToRgb(normal);
+    }
+    // AO should sample away from the actual surface, not the x-ray lighting normal.
+    // For back/exit surfaces, the flipped shading normal points into the solid and
+    // creates contour-like bands inside the volume.
+    let aoNormal = hit.n;
+
+    let diffuse = lightingDiffuse(normal);
+    let specRim = specularAndFresnelRim(normal, viewDir);
+    let ao = sdfAmbientOcclusion(worldPos, aoNormal, stepCount);
+
+    // Color and selection: only do second lookups when blending is active
+    let color1 = colorPalette[hit.id & 31u];
+    let bw = hit.blend;
+    var baseColor = color1;
+    if (bw > 0.0) {
+        let color2 = colorPalette[hit.id2 & 31u];
+        baseColor = color1 * (1.0 - bw) + color2 * bw;
+    }
+    return baseColor * diffuse * ao + specRim;
+}
+
+// Tint a pre-selection colour by the selection weight. Shared by shadeHit and
+// shadeMain. With shadedColor = nrm this reproduces the normal-RGB branch too.
+fn applyFaceSelectionTint(shadedColor: vec3f, hit: HitData, hitSel: f32) -> ShadeResult {
+    let selBlend = computeSelBlend(hit, hitSel);
     let selectedColor = shadedColor * selectionStyles.faceDarken + selectionStyles.faceTint;
     let color = shadedColor * (1.0 - selBlend) + selectedColor * selBlend;
     return ShadeResult(color, selBlend);
+}
+
+fn shadeHit(hit: HitData, flipNormal: bool, viewDir: vec3f, worldPos: vec3f, hitSel: f32, stepCount: ptr<function, u32>) -> ShadeResult {
+    let base = shadeHitBase(hit, flipNormal, viewDir, worldPos, stepCount);
+    return applyFaceSelectionTint(base, hit, hitSel);
 }
 
 // Debug heatmap: map cumulative `sceneSDF_fast` calls per pixel to a coarse
@@ -1132,6 +1164,208 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         // Miss pixel — fully transparent.
         return heatmapOverlay(vec4f(0.0), stepCount);
     }
+}
+
+// ── Deferred selection shading: geometry + shade passes ────────────────────
+// Together these reproduce fragmentMain's NON-x-ray output exactly, split so a
+// selection/hover change re-runs only the cheap shade pass. The CPU keeps
+// x-ray (and any unsupported mode) on fragmentMain. Both force-reference the
+// full scene binding set (+ the G-buffer) so they share one bind group, exactly
+// like depthOnlyMain.
+
+// Force the full scene bind-group layout (bindings 1-7,9-11,13-25) + gbuffer(26).
+fn forceDeferredBindings() {
+    _ = camera.res;
+    _ = clickState.enabled;
+    _ = atomicLoad(&clickedObjectId);
+    _ = selectedObjectIds[0];
+    _ = colorPalette[0];
+    _ = viewSettings.xrayMode;
+    _ = textureLoad(tStartTex, vec2i(0, 0), 0);
+    _ = polygonVertices[0];
+    _ = clickedHitPos[0];
+    _ = faceSelection.nodeId;
+    _ = edgeHits[0].kind;
+    _ = selectedEdges.count;
+    _ = hoverEdgeHits[0].kind;
+    _ = hoveredEdge.count;
+    _ = clickedNormal[0];
+    _ = selectionStyles.faceDarken;
+    _ = previewParamsF32[0];
+    _ = previewParamsVec2[0];
+    _ = previewParamsVec3[0];
+    _ = previewParamsMat3[0];
+    _ = previewCapParamDrag[0];
+    _ = rayMarchParams.maxSteps;
+    _ = gbuffer[0].t;
+}
+
+// Geometry pass: the expensive, selection-independent half of fragmentMain —
+// SDF raymarch + AO + view-dependent lighting + click/hover picking. Stores the
+// result per pixel in the G-buffer. The returned colour is a throwaway target;
+// the visible frame comes from shadeMain.
+@fragment
+fn geometryMain(@builtin(position) pos: vec4f, @location(0) fragCoord: vec2f) -> @location(0) vec4f {
+    forceDeferredBindings();
+
+    let uv = fragCoord;
+    let aspect = camera.res.x / camera.res.y;
+    let wppu = (2.0 * camera.zoom) / camera.res.y;
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
+    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
+    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
+    let transformedDir = -camera.transform[2].xyz;
+    let viewDir = camera.transform[2].xyz;
+
+    var t_start = 0.0;
+    if (viewSettings.beamEnabled != 0u) {
+        let tileCoord = vec2i(uv * camera.res) / BEAM_TILE_SIZE;
+        t_start = textureLoad(tStartTex, tileCoord, 0).x;
+    }
+
+    var stepCount: u32 = 0u;
+    let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount);
+    let hitPos = transformedOrigin + transformedDir * hit.t;
+
+    // Refined position for AO only (matches fragmentMain).
+    var aoPos = hitPos;
+    if (hit.t > 0.0 && camera.previewShade3.x > 0.0) {
+        let tRef = refineHitAlongRay(transformedOrigin, transformedDir, hit.t, &stepCount);
+        aoPos = transformedOrigin + transformedDir * tRef;
+    }
+
+    // Click / hover picking — fragmentMain's NON-x-ray front-surface path.
+    let needSeamSegment = viewSettings.selectionMode == SELECTION_MODE_EDGE || viewSettings.selectionMode == SELECTION_MODE_AUTO;
+    if (clickState.enabled > 0u && hit.t > 0.0) {
+        let clickPixel = clickState.clickPos * camera.res;
+        let currentPixel = uv * camera.res;
+        if (distance(clickPixel, currentPixel) < 2.0) {
+            atomicStore(&clickedObjectId, hit.id);
+            clickedHitPos[0] = hitPos.x;
+            clickedHitPos[1] = hitPos.y;
+            clickedHitPos[2] = hitPos.z;
+            clickedHitPos[3] = hit.t;
+            clickedNormal[0] = hit.n.x;
+            clickedNormal[1] = hit.n.y;
+            clickedNormal[2] = hit.n.z;
+            clickedNormal[3] = 0.0;
+            edgeHits[0] = classifyEdgeAtHit(hitPos, hit, wppu);
+            edgeHits[1] = EdgeHit();
+            if (needSeamSegment) { edgeHits[2] = classifySeamSegment(hitPos, hit); } else { edgeHits[2] = EdgeHit(); }
+            edgeHits[3] = EdgeHit();
+        }
+    }
+    if (clickState.hoverEnabled > 0u && hit.t > 0.0) {
+        let hoverPixel = clickState.hoverPos * camera.res;
+        let currentPixel = uv * camera.res;
+        if (distance(hoverPixel, currentPixel) < 2.0) {
+            hoverEdgeHits[0] = classifyEdgeAtHit(hitPos, hit, wppu);
+            hoverEdgeHits[1] = EdgeHit();
+            if (needSeamSegment) { hoverEdgeHits[2] = classifySeamSegment(hitPos, hit); } else { hoverEdgeHits[2] = EdgeHit(); }
+            hoverEdgeHits[3] = EdgeHit();
+        }
+    }
+
+    var g: GBufferPixel;
+    if (hit.t > 0.0) {
+        g.shadedColor = shadeHitBase(hit, false, viewDir, aoPos, &stepCount);
+    } else {
+        g.shadedColor = vec3f(0.0);
+    }
+    g.t = hit.t;
+    g.n = hit.n;
+    g.blend = hit.blend;
+    g.seamTangent = hit.seamTangent;
+    g.seamGap = hit.seamGap;
+    g.id = hit.id;
+    g.id2 = hit.id2;
+    g.seamA = hit.seamA;
+    g.seamB = hit.seamB;
+    g.seamOp = hit.seamOp;
+    g.steps = stepCount;
+    g._pad0 = 0u;
+    g._pad1 = 0u;
+    gbuffer[gbufferIndex(pos)] = g;
+
+    return vec4f(g.shadedColor, select(0.0, 1.0, hit.t > 0.0));
+}
+
+// Shade pass: reads the G-buffer and runs ONLY the selection-dependent tail —
+// face/object tint, crosshatch overlay, edge highlight. No SDF. Bit-identical to
+// fragmentMain's non-x-ray hit branch because every input is the same value
+// fragmentMain would have used, sourced from the G-buffer instead of recomputed.
+@fragment
+fn shadeMain(@builtin(position) pos: vec4f, @location(0) fragCoord: vec2f) -> @location(0) vec4f {
+    forceDeferredBindings();
+
+    let g = gbuffer[gbufferIndex(pos)];
+    if (g.t <= 0.0) {
+        // Miss pixel — fully transparent (matches fragmentMain).
+        return heatmapOverlay(vec4f(0.0), g.steps);
+    }
+
+    let uv = fragCoord;
+    let pixelCoord = uv * camera.res;
+    let wppu = (2.0 * camera.zoom) / camera.res.y;
+
+    var hit: HitData;
+    hit.t = g.t;
+    hit.id = g.id;
+    hit.id2 = g.id2;
+    hit.blend = g.blend;
+    hit.n = g.n;
+    hit.seamA = g.seamA;
+    hit.seamB = g.seamB;
+    hit.seamOp = g.seamOp;
+    hit.seamGap = g.seamGap;
+    hit.seamTangent = g.seamTangent;
+
+    // World hit position — same ray as geometryMain.
+    let aspect = camera.res.x / camera.res.y;
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
+    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
+    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
+    let transformedDir = -camera.transform[2].xyz;
+    let hitPos = transformedOrigin + transformedDir * hit.t;
+
+    let selFloat = f32(selectedObjectIds[hit.id] != 0u);
+    let frontResult = applyFaceSelectionTint(g.shadedColor, hit, selFloat);
+    var shadedColor = frontResult.color;
+    shadedColor = applySelectionOverlay(shadedColor, pixelCoord, frontResult.faceSelected);
+    shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
+
+    return heatmapOverlay(vec4f(shadedColor, 1.0), g.steps);
+}
+
+// Occlusion depth for the FeatureGraph overlay, reconstructed from the deferred
+// G-buffer instead of a second full SDF raymarch (depthOnlyMain). Output is
+// byte-identical to depthOnlyMain — world hit position (xyz) + hit mask (w) — so
+// the overlay consumes it unchanged. Used only when deferred shading AND overlay
+// occlusion are both active; the G-buffer is already populated (or retained) for
+// the current camera, so this is a cheap O(pixels) pass with no SDF evals.
+@fragment
+fn occlusionFromGBufferMain(@builtin(position) pos: vec4f, @location(0) fragCoord: vec2f) -> @location(0) vec4f {
+    forceDeferredBindings();
+    let g = gbuffer[gbufferIndex(pos)];
+    if (g.t <= 0.0) {
+        return vec4f(0.0);
+    }
+    let uv = fragCoord;
+    let aspect = camera.res.x / camera.res.y;
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
+    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
+    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
+    let transformedDir = -camera.transform[2].xyz;
+    return vec4f(transformedOrigin + transformedDir * g.t, 1.0);
 }
 
 // Depth-only variant of the scene raymarch, used by the FeatureGraph overlay's

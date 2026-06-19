@@ -22,12 +22,15 @@ import {
     type MeshExportContext,
 } from "./export/mesh-exporter.mjs"
 import { IsoSampleBatch } from "./export/iso-simplicial/index.mjs"
-import { FeatureGraphBuilder } from "./scene/feature-graph-buffer.mjs"
+import { FeatureGraphBuilder, type FeatureGraphCpu } from "./scene/feature-graph-buffer.mjs"
 import {
     FeatureGraphGpu,
     type FeatureGraphBuildResult,
 } from "./feature-graph/feature-graph-gpu.mjs"
 import { featureGraphToContours } from "./feature-graph/feature-graph-to-contours.mjs"
+import { groupChains, FgChainKind, type FgChainGrouping } from "./feature-graph/feature-graph-chains.mjs"
+import { FeatureGraphHitTester, type FgCameraParams } from "./feature-graph/feature-graph-hit-test.mjs"
+import type { FeatureGraphWorldPositions } from "./feature-graph/feature-graph-stages.mjs"
 import {
     FeatureGraphOverlay,
     occlusionModeToInt,
@@ -94,6 +97,19 @@ const SELECTED_EDGES_TOTAL = SELECTED_EDGES_HEADER + SELECTED_EDGES_COUNT * SELE
 const ZERO_U32 = new Uint32Array(1)
 const ZERO_VEC4 = new ArrayBuffer(16)
 const ZERO_EDGE_HITS = new ArrayBuffer(EDGE_HITS_SIZE)
+// Bytes per deferred-shading G-buffer pixel — must match `GBufferPixel` in
+// preview.wgsl (std430: five 16-byte rows). GPU-internal, never CPU-mapped.
+const GBUFFER_STRIDE_BYTES = 80
+/**
+ * Ray-origin push-back used when projecting FeatureGraph features for CPU
+ * hit-testing — must match `PREVIEW_RAY_ORIGIN_DEPTH` in `camera-controller` /
+ * the overlay shader's `camera.origin` (= cameraPosition + (0,0,this)).
+ */
+const FG_PICK_RAY_ORIGIN_DEPTH = 300
+/** SAB `selectionMode` int encoding for the interactive feature modes. */
+const SEL_MODE_EDGE = 2
+const SEL_MODE_AUTO = 4
+const SEL_MODE_CORNER = 5
 /**
  * Used as the dummy 1-float upload when the scene has zero scene-params
  * (empty/default scene). Reused across builds — the GPU never reads more
@@ -106,9 +122,12 @@ const EMPTY_F32_SINGLE = new Float32Array([0])
  * encoding order in {@link RenderWorkerCore.render} / `#renderFromSAB` and is
  * the canonical layout for `#timestampFilledPasses` and `#passTimeAverages`.
  */
-type ProfiledPassName = "beam" | "scene" | "easu" | "fxaa" | "outline" | "overlay"
+// "scene" = the SDF march (full fragmentMain pass, or the deferred geometry
+// pass). "shade" = the deferred shade pass (G-buffer → frame, no SDF). On a
+// selection-only repaint only "shade" runs, so scene-vs-shade is the win.
+type ProfiledPassName = "beam" | "scene" | "shade" | "easu" | "fxaa" | "outline" | "overlay"
 /** Max pass-time pairs per frame — sized to {@link ProfiledPassName}. */
-const TIMESTAMP_MAX_PAIRS = 6
+const TIMESTAMP_MAX_PAIRS = 7
 const TIMESTAMP_QUERY_COUNT = TIMESTAMP_MAX_PAIRS * 2
 const TIMESTAMP_BYTES = TIMESTAMP_QUERY_COUNT * 8
 /** Round to 2 decimal places for log output; avoids logging long fractional ms. */
@@ -238,6 +257,21 @@ export class RenderWorkerCore {
     #featureGraphIsoBatch: IsoSampleBatch | null = null
     /** Lazy-constructed debug overlay pipeline; created on first frame. */
     #featureGraphOverlay: FeatureGraphOverlay | null = null
+    // ----- Interactive FeatureGraph feature selection (edge/corner/auto) -----
+    // Retained from the latest build so CPU hit-testing can run on click/hover.
+    #fgCpu: FeatureGraphCpu | null = null
+    #fgWorld: FeatureGraphWorldPositions | null = null
+    #fgChains: FgChainGrouping | null = null
+    #fgHitTester: FeatureGraphHitTester | null = null
+    /** Selected polyline/ring chain ids (indices into `#fgChains.chains`). */
+    #fgSelectedChains = new Set<number>()
+    /** Selected corner FG vertex indices. */
+    #fgSelectedCorners = new Set<number>()
+    /** Auto-mode type lock: the first pick after a clear constrains the rest of the multiselect. */
+    #fgAutoLockedType: "edge" | "corner" | null = null
+    /** Currently hovered chain / corner-vertex (-1 = none). */
+    #fgHoverChain = -1
+    #fgHoverCorner = -1
     /** Toggle for the debug overlay; default ON, updated by view settings. */
     #featureGraphOverlayEnabled = true
     /**
@@ -285,6 +319,38 @@ export class RenderWorkerCore {
     #beamPipeline: GPUComputePipeline | null = null
     #beamBindGroupInvalid = false
     #sceneBindGroupInvalid = false
+    // Deferred selection shading (knob: #deferredShading). geometryMain marches
+    // the SDF + bakes AO/lighting into the per-pixel G-buffer; shadeMain runs
+    // only the selection-dependent tail. Lets selection/hover repaints skip the
+    // SDF entirely (Phase 2). Best-effort: pipeline build failures disable
+    // deferred without touching the proven single-pass path. Always off until a
+    // knob/agent request flips it.
+    #deferredShading = false
+    #geometryPipeline: GPURenderPipeline | null = null
+    #shadePipeline: GPURenderPipeline | null = null
+    // FeatureGraph overlay occlusion depth reconstructed from the G-buffer (no
+    // 2nd SDF march) — used in place of #depthPipeline when deferred is active.
+    #occlusionGbufferPipeline: GPURenderPipeline | null = null
+    #geometryBindGroup: GPUBindGroup | null = null
+    #shadeBindGroup: GPUBindGroup | null = null
+    #occlusionGbufferBindGroup: GPUBindGroup | null = null
+    // Bumped on every scene rebuild / invalidation so an in-flight async
+    // deferred-pipeline compile for a stale shader is discarded.
+    #deferredPipelineGen = 0
+    // Phase 2 fast path: hash of the geometry-relevant SAB fields (camera /
+    // resolution / shading / ray-march — everything the G-buffer depends on)
+    // from the last frame that ran the geometry pass, plus the build generation
+    // it was valid for. A new frame whose geometry hash + build gen match can
+    // reuse the retained G-buffer and run shade-only (selection/hover changed,
+    // geometry didn't). -1 = no geometry pass recorded yet.
+    #lastGeometryHash = -1
+    #lastGeometryBuildGen = -1
+    #gbuffer: GPUBuffer | null = null
+    // Grow-only capacity in pixels: a reduced-res motion frame reuses the
+    // full-res allocation rather than churning a ~hundreds-of-MB buffer on every
+    // resolution-scale flip. Shader stride uses the per-frame camera.res, so any
+    // frame with w*h ≤ capacity indexes a valid prefix.
+    #gbufferCapacityPx = 0
     #bvhEnabled = true
     #buildGeneration = 0
     #buildLock: Promise<void> = Promise.resolve()
@@ -429,6 +495,7 @@ export class RenderWorkerCore {
     #passTimeAverages: Record<ProfiledPassName, AveragedBuffer> = {
         beam: new AveragedBuffer(30),
         scene: new AveragedBuffer(30),
+        shade: new AveragedBuffer(30),
         easu: new AveragedBuffer(30),
         fxaa: new AveragedBuffer(30),
         outline: new AveragedBuffer(30),
@@ -588,6 +655,25 @@ export class RenderWorkerCore {
 
     setBvhEnabled(enabled: boolean): void {
         this.#bvhEnabled = enabled
+    }
+
+    /**
+     * Toggle deferred selection shading. When on (and the geometry/shade
+     * pipelines built), the scene pass runs as geometryMain (SDF → G-buffer)
+     * then shadeMain (G-buffer → selection-tinted frame) instead of a single
+     * fragmentMain pass — the prerequisite for the selection-only fast repaint.
+     * x-ray and any frame whose G-buffer would exceed the storage limit fall
+     * back to the single pass automatically. Worker-internal, so force the next
+     * render past the SAB-hash idle skip.
+     */
+    setDeferredShading(enabled: boolean): void {
+        if (this.#deferredShading === enabled) return
+        this.#deferredShading = enabled
+        // Compile the geometry/shade pipelines on first enable (lazy — the
+        // default-off path never pays for them). Until they're ready, renders
+        // fall back to the single pass.
+        if (enabled) void this.#ensureDeferredPipelines()
+        this.#forceNextRender = true
     }
 
     /**
@@ -806,9 +892,12 @@ export class RenderWorkerCore {
         this.#pipeline = built.pipeline
         this.#beamPipeline = built.beamPipeline
         this.#sceneShader = built.shader
+        this.#invalidateDeferredPipelines()
         this.#builtIsolatedIds = [...this.#isolatedIds]
         this.#beamBindGroupInvalid = true
         this.#sceneBindGroupInvalid = true
+        // Rebuild deferred pipelines from the new shader if the knob is on.
+        if (this.#deferredShading) void this.#ensureDeferredPipelines()
         this.#forceNextRender = true
         const buf = sab ?? this.#lastSharedBuffer
         if (buf) this.#renderFromSAB(buf)
@@ -946,6 +1035,8 @@ export class RenderWorkerCore {
         this.#pipeline = pipeline
         this.#beamPipeline = beamPipeline
         this.#sceneShader = nextShader
+        this.#invalidateDeferredPipelines()
+        if (this.#deferredShading) void this.#ensureDeferredPipelines()
         this.#builtStructuralFingerprint = fingerprint
         this.#builtIsolatedIds = [...this.#isolatedIds]
         // New pipeline + uploaded buffers — defeat the SAB-hash idle skip so
@@ -1016,6 +1107,7 @@ export class RenderWorkerCore {
         viewCenter: readonly [number, number],
         sceneWidth: number,
         sceneHeight: number,
+        deferred = false,
     ): void {
         if (!this.#featureGraphOverlayEnabled) return
         const overlay = this.#featureGraphOverlay
@@ -1025,7 +1117,7 @@ export class RenderWorkerCore {
         // overlay so it can hide/dim lines that sit behind the geometry. Returns
         // null (→ mode 0) when occlusion is off, so the default path is byte-for-
         // byte the legacy draw-on-top behavior with no extra pass.
-        const depthView = this.#renderSceneDepthForOcclusion(commandEncoder, sceneWidth, sceneHeight)
+        const depthView = this.#renderSceneDepthForOcclusion(commandEncoder, sceneWidth, sceneHeight, deferred)
         overlay.setDepthSource(depthView, depthView ? this.#featureGraphOcclusionMode : 0)
         overlay.setLineWidth(this.#featureGraphLineWidth)
         overlay.setDifferentiateSegments(this.#featureGraphDifferentiateSegments)
@@ -1050,19 +1142,25 @@ export class RenderWorkerCore {
         commandEncoder: GPUCommandEncoder,
         sceneWidth: number,
         sceneHeight: number,
+        deferred: boolean,
     ): GPUTextureView | null {
         if (this.#featureGraphOcclusionMode === 0) return null
-        if (!this.#ensureDepthPipeline()) return null
+        // Fast path: when the frame ran the deferred pipeline, the G-buffer
+        // already holds the surface depth — reconstruct the world-position
+        // texture from it instead of a second full SDF raymarch (depthOnlyMain).
+        // Output is identical, so the overlay consumes it unchanged.
+        const useGbuffer = deferred && !!this.#occlusionGbufferPipeline && !!this.#occlusionGbufferBindGroup && !!this.#gbuffer
+        if (!useGbuffer && !this.#ensureDepthPipeline()) return null
         const view = this.#ensureSceneDepthTexture(sceneWidth, sceneHeight)
-        const bindGroup = this.#ensureDepthBindGroup()
+        const bindGroup = useGbuffer ? this.#occlusionGbufferBindGroup! : this.#ensureDepthBindGroup()
         if (!bindGroup) return null
         const pass = commandEncoder.beginRenderPass({
-            label: "FeatureGraph Depth",
+            label: useGbuffer ? "FeatureGraph Depth (G-buffer)" : "FeatureGraph Depth",
             colorAttachments: [
                 { view, loadOp: "clear", clearValue: { r: 0, g: 0, b: 0, a: 0 }, storeOp: "store" },
             ],
         })
-        pass.setPipeline(this.#depthPipeline!)
+        pass.setPipeline(useGbuffer ? this.#occlusionGbufferPipeline! : this.#depthPipeline!)
         pass.setBindGroup(0, bindGroup)
         pass.draw(4)
         pass.end()
@@ -1226,6 +1324,7 @@ export class RenderWorkerCore {
             log("RenderWorker").debug("gpu pass times (avg ms, 30-frame window)", {
                 beam: roundMs2(avg.beam.average),
                 scene: roundMs2(avg.scene.average),
+                shade: roundMs2(avg.shade.average),
                 easu: roundMs2(avg.easu.average),
                 fxaa: roundMs2(avg.fxaa.average),
                 outline: roundMs2(avg.outline.average),
@@ -1289,6 +1388,20 @@ export class RenderWorkerCore {
             this.#featureGraphOverlay = new FeatureGraphOverlay(this.#helper, this.#format)
         }
         this.#featureGraphOverlay.upload(result.cpu, result.worldPositions)
+        // Retain the snapshot + build the chain grouping / hit-tester so click
+        // and hover can do CPU screen-space feature picking. The FG rebuild
+        // renumbers vertices/edges, so any prior feature selection is stale —
+        // drop it (v1: selection does not survive rebuilds). `upload()` already
+        // zeroed the overlay highlight state to match.
+        this.#fgCpu = result.cpu
+        this.#fgWorld = result.worldPositions
+        this.#fgChains = groupChains(result.cpu)
+        this.#fgHitTester = new FeatureGraphHitTester(result.cpu, result.worldPositions, this.#fgChains)
+        this.#fgSelectedChains.clear()
+        this.#fgSelectedCorners.clear()
+        this.#fgAutoLockedType = null
+        this.#fgHoverChain = -1
+        this.#fgHoverCorner = -1
         // Worker-internal state change (vertex/index buffers were uploaded)
         // — defeat the SAB-hash idle skip so the next render actually
         // composites the new overlay geometry.
@@ -1641,14 +1754,8 @@ export class RenderWorkerCore {
         const offscreenBlit = !!outputTextureView && !fullResFxaa
         const sceneColorView =
             fsrEnabled || offscreenBlit ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : finalTarget
-        const scenePass = commandEncoder.beginRenderPass({
-            colorAttachments: [{ view: sceneColorView, loadOp: "clear", storeOp: "store" }],
-            timestampWrites: this.#timestampWritesFor("scene"),
-        })
-        scenePass.setPipeline(this.#pipeline)
-        scenePass.setBindGroup(0, this.#bindGroup!)
-        scenePass.draw(4)
-        scenePass.end()
+        const deferred = this.#prepareDeferred(viewSettings.xrayMode, sceneWidth, sceneHeight)
+        this.#encodeScenePass(commandEncoder, sceneColorView, deferred)
 
         if (fsrEnabled) {
             // EASU (+FXAA) resolves the reduced-res scene into the final target.
@@ -1684,6 +1791,7 @@ export class RenderWorkerCore {
             viewCenter,
             sceneWidth,
             sceneHeight,
+            deferred,
         )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)
@@ -1979,14 +2087,24 @@ export class RenderWorkerCore {
         // the canvas swapchain directly. The r32uint object-ID texture is gone —
         // click picking uses the `clickedObjectId` atomic written in the shader.
         const sceneTarget = fsrEnabled ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : canvasView
-        const scenePass = commandEncoder.beginRenderPass({
-            colorAttachments: [{ view: sceneTarget, loadOp: "clear", storeOp: "store" }],
-            timestampWrites: this.#timestampWritesFor("scene"),
-        })
-        scenePass.setPipeline(this.#pipeline)
-        scenePass.setBindGroup(0, this.#bindGroup!)
-        scenePass.draw(4)
-        scenePass.end()
+        const deferred = this.#prepareDeferred((packed & 1) !== 0, sceneWidth, sceneHeight)
+        // Phase 2: if only selection/hover changed since the last geometry pass
+        // (same camera/resolution/shading + build generation), reuse the
+        // retained G-buffer and run shade-only — the SDF march is skipped, so
+        // the repaint cost is independent of scene depth. Picks never reach here
+        // (they return early above). The geometry hash includes resolution, so a
+        // res change forces a fresh geometry pass at the new size.
+        let skipGeometry = false
+        if (deferred) {
+            const geomHash = this.#geometryHashFromSAB(buffer, slotBase)
+            if (this.#gbuffer && this.#lastGeometryHash === geomHash && this.#lastGeometryBuildGen === this.#buildGeneration) {
+                skipGeometry = true
+            } else {
+                this.#lastGeometryHash = geomHash
+                this.#lastGeometryBuildGen = this.#buildGeneration
+            }
+        }
+        this.#encodeScenePass(commandEncoder, sceneTarget, deferred, skipGeometry)
 
         if (fsrEnabled) {
             this.#encodeUpscale(commandEncoder, canvasView, sceneWidth, sceneHeight, this.#fullWidth, this.#fullHeight, fsrFxaa)
@@ -2010,6 +2128,7 @@ export class RenderWorkerCore {
             viewCenter,
             sceneWidth,
             sceneHeight,
+            deferred,
         )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)
@@ -2512,6 +2631,11 @@ export class RenderWorkerCore {
         // the live session's scene.
         const previousIso = this.#isolatedIds
         const wantIso = msg.isolatedIds ?? []
+        // A/B verification hook: force deferred shading on/off for this headless
+        // render, restored in the finally below so it can't leak into the live
+        // session's flag.
+        const previousDeferred = this.#deferredShading
+        if (msg.deferredShading !== undefined) this.#deferredShading = msg.deferredShading
         let builtForThis = false
         try {
             if (!this.#device) {
@@ -2527,6 +2651,10 @@ export class RenderWorkerCore {
                 self.postMessage({ type: "thumbnailResult", error: "Scene failed to build", requestId, documentName })
                 return
             }
+            // Deferred A/B: build the geometry/shade pipelines synchronously here
+            // (they're lazy, so a fresh build won't have them yet) before the
+            // one-shot render so this frame actually exercises the deferred path.
+            if (this.#deferredShading) await this.#ensureDeferredPipelines()
             const vt = new Float32Array(msg.viewTransform)
             const thumbMsg: Extract<MainToWorkerMessage, { type: "render" }> = {
                 type: "render",
@@ -2626,6 +2754,7 @@ export class RenderWorkerCore {
             self.postMessage({ type: "thumbnailResult", error: errorMsg, requestId, documentName })
         } finally {
             this.#isolatedIds = previousIso
+            this.#deferredShading = previousDeferred
             const bodyChanged = previousBody !== null && previousBody !== body
             const isoChanged = !sameIdList(this.#builtIsolatedIds, previousIso)
             if (builtForThis && previousBody !== null && (bodyChanged || isoChanged) && this.#builtBody === body) {
@@ -2809,8 +2938,11 @@ export class RenderWorkerCore {
             })
             // The depth pipeline shares this binding set; rebuild its bind group
             // too (binding 7 = tStartTextureView is recreated on resize, and the
-            // uniform buffers may have changed on a rebuild).
+            // uniform buffers may have changed on a rebuild). The deferred
+            // geometry/shade bind groups share it as well.
             this.#depthBindGroup = null
+            this.#geometryBindGroup = null
+            this.#shadeBindGroup = null
             this.#sceneBindGroupInvalid = false
         }
     }
@@ -2846,6 +2978,205 @@ export class RenderWorkerCore {
             { binding: 24, resource: { buffer: this.#uniformBuffers.previewCapParamDrag } },
             { binding: 25, resource: { buffer: this.#uniformBuffers.rayMarchParams } },
         ]
+    }
+
+    /** Drop the deferred pipelines + bind groups and bump the build generation
+     * (so any in-flight async compile for the old shader is discarded). Called
+     * on every scene rebuild; the build re-kicks the compile if the knob is on. */
+    #invalidateDeferredPipelines(): void {
+        this.#geometryPipeline = null
+        this.#shadePipeline = null
+        this.#occlusionGbufferPipeline = null
+        this.#geometryBindGroup = null
+        this.#shadeBindGroup = null
+        this.#occlusionGbufferBindGroup = null
+        this.#deferredPipelineGen++
+    }
+
+    /**
+     * Lazily compile the deferred geometry+shade pipelines from the current
+     * scene shader. Built only when deferred shading is enabled, so the
+     * default-off path pays nothing (compiling the deep-scene shader for two
+     * extra entry points is not free). Best-effort: a failure leaves them null
+     * and renders fall back to the single pass. A scene rebuild bumps the
+     * generation, discarding an in-flight compile for a stale shader.
+     */
+    async #ensureDeferredPipelines(): Promise<void> {
+        if (this.#geometryPipeline && this.#shadePipeline && this.#occlusionGbufferPipeline) return
+        const shader = this.#sceneShader
+        if (!shader) return
+        const gen = this.#deferredPipelineGen
+        try {
+            const [geo, shade, occ] = await Promise.all([
+                this.#device.createRenderPipelineAsync({
+                    label: "Deferred Geometry Pipeline",
+                    layout: "auto",
+                    vertex: { module: shader, entryPoint: "vertexMain" },
+                    fragment: { module: shader, entryPoint: "geometryMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createRenderPipelineAsync({
+                    label: "Deferred Shade Pipeline",
+                    layout: "auto",
+                    vertex: { module: shader, entryPoint: "vertexMain" },
+                    fragment: { module: shader, entryPoint: "shadeMain", targets: [{ format: this.#format }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+                this.#device.createRenderPipelineAsync({
+                    label: "Deferred Occlusion-from-GBuffer Pipeline",
+                    layout: "auto",
+                    vertex: { module: shader, entryPoint: "vertexMain" },
+                    fragment: { module: shader, entryPoint: "occlusionFromGBufferMain", targets: [{ format: "rgba32float" }] },
+                    primitive: { topology: "triangle-strip", stripIndexFormat: "uint32" },
+                }),
+            ])
+            if (gen !== this.#deferredPipelineGen) return // stale: scene rebuilt mid-compile
+            this.#geometryPipeline = geo
+            this.#shadePipeline = shade
+            this.#occlusionGbufferPipeline = occ
+            this.#geometryBindGroup = null
+            this.#shadeBindGroup = null
+            this.#occlusionGbufferBindGroup = null
+            this.#forceNextRender = true
+        } catch (err) {
+            const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
+            logWgsl("warn", `Deferred shading pipelines failed (deferred disabled, single-pass unaffected): ${text}`)
+        }
+    }
+
+    /**
+     * Prepare the deferred-shading resources for a w×h scene render and report
+     * whether the deferred two-pass path can run this frame. Returns false (→
+     * single-pass fallback) when deferred is off, in x-ray mode, the pipelines
+     * didn't build, or the G-buffer would exceed the storage-buffer limit.
+     * Allocates/resizes the G-buffer and (re)builds the geometry+shade bind
+     * groups as needed. `geometryMain`/`shadeMain` force-reference the full
+     * scene binding set (+ binding 26), so both reuse `#sceneBindGroupEntries`.
+     */
+    #prepareDeferred(xray: boolean, w: number, h: number): boolean {
+        if (!this.#deferredShading || xray) return false
+        if (!this.#geometryPipeline || !this.#shadePipeline) return false
+
+        const px = w * h
+        const needed = px * GBUFFER_STRIDE_BYTES
+        if (needed > this.#device.limits.maxStorageBufferBindingSize) {
+            // Too big for one binding — silently fall back so huge viewports
+            // still render (just without the fast selection path).
+            return false
+        }
+        if (!this.#gbuffer || px > this.#gbufferCapacityPx) {
+            this.#gbuffer?.destroy()
+            this.#gbuffer = this.#device.createBuffer({
+                label: "deferred-gbuffer",
+                size: needed,
+                usage: GPUBufferUsage.STORAGE,
+            })
+            this.#gbufferCapacityPx = px
+            this.#geometryBindGroup = null
+            this.#shadeBindGroup = null
+            this.#occlusionGbufferBindGroup = null
+            // Fresh (zeroed) buffer — the retained geometry is gone, so force the
+            // next frame to run a full geometry pass before any shade-only reuse.
+            this.#lastGeometryHash = -1
+        }
+
+        if (!this.#geometryBindGroup || !this.#shadeBindGroup) {
+            const entries: GPUBindGroupEntry[] = [
+                ...this.#sceneBindGroupEntries(),
+                { binding: 26, resource: { buffer: this.#gbuffer } },
+            ]
+            this.#geometryBindGroup = this.#device.createBindGroup({
+                label: "deferred-geometry",
+                layout: this.#geometryPipeline.getBindGroupLayout(0),
+                entries,
+            })
+            this.#shadeBindGroup = this.#device.createBindGroup({
+                label: "deferred-shade",
+                layout: this.#shadePipeline.getBindGroupLayout(0),
+                entries,
+            })
+            this.#occlusionGbufferBindGroup = null
+        }
+        // Occlusion-from-G-buffer bind group: built on demand (occlusion is
+        // usually off). `occlusionFromGBufferMain` force-references the same
+        // binding set, so it reuses the scene entries + gbuffer.
+        if (this.#occlusionGbufferPipeline && !this.#occlusionGbufferBindGroup) {
+            this.#occlusionGbufferBindGroup = this.#device.createBindGroup({
+                label: "deferred-occlusion-gbuffer",
+                layout: this.#occlusionGbufferPipeline.getBindGroupLayout(0),
+                entries: [...this.#sceneBindGroupEntries(), { binding: 26, resource: { buffer: this.#gbuffer } }],
+            })
+        }
+        return true
+    }
+
+    /** FNV-1a over the geometry-relevant SAB slot fields — everything the
+     * G-buffer depends on (camera, resolution, view settings, preview shading,
+     * ray-march params), EXCLUDING the selection regions (styles [172,200),
+     * selected ids / edges [256,6948)). Two frames with the same hash differ
+     * only in selection state, so the retained G-buffer is still valid. */
+    #geometryHashFromSAB(buffer: SharedArrayBuffer, slotBase: number): number {
+        const u32 = new Uint32Array(buffer)
+        const b4 = slotBase / 4
+        let h = 2166136261
+        // [0,172): version/flags, resolution scale, view transform, camera pos,
+        // camera res, zoom, view center, view settings.
+        for (let i = 0; i < 43; i++) h = Math.imul(h ^ u32[b4 + i]!, 16777619)
+        // [200,256): preview shading params (skips selection styles at [172,200)).
+        for (let i = 50; i < 64; i++) h = Math.imul(h ^ u32[b4 + i]!, 16777619)
+        // Ray-march params [6948,6980): 8 words.
+        for (let i = 1737; i < 1745; i++) h = Math.imul(h ^ u32[b4 + i]!, 16777619)
+        return h >>> 0
+    }
+
+    /**
+     * Encode the scene-color pass into `sceneColorView`. When `deferred` is
+     * true, runs geometryMain (SDF march → G-buffer, throwaway colour into
+     * `#colorTexture`) then shadeMain (G-buffer → selection-tinted frame);
+     * otherwise the single fragmentMain pass. When `skipGeometry` is also true
+     * (selection-only repaint — Phase 2), the geometry pass is omitted and the
+     * retained G-buffer drives shadeMain directly. Shared by `render()` and
+     * `#renderFromSAB` so the two paths can't drift.
+     */
+    #encodeScenePass(enc: GPUCommandEncoder, sceneColorView: GPUTextureView, deferred: boolean, skipGeometry = false): void {
+        if (deferred) {
+            if (!skipGeometry) {
+                // Geometry: marches the SDF and writes the G-buffer. Its colour
+                // attachment is a throwaway (#colorTexture is scene-sized and always
+                // allocated); the visible frame is produced by the shade pass. When
+                // sceneColorView IS #colorTextureView (FSR/offscreen), the shade pass
+                // below overwrites it — geometry's colour is simply discarded.
+                const geoPass = enc.beginRenderPass({
+                    label: "deferred-geometry",
+                    colorAttachments: [{ view: this.#colorTextureView, loadOp: "clear", storeOp: "store" }],
+                    timestampWrites: this.#timestampWritesFor("scene"),
+                })
+                geoPass.setPipeline(this.#geometryPipeline!)
+                geoPass.setBindGroup(0, this.#geometryBindGroup!)
+                geoPass.draw(4)
+                geoPass.end()
+            }
+
+            const shadePass = enc.beginRenderPass({
+                label: "deferred-shade",
+                colorAttachments: [{ view: sceneColorView, loadOp: "clear", storeOp: "store" }],
+                timestampWrites: this.#timestampWritesFor("shade"),
+            })
+            shadePass.setPipeline(this.#shadePipeline!)
+            shadePass.setBindGroup(0, this.#shadeBindGroup!)
+            shadePass.draw(4)
+            shadePass.end()
+            return
+        }
+
+        const scenePass = enc.beginRenderPass({
+            colorAttachments: [{ view: sceneColorView, loadOp: "clear", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("scene"),
+        })
+        scenePass.setPipeline(this.#pipeline!)
+        scenePass.setBindGroup(0, this.#bindGroup!)
+        scenePass.draw(4)
+        scenePass.end()
     }
 
     /**
@@ -3254,7 +3585,11 @@ export class RenderWorkerCore {
         return { clickedId, edgeHits, hitPos, clickedNormal }
     }
 
-    async #readHoverResult(): Promise<{ hoveredObjectId: number; hoveredEdges: SelectedEdgePayload[] }> {
+    async #readHoverResult(): Promise<{
+        hoveredObjectId: number
+        hoveredEdges: SelectedEdgePayload[]
+        hoverHitPos: [number, number, number] | null
+    }> {
         const reuse = !this.#hoverReadbackBusy
         if (reuse) this.#hoverReadbackBusy = true
         const readback = await this.#readGPU(this.#uniformBuffers.hoverEdgeHit, this.#hoverEdgeHitReadback, EDGE_HITS_SIZE, reuse)
@@ -3264,6 +3599,12 @@ export class RenderWorkerCore {
         const edges: SelectedEdgePayload[] = []
         let hoveredObjectId = 0
         const STRIDE = 20
+        // Front slot (0) carries the hover hit's world position in `seedPoint`,
+        // set unconditionally by `classifyEdgeAtHit` even on a flat (edge-less)
+        // face — so face-hover preview can resolve the side/cap without a
+        // separate pick readback.
+        const hoverHitPos: [number, number, number] | null =
+            u32[5] !== 0 ? [f32[8], f32[9], f32[10]] : null
         for (let slot = 0; slot < 4; slot++) {
             const o = slot * STRIDE
             const kind = u32[o]
@@ -3285,7 +3626,249 @@ export class RenderWorkerCore {
                 })
             }
         }
-        return { hoveredObjectId, hoveredEdges: edges }
+        return { hoveredObjectId, hoveredEdges: edges, hoverHitPos }
+    }
+
+    /** Read the published selection mode (SAB if present, else the cached value). */
+    #readSelectionMode(sab?: SharedArrayBuffer): number {
+        if (!sab) return this.#lastSelectionMode
+        const off = (getSlotByteOffset(getPublishedRenderSlot(sab)) + SAB_LAYOUT.O_VIEW_SETTINGS) / 4
+        return (new Uint32Array(sab)[off]! >> 2) & 7
+    }
+
+    /** Pixel slop for FG CORNER picking — generous, since points are small targets. */
+    #fgPickThresholdPx(): number {
+        return this.#featureGraphLineWidth + 10
+    }
+
+    /** Pixel slop for FG EDGE-CHAIN (polyline) picking — tighter than corners so
+     *  hover/select tracks the visible line (~3px beyond its edge) instead of
+     *  triggering far from it. Scales with the line-width dev-tools knob. */
+    #fgEdgePickThresholdPx(): number {
+        return this.#featureGraphLineWidth / 2 + 3
+    }
+
+    /**
+     * Build the projection parameters the CPU hit-tester needs, mirroring the
+     * overlay's `uploadCamera`: inverse view transform + ray-origin-pushed
+     * camera origin, at full display resolution (so thresholds are display px).
+     */
+    #buildFgCameraParams(sab?: SharedArrayBuffer): FgCameraParams | null {
+        if (this.#fullWidth <= 0 || this.#fullHeight <= 0) return null
+        let viewTransform: Float32Array
+        let cameraPosition: [number, number, number]
+        let viewCenter: [number, number]
+        let zoom: number
+        if (sab) {
+            const L = SAB_LAYOUT
+            const slotBase = getSlotByteOffset(getPublishedRenderSlot(sab))
+            const b4 = slotBase / 4
+            const f32 = new Float32Array(sab)
+            viewTransform = new Float32Array(sab, slotBase + L.O_VIEW_TRANSFORM, 16)
+            cameraPosition = [
+                f32[b4 + L.O_CAMERA_POSITION / 4]!,
+                f32[b4 + L.O_CAMERA_POSITION / 4 + 1]!,
+                f32[b4 + L.O_CAMERA_POSITION / 4 + 2]!,
+            ]
+            viewCenter = [f32[b4 + L.O_VIEW_CENTER / 4]!, f32[b4 + L.O_VIEW_CENTER / 4 + 1]!]
+            zoom = f32[b4 + L.O_ZOOM / 4]!
+        } else if (this.#lastRenderMsg) {
+            const msg = this.#lastRenderMsg
+            viewTransform =
+                msg.viewTransform instanceof Float32Array ? msg.viewTransform : new Float32Array(msg.viewTransform)
+            cameraPosition = [msg.cameraPosition[0], msg.cameraPosition[1], msg.cameraPosition[2]]
+            viewCenter = [msg.viewCenter[0], msg.viewCenter[1]]
+            zoom = orthoHalfFromDolly(msg.cameraState.dollyDistance)
+        } else {
+            return null
+        }
+        const inv = new Mat4x4f(new Float32Array(viewTransform)).inverse()
+        return {
+            viewTransformInv: inv.data,
+            origin: [cameraPosition[0], cameraPosition[1], cameraPosition[2] + FG_PICK_RAY_ORIGIN_DEPTH],
+            resX: this.#fullWidth,
+            resY: this.#fullHeight,
+            zoom,
+            viewCenter,
+        }
+    }
+
+    /** Recompute per-instance overlay highlight state from the FG selection + hover. */
+    #applyFgHighlights(): void {
+        const ht = this.#fgHitTester
+        const chains = this.#fgChains
+        const overlay = this.#featureGraphOverlay
+        if (!ht || !chains || !overlay) return
+        const edgeStates = new Uint32Array(ht.edgeInstanceCount)
+        for (const chainId of this.#fgSelectedChains) {
+            const c = chains.chains[chainId]
+            if (c) for (const s of c.edgeInstanceIndices) edgeStates[s] = 2
+        }
+        if (this.#fgHoverChain >= 0) {
+            const c = chains.chains[this.#fgHoverChain]
+            if (c) for (const s of c.edgeInstanceIndices) if (edgeStates[s] !== 2) edgeStates[s] = 1
+        }
+        const cornerStates = new Uint32Array(ht.cornerInstanceCount)
+        for (const v of this.#fgSelectedCorners) {
+            const ci = ht.cornerInstanceIndex(v)
+            if (ci >= 0) cornerStates[ci] = 2
+        }
+        if (this.#fgHoverCorner >= 0) {
+            const ci = ht.cornerInstanceIndex(this.#fgHoverCorner)
+            if (ci >= 0 && cornerStates[ci] !== 2) cornerStates[ci] = 1
+        }
+        overlay.setHighlights(edgeStates, cornerStates)
+    }
+
+    /** Build the `.sel-info` payload describing the current FG hover + selection. */
+    #fgBuildSelectionInfo(): SelectionInfo {
+        let polylines = 0
+        let rings = 0
+        if (this.#fgChains) {
+            for (const id of this.#fgSelectedChains) {
+                const c = this.#fgChains.chains[id]
+                if (!c) continue
+                if (c.kind === FgChainKind.Ring) rings++
+                else polylines++
+            }
+        }
+        let hoverKind: "polyline" | "ring" | "corner" | null = null
+        let hoverId: number | undefined
+        if (this.#fgHoverCorner >= 0) {
+            hoverKind = "corner"
+            hoverId = this.#fgHoverCorner
+        } else if (this.#fgHoverChain >= 0 && this.#fgChains) {
+            const c = this.#fgChains.chains[this.#fgHoverChain]
+            if (c) {
+                hoverKind = c.kind === FgChainKind.Ring ? "ring" : "polyline"
+                hoverId = this.#fgHoverChain
+            }
+        }
+        return {
+            objects: [],
+            objectNames: {},
+            edges: [],
+            face: null,
+            hover: null,
+            fgFeatures: { polylines, rings, corners: this.#fgSelectedCorners.size, hoverKind, hoverId },
+        }
+    }
+
+    /** Re-render so highlight/hover recolors show, then publish the FG selection info. */
+    #fgRenderAndReport(sab: SharedArrayBuffer | undefined, clickUV: [number, number], documentName?: string, hoverRequestId?: number): void {
+        this.#forceNextRender = true
+        if (sab) this.#renderFromSAB(sab, clickUV)
+        else if (this.#lastRenderMsg) this.render(this.#lastRenderMsg)
+        self.postMessage({ type: "selectionInfo", info: this.#fgBuildSelectionInfo(), documentName, hoverRequestId })
+    }
+
+    /** Clear all interactive FeatureGraph selection + hover and drop the overlay highlights. */
+    clearFgSelection(): void {
+        this.#fgSelectedChains.clear()
+        this.#fgSelectedCorners.clear()
+        this.#fgAutoLockedType = null
+        this.#fgHoverChain = -1
+        this.#fgHoverCorner = -1
+        this.#applyFgHighlights()
+        this.#forceNextRender = true
+    }
+
+    /** CPU feature pick for a click in edge/corner/auto mode. */
+    // NOTE(deferred-shading work): added to unblock a pre-existing build break —
+    // `#fgClickHasFeature` was referenced by the AUTO-mode arbitration below but
+    // never defined. Minimal faithful impl (mirrors the pickAny path in
+    // #handleFgClick): is any FeatureGraph feature under the cursor? Confirm or
+    // replace with your intended version.
+    #fgClickHasFeature(clickUV: [number, number], sab?: SharedArrayBuffer): boolean {
+        const cam = this.#buildFgCameraParams(sab)
+        const ht = this.#fgHitTester
+        if (!cam || !ht) return false
+        return ht.pickAny(clickUV, cam, this.#fgPickThresholdPx(), this.#fgEdgePickThresholdPx()) !== null
+    }
+
+    #handleFgClick(clickUV: [number, number], mode: number, shiftKey: boolean, sab?: SharedArrayBuffer, documentName?: string): void {
+        const cam = this.#buildFgCameraParams(sab)
+        const ht = this.#fgHitTester
+        if (cam && ht) {
+            const thr = this.#fgPickThresholdPx()
+            const edgeThr = this.#fgEdgePickThresholdPx()
+            let kind: "edge" | "corner" | null = null
+            let id = -1
+            if (mode === SEL_MODE_CORNER || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "corner")) {
+                const h = ht.pickCorner(clickUV, cam, thr)
+                if (h) {
+                    kind = "corner"
+                    id = h.cornerVertexIndex
+                }
+            } else if (mode === SEL_MODE_EDGE || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "edge")) {
+                const h = ht.pickEdgeChain(clickUV, cam, edgeThr)
+                if (h) {
+                    kind = "edge"
+                    id = h.chainId
+                }
+            } else {
+                // Auto, no lock yet — nearest feature of any type.
+                const h = ht.pickAny(clickUV, cam, thr, edgeThr)
+                if (h) {
+                    kind = h.kind
+                    id = h.id
+                }
+            }
+
+            if (kind === null) {
+                // Click on empty space clears (non-shift); shift keeps the set.
+                if (!shiftKey) {
+                    this.#fgSelectedChains.clear()
+                    this.#fgSelectedCorners.clear()
+                    this.#fgAutoLockedType = null
+                }
+            } else if (!shiftKey) {
+                this.#fgSelectedChains.clear()
+                this.#fgSelectedCorners.clear()
+                if (kind === "edge") this.#fgSelectedChains.add(id)
+                else this.#fgSelectedCorners.add(id)
+                if (mode === SEL_MODE_AUTO) this.#fgAutoLockedType = kind
+            } else {
+                const set = kind === "edge" ? this.#fgSelectedChains : this.#fgSelectedCorners
+                if (set.has(id)) set.delete(id)
+                else set.add(id)
+                if (mode === SEL_MODE_AUTO) {
+                    // First shift-pick after a clear locks the type; an emptied
+                    // selection re-arms auto-detection.
+                    this.#fgAutoLockedType =
+                        this.#fgSelectedChains.size === 0 && this.#fgSelectedCorners.size === 0 ? null : kind
+                }
+            }
+            this.#applyFgHighlights()
+        }
+        this.#fgRenderAndReport(sab, clickUV, documentName)
+    }
+
+    /** CPU feature pick for a hover in edge/corner/auto mode. */
+    #handleFgHover(clickUV: [number, number], mode: number, sab?: SharedArrayBuffer, documentName?: string, hoverRequestId?: number): void {
+        this.#fgHoverChain = -1
+        this.#fgHoverCorner = -1
+        const cam = this.#buildFgCameraParams(sab)
+        const ht = this.#fgHitTester
+        if (cam && ht) {
+            const thr = this.#fgPickThresholdPx()
+            const edgeThr = this.#fgEdgePickThresholdPx()
+            if (mode === SEL_MODE_CORNER || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "corner")) {
+                const h = ht.pickCorner(clickUV, cam, thr)
+                if (h) this.#fgHoverCorner = h.cornerVertexIndex
+            } else if (mode === SEL_MODE_EDGE || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "edge")) {
+                const h = ht.pickEdgeChain(clickUV, cam, edgeThr)
+                if (h) this.#fgHoverChain = h.chainId
+            } else {
+                const h = ht.pickAny(clickUV, cam, thr, edgeThr)
+                if (h) {
+                    if (h.kind === "corner") this.#fgHoverCorner = h.id
+                    else this.#fgHoverChain = h.id
+                }
+            }
+            this.#applyFgHighlights()
+        }
+        this.#fgRenderAndReport(sab, clickUV, documentName, hoverRequestId)
     }
 
     async handleClick(
@@ -3297,6 +3880,23 @@ export class RenderWorkerCore {
     ): Promise<void> {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
+        // Edge/corner modes pick FeatureGraph features on the CPU instead of the
+        // GPU object/edge atomics — object selection never runs there.
+        const mode = this.#readSelectionMode(sab)
+        if (mode === SEL_MODE_EDGE || mode === SEL_MODE_CORNER) {
+            this.#handleFgClick(clickUV, mode, shiftKey, sab, documentName)
+            return
+        }
+        // Auto picks the nearest FeatureGraph feature when one is under the
+        // cursor; otherwise it falls through to the GPU pick so the main thread
+        // can select the face/surface (auto = "select any feature", incl. caps).
+        if (mode === SEL_MODE_AUTO) {
+            if (this.#fgClickHasFeature(clickUV, sab)) {
+                this.#handleFgClick(clickUV, mode, shiftKey, sab, documentName)
+                return
+            }
+            if (!shiftKey) this.clearFgSelection()
+        }
         this.#writeClickState(clickUV, true, false)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedObjectId, 0, ZERO_U32)
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickedHitPos, 0, ZERO_VEC4)
@@ -3327,6 +3927,29 @@ export class RenderWorkerCore {
     ): Promise<void> {
         if (!this.#pipeline) return
         if (!sab && !this.#lastRenderMsg) return
+        // Edge/corner modes hover-test FeatureGraph features on the CPU only.
+        // Auto mirrors the click arbitration (handleClick): hover an FG edge/corner
+        // when one is under the cursor, otherwise fall through to the GPU
+        // face/surface hover below — so face-hover highlight works in Auto, not
+        // just Face mode.
+        const fgMode = this.#readSelectionMode(sab)
+        if (fgMode === SEL_MODE_EDGE || fgMode === SEL_MODE_CORNER) {
+            this.#handleFgHover(clickUV, fgMode, sab, documentName, hoverRequestId)
+            return
+        }
+        if (fgMode === SEL_MODE_AUTO) {
+            if (this.#fgClickHasFeature(clickUV, sab)) {
+                this.#handleFgHover(clickUV, fgMode, sab, documentName, hoverRequestId)
+                return
+            }
+            // No FG feature near — drop any stale FG hover highlight, then let the
+            // GPU face hover run so the face/surface under the cursor previews.
+            if (this.#fgHoverChain >= 0 || this.#fgHoverCorner >= 0) {
+                this.#fgHoverChain = -1
+                this.#fgHoverCorner = -1
+                this.#applyFgHighlights()
+            }
+        }
         this.#writeClickState(clickUV, false, true, clickUV)
         this.#device.queue.writeBuffer(this.#uniformBuffers.hoverEdgeHit, 0, ZERO_EDGE_HITS)
 
@@ -3355,7 +3978,7 @@ export class RenderWorkerCore {
             :   this.#lastSelectionMode
         const effectiveMode = altKey && selectionMode === 0 ? 1 : selectionMode
 
-        const { hoveredObjectId, hoveredEdges } = await this.#readHoverResult()
+        const { hoveredObjectId, hoveredEdges, hoverHitPos } = await this.#readHoverResult()
         let edges: SelectedEdgePayload[] = []
         if (effectiveMode === 1) {
             edges = hoveredEdges.filter(h => h.kind === EdgeKind.Seam)
@@ -3388,6 +4011,7 @@ export class RenderWorkerCore {
                 hoveredObjectId > 0 ?
                     {
                         objectId: hoveredObjectId,
+                        hitPos: hoverHitPos ?? undefined,
                         edges: edges.map(e => ({
                             kind: e.kind,
                             primaryId: e.primaryId,

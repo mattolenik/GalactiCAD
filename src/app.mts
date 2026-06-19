@@ -34,6 +34,7 @@ import { Toolbar } from "./components/toolbar.mjs"
 import objectIcon from "./assets/selection-object.svg"
 import seamIcon from "./assets/selection-seam.svg"
 import edgeIcon from "./assets/selection-edge.svg"
+import cornerIcon from "./assets/selection-corner.svg"
 import faceIcon from "./assets/selection-face.svg"
 import autoIcon from "./assets/selection-auto.svg"
 import cameraViewFrontIcon from "./assets/camera-view-front.svg"
@@ -996,6 +997,7 @@ class App {
                 { label: "Object", value: "object" as const, icon: objectIcon },
                 { label: "Seam", value: "seam" as const, icon: seamIcon },
                 { label: "Edge", value: "edge" as const, icon: edgeIcon },
+                { label: "Corner", value: "corner" as const, icon: cornerIcon },
                 { label: "Face", value: "face" as const, icon: faceIcon },
                 { label: "Auto", value: "auto" as const, icon: autoIcon },
             ],
@@ -1300,6 +1302,7 @@ class App {
         devTools.featureGraphLineWidth = this.renderer.featureGraphLineWidth
         devTools.featureGraphDifferentiateSegments = this.renderer.featureGraphDifferentiateSegments
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
+        devTools.deferredShading = this.renderer.deferredShadingEnabled
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
         }
@@ -1324,6 +1327,9 @@ class App {
         }
         devTools.onStepHeatmapChange = (enabled) => {
             this.renderer.stepHeatmapEnabled = enabled
+        }
+        devTools.onDeferredShadingChange = (enabled) => {
+            this.renderer.deferredShadingEnabled = enabled
         }
         devTools.onRayMarchParamsChange = (params) => {
             this.renderer.setRayMarchParams(params)

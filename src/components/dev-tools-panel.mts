@@ -74,6 +74,7 @@ export class DevToolsPanel extends HTMLElement {
     onFeatureGraphLineWidthChange?: (px: number) => void
     onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
+    onDeferredShadingChange?: (enabled: boolean) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
@@ -179,6 +180,14 @@ export class DevToolsPanel extends HTMLElement {
 
     set stepHeatmap(enabled: boolean) {
         this.#appSection.stepHeatmap = enabled
+    }
+
+    get deferredShading(): boolean {
+        return this.#appSection.deferredShading
+    }
+
+    set deferredShading(enabled: boolean) {
+        this.#appSection.deferredShading = enabled
     }
 
     get showFps(): boolean {
@@ -371,6 +380,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onFeatureGraphLineWidthChange = v => this.onFeatureGraphLineWidthChange?.(v)
         this.#appSection.onFeatureGraphDifferentiateSegmentsChange = v => this.onFeatureGraphDifferentiateSegmentsChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
+        this.#appSection.onDeferredShadingChange = v => this.onDeferredShadingChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)
 

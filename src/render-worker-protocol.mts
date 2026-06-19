@@ -224,6 +224,8 @@ export type MainToWorkerMessage =
           isolatedIds?: number[]
           /** Object ids to render as selected, for headless verification of the selection pattern. */
           selectedObjectIds?: number[]
+          /** Force the deferred geometry→shade path on/off for this headless render (A/B verification). */
+          deferredShading?: boolean
           cameraState: CameraState
           viewTransform: Float32Array
           cameraPosition: [number, number, number]
@@ -244,7 +246,9 @@ export type MainToWorkerMessage =
     | { type: "setFeatureGraphLineWidth"; px: number }
     | { type: "setFeatureGraphDifferentiateSegments"; on: boolean }
     | { type: "setStepHeatmapEnabled"; enabled: boolean }
+    | { type: "setDeferredShading"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
+    | { type: "clearFgSelection" }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]

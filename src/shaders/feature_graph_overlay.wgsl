@@ -59,6 +59,29 @@ struct OverlayCamera {
 // the SDF depth-only pass at scene render resolution. rgba32float, read with
 // `textureLoad` (unfilterable). Bound to a 1×1 dummy when occlusion is off.
 @group(0) @binding(1) var sceneDepthTex: texture_2d<f32>;
+// Per-instance highlight state (0 = none, 1 = hover, 2 = selected), one u32 per
+// alive edge / corner instance, indexed by `instance_index`. Drives the
+// hover-whiten / select-blue recolor for interactive feature selection.
+@group(0) @binding(2) var<storage, read> edgeState: array<u32>;
+@group(0) @binding(3) var<storage, read> cornerState: array<u32>;
+
+// Highlight state values (mirror the TS overlay's setHighlights encoding).
+const FG_SEL_HOVER: u32 = 1u;
+const FG_SEL_SELECTED: u32 = 2u;
+// Selected features paint solid blue (0x0000FF).
+const FG_SELECT_COLOR: vec4f = vec4f(0.0, 0.0, 1.0, 1.0);
+
+// Apply hover/select recolor to a base feature color. Hover mixes 50% toward
+// white (preserving alpha); select overrides to solid blue.
+fn applyHighlight(color: vec4f, state: u32) -> vec4f {
+    if (state == FG_SEL_SELECTED) {
+        return FG_SELECT_COLOR;
+    }
+    if (state == FG_SEL_HOVER) {
+        return vec4f(mix(color.rgb, vec3f(1.0), 0.5), color.a);
+    }
+    return color;
+}
 
 // Feathering band, in framebuffer pixels, applied at the outer edge of both
 // the line core and the corner disc.
@@ -72,6 +95,8 @@ struct VOut {
     // Signed perpendicular distance from the line center, in framebuffer
     // pixels, for the analytic-AA falloff.
     @location(2) perpPx: f32,
+    // Highlight state (0 none / 1 hover / 2 selected) for this edge instance.
+    @location(3) @interpolate(flat) state: u32,
 }
 
 struct PointVOut {
@@ -79,6 +104,8 @@ struct PointVOut {
     @location(0) viewZ: f32,
     // Offset from the disc center, in framebuffer pixels, for radial AA.
     @location(1) offsetPx: vec2f,
+    // Highlight state (0 none / 1 hover / 2 selected) for this corner instance.
+    @location(2) @interpolate(flat) state: u32,
 }
 
 // World point → overlay projection space. Returns the NDC x/y (with the
@@ -128,6 +155,7 @@ fn vertexMain(
     @location(1) posB: vec3f,
     @location(2) inFlags: u32,
     @builtin(vertex_index) vid: u32,
+    @builtin(instance_index) iid: u32,
 ) -> VOut {
     let a = project(posA);
     let b = project(posB);
@@ -160,6 +188,7 @@ fn vertexMain(
     out.flags = inFlags;
     out.viewZ = viewZ;
     out.perpPx = side * halfExtent;
+    out.state = edgeState[iid];
     return out;
 }
 
@@ -168,6 +197,7 @@ fn pointVertexMain(
     // Per-instance: one corner vertex's world position.
     @location(0) worldPos: vec3f,
     @builtin(vertex_index) vid: u32,
+    @builtin(instance_index) iid: u32,
 ) -> PointVOut {
     let a = project(worldPos);
     let centerPix = clipToPixels(a.clip);
@@ -185,6 +215,7 @@ fn pointVertexMain(
     out.position = vec4f(pixelsToClip(centerPix + offsetPx), ndcZFromViewZ(a.viewZ), 1.0);
     out.viewZ = a.viewZ;
     out.offsetPx = offsetPx;
+    out.state = cornerState[iid];
     return out;
 }
 
@@ -247,7 +278,7 @@ fn surfaceOccludes(fragXY: vec2f, viewZ: f32) -> bool {
 
 @fragment
 fn fragmentMain(in: VOut) -> @location(0) vec4f {
-    var color = lineColor(in.flags);
+    var color = applyHighlight(lineColor(in.flags), in.state);
 
     // Analytic AA across the line width: full coverage inside the solid core,
     // smooth falloff over the AA band at each edge.
@@ -266,7 +297,7 @@ fn fragmentMain(in: VOut) -> @location(0) vec4f {
 
 @fragment
 fn pointFragmentMain(in: PointVOut) -> @location(0) vec4f {
-    var color = CORNER_COLOR;
+    var color = applyHighlight(CORNER_COLOR, in.state);
 
     // Radial AA disc.
     let radius = camera.lineWidthPx + 1.0;

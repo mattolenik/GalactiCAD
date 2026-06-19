@@ -101,7 +101,7 @@ export interface DocumentSettings {
     selection: EditorSelection
 }
 
-export type SelectionMode = "object" | "seam" | "edge" | "face" | "auto"
+export type SelectionMode = "object" | "seam" | "edge" | "corner" | "face" | "auto"
 
 export type CameraRotationMethod = "rounded_arcball" | "azel"
 

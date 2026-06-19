@@ -61,6 +61,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #fgLineWidthInput?: HTMLInputElement
     #fgDifferentiate$: BehaviorSubject<boolean>
     #stepHeatmap$: BehaviorSubject<boolean>
+    #deferredShading$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
     #upscaleState: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
@@ -76,6 +77,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onFeatureGraphLineWidthChange?: (px: number) => void
     onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
+    onDeferredShadingChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
 
@@ -193,6 +195,14 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#stepHeatmap$.next(enabled)
     }
 
+    get deferredShading(): boolean {
+        return this.#deferredShading$.value
+    }
+
+    set deferredShading(enabled: boolean) {
+        this.#deferredShading$.next(enabled)
+    }
+
     get meshViewer(): boolean {
         return this.#meshViewer$.value
     }
@@ -245,6 +255,10 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
+        // Deferred selection shading: off by default (single-pass fragmentMain).
+        // When on, selection/hover repaints skip the SDF march — big win on deep
+        // scenes; ~+200MB G-buffer VRAM and a tiny extra pass on full frames.
+        this.#deferredShading$ = new BehaviorSubject(false)
 
         const persist = () => {
             if (this.#applying) return
@@ -403,6 +417,12 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(connectCheckbox(stepHeatmapCb, this.#stepHeatmap$))
         this.#subscriptions.push(
             this.#stepHeatmap$.pipe(skip(1)).subscribe(v => this.onStepHeatmapChange?.(v)),
+        )
+
+        const deferredShadingCb = this.#addCheckbox(perfBox, "Deferred selection shading", this.#deferredShading$.value)
+        this.#subscriptions.push(connectCheckbox(deferredShadingCb, this.#deferredShading$))
+        this.#subscriptions.push(
+            this.#deferredShading$.pipe(skip(1)).subscribe(v => this.onDeferredShadingChange?.(v)),
         )
 
         const rayMarchKnobs: { key: keyof RayMarchParams; label: string; min: number; max: number; step: number }[] = [

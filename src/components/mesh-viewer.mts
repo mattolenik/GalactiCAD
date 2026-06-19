@@ -66,8 +66,11 @@ export class MeshViewer extends HTMLElement {
     #debugOverlayCanvas: HTMLCanvasElement
     #debugOverlayCtx: CanvasRenderingContext2D | null
     #hoverCanvasPos: { x: number; y: number } | null = null
-    /** Bottom-left mesh-export progress spinner (shown while a re-export is in flight). */
+    /** Bottom-left mesh-export progress row (spinner + phase/elapsed text + Cancel). */
     #exportSpinner!: HTMLDivElement
+    #exportStatusText!: HTMLSpanElement
+    #exportCancelBtn!: HTMLButtonElement
+    #onExportCancel?: () => void
     /** Visible region (excludes editor overlay); used to keep the spinner clear of the editor. */
     #getInteractionRect?: () => DOMRect
     #mdcDebug = false
@@ -113,20 +116,33 @@ export class MeshViewer extends HTMLElement {
     }
 
     /**
-     * Show/hide the bottom-left mesh-export progress spinner. When showing,
-     * positions it at the left edge of the visible (non-editor) viewport so it
-     * clears the editor overlay.
+     * Show the bottom-left mesh-export progress row, positioned at the left edge of the
+     * visible (non-editor) viewport so it clears the editor overlay. `onCancel` fires on
+     * the Cancel click; the button is hidden when `cancellable` is false (no shared-memory
+     * cancel flag).
      */
-    setExportSpinning(visible: boolean): void {
-        if (visible) {
-            let left = 0
-            if (this.#getInteractionRect) {
-                const canvasRect = this.canvas.getBoundingClientRect()
-                left = Math.max(0, this.#getInteractionRect().left - canvasRect.left)
-            }
-            this.#exportSpinner.style.setProperty("--export-spinner-left", `${left}px`)
+    showExportProgress(opts: { cancellable: boolean; onCancel?: () => void }): void {
+        let left = 0
+        if (this.#getInteractionRect) {
+            const canvasRect = this.canvas.getBoundingClientRect()
+            left = Math.max(0, this.#getInteractionRect().left - canvasRect.left)
         }
-        this.#exportSpinner.style.visibility = visible ? "visible" : "hidden"
+        this.#exportSpinner.style.setProperty("--export-spinner-left", `${left}px`)
+        this.#onExportCancel = opts.onCancel
+        this.#exportCancelBtn.style.display = opts.cancellable ? "" : "none"
+        this.#exportCancelBtn.disabled = false
+        this.#exportSpinner.style.visibility = "visible"
+    }
+
+    /** Update the export-progress label, e.g. "Building octree • 12s". */
+    setExportStatus(text: string): void {
+        this.#exportStatusText.textContent = text
+    }
+
+    /** Hide the bottom-left mesh-export progress row. */
+    hideExportProgress(): void {
+        this.#exportSpinner.style.visibility = "hidden"
+        this.#onExportCancel = undefined
     }
 
     /**
@@ -188,14 +204,31 @@ export class MeshViewer extends HTMLElement {
             pointer-events: none;
             z-index: 1;
             visibility: hidden;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.8);
         }
-        .export-spinner svg {
+        .export-spinner-icon { flex: none; display: block; }
+        .export-spinner-icon svg {
             display: block;
             animation: mesh-export-spin 0.8s linear infinite;
         }
         @keyframes mesh-export-spin {
             to { transform: rotate(360deg); }
         }
+        .export-cancel {
+            pointer-events: auto;
+            padding: 1px 7px;
+            border: 1px solid rgb(from var(--fg-color, whitesmoke) r g b / 0.35);
+            border-radius: 4px;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+        }
+        .export-cancel:hover { background: rgb(from var(--fg-color, whitesmoke) r g b / 0.12); }
 `
         this.canvas = document.createElement("canvas")
         this.canvas.style.width = "100%"
@@ -207,15 +240,29 @@ export class MeshViewer extends HTMLElement {
         this.#debugOverlayCanvas.style.height = "100%"
         this.#debugOverlayCtx = this.#debugOverlayCanvas.getContext("2d")
 
-        // Mesh-export progress spinner: inline SVG ring with one rotating arc.
+        // Mesh-export progress: a bottom-left row — spinner ring + phase/elapsed text +
+        // Cancel button (shown only when the export is cancellable).
         this.#getInteractionRect = getInteractionRect
         this.#exportSpinner = document.createElement("div")
         this.#exportSpinner.className = "export-spinner"
-        this.#exportSpinner.innerHTML =
-            `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">` +
+        const spinnerIcon = document.createElement("div")
+        spinnerIcon.className = "export-spinner-icon"
+        spinnerIcon.innerHTML =
+            `<svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">` +
             `<circle cx="12" cy="12" r="9" fill="none" stroke="rgb(from var(--fg-color, whitesmoke) r g b / 0.2)" stroke-width="3"/>` +
             `<path d="M12 3 a9 9 0 0 1 9 9" fill="none" stroke="rgb(from var(--fg-color, whitesmoke) r g b / 0.8)" stroke-width="3" stroke-linecap="round"/>` +
             `</svg>`
+        this.#exportStatusText = document.createElement("span")
+        this.#exportStatusText.className = "export-status"
+        this.#exportCancelBtn = document.createElement("button")
+        this.#exportCancelBtn.className = "export-cancel"
+        this.#exportCancelBtn.type = "button"
+        this.#exportCancelBtn.textContent = "Cancel"
+        this.#exportCancelBtn.addEventListener("click", () => {
+            this.#exportCancelBtn.disabled = true
+            this.#onExportCancel?.()
+        })
+        this.#exportSpinner.append(spinnerIcon, this.#exportStatusText, this.#exportCancelBtn)
 
         shadow.append(style, this.canvas, this.#debugOverlayCanvas, this.#exportSpinner)
 

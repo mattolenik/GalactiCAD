@@ -44,11 +44,6 @@ export class PreviewWindow extends HTMLElement {
     #showFps: boolean = false
     /** Blender-style 3D pivot cursor — was a per-pixel SDF in `preview.wgsl`; now a DOM overlay positioned via `setPivotCursor()`. */
     #pivotCursor: HTMLDivElement
-    /** Bottom-left export-progress line (spinner + phase/elapsed + Cancel), above `.sel-info`. */
-    #exportProgress: HTMLDivElement
-    #exportProgressText: HTMLSpanElement
-    #exportProgressCancel: HTMLButtonElement
-    #onExportCancel?: () => void
 
     onThemeCycle?: () => void
 
@@ -102,42 +97,6 @@ export class PreviewWindow extends HTMLElement {
             z-index: 1;
             font-size: 11px;
             color: rgb(from var(--fg-color, whitesmoke) r g b / 0.6);
-        }
-        .export-progress {
-            position: absolute;
-            bottom: 28px;
-            left: calc(10px + var(--sel-info-left, 0px));
-            z-index: 2;
-            display: none;
-            align-items: center;
-            gap: 7px;
-            pointer-events: auto;
-            font-size: 11px;
-            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.85);
-        }
-        .export-progress.visible { display: flex; }
-        .export-progress-spinner {
-            width: 11px;
-            height: 11px;
-            flex: none;
-            border: 2px solid rgb(from var(--fg-color, whitesmoke) r g b / 0.25);
-            border-top-color: rgb(from var(--fg-color, whitesmoke) r g b / 0.85);
-            border-radius: 50%;
-            animation: export-progress-spin 0.8s linear infinite;
-        }
-        @keyframes export-progress-spin { to { transform: rotate(360deg); } }
-        .export-progress-cancel {
-            pointer-events: auto;
-            padding: 1px 7px;
-            border: 1px solid rgb(from var(--fg-color, whitesmoke) r g b / 0.35);
-            border-radius: 4px;
-            background: transparent;
-            color: inherit;
-            font: inherit;
-            cursor: pointer;
-        }
-        .export-progress-cancel:hover {
-            background: rgb(from var(--fg-color, whitesmoke) r g b / 0.12);
         }
         .theme-btn {
             pointer-events: auto;
@@ -201,25 +160,6 @@ export class PreviewWindow extends HTMLElement {
         this.#selInfo = document.createElement("div")
         this.#selInfo.classList.add("sel-info")
         shadow.appendChild(this.#selInfo)
-
-        // Export-progress line: spinner + phase/elapsed text + Cancel, in the same
-        // editor-aware bottom-left zone as `.sel-info` (one row above it).
-        this.#exportProgress = document.createElement("div")
-        this.#exportProgress.classList.add("export-progress")
-        const exportSpinner = document.createElement("div")
-        exportSpinner.classList.add("export-progress-spinner")
-        this.#exportProgressText = document.createElement("span")
-        this.#exportProgressText.classList.add("export-progress-text")
-        this.#exportProgressCancel = document.createElement("button")
-        this.#exportProgressCancel.classList.add("export-progress-cancel")
-        this.#exportProgressCancel.type = "button"
-        this.#exportProgressCancel.textContent = "Cancel"
-        this.#exportProgressCancel.addEventListener("click", () => {
-            this.#exportProgressCancel.disabled = true
-            this.#onExportCancel?.()
-        })
-        this.#exportProgress.append(exportSpinner, this.#exportProgressText, this.#exportProgressCancel)
-        shadow.appendChild(this.#exportProgress)
 
         // Pivot cursor: dashed red/white ring + white crosshair. Matches the
         // visual the old WGSL `pivotCursorRgba` produced; lives in the DOM
@@ -300,28 +240,6 @@ export class PreviewWindow extends HTMLElement {
 
     setSelectionInfoLeft(offsetPx: number): void {
         this.#selInfo.style.setProperty("--sel-info-left", `${offsetPx}px`)
-        // The export-progress line shares the editor-aware bottom-left zone.
-        this.#exportProgress.style.setProperty("--sel-info-left", `${offsetPx}px`)
-    }
-
-    /** Show the bottom-left export-progress line. `onCancel` fires on the Cancel click;
-     *  the button is hidden when `cancellable` is false (no shared-memory cancel flag). */
-    showExportProgress(opts: { cancellable: boolean; onCancel?: () => void }): void {
-        this.#onExportCancel = opts.onCancel
-        this.#exportProgressCancel.style.display = opts.cancellable ? "" : "none"
-        this.#exportProgressCancel.disabled = false
-        this.#exportProgress.classList.add("visible")
-    }
-
-    /** Update the export-progress label, e.g. "Building octree • 12s". */
-    setExportProgressText(text: string): void {
-        this.#exportProgressText.textContent = text
-    }
-
-    /** Hide the export-progress line. */
-    hideExportProgress(): void {
-        this.#exportProgress.classList.remove("visible")
-        this.#onExportCancel = undefined
     }
 
     updateFPS(fps: number) {

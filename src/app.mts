@@ -1685,13 +1685,12 @@ class App {
 
         const token = ++this.#meshUpdateToken
         this.#meshUpdateTimer = window.setTimeout(async () => {
-            this.#mesh?.setExportSpinning(true)
             const exportStart = performance.now()
             // Latest phase the exporter reported (sfcc-rs emits phase boundaries; other
             // exporters leave it empty → the line shows just a live elapsed clock).
             let phase = ""
             this.#exportCancelling = false
-            this.#preview.showExportProgress({
+            this.#mesh?.showExportProgress({
                 cancellable: this.renderer.meshExportCancellable,
                 onCancel: () => {
                     this.#exportCancelling = true
@@ -1703,7 +1702,7 @@ class App {
             const renderTick = () => {
                 const secs = Math.round((performance.now() - exportStart) / 1000)
                 const label = this.#exportCancelling ? "Cancelling…" : phase || "Exporting"
-                this.#preview.setExportProgressText(`${label} • ${secs}s`)
+                this.#mesh?.setExportStatus(`${label} • ${secs}s`)
             }
             renderTick()
             const elapsedTimer = window.setInterval(renderTick, 250)
@@ -1734,8 +1733,7 @@ class App {
                 // Only the latest request owns the indicator/spinner; a superseded export
                 // must not hide one a newer in-flight export still needs.
                 if (token === this.#meshUpdateToken) {
-                    this.#preview.hideExportProgress()
-                    this.#mesh?.setExportSpinning(false)
+                    this.#mesh?.hideExportProgress()
                 }
             }
         }, MESH_UPDATE_DEBOUNCE_MS)

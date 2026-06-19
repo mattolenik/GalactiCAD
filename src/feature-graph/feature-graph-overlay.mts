@@ -167,8 +167,12 @@ export class FeatureGraphOverlay {
      * differentiateSegments[1] = 27 floats). Cheap to compare and lets us skip
      * the matrix inverse + upload when nothing relevant changed.
      */
-    #cameraInputCache = new Float32Array(27)
+    #cameraInputCache = new Float32Array(29)
     #cameraInputValid = false
+    /** Auto-mode subtle display: hide all but hovered (faded by #hoverFade) +
+     *  selected features. See {@link setAutoMode}. */
+    #autoSubtle = 0
+    #hoverFade = 1
     /** Uint32 view of {@link #cameraStaging} for the integer occlusionMode slot. */
     #cameraStagingU32 = new Uint32Array(this.#cameraStaging)
 
@@ -410,7 +414,9 @@ export class FeatureGraphOverlay {
                 cache[23] === viewCenter[1] &&
                 cache[24] === this.#occlusionMode &&
                 cache[25] === this.#lineWidthPx &&
-                cache[26] === this.#differentiateSegments
+                cache[26] === this.#differentiateSegments &&
+                cache[27] === this.#autoSubtle &&
+                cache[28] === this.#hoverFade
             ) return
         }
         for (let i = 0; i < 16; i++) cache[i] = vt[i]!
@@ -425,6 +431,8 @@ export class FeatureGraphOverlay {
         cache[24] = this.#occlusionMode
         cache[25] = this.#lineWidthPx
         cache[26] = this.#differentiateSegments
+        cache[27] = this.#autoSubtle
+        cache[28] = this.#hoverFade
         this.#cameraInputValid = true
 
         // Invert on CPU: WGSL inversion is doable for rigid transforms but
@@ -455,6 +463,9 @@ export class FeatureGraphOverlay {
         f32[27] = this.#lineWidthPx
         // differentiateSegments (u32): bytes 112..115
         this.#cameraStagingU32[28] = this.#differentiateSegments
+        // autoSubtle (u32): bytes 116..119; hoverFade (f32): bytes 120..123
+        this.#cameraStagingU32[29] = this.#autoSubtle
+        this.#cameraStagingF32[30] = this.#hoverFade
         this.#device.queue.writeBuffer(this.#cameraBuffer, 0, this.#cameraStaging)
     }
 
@@ -480,6 +491,17 @@ export class FeatureGraphOverlay {
     /** Set the edge line width (framebuffer pixels). Applied on next {@link uploadCamera}. */
     setLineWidth(px: number): void {
         this.#lineWidthPx = px
+    }
+
+    /**
+     * Auto mode subtle display: when `subtle` is true, only hovered (faded in by
+     * `hoverFade` ∈ [0,1]) and selected features draw — everything else is
+     * hidden. Off (false) draws all features normally. Applied on next
+     * {@link uploadCamera}.
+     */
+    setAutoMode(subtle: boolean, hoverFade: number): void {
+        this.#autoSubtle = subtle ? 1 : 0
+        this.#hoverFade = hoverFade
     }
 
     /**

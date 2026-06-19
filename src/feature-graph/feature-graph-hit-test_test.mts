@@ -78,14 +78,19 @@ test("hit-test: a far click rejects (threshold)", () => {
     assert.equal(ht.pickEdgeChain([0.95, 0.95], CAM, 8), null)
 })
 
-test("hit-test: pickAny prefers the edge mid-span, corner at the tie", () => {
+test("hit-test: pickAny gives corners precedence over a closer edge in range", () => {
     const { ht, a } = build()
-    const mid = ht.pickAny(uvForWorld(0, 0), CAM, 8)
-    assert.equal(mid?.kind, "edge")
-    // At a corner that is also a segment endpoint, both dist ≈ 0 → corner wins.
+    // Mid-span (no corner within threshold) → edge.
+    assert.equal(ht.pickAny(uvForWorld(0, 0), CAM, 8)?.kind, "edge")
+    // At the corner → corner.
     const atCorner = ht.pickAny(uvForWorld(-0.5, 0), CAM, 8)
     assert.equal(atCorner?.kind, "corner")
     assert.equal(atCorner?.id, a)
+    // Near corner a (5px away) but ON the edge (dist 0): the edge is closer, yet
+    // the corner takes precedence because it's within threshold.
+    const near = ht.pickAny(uvForWorld(-0.4, 0), CAM, 8)
+    assert.equal(near?.kind, "corner")
+    assert.equal(near?.id, a)
 })
 
 test("hit-test: corner instance index maps back from vertex id", () => {

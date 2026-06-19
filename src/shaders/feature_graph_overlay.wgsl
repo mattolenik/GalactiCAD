@@ -51,6 +51,11 @@ struct OverlayCamera {
     // 0 = all edges cyan (default); 1 = paint original creases green to
     // distinguish them from subdivided polyline segments (dev-tools knob).
     differentiateSegments: u32,
+    // Auto mode is subtle: when 1, ONLY hovered (faded by `hoverFade`) and
+    // selected features draw; everything else is hidden (alpha 0).
+    autoSubtle: u32,
+    // Hover fade-in factor [0,1] for `autoSubtle` mode (quick smoothing).
+    hoverFade: f32,
     // struct auto-pads to 128 bytes (16-aligned).
 }
 
@@ -81,6 +86,18 @@ fn applyHighlight(color: vec4f, state: u32) -> vec4f {
         return vec4f(mix(color.rgb, vec3f(1.0), 0.5), color.a);
     }
     return color;
+}
+
+// Auto mode is subtle: hide everything except the hovered feature (faded in via
+// `hoverFade`) and any selected features. Identity when `autoSubtle` is off.
+fn applyAutoSubtle(color: vec4f, state: u32) -> vec4f {
+    if (camera.autoSubtle == 0u || state == FG_SEL_SELECTED) {
+        return color;
+    }
+    if (state == FG_SEL_HOVER) {
+        return vec4f(color.rgb, color.a * camera.hoverFade);
+    }
+    return vec4f(color.rgb, 0.0);
 }
 
 // Feathering band, in framebuffer pixels, applied at the outer edge of both
@@ -278,7 +295,7 @@ fn surfaceOccludes(fragXY: vec2f, viewZ: f32) -> bool {
 
 @fragment
 fn fragmentMain(in: VOut) -> @location(0) vec4f {
-    var color = applyHighlight(lineColor(in.flags), in.state);
+    var color = applyAutoSubtle(applyHighlight(lineColor(in.flags), in.state), in.state);
 
     // Analytic AA across the line width: full coverage inside the solid core,
     // smooth falloff over the AA band at each edge.
@@ -297,7 +314,7 @@ fn fragmentMain(in: VOut) -> @location(0) vec4f {
 
 @fragment
 fn pointFragmentMain(in: PointVOut) -> @location(0) vec4f {
-    var color = applyHighlight(CORNER_COLOR, in.state);
+    var color = applyAutoSubtle(applyHighlight(CORNER_COLOR, in.state), in.state);
 
     // Radial AA disc.
     let radius = camera.lineWidthPx + 1.0;

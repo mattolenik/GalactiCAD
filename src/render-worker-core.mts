@@ -100,6 +100,9 @@ const ZERO_EDGE_HITS = new ArrayBuffer(EDGE_HITS_SIZE)
 // Bytes per deferred-shading G-buffer pixel — must match `GBufferPixel` in
 // preview.wgsl (std430: five 16-byte rows). GPU-internal, never CPU-mapped.
 const GBUFFER_STRIDE_BYTES = 80
+// Auto-mode hovered-feature fade-in duration (ms) — quick, just enough to smooth
+// the appearance from hidden.
+const FG_HOVER_FADE_MS = 70
 /**
  * Ray-origin push-back used when projecting FeatureGraph features for CPU
  * hit-testing — must match `PREVIEW_RAY_ORIGIN_DEPTH` in `camera-controller` /
@@ -272,6 +275,12 @@ export class RenderWorkerCore {
     /** Currently hovered chain / corner-vertex (-1 = none). */
     #fgHoverChain = -1
     #fgHoverCorner = -1
+    // Auto-mode hover fade-in: start time of the current hovered feature's fade
+    // (-1 = no active fade), the previous hover key (to detect feature changes),
+    // and the self-scheduled re-render timer that animates the fade.
+    #fgHoverFadeStartMs = -1
+    #fgLastHoverKey = ""
+    #fgFadeTimer: ReturnType<typeof setTimeout> | null = null
     /**
      * Overlay depth-occlusion mode: 0 = off (draw on top), 1 = hard (hide
      * occluded edges, the default), 2 = dim (fade occluded edges). When non-zero
@@ -1104,10 +1113,25 @@ export class RenderWorkerCore {
         // auto, neither in face/object/seam. Skip the whole overlay (incl. the
         // occlusion depth pass) when nothing would draw.
         const mode = this.#lastSelectionMode
-        const drawEdges = mode === SEL_MODE_EDGE || mode === SEL_MODE_AUTO
-        const drawCorners = mode === SEL_MODE_CORNER || mode === SEL_MODE_AUTO
+        const isAuto = mode === SEL_MODE_AUTO
+        const drawEdges = mode === SEL_MODE_EDGE || isAuto
+        const drawCorners = mode === SEL_MODE_CORNER || isAuto
         if (!drawEdges && !drawCorners) return
+        // Auto mode is subtle: hide everything except the hovered (fading in) and
+        // selected features. When nothing is highlighted, skip the overlay (incl.
+        // the occlusion depth pass) entirely.
+        const anyHighlighted =
+            this.#fgHoverChain >= 0 ||
+            this.#fgHoverCorner >= 0 ||
+            this.#fgSelectedChains.size > 0 ||
+            this.#fgSelectedCorners.size > 0
+        if (isAuto && !anyHighlighted) return
         overlay.setDrawTypes(drawEdges, drawCorners)
+        const hoverFade =
+            isAuto && this.#fgHoverFadeStartMs >= 0 ?
+                Math.min(1, (performance.now() - this.#fgHoverFadeStartMs) / FG_HOVER_FADE_MS)
+            :   1
+        overlay.setAutoMode(isAuto, hoverFade)
         // Optional depth-occlusion: render the SDF surface depth into an
         // rgba32float world-position texture, then hand it (+ the mode) to the
         // overlay so it can hide/dim lines that sit behind the geometry. Returns
@@ -3817,6 +3841,12 @@ export class RenderWorkerCore {
         this.#fgAutoLockedType = null
         this.#fgHoverChain = -1
         this.#fgHoverCorner = -1
+        this.#fgLastHoverKey = ""
+        this.#fgHoverFadeStartMs = -1
+        if (this.#fgFadeTimer !== null) {
+            clearTimeout(this.#fgFadeTimer)
+            this.#fgFadeTimer = null
+        }
         this.#applyFgHighlights()
         this.#forceNextRender = true
     }
@@ -3916,7 +3946,43 @@ export class RenderWorkerCore {
             }
             this.#applyFgHighlights()
         }
+        // Auto mode fades the hovered feature in. Restart the fade only when the
+        // hovered feature actually CHANGES (not on every same-feature hover), and
+        // drive the short animation with self-scheduled re-renders.
+        if (mode === SEL_MODE_AUTO) {
+            const hoverKey =
+                this.#fgHoverChain >= 0 ? `e${this.#fgHoverChain}`
+                : this.#fgHoverCorner >= 0 ? `c${this.#fgHoverCorner}`
+                : ""
+            if (hoverKey !== "" && hoverKey !== this.#fgLastHoverKey) {
+                this.#fgHoverFadeStartMs = performance.now()
+                this.#scheduleFgFade(sab)
+            }
+            this.#fgLastHoverKey = hoverKey
+        }
         this.#fgRenderAndReport(sab, clickUV, documentName, hoverRequestId)
+    }
+
+    /**
+     * Drive the auto-mode hover fade-in: re-render the last frame every ~16 ms
+     * until {@link FG_HOVER_FADE_MS} elapses, so the hovered feature smoothly
+     * appears even when the cursor is held still (no new hover events). Self-
+     * contained in the worker; a single timer, restarted by the caller resetting
+     * #fgHoverFadeStartMs.
+     */
+    #scheduleFgFade(sab?: SharedArrayBuffer): void {
+        if (this.#fgFadeTimer !== null) return
+        const buf = sab ?? this.#lastSharedBuffer
+        if (!buf) return
+        const step = () => {
+            this.#fgFadeTimer = null
+            this.#forceNextRender = true
+            this.#renderFromSAB(buf)
+            if (performance.now() - this.#fgHoverFadeStartMs < FG_HOVER_FADE_MS) {
+                this.#fgFadeTimer = setTimeout(step, 16)
+            }
+        }
+        this.#fgFadeTimer = setTimeout(step, 16)
     }
 
     async handleClick(
@@ -3997,6 +4063,7 @@ export class RenderWorkerCore {
             }
             // No FG feature near — drop any stale FG hover highlight, then let the
             // GPU face hover run so the face/surface under the cursor previews.
+            this.#fgLastHoverKey = "" // re-arm the fade for the next hovered feature
             if (this.#fgHoverChain >= 0 || this.#fgHoverCorner >= 0) {
                 this.#fgHoverChain = -1
                 this.#fgHoverCorner = -1

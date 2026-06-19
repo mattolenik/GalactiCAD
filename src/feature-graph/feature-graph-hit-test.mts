@@ -213,10 +213,14 @@ export class FeatureGraphHitTester {
     }
 
     /**
-     * Nearest feature of any type; corners win ties (more specific). Corners and
-     * edge-chains take separate thresholds — points warrant a more generous grab
-     * radius than lines, where a loose threshold reads as "triggering far from
-     * the line". `edgeThresholdPx` defaults to the corner threshold.
+     * Nearest feature of any type, with CORNERS taking precedence: if a corner
+     * is within its threshold it always wins over an edge, even one that's
+     * closer — otherwise picking near a vertex flickers between the corner and
+     * the edges meeting at it. To select such an edge, hover its mid-span away
+     * from the vertex. Corners and edge-chains take separate thresholds — points
+     * warrant a more generous grab radius than lines, where a loose threshold
+     * reads as "triggering far from the line". `edgeThresholdPx` defaults to the
+     * corner threshold.
      */
     pickAny(
         clickUV: readonly [number, number],
@@ -226,8 +230,8 @@ export class FeatureGraphHitTester {
         occluderViewZ?: number,
     ): FgAnyHit | null {
         const c = this.pickCorner(clickUV, cam, cornerThresholdPx, occluderViewZ)
+        if (c) return { kind: "corner", id: c.cornerVertexIndex, distPx: c.distPx }
         const e = this.pickEdgeChain(clickUV, cam, edgeThresholdPx, occluderViewZ)
-        if (c && (!e || c.distPx <= e.distPx)) return { kind: "corner", id: c.cornerVertexIndex, distPx: c.distPx }
         if (e) return { kind: "edge", id: e.chainId, distPx: e.distPx }
         return null
     }

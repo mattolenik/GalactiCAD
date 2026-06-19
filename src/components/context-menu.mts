@@ -57,20 +57,35 @@ export class ContextMenu extends HTMLElement {
 
             .edit-button {
                 pointer-events: auto;
+                /* Stack the polygon preview above the label, centered. */
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 3px;
                 /* Subtle top-left corner lighting: bright top/left edges, faint dark bottom/right. */
                 border: 1px solid;
                 border-color: rgba(255, 255, 255, 0.5) rgba(0, 0, 0, 0.12) rgba(0, 0, 0, 0.12) rgba(255, 255, 255, 0.5);
                 border-radius: 7px;
-                /* Larger label, trimmed padding so the button keeps the same footprint. */
-                padding: 3px 11px;
+                padding: 4px 6px 2px;
                 font: inherit;
                 font-size: 16px;
                 font-weight: 600;
-                line-height: 1.4;
+                line-height: 1.15;
                 cursor: pointer;
                 white-space: nowrap;
                 box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
                 transition: filter 0.15s, box-shadow 0.1s, transform 0.05s;
+            }
+
+            /* Small copy of the polygon, inheriting the label color via currentColor. */
+            .edit-button-preview {
+                display: block;
+            }
+
+            .edit-button-preview svg {
+                display: block;
+                width: 50px;
+                height: 50px;
             }
 
             .edit-button:hover {
@@ -158,17 +173,26 @@ export class ContextMenu extends HTMLElement {
     /**
      * Render the popup as a single rounded button instead of a list — used for the
      * polygon "Edit" affordance. `background`/`color` tint it (e.g. the shape's color
-     * for the fill, the editor background for the label).
+     * for the fill, the editor background for the label/preview). `previewSvg`, when
+     * given, is inline SVG markup (using `fill="currentColor"`) drawn above the label.
      */
-    setButton(label: string, action: () => void, colors: { background: string; color: string }) {
+    setButton(label: string, action: () => void, colors: { background: string; color: string }, previewSvg?: string) {
         this.#menuContainer.classList.add("as-button")
         this.#menuContainer.innerHTML = ""
         const button = document.createElement("button")
         button.className = "edit-button"
-        button.textContent = label
         // Set the base color only — the CSS border supplies the top-left corner lighting.
         button.style.backgroundColor = colors.background
         button.style.color = colors.color
+        if (previewSvg) {
+            const preview = document.createElement("span")
+            preview.className = "edit-button-preview"
+            preview.innerHTML = previewSvg
+            button.appendChild(preview)
+        }
+        const text = document.createElement("span")
+        text.textContent = label
+        button.appendChild(text)
         button.onclick = () => {
             action()
             this.hide()
@@ -226,9 +250,9 @@ export class ContextMenu extends HTMLElement {
     }
 
     /**
-     * Show the menu pinned above a target rect: left edge aligned with `anchor.left`,
-     * bottom edge sitting `gap` px above `anchor.top`. Drops below the anchor when
-     * there isn't room above; clamps to the viewport. onPositioned runs after layout.
+     * Show the menu pinned above a target rect: horizontally centered over the
+     * anchor, bottom edge sitting `gap` px above `anchor.top`. Drops below the anchor
+     * when there isn't room above; clamps to the viewport. onPositioned runs after layout.
      */
     showAboveAnchor(anchor: DOMRect, onPositioned?: () => void) {
         const gap = 6
@@ -242,7 +266,7 @@ export class ContextMenu extends HTMLElement {
             const vw = window.innerWidth
             const vh = window.innerHeight
 
-            let left = anchor.left
+            let left = anchor.left + anchor.width / 2 - rect.width / 2
             let top = anchor.top - gap - rect.height
             if (top < 0) top = anchor.bottom + gap
             if (left + rect.width > vw) left = vw - rect.width

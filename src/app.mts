@@ -446,6 +446,34 @@ class App {
         return `rgb(${Math.round(c.x * 255)}, ${Math.round(c.y * 255)}, ${Math.round(c.z * 255)})`
     }
 
+    /**
+     * Inline SVG of a node's actual polygon, normalized into a 100×100 viewBox
+     * (uniform fit, padded, Y flipped for screen space) and filled with
+     * `currentColor`. Returns undefined for non-polygon nodes / degenerate shapes.
+     */
+    #polygonPreviewSvg(nodeId: number): string | undefined {
+        const verts = this.#sceneNodeMap.get(nodeId)?.vertices
+        if (!verts || verts.length < 3) return undefined
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const [x, y] of verts) {
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+            if (y < minY) minY = y
+            if (y > maxY) maxY = y
+        }
+        const PAD = 10
+        const inner = 100 - 2 * PAD
+        const span = Math.max(maxX - minX, maxY - minY) || 1
+        const scale = inner / span
+        // Center the fitted shape within the inner box.
+        const offX = PAD + (inner - (maxX - minX) * scale) / 2
+        const offY = PAD + (inner - (maxY - minY) * scale) / 2
+        const points = verts
+            .map(([x, y]) => `${(offX + (x - minX) * scale).toFixed(2)},${(offY + (maxY - y) * scale).toFixed(2)}`)
+            .join(" ")
+        return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polygon points="${points}" fill="currentColor"/></svg>`
+    }
+
     #tryOpenPolygonEditor(line: number, column: number): boolean {
         const src = this.editor.getValue()
         const cached = this.#sourceParser.getCachedSourceFile(src)
@@ -1076,16 +1104,18 @@ class App {
         }
         const TRIGGER_PADDING = 24
         const SAFE_ZONE_PADDING = 8
-        const showPolygonMenu = (loc: SourceLocation, color: string, clientX: number, clientY: number, anchorRect?: DOMRect) => {
+        const showPolygonMenu = (loc: SourceLocation, nodeId: number, clientX: number, clientY: number, anchorRect?: DOMRect) => {
             if (!this.#contextMenu) return
             this.#contextMenuSafeZoneCleanup?.()
             this.#contextMenuSafeZoneCleanup = null
-            // Rounded "Edit" button tinted with the shape's own color; the label uses the
-            // editor's background color so it reads correctly in both light and dark themes.
+            // Rounded "Edit" button tinted with the shape's own color; the label and the
+            // small polygon preview use the editor's background color (via currentColor),
+            // so they read correctly in both light and dark themes.
             this.#contextMenu.setButton(
                 "Edit",
                 () => this.#tryOpenPolygonEditor(loc.startLine, loc.startColumn),
-                { background: color, color: `var(${__editor_panel_bg})` },
+                { background: this.#shapeColorCss(nodeId), color: `var(${__editor_panel_bg})` },
+                this.#polygonPreviewSvg(nodeId),
             )
             // Hover dismissal: keep the menu open while the pointer stays within a
             // rectangle covering both the trigger region and the menu; hide once it leaves.
@@ -1112,8 +1142,8 @@ class App {
                 this.#contextMenu.onHide = cleanup
             }
             if (anchorRect) {
-                // Editor shape-indicator hover: pin the menu just above the symbol, left
-                // edge aligned with the indicator's left (rather than following the cursor).
+                // Editor shape-indicator hover: pin the menu just above the symbol,
+                // horizontally centered over it (rather than following the cursor).
                 this.#contextMenu.showAboveAnchor(anchorRect, () => armSafeZone(anchorRect))
             } else {
                 this.#contextMenu.showAt(clientX, clientY, () =>
@@ -1131,7 +1161,7 @@ class App {
             const relatedIds = this.renderer.getPolygonContextMenuSelectionIds(objectId)
             const isSelected = relatedIds.some(id => this.renderer.selectedObjectIds.includes(id))
             if (loc?.functionName === "polygon2d" && isSelected && polyId != null) {
-                showPolygonMenu(loc, this.#shapeColorCss(polyId), clientX, clientY)
+                showPolygonMenu(loc, polyId, clientX, clientY)
             }
         })
         // Editor-side interactions (DOM listeners on the editor element + view.posAtCoords):
@@ -1141,14 +1171,14 @@ class App {
         // All torn down together via #contextMenuEditorMoveDispose, which is disposed
         // at the top of this method on re-wire (prevents duplicate listeners).
         const CONTEXT_MENU_DELAY_MS = 350
-        const scheduleOrShowEditorMenu = (key: string, loc: SourceLocation, iconEl: HTMLElement, color: string) => {
+        const scheduleOrShowEditorMenu = (key: string, loc: SourceLocation, iconEl: HTMLElement, nodeId: number) => {
             if (key !== this.#contextMenuLastKey) {
                 if (this.#contextMenuShowTimer) clearTimeout(this.#contextMenuShowTimer)
                 this.#contextMenuLastKey = key
                 this.#contextMenuShowTimer = window.setTimeout(() => {
                     this.#contextMenuShowTimer = null
                     // Re-measure at fire time (the editor may have scrolled during the delay).
-                    showPolygonMenu(loc, color, 0, 0, iconEl.getBoundingClientRect())
+                    showPolygonMenu(loc, nodeId, 0, 0, iconEl.getBoundingClientRect())
                 }, CONTEXT_MENU_DELAY_MS)
             }
         }
@@ -1191,7 +1221,7 @@ class App {
             const nodeId = Number(iconEl.dataset.nodeId)
             const loc = Number.isFinite(nodeId) ? this.#sourceLocationMap.get(nodeId) : undefined
             if (loc?.functionName === "polygon2d") {
-                scheduleOrShowEditorMenu(`editor-${loc.startLine}-${loc.startColumn}`, loc, iconEl, this.#shapeColorCss(nodeId))
+                scheduleOrShowEditorMenu(`editor-${loc.startLine}-${loc.startColumn}`, loc, iconEl, nodeId)
             } else {
                 cancelEditorHover()
             }

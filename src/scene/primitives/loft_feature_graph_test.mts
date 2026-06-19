@@ -49,19 +49,46 @@ test("Loft.accumulateFeatureGraph: 3 same-topology profiles → intermediate ver
     assert.equal(cpu.loopCount, 2)
 })
 
-test("Loft.accumulateFeatureGraph: different vertex counts → caps only, no side edges", () => {
-    // SQUARE has 4 vertices, TRIANGLE has 3 — sameTopology = false.
+test("Loft.accumulateFeatureGraph: different vertex counts → caps + correspondence side creases", () => {
+    // Concentric square (4) → triangle (3): sameTopology = false, so the side
+    // creases come from the angular-correspondence tracer (Stage 1b) rather than
+    // the 1:1 vertex chains.
+    const SQ: [number, number][] = [
+        [-2, -2],
+        [2, -2],
+        [2, 2],
+        [-2, 2],
+    ]
+    const TRI: [number, number][] = [
+        [0, 2.4],
+        [-2.1, -1.2],
+        [2.1, -1.2],
+    ]
+    const root = loft.sections([polygon2d(SQ), polygon2d(TRI)])
+    root.h = 5
+    const builder = new FeatureGraphBuilder()
+    root.accumulateFeatureGraph(builder)
+    const cpu = builder.finish()
+
+    // 4 bottom + 3 top cap corners are still emitted, plus crease-chain samples.
+    assert.ok(cpu.vertexCount >= 7, `at least the 7 cap corners, got ${cpu.vertexCount}`)
+    // 4 + 3 = 7 cap edges, plus differing-topology side creases beyond them.
+    assert.ok(cpu.edgeCount > 7, `side creases emitted beyond the 7 cap edges, got ${cpu.edgeCount}`)
+    assert.equal(cpu.loopCount, 2, "top + bottom cap loops")
+})
+
+test("Loft.accumulateFeatureGraph: different vertex counts → caps still intact when no side crease survives", () => {
+    // SQUARE and TRIANGLE here are far apart / mismatched, so creases may be
+    // degenerate; the caps (corners + loops) must still be emitted regardless.
     const root = loft.sections([polygon2d(SQUARE), polygon2d(TRIANGLE)])
     root.h = 5
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
 
-    // 3 top corners + 4 bottom corners = 7
-    assert.equal(cpu.vertexCount, 7, "top + bot only")
-    // 3 top cap edges + 4 bottom cap edges; no connecting side edges
-    assert.equal(cpu.edgeCount, 7)
-    assert.equal(cpu.loopCount, 2)
+    assert.ok(cpu.vertexCount >= 7, "3 top + 4 bottom cap corners")
+    assert.ok(cpu.edgeCount >= 7, "3 + 4 cap edges")
+    assert.equal(cpu.loopCount, 2, "top + bottom cap loops")
 })
 
 test("Loft.accumulateFeatureGraph: cap corners get FG_FLAG_CORNER when polygon turn is sharp", () => {

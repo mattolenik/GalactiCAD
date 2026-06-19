@@ -15,6 +15,122 @@ const LOFT_FG_FEATURE_DOT = 0.95
 const LOFT_FG_VERTEX_TURN_MIN = 1e-6
 
 /**
+ * One side carrier of a differing-topology loft segment: blends lower-profile edge
+ * `aEdge` with upper-profile edge `bEdge` (supporting lines: point `*X,*Z`, outward
+ * normal `*Nx,*Nz`). `event*` mark the carrier's boundary with the previous carrier
+ * (cyclic): a lower-profile corner when `eventLower`, else an upper-profile corner.
+ * Mirrors the SFCC kernel's `loft_seg_carriers` (feature_set.rs).
+ */
+interface LoftSideCarrier {
+    aEdge: number
+    aX: number
+    aZ: number
+    aNx: number
+    aNz: number
+    bEdge: number
+    bX: number
+    bZ: number
+    bNx: number
+    bNz: number
+    eventLower: boolean
+    eventVertex: number
+}
+
+/**
+ * Side carriers of one loft segment, as an angular cyclic merge of the two
+ * profiles' corners (length na + nb). Outward normals use the FG `edgeOutwardOf`
+ * convention; `loftCreaseCrossing` is sign-invariant so this still matches the
+ * SFCC kernel's crease geometry. Pure and deterministic.
+ */
+function loftSegCarriers(
+    a: ReadonlyArray<readonly [number, number]>,
+    b: ReadonlyArray<readonly [number, number]>,
+): LoftSideCarrier[] {
+    const edgeLine = (v: ReadonlyArray<readonly [number, number]>, w: number, e: number) => {
+        const n = v.length
+        const [v0x, v0z] = v[e]!
+        const [v1x, v1z] = v[(e + 1) % n]!
+        let dx = v1x - v0x
+        let dz = v1z - v0z
+        const len = Math.hypot(dx, dz) || 1
+        dx /= len
+        dz /= len
+        return { x: v0x, z: v0z, nx: dz * w, nz: -dx * w }
+    }
+    const sectors = (v: ReadonlyArray<readonly [number, number]>) => {
+        const n = v.length
+        let cx = 0
+        let cz = 0
+        for (const [x, z] of v) {
+            cx += x
+            cz += z
+        }
+        cx /= n
+        cz /= n
+        const ang = v.map(([x, z]) => {
+            const t = Math.atan2(z - cz, x - cx)
+            return t < 0 ? t + 2 * Math.PI : t
+        })
+        const ord = [...Array(n).keys()].sort((i, j) => ang[i]! - ang[j]! || i - j)
+        const sectorEdge = ord.map((j, i) => {
+            const jn = ord[(i + 1) % n]!
+            return (j + 1) % n === jn ? j : jn
+        })
+        return { ord, sortedAng: ord.map(i => ang[i]!), sectorEdge }
+    }
+    const wa = polygon2dWindingSign(a as [number, number][])
+    const wb = polygon2dWindingSign(b as [number, number][])
+    const na = a.length
+    const nb = b.length
+    const sa = sectors(a)
+    const sb = sectors(b)
+    const evs: { ang: number; lower: boolean; vertex: number; edge: number }[] = []
+    for (let i = 0; i < na; i++) evs.push({ ang: sa.sortedAng[i]!, lower: true, vertex: sa.ord[i]!, edge: sa.sectorEdge[i]! })
+    for (let k = 0; k < nb; k++) evs.push({ ang: sb.sortedAng[k]!, lower: false, vertex: sb.ord[k]!, edge: sb.sectorEdge[k]! })
+    evs.sort((x, y) => x.ang - y.ang || Number(y.lower) - Number(x.lower) || x.vertex - y.vertex)
+    let ea = sa.sectorEdge[na - 1]!
+    let eb = sb.sectorEdge[nb - 1]!
+    const out: LoftSideCarrier[] = []
+    for (const ev of evs) {
+        if (ev.lower) ea = ev.edge
+        else eb = ev.edge
+        const al = edgeLine(a, wa, ea)
+        const bl = edgeLine(b, wb, eb)
+        out.push({
+            aEdge: ea,
+            aX: al.x,
+            aZ: al.z,
+            aNx: al.nx,
+            aNz: al.nz,
+            bEdge: eb,
+            bX: bl.x,
+            bZ: bl.z,
+            bNx: bl.nx,
+            bNz: bl.nz,
+            eventLower: ev.lower,
+            eventVertex: ev.vertex,
+        })
+    }
+    return out
+}
+
+/**
+ * Mixed-line crossing of two consecutive carriers at height parameter `t`, or null
+ * when the two blended lines are near-parallel (the crease has flattened / died).
+ */
+function loftCreaseCrossing(cprev: LoftSideCarrier, ccur: LoftSideCarrier, t: number): [number, number] | null {
+    const m1x = (1 - t) * cprev.aNx + t * cprev.bNx
+    const m1z = (1 - t) * cprev.aNz + t * cprev.bNz
+    const m2x = (1 - t) * ccur.aNx + t * ccur.bNx
+    const m2z = (1 - t) * ccur.aNz + t * ccur.bNz
+    const c1 = (1 - t) * (cprev.aNx * cprev.aX + cprev.aNz * cprev.aZ) + t * (cprev.bNx * cprev.bX + cprev.bNz * cprev.bZ)
+    const c2 = (1 - t) * (ccur.aNx * ccur.aX + ccur.aNz * ccur.aZ) + t * (ccur.bNx * ccur.bX + ccur.bNz * ccur.bZ)
+    const det = m1x * m2z - m1z * m2x
+    if (Math.abs(det) < 1e-3 * Math.hypot(m1x, m1z) * Math.hypot(m2x, m2z)) return null
+    return [(c1 * m2z - c2 * m1z) / det, (m1x * c2 - m2x * c1) / det]
+}
+
+/**
  * Lofts between two or more 2D SDF profiles along the Y axis.
  * h is the half-height. Profiles are evenly spaced from -h (first) to +h (last).
  */
@@ -669,6 +785,59 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
                     prev = midIdx
                 }
                 builder.emitEdge(prev, topIdx[k]!, FG_FLAG_CREASE_ORIGINAL)
+            }
+        } else if (M === 2) {
+            // Differing-topology side creases (Stage 1b): no 1:1 vertex
+            // correspondence, so pair bottom/top edges by an angular cyclic merge
+            // and trace each carrier boundary's crease via the same mixed-line
+            // crossing the SFCC kernel uses. A run reaching the bottom (top) profile
+            // lands on that profile's corner; interior ends are free (the crease
+            // flattened). The FG survival pass trims any off-surface samples, so no
+            // polygon SDF is needed here.
+            const carriers = loftSegCarriers(bottomProf.vertices, topProf.vertices)
+            const L = carriers.length
+            const SAMPLES = 24
+            const blendNormal = (car: LoftSideCarrier, t: number): Vec3f => {
+                const nx = (1 - t) * car.aNx + t * car.bNx
+                const nz = (1 - t) * car.aNz + t * car.bNz
+                const len = Math.hypot(nx, nz) || 1
+                return new Vec3f([nx / len, 0, nz / len])
+            }
+            for (let c = 0; c < L; c++) {
+                const cprev = carriers[(c + L - 1) % L]!
+                const ccur = carriers[c]!
+                if (cprev.aEdge === ccur.aEdge && cprev.bEdge === ccur.bEdge) continue
+                const cross: ([number, number] | null)[] = []
+                for (let i = 0; i <= SAMPLES; i++) cross.push(loftCreaseCrossing(cprev, ccur, i / SAMPLES))
+                let i = 0
+                while (i <= SAMPLES) {
+                    if (!cross[i]) {
+                        i++
+                        continue
+                    }
+                    const i0 = i
+                    while (i + 1 <= SAMPLES && cross[i + 1]) i++
+                    const i1 = i
+                    i++
+                    if (i1 === i0) continue
+                    const vertexAt = (k: number): number => {
+                        const t = k / SAMPLES
+                        if (k === 0 && ccur.eventLower) return botIdx[ccur.eventVertex]!
+                        if (k === SAMPLES && !ccur.eventLower) return topIdx[ccur.eventVertex]!
+                        const [qx, qz] = cross[k]!
+                        return builder.emitVertex(
+                            new Vec3f([qx + px, botY + t * (topY - botY), qz + pz]),
+                            FG_FLAG_CREASE_ORIGINAL,
+                            [blendNormal(cprev, t), blendNormal(ccur, t)],
+                        )
+                    }
+                    let prev = vertexAt(i0)
+                    for (let k = i0 + 1; k <= i1; k++) {
+                        const cur = vertexAt(k)
+                        builder.emitEdge(prev, cur, FG_FLAG_CREASE_ORIGINAL)
+                        prev = cur
+                    }
+                }
             }
         }
 

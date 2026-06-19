@@ -315,13 +315,12 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
             if profiles.is_empty() {
                 return state.reject(node, "loft with no profiles");
             }
-            let n = profiles[0].len();
-            if !profiles.iter().all(|p| p.len() == n) {
-                return state.reject(
-                    node,
-                    "loft profiles with differing vertex counts (per-edge ruled carriers need 1:1 correspondence — v2)",
-                );
-            }
+            // Differing vertex counts are supported: the SDF is a distance-field
+            // blend that doesn't depend on per-profile vertex counts. The feature
+            // compilation (build_loft_strata / emit_loft_features) gates the
+            // per-edge 1:1 ruled-carrier model on uniform topology and degrades to
+            // cap-only features otherwise (smooth morph sides; Stage 1b adds the
+            // differing-topology side creases).
             let profs: Vec<Vec<f64>> =
                 profiles.iter().map(|pr| pr.iter().flat_map(|v| [v[0], v[1]]).collect()).collect();
             let winds: Vec<f64> = profiles.iter().map(|pr| winding_sign(pr)).collect();

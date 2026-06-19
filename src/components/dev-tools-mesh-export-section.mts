@@ -4,14 +4,13 @@ import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning } from "../render-worker-p
 import { EXPORTER_KINDS, type ExporterKind } from "../export/mesh-exporter.mjs"
 import { DEFAULT_MDC_TUNING, MDC_DISPLAY_NAME, type MdcTuning } from "../export/mdc-tuning.mjs"
 import { DEFAULT_SHREC_TUNING, SHREC_DISPLAY_NAME, type ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
-import { DEFAULT_FLEXICUBES_TUNING, FLEXICUBES_DISPLAY_NAME, type FlexiCubesTuning } from "../export/flexicubes/flexicubes-tuning.mjs"
 import {
     DEFAULT_ISO_SIMPLICIAL_BOUNDS_PADDING_MM,
     DEFAULT_ISO_SIMPLICIAL_TUNING,
     ISO_SIMPLICIAL_DISPLAY_NAME,
     type IsoSimplicialTuning,
 } from "../export/iso-simplicial/iso-tuning.mjs"
-import { DEFAULT_SFCC_TUNING, SFCC_DISPLAY_NAME, SFCC_MAX_DEPTH, type SfccTuning } from "../export/sfcc/sfcc-tuning.mjs"
+import { DEFAULT_SFCC_TUNING, SFCC_MAX_DEPTH, type SfccTuning } from "../export/sfcc/sfcc-tuning.mjs"
 import { devToolsBaseShadowCss } from "./dev-tools-styles.mjs"
 import { IsoSimplicialConstants } from "../export/iso-simplicial/constants.mjs"
 import "./dev-tools-collapse.mjs"
@@ -147,8 +146,6 @@ export class DevToolsExporterSelect extends HTMLElement {
             mdc: MDC_DISPLAY_NAME,
             shrec: SHREC_DISPLAY_NAME,
             isoSimplicial: ISO_SIMPLICIAL_DISPLAY_NAME,
-            flexicubes: FLEXICUBES_DISPLAY_NAME,
-            sfcc: SFCC_DISPLAY_NAME,
             // sfcc-rs reuses the SfccTuning knobs; its display name is a literal
             // here so main-thread code never imports the wasm-pulling exporter.
             "sfcc-rs": "SFCC (Rust/WASM)",
@@ -1069,209 +1066,6 @@ export class DevToolsShrecExportSection extends HTMLElement {
     }
 }
 
-/** FlexiCubes exporter voxel size and tuning (persisted on `app.exporterTuning.flexicubes`). */
-export class DevToolsFlexiCubesExportSection extends HTMLElement {
-    #settings = SettingsManager.instance
-    #tuningState: FlexiCubesTuning = { ...DEFAULT_FLEXICUBES_TUNING }
-    #voxelSizeRange: HTMLInputElement
-    #voxelSizeValueEl: HTMLSpanElement
-    #isoValueRange: HTMLInputElement
-    #isoValueValueEl: HTMLSpanElement
-    #creaseRange: HTMLInputElement
-    #creaseValueEl: HTMLSpanElement
-    #qefCutoffRange: HTMLInputElement
-    #qefCutoffValueEl: HTMLSpanElement
-    #featureConstrainedCheckbox: HTMLInputElement
-    #featureWeightRange: HTMLInputElement
-    #featureWeightValueEl: HTMLSpanElement
-    #featureValidationTolRange: HTMLInputElement
-    #featureValidationTolValueEl: HTMLSpanElement
-    #subscriptions: Subscription[] = []
-
-    onFlexiCubesTuningChange?: (tuning: FlexiCubesTuning) => void
-
-    get flexicubesTuning(): FlexiCubesTuning {
-        return { ...this.#tuningState }
-    }
-
-    constructor() {
-        super()
-        const shadow = this.attachShadow({ mode: "open" })
-        const style = document.createElement("style")
-        style.textContent = devToolsBaseShadowCss()
-        shadow.appendChild(style)
-
-        this.#tuningState = this.#settings.getFlexicubesTuning()
-        const root = document.createElement("div")
-        root.className = "lighting-section"
-        shadow.appendChild(root)
-
-        const voxel = addVoxelSliderRow(root, this.#tuningState.voxelSizeMm, v => {
-            this.#tuningState = { ...this.#tuningState, voxelSizeMm: v }
-            this.#persist()
-        })
-        this.#voxelSizeRange = voxel.range
-        this.#voxelSizeValueEl = voxel.valueEl
-
-        const addRow = (
-            label: string,
-            min: number,
-            max: number,
-            step: number,
-            initial: number,
-            format: (v: number) => string,
-            onInput: (v: number) => void,
-        ): { range: HTMLInputElement; valueEl: HTMLSpanElement } => {
-            const row = document.createElement("div")
-            row.className = "shade-row"
-            const lab = document.createElement("label")
-            lab.className = "knob-label"
-            lab.textContent = label
-            const range = document.createElement("input")
-            range.type = "range"
-            range.min = String(min)
-            range.max = String(max)
-            range.step = String(step)
-            range.value = String(initial)
-            const valueEl = document.createElement("span")
-            valueEl.className = "shade-val"
-            valueEl.textContent = format(initial)
-            range.addEventListener("input", () => {
-                const v = parseFloat(range.value)
-                valueEl.textContent = format(v)
-                onInput(v)
-            })
-            row.append(lab, range, valueEl)
-            root.appendChild(row)
-            return { range, valueEl }
-        }
-
-        const iso = addRow(
-            "Iso value",
-            -0.2,
-            0.2,
-            0.002,
-            this.#tuningState.isoValue,
-            v => v.toFixed(3),
-            v => {
-                this.#tuningState = { ...this.#tuningState, isoValue: v }
-                this.#persist()
-            },
-        )
-        this.#isoValueRange = iso.range
-        this.#isoValueValueEl = iso.valueEl
-
-        const crease = addRow(
-            "Crease (°)",
-            -1,
-            180,
-            1,
-            this.#tuningState.creaseAngleDeg,
-            v => `${Math.round(v)}°`,
-            v => {
-                this.#tuningState = { ...this.#tuningState, creaseAngleDeg: v }
-                this.#persist()
-            },
-        )
-        this.#creaseRange = crease.range
-        this.#creaseValueEl = crease.valueEl
-
-        const qef = addRow(
-            "QEF cutoff",
-            0.005,
-            0.5,
-            0.005,
-            this.#tuningState.qefRelCutoff,
-            v => v.toFixed(3),
-            v => {
-                this.#tuningState = { ...this.#tuningState, qefRelCutoff: v }
-                this.#persist()
-            },
-        )
-        this.#qefCutoffRange = qef.range
-        this.#qefCutoffValueEl = qef.valueEl
-
-        this.#featureConstrainedCheckbox = addCheckbox(
-            root,
-            "Feature-constrained vertices",
-            this.#tuningState.featureConstrainedPlacement,
-        )
-        this.#featureConstrainedCheckbox.addEventListener("change", () => {
-            this.#tuningState = {
-                ...this.#tuningState,
-                featureConstrainedPlacement: this.#featureConstrainedCheckbox.checked,
-            }
-            this.#persist()
-        })
-
-        const featWeight = addRow(
-            "Feature weight",
-            0,
-            64,
-            0.5,
-            this.#tuningState.featureWeight,
-            v => v.toFixed(1),
-            v => {
-                this.#tuningState = { ...this.#tuningState, featureWeight: v }
-                this.#persist()
-            },
-        )
-        this.#featureWeightRange = featWeight.range
-        this.#featureWeightValueEl = featWeight.valueEl
-
-        const featTol = addRow(
-            "Feature tol (×voxel)",
-            0,
-            2,
-            0.05,
-            this.#tuningState.featureValidationTol,
-            v => v.toFixed(2),
-            v => {
-                this.#tuningState = { ...this.#tuningState, featureValidationTol: v }
-                this.#persist()
-            },
-        )
-        this.#featureValidationTolRange = featTol.range
-        this.#featureValidationTolValueEl = featTol.valueEl
-
-        const defaultsBtn = document.createElement("button")
-        defaultsBtn.textContent = "FlexiCubes defaults"
-        defaultsBtn.addEventListener("click", () => {
-            this.syncFromSettings({ ...DEFAULT_FLEXICUBES_TUNING })
-            this.#persist()
-        })
-        root.appendChild(defaultsBtn)
-    }
-
-    syncFromSettings(tuning: FlexiCubesTuning): void {
-        this.#tuningState = { ...tuning }
-        this.#voxelSizeRange.value = String(tuning.voxelSizeMm)
-        this.#voxelSizeValueEl.textContent = formatVoxelSize(tuning.voxelSizeMm)
-        this.#isoValueRange.value = String(tuning.isoValue)
-        this.#isoValueValueEl.textContent = tuning.isoValue.toFixed(3)
-        this.#creaseRange.value = String(tuning.creaseAngleDeg)
-        this.#creaseValueEl.textContent = `${Math.round(tuning.creaseAngleDeg)}°`
-        this.#qefCutoffRange.value = String(tuning.qefRelCutoff)
-        this.#qefCutoffValueEl.textContent = tuning.qefRelCutoff.toFixed(3)
-        this.#featureConstrainedCheckbox.checked = tuning.featureConstrainedPlacement
-        this.#featureWeightRange.value = String(tuning.featureWeight)
-        this.#featureWeightValueEl.textContent = tuning.featureWeight.toFixed(1)
-        this.#featureValidationTolRange.value = String(tuning.featureValidationTol)
-        this.#featureValidationTolValueEl.textContent = tuning.featureValidationTol.toFixed(2)
-    }
-
-    #persist(): void {
-        const next = { ...this.#tuningState }
-        this.#settings.updateGlobal({ app: { exporterTuning: { flexicubes: next } } })
-        this.onFlexiCubesTuningChange?.(next)
-    }
-
-    disconnectedCallback(): void {
-        for (const s of this.#subscriptions) s.unsubscribe()
-        this.#subscriptions = []
-    }
-}
-
 /** Numeric SFCC knobs surfaced in Dev Tools (core subset; algorithm knobs land with the pipeline). */
 const SFCC_RANGE_KNOBS: {
     key:
@@ -1388,7 +1182,7 @@ export class DevToolsSfccSection extends HTMLElement {
         const defaults = document.createElement("button")
         defaults.textContent = "SFCC defaults"
         defaults.addEventListener("click", () => {
-            this.#settings.updateGlobal({ app: { exporterTuning: { sfcc: {} } } })
+            this.#settings.updateGlobal({ app: { exporterTuning: { "sfcc-rs": {} } } })
             this.syncFromSettings(this.#settings.getSfccTuning())
             this.onSfccTuningChange?.(this.#settings.getSfccTuning())
         })
@@ -1411,7 +1205,7 @@ export class DevToolsSfccSection extends HTMLElement {
 
     #persist(patch: Partial<SfccTuning>): void {
         const next: SfccTuning = { ...this.#settings.getSfccTuning(), ...patch }
-        this.#settings.updateGlobal({ app: { exporterTuning: { sfcc: next } } })
+        this.#settings.updateGlobal({ app: { exporterTuning: { "sfcc-rs": next } } })
         this.onSfccTuningChange?.(next)
     }
 }
@@ -1419,7 +1213,6 @@ export class DevToolsSfccSection extends HTMLElement {
 customElements.define("dev-tools-mdc-export-section", DevToolsMdcExportSection)
 customElements.define("dev-tools-mesh-simplify-section", DevToolsMeshSimplifySection)
 customElements.define("dev-tools-shrec-export-section", DevToolsShrecExportSection)
-customElements.define("dev-tools-flexicubes-export-section", DevToolsFlexiCubesExportSection)
 customElements.define("dev-tools-sfcc-section", DevToolsSfccSection)
 
 declare global {
@@ -1427,7 +1220,6 @@ declare global {
         "dev-tools-mdc-export-section": DevToolsMdcExportSection
         "dev-tools-mesh-simplify-section": DevToolsMeshSimplifySection
         "dev-tools-shrec-export-section": DevToolsShrecExportSection
-        "dev-tools-flexicubes-export-section": DevToolsFlexiCubesExportSection
         "dev-tools-sfcc-section": DevToolsSfccSection
     }
 }

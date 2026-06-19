@@ -1331,7 +1331,6 @@ class App {
         devTools.syncMeshExporterFromSettings(this.#settings.getGlobal().app.meshExporter)
         devTools.syncIsoSimplicialTuningFromSettings(this.#settings.getIsoSimplicialTuning())
         devTools.syncShrecTuningFromSettings(this.#settings.getShrecTuning())
-        devTools.syncFlexiCubesTuningFromSettings(this.#settings.getFlexicubesTuning())
         devTools.syncSfccTuningFromSettings(this.#settings.getSfccTuning())
         devTools.syncSimplifyTuningFromSettings(this.#settings.getGlobal().app.simplifyTuning)
         devTools.syncMdcLeversFromSettings(this.#settings.getMdcExportLevers())

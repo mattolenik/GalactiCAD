@@ -12,7 +12,6 @@ import { DEFAULT_SIMPLIFY_TUNING, type SimplifyTuning, type FeatureGraphOcclusio
 import { EXPORTER_KINDS, isValidExporter, type ExporterKind } from "../export/mesh-exporter.mjs"
 import { DEFAULT_MDC_TUNING, normalizeMdcTuning, type MdcTuning } from "../export/mdc-tuning.mjs"
 import { DEFAULT_SHREC_TUNING, normalizeShrecTuning, type ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
-import { DEFAULT_FLEXICUBES_TUNING, normalizeFlexiCubesTuning, type FlexiCubesTuning } from "../export/flexicubes/flexicubes-tuning.mjs"
 import { DEFAULT_ISO_SIMPLICIAL_TUNING, normalizeIsoSimplicialTuning, type IsoSimplicialTuning } from "../export/iso-simplicial/iso-tuning.mjs"
 import { DEFAULT_SFCC_TUNING, normalizeSfccTuning, type SfccTuning } from "../export/sfcc/sfcc-tuning.mjs"
 import { db } from "./db.mjs"
@@ -22,9 +21,7 @@ const EXPORTER_NORMALIZERS: Record<ExporterKind, (raw: unknown) => unknown> = {
     mdc: normalizeMdcTuning,
     shrec: normalizeShrecTuning,
     isoSimplicial: normalizeIsoSimplicialTuning,
-    flexicubes: normalizeFlexiCubesTuning,
-    sfcc: normalizeSfccTuning,
-    "sfcc-rs": normalizeSfccTuning, // shares the SFCC tuning shape
+    "sfcc-rs": normalizeSfccTuning, // the Rust SFCC kernel reuses the SFCC tuning shape
 }
 
 /** Fresh default tuning for every exporter (each a copy). */
@@ -33,8 +30,6 @@ function defaultExporterTuning(): Record<ExporterKind, unknown> {
         mdc: { ...DEFAULT_MDC_TUNING },
         shrec: { ...DEFAULT_SHREC_TUNING },
         isoSimplicial: { ...DEFAULT_ISO_SIMPLICIAL_TUNING },
-        flexicubes: { ...DEFAULT_FLEXICUBES_TUNING },
-        sfcc: { ...DEFAULT_SFCC_TUNING },
         "sfcc-rs": { ...DEFAULT_SFCC_TUNING },
     }
 }
@@ -246,7 +241,7 @@ function defaultGlobalSettings(): GlobalSettings {
         },
         app: {
             devToolsEnabled: false,
-            meshExporter: "mdc",
+            meshExporter: "sfcc-rs",
             exporterTuning: defaultExporterTuning(),
             simplifyTuning: { ...DEFAULT_SIMPLIFY_TUNING },
             diskSyncIntervalSeconds: 30,
@@ -461,19 +456,14 @@ export class SettingsManager {
         return normalizeShrecTuning(this.#globalSettings.app.exporterTuning.shrec)
     }
 
-    /** Normalized FlexiCubes tuning. */
-    getFlexicubesTuning(): FlexiCubesTuning {
-        return normalizeFlexiCubesTuning(this.#globalSettings.app.exporterTuning.flexicubes)
-    }
-
     /** Normalized iso-simplicial tuning. */
     getIsoSimplicialTuning(): IsoSimplicialTuning {
         return normalizeIsoSimplicialTuning(this.#globalSettings.app.exporterTuning.isoSimplicial)
     }
 
-    /** Normalized SFCC tuning. */
+    /** Normalized SFCC tuning (consumed by the sfcc-rs exporter). */
     getSfccTuning(): SfccTuning {
-        return normalizeSfccTuning(this.#globalSettings.app.exporterTuning.sfcc)
+        return normalizeSfccTuning(this.#globalSettings.app.exporterTuning["sfcc-rs"])
     }
 
     /** Clamped MDC export tuning for mesh pipeline (Dev Tools). */
@@ -619,14 +609,16 @@ export class SettingsManager {
                         : undefined
 
                 const useShrecLegacy = typeof rawApp.useShrecExporter === "boolean" ? rawApp.useShrecExporter : false
+                // The removed TS "sfcc" exporter migrates to its Rust successor "sfcc-rs".
+                const persistedExporter = rawApp.meshExporter === "sfcc" ? "sfcc-rs" : rawApp.meshExporter
                 const meshExporter: ExporterKind =
-                    isValidExporter(rawApp.meshExporter)
-                        ? rawApp.meshExporter
+                    isValidExporter(persistedExporter)
+                        ? persistedExporter
                         : isValidExporter(rawApp.exporterKind)
                           ? rawApp.exporterKind
                           : useShrecLegacy
                             ? "shrec"
-                            : "mdc"
+                            : "sfcc-rs"
 
                 // Per-exporter tuning blob. Falls back to the old per-field names
                 // (`shrecTuning`, `mdcExportLevers`, …) for one-time migration, and
@@ -639,9 +631,10 @@ export class SettingsManager {
                     mdc: rawApp.mdcExportLevers,
                     shrec: rawApp.shrecTuning,
                     isoSimplicial: rawApp.isoSimplicialTuning,
-                    flexicubes: rawApp.flexicubesTuning,
-                    sfcc: undefined, // no legacy per-field name — SFCC postdates the tuning blob
-                    "sfcc-rs": undefined, // ditto — sfcc-rs is newer still
+                    // sfcc-rs (and the removed TS sfcc) postdate the per-field tuning names →
+                    // no legacy migration; the saved `exporterTuning.sfcc` blob, if any, is
+                    // carried forward below under the "sfcc-rs" key.
+                    "sfcc-rs": rawTuning.sfcc,
                 }
                 const exporterTuning = {} as Record<ExporterKind, unknown>
                 for (const kind of EXPORTER_KINDS) {

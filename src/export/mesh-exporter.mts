@@ -1,7 +1,7 @@
 /**
  * Shared mesh-exporter contract.
  *
- * Each mesh exporter (`mdc`, `shrec`, `isoSimplicial`, `flexicubes`) is a
+ * Each mesh exporter (`mdc`, `shrec`, `isoSimplicial`, `sfcc-rs`) is a
  * cohesive unit that owns its own tuning type, defaults, normalization, and
  * export logic, and implements {@link MeshExporter}. The worker hands every
  * exporter a {@link MeshExportContext} so its `run` never reaches into
@@ -29,18 +29,14 @@ import type { MeshData } from "./export.mjs"
  *   (`src/export/shrec.mts`).
  * - `"isoSimplicial"`: GPU batched samples + CPU adaptive octree / Marching
  *   Tetrahedra (`src/export/iso-simplicial/`).
- * - `"flexicubes"`: GPU grid samples + CPU FlexiCubes dual extraction
- *   (`src/export/flexicubes.mts`).
- * - `"sfcc"`: CPU stratified feature-conforming contouring — symbolic CSG
- *   features + certified primal octree meshing (`src/export/sfcc/`).
- * - `"sfcc-rs"`: the same SFCC algorithm running in the gcad-wasm Rust kernel
- *   across the WASM boundary (`src/export/sfcc-rs/`); sits alongside `"sfcc"`
- *   for head-to-head comparison (M5).
+ * - `"sfcc-rs"`: stratified feature-conforming contouring — symbolic CSG features
+ *   + certified primal octree meshing — running in the gcad-wasm Rust kernel across
+ *   the WASM boundary (`src/export/sfcc-rs/`). The default exporter.
  */
-export type ExporterKind = "mdc" | "shrec" | "isoSimplicial" | "flexicubes" | "sfcc" | "sfcc-rs"
+export type ExporterKind = "mdc" | "shrec" | "isoSimplicial" | "sfcc-rs"
 
 /** All exporter kinds, in dropdown order. */
-export const EXPORTER_KINDS = ["mdc", "shrec", "isoSimplicial", "flexicubes", "sfcc", "sfcc-rs"] as const satisfies readonly ExporterKind[]
+export const EXPORTER_KINDS = ["mdc", "shrec", "isoSimplicial", "sfcc-rs"] as const satisfies readonly ExporterKind[]
 
 /** Type guard for a persisted/incoming exporter kind. */
 export function isValidExporter(v: unknown): v is ExporterKind {

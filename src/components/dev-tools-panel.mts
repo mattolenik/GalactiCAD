@@ -12,7 +12,6 @@ import type { RayMarchParams, SimplifyTuning, UpscaleParams } from "../render-wo
 import type { ExporterKind } from "../export/mesh-exporter.mjs"
 import type { MdcTuning } from "../export/mdc-tuning.mjs"
 import type { ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
-import type { FlexiCubesTuning } from "../export/flexicubes/flexicubes-tuning.mjs"
 import type { IsoSimplicialTuning } from "../export/iso-simplicial/iso-tuning.mjs"
 import type { SfccTuning } from "../export/sfcc/sfcc-tuning.mjs"
 import { log, type DebugLogModulesState } from "../logging/debug-log.mjs"
@@ -29,7 +28,6 @@ import type { GlobalSettings } from "../storage/settings.mjs"
 import {
     DevToolsExporterSelect,
     DevToolsIsoSimplicialSection,
-    DevToolsFlexiCubesExportSection,
     DevToolsMdcExportSection,
     DevToolsMeshSimplifySection,
     DevToolsSfccSection,
@@ -56,7 +54,6 @@ export class DevToolsPanel extends HTMLElement {
     #isoSimplicialSection: DevToolsIsoSimplicialSection
     #meshSimplifySection: DevToolsMeshSimplifySection
     #shrecExportSection: DevToolsShrecExportSection
-    #flexicubesExportSection: DevToolsFlexiCubesExportSection
     #sfccSection: DevToolsSfccSection
     #logsSection: DevToolsLogsSection
     #extraSectionHosts: HTMLDivElement[] = []
@@ -85,7 +82,6 @@ export class DevToolsPanel extends HTMLElement {
     /** Shared "render normals" lighting mode toggled from the mesh-export dev-tools panel. */
     onRenderNormalsChange?: (enabled: boolean) => void
     onShrecTuningChange?: (tuning: ShrecTuning) => void
-    onFlexiCubesTuningChange?: (tuning: FlexiCubesTuning) => void
     onSfccTuningChange?: (tuning: SfccTuning) => void
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
@@ -223,10 +219,6 @@ export class DevToolsPanel extends HTMLElement {
         return this.#shrecExportSection.shrecTuning
     }
 
-    get flexicubesTuning(): FlexiCubesTuning {
-        return this.#flexicubesExportSection.flexicubesTuning
-    }
-
     get sfccTuning(): SfccTuning {
         return this.#sfccSection.sfccTuning
     }
@@ -237,8 +229,6 @@ export class DevToolsPanel extends HTMLElement {
             mdc: this.mdcTuning,
             shrec: this.shrecTuning,
             isoSimplicial: this.isoSimplicialTuning,
-            flexicubes: this.flexicubesTuning,
-            sfcc: this.sfccTuning,
             // sfcc-rs reuses the SFCC tuning section (same knobs).
             "sfcc-rs": this.sfccTuning,
         }
@@ -276,10 +266,6 @@ export class DevToolsPanel extends HTMLElement {
 
     syncShrecTuningFromSettings(tuning: ShrecTuning): void {
         this.#shrecExportSection.syncShrecTuningFromSettings(tuning)
-    }
-
-    syncFlexiCubesTuningFromSettings(tuning: FlexiCubesTuning): void {
-        this.#flexicubesExportSection.syncFromSettings(tuning)
     }
 
     syncSfccTuningFromSettings(tuning: SfccTuning): void {
@@ -343,13 +329,11 @@ export class DevToolsPanel extends HTMLElement {
         this.#isoSimplicialSection = new DevToolsIsoSimplicialSection()
         this.#meshSimplifySection = new DevToolsMeshSimplifySection()
         this.#shrecExportSection = new DevToolsShrecExportSection()
-        this.#flexicubesExportSection = new DevToolsFlexiCubesExportSection()
         this.#sfccSection = new DevToolsSfccSection()
         this.#logsSection = new DevToolsLogsSection()
 
         this.#exporterSelect.onMeshExporterChange = v => this.onMeshExporterChange?.(v)
         this.#isoSimplicialSection.onIsoSimplicialTuningChange = v => this.onIsoSimplicialTuningChange?.(v)
-        this.#flexicubesExportSection.onFlexiCubesTuningChange = v => this.onFlexiCubesTuningChange?.(v)
         this.#sfccSection.onSfccTuningChange = v => this.onSfccTuningChange?.(v)
 
         this.#mdcExportSection.onMdcExportLeversChange = () => this.onMdcExportLeversChange?.()
@@ -416,7 +400,6 @@ export class DevToolsPanel extends HTMLElement {
             mkNested("MDC mesh export", DEVTOOLS_COLLAPSE.panelMeshExportMdc, this.#mdcExportSection),
             mkNested("SHREC export", DEVTOOLS_COLLAPSE.panelMeshExportShrec, this.#shrecExportSection),
             mkNested("Iso-simplicial", DEVTOOLS_COLLAPSE.panelMeshExportIso, this.#isoSimplicialSection),
-            mkNested("FlexiCubes export", DEVTOOLS_COLLAPSE.panelMeshExportFlexiCubes, this.#flexicubesExportSection),
             mkNested("SFCC export", DEVTOOLS_COLLAPSE.panelMeshExportSfcc, this.#sfccSection),
             mkNested("Mesh Simplify", DEVTOOLS_COLLAPSE.panelMeshExportSimplify, this.#meshSimplifySection),
         )

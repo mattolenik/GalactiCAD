@@ -277,9 +277,10 @@ fn build_extrude_strata(
 
 /// One side carrier of a loft segment: blends lower-profile edge `a_edge` with
 /// upper-profile edge `b_edge` (supporting lines: point `*_x,*_z`, outward unit
-/// normal `*_nx,*_nz`). `event_lower`/`event_vertex` identify the carrier's
-/// starting boundary with the previous carrier (cyclic): a lower-profile corner
-/// when `event_lower`, else an upper-profile corner.
+/// normal `*_nx,*_nz`). `a_vertex`/`b_vertex` are the bottom/top profile corner
+/// indices crossed by the transition INTO this carrier, or -1 when that profile's
+/// edge did not advance there. A matched-corner transition advances BOTH, so its
+/// crease anchors bottom→`a_vertex` and top→`b_vertex` — one crease per edge.
 #[derive(Clone, Copy)]
 struct LoftCarrier {
     a_edge: usize,
@@ -292,13 +293,14 @@ struct LoftCarrier {
     b_z: f64,
     b_nx: f64,
     b_nz: f64,
-    event_lower: bool,
-    event_vertex: usize,
+    a_vertex: i64,
+    b_vertex: i64,
 }
 
 /// Side carriers of one loft segment between lower profile `a` and upper profile
 /// `b`, as an angular cyclic merge of the two profiles' corners — a monotone
-/// `(a_edge, b_edge)` staircase of length `na + nb`. Pure and deterministic, so
+/// `(a_edge, b_edge)` staircase of length ≤ `na + nb` (corresponding corners are
+/// matched into one diagonal step, see below). Pure and deterministic, so
 /// the strata builder ([`build_loft_strata_general`]) and the feature emitter
 /// ([`emit_loft_features_general`]) agree on carrier ids. Each profile is assumed
 /// star-shaped about its centroid (corners in angular order); other shapes still
@@ -366,15 +368,59 @@ fn loft_seg_carriers(a: &[f64], wa: f64, b: &[f64], wb: f64) -> Vec<LoftCarrier>
             .then(y.lower.cmp(&x.lower)) // tie: lower (A) event before upper (B)
             .then(x.vertex.cmp(&y.vertex))
     });
+    // Corner matching: a bottom corner and a top corner that are the SAME physical
+    // corner of the lofted solid land at slightly different angles (the profiles have
+    // different centroids), so the raw merge interleaves them with a spurious thin
+    // "sliver" carrier between — emitting that edge as TWO creases. Detect such a pair
+    // as a cross-profile adjacency whose angular gap is a sharp local minimum and
+    // merge it into ONE transition that advances both edges (a diagonal staircase
+    // step) → one crease spanning bottom corner → top corner. The wrap pair is left
+    // unmerged to keep the wrap-sector seed simple.
+    let m = evs.len();
+    let gap_at = |i: usize| -> f64 {
+        let g = evs[(i + 1) % m].ang - evs[i].ang;
+        if g < 0.0 { g + TAU } else { g }
+    };
+    let mut merge_next = vec![false; m];
+    for i in 0..(m - 1) {
+        if evs[i].lower == evs[i + 1].lower {
+            continue; // same profile → not a corner pair
+        }
+        if gap_at(i) < 0.5 * gap_at((i + m - 1) % m).min(gap_at(i + 1)) {
+            merge_next[i] = true;
+        }
+    }
+    for i in 1..(m - 1) {
+        if merge_next[i] && merge_next[i - 1] {
+            merge_next[i] = false; // each event matches at most once
+        }
+    }
+
     // Active edges of the sector containing angle 0 (the wrap sector n-1).
     let mut ea = a_se[na - 1];
     let mut eb = b_se[nb - 1];
     let mut out: Vec<LoftCarrier> = Vec::with_capacity(na + nb);
-    for ev in &evs {
-        if ev.lower {
-            ea = ev.edge;
+    let mut i = 0usize;
+    while i < m {
+        let mut a_vertex: i64 = -1;
+        let mut b_vertex: i64 = -1;
+        if evs[i].lower {
+            ea = evs[i].edge;
+            a_vertex = evs[i].vertex as i64;
         } else {
-            eb = ev.edge;
+            eb = evs[i].edge;
+            b_vertex = evs[i].vertex as i64;
+        }
+        if merge_next[i] {
+            let ev2 = &evs[i + 1];
+            if ev2.lower {
+                ea = ev2.edge;
+                a_vertex = ev2.vertex as i64;
+            } else {
+                eb = ev2.edge;
+                b_vertex = ev2.vertex as i64;
+            }
+            i += 1; // consume the matched partner
         }
         let (ax, az, anx, anz) = edge_line(a, wa, na, ea);
         let (bx, bz, bnx, bnz) = edge_line(b, wb, nb, eb);
@@ -389,9 +435,10 @@ fn loft_seg_carriers(a: &[f64], wa: f64, b: &[f64], wb: f64) -> Vec<LoftCarrier>
             b_z: bz,
             b_nx: bnx,
             b_nz: bnz,
-            event_lower: ev.lower,
-            event_vertex: ev.vertex,
+            a_vertex,
+            b_vertex,
         });
+        i += 1;
     }
     out
 }
@@ -913,11 +960,39 @@ fn emit_loft_features_general(
             };
             let a_set = [cprev.a_edge, ccur.a_edge];
             let b_set = [cprev.b_edge, ccur.b_edge];
+            // The carrier crossing is the intersection of two blended edge-LINES; the
+            // true side surface is the blended polygon SDF (segment + vertex distance),
+            // so the raw crossing bows OUTWARD off the surface (worst on differing-
+            // topology blends, where it can exceed the Gate-1 tolerance and get trimmed
+            // mid-crease). Newton-project each sample back onto the blended zero set
+            // `(1-t)·sdf(a) + t·sdf(b) = 0` along its gradient (polygon_dist_2d is
+            // unit-gradient). Mirrors the FeatureGraph `projectToBlend`.
+            let project_to_blend = |qx: f64, qz: f64, t: f64| -> [f64; 2] {
+                let (mut x, mut z) = (qx, qz);
+                for _ in 0..6 {
+                    let a = polygon_dist_2d(&profs[seg], winds[seg], x, z);
+                    let b = polygon_dist_2d(&profs[seg + 1], winds[seg + 1], x, z);
+                    let d = (1.0 - t) * a.d + t * b.d;
+                    let gx = (1.0 - t) * a.gx + t * b.gx;
+                    let gz = (1.0 - t) * a.gz + t * b.gz;
+                    let g2 = gx * gx + gz * gz;
+                    if g2 < 1e-12 {
+                        break;
+                    }
+                    x -= d * gx / g2;
+                    z -= d * gz / g2;
+                    if d.abs() < 1e-7 {
+                        break;
+                    }
+                }
+                [x, z]
+            };
             let mut pts = vec![[0.0f64; 3]; SAMPLES + 1];
             let mut valid = vec![false; SAMPLES + 1];
             for i in 0..=SAMPLES {
                 let t = i as f64 / SAMPLES as f64;
-                if let Some(pt) = q2_at(t) {
+                if let Some(raw) = q2_at(t) {
+                    let pt = project_to_blend(raw[0], raw[1], t);
                     let ra = polygon_dist_2d(&profs[seg], winds[seg], pt[0], pt[1]);
                     let rb = polygon_dist_2d(&profs[seg + 1], winds[seg + 1], pt[0], pt[1]);
                     let gate1 = ((1.0 - t) * ra.d + t * rb.d).abs() <= 1e-6 * vert_scale;
@@ -981,12 +1056,16 @@ fn emit_loft_features_general(
                     )
                 };
                 curve.native = true;
-                // A run reaching t=0 lands on a lower-profile corner (an A-event
-                // crease); reaching t=1 lands on an upper-profile corner (B-event).
-                let cs: i64 =
-                    if i0 == 0 && ccur.event_lower { corner_idx[seg][ccur.event_vertex] as i64 } else { -1 };
-                let ce: i64 = if i1 == SAMPLES && !ccur.event_lower {
-                    corner_idx[seg + 1][ccur.event_vertex] as i64
+                // A run reaching t=0 lands on the bottom-profile corner the carrier
+                // crossed; reaching t=1 lands on the top-profile corner. A matched
+                // corner sets both → one corner-to-corner crease.
+                let cs: i64 = if i0 == 0 && ccur.a_vertex >= 0 {
+                    corner_idx[seg][ccur.a_vertex as usize] as i64
+                } else {
+                    -1
+                };
+                let ce: i64 = if i1 == SAMPLES && ccur.b_vertex >= 0 {
+                    corner_idx[seg + 1][ccur.b_vertex as usize] as i64
                 } else {
                     -1
                 };

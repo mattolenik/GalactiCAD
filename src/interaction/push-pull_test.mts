@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { Extrude } from "../scene/scene.mjs"
-import { twistAngleAt, toProfileXZ, closestPolygonEdge, faceFrame } from "./push-pull.mjs"
+import { twistAngleAt, toProfileXZ, faceFrame } from "./push-pull.mjs"
+import { closestPolygonEdge } from "../scene/primitives/polygon2d.mjs"
 
 /**
  * Tests for the twist un-projection used by push/pull surface selection on

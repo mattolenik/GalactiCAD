@@ -3,7 +3,7 @@ import { aabb, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
-import { Polygon2D, polygon2dWindingSign } from "./polygon2d.mjs"
+import { Polygon2D, polygon2dWindingSign, closestPolygonEdge, polygon2dSignedDistance } from "./polygon2d.mjs"
 import {
     FG_FLAG_CORNER,
     FG_FLAG_CREASE_ORIGINAL,
@@ -17,8 +17,10 @@ const LOFT_FG_VERTEX_TURN_MIN = 1e-6
 /**
  * One side carrier of a differing-topology loft segment: blends lower-profile edge
  * `aEdge` with upper-profile edge `bEdge` (supporting lines: point `*X,*Z`, outward
- * normal `*Nx,*Nz`). `event*` mark the carrier's boundary with the previous carrier
- * (cyclic): a lower-profile corner when `eventLower`, else an upper-profile corner.
+ * normal `*Nx,*Nz`). `aVertex`/`bVertex` are the bottom/top profile corner indices
+ * crossed by the transition INTO this carrier, or -1 when that profile's edge did
+ * not advance there. A matched-corner transition advances BOTH, so its crease
+ * anchors bottom→`aVertex` and top→`bVertex` — one crease for the whole edge.
  * Mirrors the SFCC kernel's `loft_seg_carriers` (feature_set.rs).
  */
 interface LoftSideCarrier {
@@ -32,8 +34,8 @@ interface LoftSideCarrier {
     bZ: number
     bNx: number
     bNz: number
-    eventLower: boolean
-    eventVertex: number
+    aVertex: number
+    bVertex: number
 }
 
 /**
@@ -88,12 +90,53 @@ function loftSegCarriers(
     for (let i = 0; i < na; i++) evs.push({ ang: sa.sortedAng[i]!, lower: true, vertex: sa.ord[i]!, edge: sa.sectorEdge[i]! })
     for (let k = 0; k < nb; k++) evs.push({ ang: sb.sortedAng[k]!, lower: false, vertex: sb.ord[k]!, edge: sb.sectorEdge[k]! })
     evs.sort((x, y) => x.ang - y.ang || Number(y.lower) - Number(x.lower) || x.vertex - y.vertex)
+
+    // Corner matching: a bottom corner and a top corner that are the SAME physical
+    // corner of the lofted solid land at slightly different angles (the profiles
+    // have different centroids), so the raw merge interleaves them with a spurious
+    // thin "sliver" carrier between — emitting that edge as TWO creases (a straight
+    // chord + the real curve). Detect such a pair as a cross-profile adjacency whose
+    // angular gap is a sharp local minimum, and merge it into ONE transition that
+    // advances both edges (a diagonal staircase step). One matched corner ⇒ one
+    // crease spanning bottom corner → top corner. The wrap pair (last→first) is left
+    // unmerged to keep the wrap-sector seed simple.
+    const M = evs.length
+    const gapAt = (i: number): number => {
+        const g = evs[(i + 1) % M]!.ang - evs[i]!.ang
+        return g < 0 ? g + 2 * Math.PI : g
+    }
+    const mergeNext = new Array<boolean>(M).fill(false)
+    for (let i = 0; i < M - 1; i++) {
+        if (evs[i]!.lower === evs[i + 1]!.lower) continue // same profile → not a corner pair
+        if (gapAt(i) < 0.5 * Math.min(gapAt((i - 1 + M) % M), gapAt(i + 1))) mergeNext[i] = true
+    }
+    for (let i = 1; i < M - 1; i++) if (mergeNext[i] && mergeNext[i - 1]) mergeNext[i] = false // each event matches once
+
     let ea = sa.sectorEdge[na - 1]!
     let eb = sb.sectorEdge[nb - 1]!
     const out: LoftSideCarrier[] = []
-    for (const ev of evs) {
-        if (ev.lower) ea = ev.edge
-        else eb = ev.edge
+    for (let i = 0; i < M; i++) {
+        let aVertex = -1
+        let bVertex = -1
+        const ev = evs[i]!
+        if (ev.lower) {
+            ea = ev.edge
+            aVertex = ev.vertex
+        } else {
+            eb = ev.edge
+            bVertex = ev.vertex
+        }
+        if (mergeNext[i]) {
+            const ev2 = evs[i + 1]!
+            if (ev2.lower) {
+                ea = ev2.edge
+                aVertex = ev2.vertex
+            } else {
+                eb = ev2.edge
+                bVertex = ev2.vertex
+            }
+            i++ // consume the matched partner
+        }
         const al = edgeLine(a, wa, ea)
         const bl = edgeLine(b, wb, eb)
         out.push({
@@ -107,8 +150,8 @@ function loftSegCarriers(
             bZ: bl.z,
             bNx: bl.nx,
             bNz: bl.nz,
-            eventLower: ev.lower,
-            eventVertex: ev.vertex,
+            aVertex,
+            bVertex,
         })
     }
     return out
@@ -803,12 +846,53 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
                 const len = Math.hypot(nx, nz) || 1
                 return new Vec3f([nx / len, 0, nz / len])
             }
+            // The carrier crossing is the intersection of two blended edge-LINES; the
+            // true side surface is the blended polygon SDF (segment + vertex distance),
+            // so the raw crossing bows OUTWARD off the surface (worst on differing-
+            // topology blends). Newton-project each sample back onto the blended zero
+            // set `(1-t)·sdf(bottom) + t·sdf(top) = 0` along its gradient — for a convex
+            // crease the off-surface guess sits in the corner's exterior wedge and
+            // projects straight onto the true sharp edge.
+            const projectToBlend = (qx: number, qz: number, t: number): [number, number] => {
+                let x = qx
+                let z = qz
+                for (let it = 0; it < 6; it++) {
+                    const a = polygon2dSignedDistance(bottomProf.vertices, x, z)
+                    const b = polygon2dSignedDistance(topProf.vertices, x, z)
+                    const d = (1 - t) * a.d + t * b.d
+                    const gx = (1 - t) * a.gx + t * b.gx
+                    const gz = (1 - t) * a.gz + t * b.gz
+                    const g2 = gx * gx + gz * gz
+                    if (g2 < 1e-12) break
+                    x -= (d * gx) / g2
+                    z -= (d * gz) / g2
+                    if (Math.abs(d) < 1e-7) break
+                }
+                return [x, z]
+            }
             for (let c = 0; c < L; c++) {
                 const cprev = carriers[(c + L - 1) % L]!
                 const ccur = carriers[c]!
                 if (cprev.aEdge === ccur.aEdge && cprev.bEdge === ccur.bEdge) continue
+                const aSet = [cprev.aEdge, ccur.aEdge]
+                const bSet = [cprev.bEdge, ccur.bEdge]
                 const cross: ([number, number] | null)[] = []
-                for (let i = 0; i <= SAMPLES; i++) cross.push(loftCreaseCrossing(cprev, ccur, i / SAMPLES))
+                for (let i = 0; i <= SAMPLES; i++) {
+                    const raw = loftCreaseCrossing(cprev, ccur, i / SAMPLES)
+                    const pt = raw ? projectToBlend(raw[0], raw[1], i / SAMPLES) : null
+                    // Gate 2 (nearest-edge label): keep the crossing only where it lies on
+                    // the patch boundary between THESE carriers' edges. The SDF survival
+                    // pass enforces on-surface (Gate 1) but can't reject an on-surface
+                    // crossing that sits on the wrong patch — those survive as stray
+                    // polylines. Mirrors `emit_loft_features_general`'s Gate 2 in the kernel.
+                    cross.push(
+                        pt &&
+                            aSet.includes(closestPolygonEdge(bottomProf.vertices, pt[0], pt[1])) &&
+                            bSet.includes(closestPolygonEdge(topProf.vertices, pt[0], pt[1]))
+                            ? pt
+                            : null,
+                    )
+                }
                 let i = 0
                 while (i <= SAMPLES) {
                     if (!cross[i]) {
@@ -822,8 +906,10 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
                     if (i1 === i0) continue
                     const vertexAt = (k: number): number => {
                         const t = k / SAMPLES
-                        if (k === 0 && ccur.eventLower) return botIdx[ccur.eventVertex]!
-                        if (k === SAMPLES && !ccur.eventLower) return topIdx[ccur.eventVertex]!
+                        // Anchor to the bottom/top profile corner(s) the carrier crossed;
+                        // a matched corner sets both, giving one corner-to-corner crease.
+                        if (k === 0 && ccur.aVertex >= 0) return botIdx[ccur.aVertex]!
+                        if (k === SAMPLES && ccur.bVertex >= 0) return topIdx[ccur.bVertex]!
                         const [qx, qz] = cross[k]!
                         return builder.emitVertex(
                             new Vec3f([qx + px, botY + t * (topY - botY), qz + pz]),

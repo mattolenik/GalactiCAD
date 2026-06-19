@@ -1,5 +1,6 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
 import { Box, Cone, Cylinder, Extrude, Loft, ThreadedRod } from "../scene/scene.mjs"
+import { closestPolygonEdge } from "../scene/primitives/polygon2d.mjs"
 
 /** Extrude / loft / threaded rod stub from the worker graph; includes byte offset for cap `h` + posYDelta in the `previewCapParamDrag` uniform layout (vec4-packed like `previewParamsF32`). */
 export type PushPullCapNode = (Extrude | Loft | ThreadedRod) & { sceneCapParamsByteOffset: number }
@@ -723,27 +724,6 @@ export function toProfileXZ(localX: number, localZ: number, angle: number): [num
     return [ca * localX + sa * localZ, -sa * localX + ca * localZ]
 }
 
-/** Index of the polygon edge (start-vertex index) closest to profile-space point (px, pz). */
-export function closestPolygonEdge(verts: [number, number][], px: number, pz: number): number {
-    const N = verts.length
-    let minDist = Infinity
-    let closestEdge = 0
-    for (let j = N - 1, i = 0; i < N; j = i, i++) {
-        const ex = verts[i][0] - verts[j][0]
-        const ey = verts[i][1] - verts[j][1]
-        const wx = px - verts[j][0]
-        const wy = pz - verts[j][1]
-        const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey)))
-        const bx = wx - ex * t
-        const by = wy - ey * t
-        const dd = bx * bx + by * by
-        if (dd < minDist) {
-            minDist = dd
-            closestEdge = j
-        }
-    }
-    return closestEdge
-}
 
 /**
  * Build the frame for an edge: its outward normal in 2D profile space (drives the

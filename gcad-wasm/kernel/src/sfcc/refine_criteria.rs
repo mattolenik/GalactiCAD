@@ -27,7 +27,7 @@ use crate::math::grid::{
 };
 use crate::sdf::SdfQuery;
 use crate::sfcc::feature_set::SfccFeatureSet;
-use crate::strata::Stratum;
+use crate::strata::{CarrierKind, Stratum};
 use std::collections::HashSet;
 
 const SQRT_3: f64 = 1.732_050_807_568_877_2;
@@ -455,6 +455,19 @@ pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
         if !stratum_edge_crossings_ok(st, probe) {
             return true;
         }
+    }
+    // Loft morph sides: each ruled LoftSide carrier is individually smooth, so the
+    // per-carrier cone above passes even where the blended surface kinks BETWEEN
+    // adjacent carriers — exactly where a crease is born or dies (the corner-count
+    // changes between profiles). The carriers don't fit the true blended surface in
+    // that rounding, so the per-stratum test under-refines it to a roughly uniform
+    // tessellation. Certify the tree's OWN ∇f curvature there to give the
+    // apex/merge region the adaptive subdivision a curved surface should get.
+    if opts.normal_variation_cos < 1.0
+        && strata.iter().any(|st| matches!(st.kind, CarrierKind::LoftSide))
+        && !tree_normal_variation_ok(tree, probe, opts.normal_variation_cos, grad_bound)
+    {
+        return true;
     }
     // Mixed cell: a stratum is active, but the cell may also straddle a blend
     // band. Certify that band's curvature — gated to trees that contain a blend so

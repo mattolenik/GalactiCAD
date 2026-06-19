@@ -17,6 +17,11 @@ export class VirtualCapNode extends Node {
         return "virtualCap"
     }
 
+    // Holds no geometry; isolation walks up to the owning extrude / threaded rod.
+    override get isIsolatable(): boolean {
+        return false
+    }
+
     override build(): void {
         this.scene.add(this)
     }

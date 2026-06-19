@@ -168,6 +168,16 @@ export class Node {
         return "node"
     }
 
+    /**
+     * Whether this node represents real 3D geometry that can stand alone as an
+     * isolation root. Virtual / 2D nodes (polygon2d, extrude/rod caps) have no
+     * standalone SDF, so they override this to `false`; isolating one resolves to
+     * its nearest isolatable ancestor instead (see `SceneInfo.isolationRoot`).
+     */
+    get isIsolatable(): boolean {
+        return true
+    }
+
     getIndicatorSymbol(): string {
         return "●"
     }

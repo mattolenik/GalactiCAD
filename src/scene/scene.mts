@@ -56,6 +56,22 @@ export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 export { BACK, BOTTOM, FRONT, LEFT, RIGHT, TOP } from "./direction-indicator.mjs"
 export type { DirectionFlag, DirectionIndicator } from "./direction-indicator.mjs"
 
+/**
+ * Direct child nodes of `node`, following its child-holding fields. The single
+ * source of truth for the scene tree's parent→child links — used both for
+ * serialization and for walking up to the nearest isolatable ancestor.
+ */
+export function childNodes(node: Node): Node[] {
+    if (node instanceof Union) return [...node.children]
+    if (node instanceof BinaryOperator) return [node.lh, node.rh]
+    if (node instanceof UnaryOperator) return [node.arg]
+    if (node instanceof Extrude) return [node.child, node.capTop, node.capBottom]
+    if (node instanceof Loft) return [...node.profiles]
+    if (node instanceof ThreadedRod) return [node.capTop, node.capBottom]
+    if (node instanceof Lathe) return [node.child]
+    return []
+}
+
 /** IDs 1022–1023 reserved for face highlight (cap selection). Scene nodes use 0–1021. */
 const MAX_SCENE_NODE_ID = 1021
 
@@ -66,6 +82,8 @@ export class SceneInfo {
     #allNodesSnapshot: Node[] = []
     /** One `computeBounds()` result per node id for this scene build. */
     #boundsCache = new Map<number, AABB | null>()
+    /** Lazily-built child-id → parent map for walking up to isolatable ancestors. */
+    #parentByChildId: Map<number, Node> | null = null
     #sceneParamFloatUsed = 0
     #previewF32Used = 0
     #previewVec2Used = 0
@@ -309,22 +327,54 @@ export class SceneInfo {
         return this.#allNodesSnapshot
     }
 
+    /** Child-id → parent map over the whole tree, built once per scene build. */
+    #getParentMap(): Map<number, Node> {
+        if (this.#parentByChildId) return this.#parentByChildId
+        const m = new Map<number, Node>()
+        for (const node of this.#allNodesSnapshot) {
+            for (const child of childNodes(node)) m.set(child.id, node)
+        }
+        this.#parentByChildId = m
+        return m
+    }
+
+    /**
+     * Walk up from `node` (inclusive) to the nearest ancestor that is isolatable.
+     * Virtual / 2D nodes (polygon2d, caps) aren't isolatable on their own, so this
+     * resolves them to the real-geometry node that uses them (extrude/loft/etc.).
+     * Returns null only if no ancestor is isolatable (a free-floating virtual node).
+     */
+    #nearestIsolatable(node: Node): Node | null {
+        const parents = this.#getParentMap()
+        let cur: Node | undefined = node
+        while (cur && !cur.isIsolatable) cur = parents.get(cur.id)
+        return cur ?? null
+    }
+
     /**
      * The root to compile the preview SDF from for "View Isolated". Empty ids →
-     * the full scene root. A single id → that node directly. Multiple ids → a
-     * temporary sharp Union wrapping the chosen subtrees, given this scene and a
-     * reserved non-colliding id. The temp union is NOT built — the wrapped nodes
-     * are already built, so their ids / param offsets / BVH slots are reused as-is
-     * (no param re-upload needed). Unknown ids are dropped; if none resolve, the
-     * full scene is returned. Isolating a node renders it in its LOCAL frame —
+     * the full scene root. Each id is first remapped to its nearest isolatable
+     * ancestor (so isolating a polygon2d isolates the extrude/loft using it), then
+     * deduped. A single resolved node → that node directly. Multiple → a temporary
+     * sharp Union wrapping the chosen subtrees, given this scene and a reserved
+     * non-colliding id. The temp union is NOT built — the wrapped nodes are already
+     * built, so their ids / param offsets / BVH slots are reused as-is (no param
+     * re-upload needed). Unknown / unresolvable ids are dropped; if none resolve,
+     * the full scene is returned. Isolating a node renders it in its LOCAL frame —
      * ancestor warps are stripped because they are not part of the compile root.
      */
     isolationRoot(ids: readonly number[]): Node {
         if (ids.length === 0) return this.root
         const nodes: Node[] = []
+        const seen = new Set<number>()
         for (const id of ids) {
             const n = this.#nodes.get(id)
-            if (n) nodes.push(n)
+            if (!n) continue
+            const target = this.#nearestIsolatable(n)
+            if (target && !seen.has(target.id)) {
+                seen.add(target.id)
+                nodes.push(target)
+            }
         }
         if (nodes.length === 0) return this.root
         if (nodes.length === 1) return nodes[0]!

@@ -48,6 +48,8 @@ export class Polygon2D extends Node {
     }
 
     override getShapeType(): string { return "polygon2d" }
+    // 2D profile — no standalone 3D SDF; isolation walks up to its extrude/loft consumer.
+    override get isIsolatable(): boolean { return false }
     override getIndicatorSymbol(): string { return "⬠" }
 
     protected override _computeCodegenCost(): number {

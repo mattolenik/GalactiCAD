@@ -580,6 +580,11 @@ where
     // (cell gone from the leaf map ⇒ skip) handles that exactly as the serial
     // pop()-loop did, and the rippled cell's children land in the next round.
     while !b.worklist.is_empty() {
+        // Cooperative cancel: stop refining and return the partial octree; the pipeline
+        // driver re-checks after the build and bails to a `cancelled` result.
+        if crate::sfcc::cancel::is_cancelled() {
+            break;
+        }
         // Snapshot the frontier as live cells (skip any already rippled away).
         let frontier: Vec<SfccCell> = std::mem::take(&mut b.worklist)
             .into_iter()

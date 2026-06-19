@@ -207,6 +207,12 @@ export type MainToWorkerMessage =
           /** Per-exporter tuning keyed by kind; the worker reads `exporterTuning[exporter]`. */
           exporterTuning?: Partial<Record<ExporterKind, unknown>>
           simplifyTuning?: SimplifyTuning
+          /**
+           * Shared cancel flag (`Int32Array` slot 0): the main thread writes 1 on the
+           * Cancel click; the sfcc-rs export polls it and bails. Present only when shared
+           * memory is available; absent → export not cancellable.
+           */
+          cancelBuffer?: SharedArrayBuffer
       }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
@@ -413,7 +419,8 @@ export type WorkerToMainMessage =
     | { type: "clickResult"; clickedId: number; edgeHits: EdgeHitData[]; hitPos: [number, number, number, number]; clickedNormal: [number, number, number]; shiftKey: boolean; altKey: boolean; documentName?: string }
     | { type: "selectionInfo"; info: SelectionInfo; documentName?: string; hoverRequestId?: number }
     | { type: "objectDoubleClick"; nodeId: number; hitPos?: [number, number, number]; documentName?: string }
-    | { type: "renderMeshResult"; mesh?: MeshData; error?: string; requestId?: number; documentName?: string }
+    | { type: "renderMeshResult"; mesh?: MeshData; error?: string; requestId?: number; documentName?: string; cancelled?: boolean }
+    | { type: "exportProgress"; requestId?: number; documentName?: string; phase: string; phaseIndex: number; totalPhases: number; elapsedMs: number }
     | { type: "benchmarkResult"; result: BenchmarkResultPayload; requestId?: number }
     | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number; documentName?: string }
     | { type: "pickPosResult"; hitPos: [number, number, number] | null; requestId: number }

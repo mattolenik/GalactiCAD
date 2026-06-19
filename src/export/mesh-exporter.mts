@@ -97,6 +97,41 @@ export interface MeshExportContext {
     makeSceneCompiler(): ShaderCompiler
     /** Aborted when a newer export supersedes this one; thread it through long-running work. */
     signal: AbortSignal
+    /**
+     * Optional sink for live phase-progress ticks during a long export. Exporters that
+     * can report sub-phases (currently only sfcc-rs, via the wasm callback) call this at
+     * each phase boundary; the worker forwards it to the main thread for the export
+     * indicator. Exporters that can't report progress simply omit it.
+     */
+    onProgress?: (p: ExportProgress) => void
+    /**
+     * Optional user-cancel flag — `Int32Array` slot 0 goes nonzero when the user clicks
+     * Cancel (written by the main thread to a `SharedArrayBuffer` shared with the worker).
+     * A cancellable exporter polls it during long work and, on cancel, throws
+     * [`MeshExportCancelledError`]. Absent when shared memory is unavailable.
+     */
+    cancelFlag?: Int32Array
+}
+
+/** Thrown by an exporter when the user cancelled the export (vs. a real failure or a
+ *  newer export superseding this one). The worker reports it back as a cancelled result. */
+export class MeshExportCancelledError extends Error {
+    constructor() {
+        super("Mesh export cancelled")
+        this.name = "MeshExportCancelledError"
+    }
+}
+
+/** One live phase-progress tick emitted during a mesh export. */
+export interface ExportProgress {
+    /** 0-based index of the phase now starting; equals `totalPhases` on the terminal "done" tick. */
+    phaseIndex: number
+    /** Human-readable phase label, e.g. "Building octree". */
+    phase: string
+    /** Total number of timed phases (so a bar can show `phaseIndex / totalPhases`). */
+    totalPhases: number
+    /** Milliseconds elapsed since this export started. */
+    elapsedMs: number
 }
 
 /**

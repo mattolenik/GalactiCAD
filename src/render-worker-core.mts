@@ -18,6 +18,7 @@ import { ShaderCompiler, scheduleShaderModuleCompilationLogging } from "./shader
 import { getExporter } from "./export/exporters.mjs"
 import {
     DEFAULT_MESH_EXPORT_VOXEL_SIZE_MM,
+    MeshExportCancelledError,
     type ExporterKind,
     type MeshExportContext,
 } from "./export/mesh-exporter.mjs"
@@ -1730,6 +1731,7 @@ export class RenderWorkerCore {
         exporter: ExporterKind = "mdc",
         exporterTuning?: Partial<Record<ExporterKind, unknown>>,
         simplifyTuning?: SimplifyTuning,
+        cancelBuffer?: SharedArrayBuffer,
     ): Promise<void> {
         // Supersede any still-running export: aborting its signal lets the
         // exporter bail out of GPU/CPU work instead of running to completion.
@@ -1819,6 +1821,16 @@ export class RenderWorkerCore {
                         .replace("insert", "sceneSDF", sceneSDF)
                         .replace("insert", "sceneSDF_mid", sceneSDF_mid),
                 signal: abort.signal,
+                // Forward each live phase tick to the main thread. Cheap (one postMessage
+                // per phase boundary, ~5/export) and only fires for exporters that emit.
+                // The main thread uses it to drive the live export indicator.
+                onProgress: (p) => {
+                    if (abort.signal.aborted) return
+                    self.postMessage({ type: "exportProgress", requestId, documentName, ...p })
+                },
+                // User-cancel flag (slot 0): the main thread writes 1 on the Cancel click.
+                // A cancellable exporter (sfcc-rs) polls it and throws MeshExportCancelledError.
+                cancelFlag: cancelBuffer ? new Int32Array(cancelBuffer) : undefined,
             }
 
             const exp = getExporter(exporter)
@@ -1829,6 +1841,12 @@ export class RenderWorkerCore {
             try {
                 mesh = await exp.run(ctx, tuning)
             } catch (err) {
+                // The user cancelled this export — report it as cancelled (empty result)
+                // so the main thread keeps its previous mesh and clears the indicator.
+                if (err instanceof MeshExportCancelledError) {
+                    self.postMessage({ type: "renderMeshResult", requestId, documentName, cancelled: true })
+                    return
+                }
                 // A newer export aborted this one — report it as superseded
                 // (empty result) rather than surfacing an error to the user.
                 if (abort.signal.aborted) {

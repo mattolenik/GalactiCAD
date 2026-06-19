@@ -166,6 +166,47 @@ pub struct SfccPipelineResult {
     /// order. Empty unless profiled. With re-refine rounds the rounds of every build
     /// are concatenated (mech has reRefineRounds=0 → one build).
     pub octree_rounds: Vec<(usize, f64, f64)>,
+    /// True when the export was cooperatively cancelled mid-flight (see
+    /// [`crate::sfcc::cancel`]). The mesh/stats are empty and `ok` is false — callers
+    /// should discard the result and keep whatever mesh they had.
+    pub cancelled: bool,
+}
+
+/// An empty result flagged `cancelled` — returned when [`crate::sfcc::cancel::is_cancelled`]
+/// fires at a pipeline checkpoint. The mesh is empty; callers key off `cancelled`.
+fn cancelled_pipeline_result() -> SfccPipelineResult {
+    SfccPipelineResult {
+        verts: Vec::new(),
+        tris: Vec::new(),
+        stats: SfccStats {
+            leaves: 0,
+            degenerate_cells: 0,
+            faces: 0,
+            cross_points: 0,
+            tris: 0,
+            failed_cells: 0,
+            multi_loop_cells: 0,
+            multi_run_faces: 0,
+            boundary_violations: 0,
+            face_audit_failures: 0,
+            feature_curves: 0,
+            edge_cells: 0,
+            corner_cells: 0,
+            feature_cell_fallbacks: 0,
+            re_refine_rounds: 0,
+        },
+        manifold: check_manifold(&[], false),
+        ok: false,
+        phase_feature_ms: 0.0,
+        phase_octree_ms: 0.0,
+        phase_contour_ms: 0.0,
+        phase_cellmesh_ms: 0.0,
+        phase_assemble_ms: 0.0,
+        phase_octree_decide_ms: 0.0,
+        phase_octree_apply_ms: 0.0,
+        octree_rounds: Vec::new(),
+        cancelled: true,
+    }
 }
 
 /// Remove coincident triangle pairs with opposite winding (zero-volume pancakes
@@ -776,7 +817,7 @@ enum MeshStrategy {
 }
 
 pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, None)
+    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, None, None)
 }
 
 /// Serial pipeline with phase wall-clock timing populated in the result's `phase_*_ms`
@@ -791,7 +832,22 @@ pub fn run_sfcc_pipeline_profiled(
     tuning: &PipelineTuning,
     now: &dyn Fn() -> f64,
 ) -> SfccPipelineResult {
-    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, Some(now))
+    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, Some(now), None)
+}
+
+/// Like [`run_sfcc_pipeline_profiled`] but also drives a phase-`progress` sink
+/// `(phase_index, phase_name, elapsed_ms)` at each phase boundary. Used by the wasm
+/// `export_sfcc` to stream live progress to the main thread (which both renders the
+/// export indicator and keeps the renderer at high CPU-QoS so the export isn't parked
+/// on an efficiency core). Mesh output is identical to [`run_sfcc_pipeline`].
+pub fn run_sfcc_pipeline_profiled_progress(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    now: &dyn Fn() -> f64,
+    progress: &dyn Fn(u32, &str, f64),
+) -> SfccPipelineResult {
+    run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, Some(now), Some(progress))
 }
 
 /// Spatial-partition (#3 slice 1) in-process driver: mesh the surface leaves in
@@ -808,7 +864,7 @@ pub fn run_sfcc_pipeline_partitioned(
     partitions: usize,
 ) -> SfccPipelineResult {
     let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Shared(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
 /// Spatial-partition (#3 slice 3) in-process driver: mesh the surface leaves in
@@ -827,7 +883,7 @@ pub fn run_sfcc_pipeline_separate_partitioned(
     partitions: usize,
 ) -> SfccPipelineResult {
     let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Separate(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
 /// #3 slice 2: like [`run_sfcc_pipeline_partitioned`] (shared face map) but the leaves
@@ -842,7 +898,7 @@ pub fn run_sfcc_pipeline_partitioned_morton(
     partitions: usize,
 ) -> SfccPipelineResult {
     let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SharedMorton(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
 /// #3 slice 2 over the slice-3 separate-table view: like
@@ -858,7 +914,7 @@ pub fn run_sfcc_pipeline_separate_partitioned_morton(
 ) -> SfccPipelineResult {
     let strategy =
         if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
-    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None)
+    run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
 /// One partial mesh's merge into the global point table is by GLOBAL provenance key:
@@ -1037,12 +1093,22 @@ fn phase_mark(now: Option<&dyn Fn() -> f64>, last: &mut Option<f64>, bucket: &mu
     }
 }
 
+/// Number of timed phases reported through the progress callback (feature, octree,
+/// contour, cellmesh, assemble). Index 5 is the terminal "done" tick.
+pub const SFCC_PHASE_COUNT: u32 = 5;
+
 fn run_sfcc_pipeline_impl(
     tree: &CsgNode,
     cube: &SfccWorldCube,
     tuning: &PipelineTuning,
     strategy: MeshStrategy,
     now: Option<&dyn Fn() -> f64>,
+    // Optional phase-progress sink, called `(phase_index, phase_name, elapsed_ms_since_start)`
+    // at the START of each phase (+ once at the terminal "done" tick). Pure side-effect — it
+    // never influences the mesh, so the output stays byte-identical whether or not it is set.
+    // Only wired on the wasm export path (to drive the live progress UI / QoS keepalive); the
+    // serial/partitioned wrappers and the native tests pass `None`.
+    progress: Option<&dyn Fn(u32, &str, f64)>,
 ) -> SfccPipelineResult {
     // Phase wall-clock accumulators (populated only when `now` is Some).
     let mut ph_feature = 0.0f64;
@@ -1056,6 +1122,16 @@ fn run_sfcc_pipeline_impl(
     let mut ph_oct_apply = 0.0f64;
     let mut oct_rounds: Vec<(usize, f64, f64)> = Vec::new();
     let mut ph_last: Option<f64> = now.map(|f| f());
+    // Phase-progress emitter: reports `(idx, name, elapsed_ms)` against the export start.
+    // Independent of `ph_last` (it never advances the phase-timer cursor), so the captured
+    // `phase_*_ms` split is unaffected by these extra clock reads.
+    let start_ms = ph_last.unwrap_or(0.0);
+    let emit = |idx: u32, name: &str| {
+        if let (Some(p), Some(f)) = (progress, now) {
+            p(idx, name, f() - start_ms);
+        }
+    };
+    emit(0, "Compiling features");
 
     // The shared per-export context (lattice + feature set + split-decision
     // advisories). Identical to what the worker `prepare` builds — the DECISION
@@ -1093,6 +1169,7 @@ fn run_sfcc_pipeline_impl(
             |cell: &SfccCell, sampler: &crate::sfcc::octree::SampleView<'_>| {
                 ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot)
             };
+        emit(1, "Building octree");
         oct = match now {
             // Profiled: time each round's decide vs apply, then fold the split in.
             Some(f) => build_octree_profiled(tree, &lat, opts, decide_cb, f),
@@ -1104,6 +1181,11 @@ fn run_sfcc_pipeline_impl(
             oct_rounds.extend(p.rounds);
         }
         phase_mark(now, &mut ph_last, &mut ph_octree);
+        // Cancel checkpoint: the octree build stopped early (or just finished) — bail
+        // before the expensive contour/mesh phases.
+        if crate::sfcc::cancel::is_cancelled() {
+            return cancelled_pipeline_result();
+        }
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
         let fc_opts = FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
@@ -1117,8 +1199,15 @@ fn run_sfcc_pipeline_impl(
         };
         match &strategy {
             MeshStrategy::Serial => {
+                emit(2, "Contouring faces");
                 face_result = contour_all_faces(&oct, tree, &mut points, &fc_opts);
                 phase_mark(now, &mut ph_last, &mut ph_contour);
+                // Cancel checkpoint: contouring stopped early (or finished) — bail before
+                // cell meshing + the S4 assembly tail.
+                if crate::sfcc::cancel::is_cancelled() {
+                    return cancelled_pipeline_result();
+                }
+                emit(3, "Meshing cells");
                 cell_result = mesh_all_cells(&oct, &mut face_result.faces, tree, &mut points, &cm_opts);
                 phase_mark(now, &mut ph_last, &mut ph_cellmesh);
             }
@@ -1224,6 +1313,7 @@ fn run_sfcc_pipeline_impl(
         }
     }
 
+    emit(4, "Assembling mesh");
     // S4 cleanups (same call order/args as the oracle so winding/topology match):
     // coincident-pair drop → debris drop → coincident-pair drop → sliver flip.
     let deduped1 = drop_coincident_triangle_pairs(&cell_result.tris);
@@ -1234,6 +1324,7 @@ fn run_sfcc_pipeline_impl(
     let (verts, out_tris) = points.build_mesh(&flipped);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
     phase_mark(now, &mut ph_last, &mut ph_assemble);
+    emit(SFCC_PHASE_COUNT, "Done");
 
     let stats = SfccStats {
         leaves: oct.leaves.len(),
@@ -1271,6 +1362,7 @@ fn run_sfcc_pipeline_impl(
         phase_octree_decide_ms: ph_oct_decide,
         phase_octree_apply_ms: ph_oct_apply,
         octree_rounds: oct_rounds,
+        cancelled: false,
     }
 }
 

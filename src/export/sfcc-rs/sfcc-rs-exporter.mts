@@ -10,6 +10,7 @@
  */
 
 import type { MeshExportContext, MeshExporter } from "../mesh-exporter.mjs"
+import { MeshExportCancelledError } from "../mesh-exporter.mjs"
 import type { MeshData } from "../export.mjs"
 import { DEFAULT_SFCC_TUNING, normalizeSfccTuning, type SfccTuning } from "../sfcc/sfcc-tuning.mjs"
 import { serializeSceneToBridgeJson } from "./scene-bridge.mjs"
@@ -23,6 +24,11 @@ import { SfccPartitionPool } from "./sfcc-partition-pool.mjs"
 import { log } from "../../logging/debug-log.mjs"
 
 export const SFCC_RS_DISPLAY_NAME = "SFCC (Rust/WASM)"
+
+/** Timed phases the kernel reports through the progress callback (keep in sync with
+ * `SFCC_PHASE_COUNT` in `gcad-wasm/kernel/src/sfcc/pipeline.rs`). The terminal "done"
+ * tick arrives with `phaseIndex === SFCC_RS_PHASE_COUNT`. */
+const SFCC_RS_PHASE_COUNT = 5
 
 /**
  * M6d: the `sfccThreads` flag (forwarded onto the render-worker URL by
@@ -134,9 +140,27 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
         // Serial path (flag off): byte-identical to the original export_sfcc flow.
         const { fn: exportFn, threaded: t } = await resolveExportFn()
         threaded = t
+        // Live phase-progress: the kernel calls this synchronously at each phase boundary
+        // (feature → octree → contour → cellmesh → assemble → done); we relay it to the
+        // worker host via ctx.onProgress. Undefined when nobody is listening → no overhead,
+        // byte-identical output. (Partitioned path has no single export_sfcc to hook.)
+        const onProgress = ctx.onProgress
+        const progressCb = onProgress
+            ? (phaseIndex: number, phase: string, elapsedMs: number) =>
+                  onProgress({ phaseIndex, phase, totalPhases: SFCC_RS_PHASE_COUNT, elapsedMs })
+            : undefined
+        // User-cancel: the kernel polls this at coarse checkpoints (octree rounds, contour
+        // chunks, phase boundaries) and bails with `cancelled` when it returns true. The
+        // flag is a SharedArrayBuffer slot the main thread writes on the Cancel click.
+        const cancelFlag = ctx.cancelFlag
+        const cancelCb = cancelFlag ? () => Atomics.load(cancelFlag, 0) !== 0 : undefined
         const t0 = performance.now()
-        result = exportFn(sceneJson, tuningJson, minX, minY, minZ, size)
+        result = exportFn(sceneJson, tuningJson, minX, minY, minZ, size, progressCb, cancelCb)
         elapsedMs = performance.now() - t0
+        if (result.cancelled) {
+            result.free()
+            throw new MeshExportCancelledError()
+        }
     }
 
     let stats: Record<string, unknown> = {}

@@ -19,6 +19,7 @@
 //! Rust mesh. DEFERRED: feature classification / curves / corners and the
 //! feature-aware refine/contour/cell-mesh paths (M4).
 
+pub mod cancel;
 pub mod cell_mesh;
 pub mod face_contour;
 pub mod feature_curves;

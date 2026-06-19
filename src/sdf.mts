@@ -29,6 +29,7 @@ import {
     type WorkerToMainMessage,
 } from "./render-worker-protocol.mjs"
 import type { ExporterKind } from "./export/mesh-exporter.mjs"
+import { MeshExportCancelledError } from "./export/mesh-exporter.mjs"
 import type {
     EdgeHitData,
     SelectedEdgePayload,
@@ -175,6 +176,9 @@ export class SDFRenderer {
     #latestBuildRequestId = 0
     #latestRenderMeshRequestId = 0
     #latestThumbnailRequestId = 0
+    /** Shared cancel flag for the in-flight mesh export (null when shared memory is off). */
+    #meshCancelBuffer: SharedArrayBuffer | null = null
+    #meshCancelFlag: Int32Array | null = null
     #latestAgentPreviewRequestId = 0
     #pendingTranspile = new Map<
         number,
@@ -205,7 +209,12 @@ export class SDFRenderer {
     #lastSceneBuildPipelineMs: SceneBuildPipelineMs | null = null
     #pendingRenderMesh = new Map<
         number,
-        { resolve: (v: MeshData) => void; reject: (err: unknown) => void; skipDocumentGuard?: boolean }
+        {
+            resolve: (v: MeshData) => void
+            reject: (err: unknown) => void
+            skipDocumentGuard?: boolean
+            onProgress?: (p: import("./export/mesh-exporter.mjs").ExportProgress) => void
+        }
     >()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
     #pendingThumbnail = new Map<
@@ -522,6 +531,8 @@ export class SDFRenderer {
                         msg.documentName === active
                     if (!stillActive) {
                         pending.reject(new Error("Document changed"))
+                    } else if (msg.cancelled) {
+                        pending.reject(new MeshExportCancelledError())
                     } else if (msg.mesh) {
                         pending.resolve(msg.mesh)
                     } else {
@@ -529,6 +540,16 @@ export class SDFRenderer {
                     }
                 }
                 if (msg.requestId != null) this.#pendingRenderMesh.delete(msg.requestId)
+                break
+            }
+            case "exportProgress": {
+                const pending = msg.requestId != null ? this.#pendingRenderMesh.get(msg.requestId) : null
+                pending?.onProgress?.({
+                    phase: msg.phase,
+                    phaseIndex: msg.phaseIndex,
+                    totalPhases: msg.totalPhases,
+                    elapsedMs: msg.elapsedMs,
+                })
                 break
             }
             case "benchmarkResult": {
@@ -642,6 +663,7 @@ export class SDFRenderer {
                 exporter: pending.exporter,
                 exporterTuning: pending.exporterTuning,
                 simplifyTuning: pending.simplifyTuning,
+                cancelBuffer: this.#meshCancelBuffer ?? undefined,
             })
         } else if (pending.kind === "thumbnail") {
             if (requestId !== this.#latestThumbnailRequestId) {
@@ -1114,6 +1136,10 @@ export class SDFRenderer {
         if (this.#useSharedMemory) {
             this.#sharedBuffer = new SharedArrayBuffer(SHARED_RENDER_BUFFER_SIZE)
             initSharedRenderBuffer(this.#sharedBuffer)
+            // User-cancel flag for mesh export: slot 0 is set to 1 by cancelMeshExport()
+            // and polled by the (blocked) export worker. Needs shared memory.
+            this.#meshCancelBuffer = new SharedArrayBuffer(4)
+            this.#meshCancelFlag = new Int32Array(this.#meshCancelBuffer)
         }
         this.#worker.postMessage(
             { type: "init", canvas: offscreen, sharedBuffer: this.#sharedBuffer ?? undefined },
@@ -1767,6 +1793,21 @@ export class SDFRenderer {
         await this.build(SDFRenderer.EMPTY_SCENE_SRC)
     }
 
+    /** Whether the current build supports user-cancellable mesh export (needs shared memory). */
+    get meshExportCancellable(): boolean {
+        return this.#meshCancelFlag != null
+    }
+
+    /**
+     * Request cancellation of the in-flight mesh export. Sets the shared cancel flag the
+     * (blocked) export worker polls; the export bails at its next checkpoint and the
+     * `renderMesh` promise rejects with `MeshExportCancelledError`. No-op without shared
+     * memory or when nothing is exporting.
+     */
+    cancelMeshExport(): void {
+        if (this.#meshCancelFlag) Atomics.store(this.#meshCancelFlag, 0, 1)
+    }
+
     async renderMesh(
         _src: string,
         documentName?: string,
@@ -1777,10 +1818,14 @@ export class SDFRenderer {
             simplifyTuning?: SimplifyTuning
             /** When true, `renderMeshResult` is not rejected if the active tab differs from `documentName` (agent automation). */
             agentAutomation?: boolean
+            /** Live phase-progress sink (currently emitted by sfcc-rs). Fires on the main thread. */
+            onProgress?: (p: import("./export/mesh-exporter.mjs").ExportProgress) => void
         },
     ): Promise<MeshData> {
         const requestId = ++this.#requestIdCounter
         this.#latestRenderMeshRequestId = requestId
+        // Clear any stale cancel request from a prior export before this one begins.
+        if (this.#meshCancelFlag) Atomics.store(this.#meshCancelFlag, 0, 0)
         const simplifyOnExport = options?.simplifyOnExport ?? false
         const exporter = options?.exporter
         const exporterTuning = options?.exporterTuning
@@ -1798,6 +1843,7 @@ export class SDFRenderer {
                 resolve,
                 reject,
                 skipDocumentGuard: options?.agentAutomation === true,
+                onProgress: options?.onProgress,
             })
             this.#transpileWorker.postMessage({ type: "transpile", src: _src.trim(), requestId, kind: "renderMesh", documentName })
         })

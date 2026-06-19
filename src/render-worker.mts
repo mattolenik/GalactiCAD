@@ -163,6 +163,7 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
                     msg.exporter,
                     msg.exporterTuning,
                     msg.simplifyTuning,
+                    msg.cancelBuffer,
                 )
             }
             break

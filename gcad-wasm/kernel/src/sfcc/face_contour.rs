@@ -1313,7 +1313,12 @@ fn contour_into(
     // Coarse-region pruned views, built lazily on first touch and reused across every
     // leaf under the same `CONTOUR_PRUNE_LEVEL` ancestor.
     let mut prune_cache: HashMap<u64, Pruned> = HashMap::new();
-    for cell in leaves {
+    for (ci, cell) in leaves.iter().enumerate() {
+        // Cooperative cancel (every ~1k leaves so the check is free): stop and return the
+        // partial face map; the pipeline driver re-checks after contouring and bails.
+        if ci & 0x3FF == 0 && crate::sfcc::cancel::is_cancelled() {
+            break;
+        }
         let stride = stride_at_level(&lat, cell.level);
         let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
         let q: &dyn SdfQuery = if prune {

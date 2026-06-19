@@ -5,7 +5,9 @@
 //! WGSL strings are copied once across the boundary per rebuild.
 
 use gcad_kernel::scene_bridge::build_csg_tree_from_json;
-use gcad_kernel::sfcc::pipeline::{run_sfcc_pipeline_profiled, PipelineTuning, SfccWorldCube};
+use gcad_kernel::sfcc::pipeline::{
+    run_sfcc_pipeline_profiled, run_sfcc_pipeline_profiled_progress, PipelineTuning, SfccWorldCube,
+};
 use gcad_kernel::sfcc::worker;
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
@@ -134,6 +136,7 @@ pub struct SfccExportResult {
     tris: Vec<u32>,
     ok: bool,
     stats_json: String,
+    cancelled: bool,
 }
 
 #[wasm_bindgen]
@@ -158,6 +161,12 @@ impl SfccExportResult {
     pub fn stats_json(&self) -> String {
         self.stats_json.clone()
     }
+    /// True when the export was cooperatively cancelled mid-flight (empty mesh). The
+    /// caller should discard this result and keep its previous mesh.
+    #[wasm_bindgen(getter)]
+    pub fn cancelled(&self) -> bool {
+        self.cancelled
+    }
 }
 
 /// Build a mesh from a SERIALIZED SFCC scene. `scene_json` is the `BridgeNode`
@@ -173,6 +182,16 @@ pub fn export_sfcc(
     min_y: f64,
     min_z: f64,
     size: f64,
+    // Optional phase-progress callback `(phaseIndex: number, phaseName: string,
+    // elapsedMs: number)`, invoked synchronously at each phase boundary. The worker
+    // forwards each call to the main thread (postMessage) to drive the live export
+    // indicator. Omit/undefined → no callbacks, byte-identical output.
+    progress: Option<js_sys::Function>,
+    // Optional cancel callback `() => boolean`, polled at coarse checkpoints (octree
+    // rounds, contour chunks, phase boundaries). When it returns true the export bails
+    // and returns an empty result with `cancelled === true`. Typically reads a
+    // SharedArrayBuffer flag the main thread writes on the Cancel click.
+    cancel: Option<js_sys::Function>,
 ) -> Result<SfccExportResult, JsError> {
     let tree = build_csg_tree_from_json(scene_json).map_err(|e| JsError::new(&e))?;
     let tuning: BridgeTuning = if tuning_json.trim().is_empty() {
@@ -181,13 +200,36 @@ pub fn export_sfcc(
         serde_json::from_str(tuning_json).map_err(|e| JsError::new(&format!("tuning JSON parse error: {e}")))?
     };
     let cube = SfccWorldCube { min_x, min_y, min_z, size };
+    // Install the cooperative-cancel hook for this export (cleared on drop, so it can
+    // never leak into the next export on this thread). A failed call is treated as
+    // "not cancelled".
+    let _cancel_guard = cancel.map(|cb| {
+        gcad_kernel::sfcc::cancel::CancelGuard::install(Box::new(move || {
+            cb.call0(&JsValue::NULL).map(|v| v.is_truthy()).unwrap_or(false)
+        }))
+    });
     // Phase-timed run: `js_sys::Date::now()` is the injected clock (the dep-free kernel
     // has no time source). Date.now has ~1ms resolution — ample for the 10s–1000s-of-ms
     // phases; the mesh output is identical to the un-profiled `run_sfcc_pipeline`. The
     // phase split measures the #3 spatial-partition Amdahl ceiling (parallelizable
     // contour+cellmesh vs serial feature/octree/assemble).
     let now = || js_sys::Date::now();
-    let result = run_sfcc_pipeline_profiled(&tree, &cube, &tuning.to_pipeline(), &now);
+    let result = match progress {
+        Some(cb) => {
+            // Forward each `(idx, name, elapsed_ms)` phase tick to JS. A failed call (e.g.
+            // the receiver went away) is ignored — progress is advisory, never fatal.
+            let prog = move |idx: u32, name: &str, elapsed_ms: f64| {
+                let _ = cb.call3(
+                    &JsValue::NULL,
+                    &JsValue::from(idx),
+                    &JsValue::from_str(name),
+                    &JsValue::from_f64(elapsed_ms),
+                );
+            };
+            run_sfcc_pipeline_profiled_progress(&tree, &cube, &tuning.to_pipeline(), &now, &prog)
+        }
+        None => run_sfcc_pipeline_profiled(&tree, &cube, &tuning.to_pipeline(), &now),
+    };
 
     let s = &result.stats;
     let m = &result.manifold;
@@ -214,7 +256,13 @@ pub fn export_sfcc(
         octree_rounds.join(",")
     );
 
-    Ok(SfccExportResult { verts: result.verts, tris: result.tris, ok: result.ok, stats_json })
+    Ok(SfccExportResult {
+        cancelled: result.cancelled,
+        verts: result.verts,
+        tris: result.tris,
+        ok: result.ok,
+        stats_json,
+    })
 }
 
 // --- slice 5 / Stage A: cross-instance worker meshing (prepare / mesh / merge) ---
@@ -391,7 +439,7 @@ pub fn sfcc_worker_merge(
         euler.join(",")
     );
 
-    Ok(SfccExportResult { verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json })
+    Ok(SfccExportResult { verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json, cancelled: false })
 }
 
 // --- M6 threading smoke (opt-in `threads` feature) ---------------------------

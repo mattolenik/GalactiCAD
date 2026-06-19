@@ -38,7 +38,7 @@ import {
     rectangularSelection,
     type ViewUpdate,
 } from "@codemirror/view"
-import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands"
+import { defaultKeymap, history, historyField, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands"
 import {
     bracketMatching,
     codeFolding,
@@ -224,6 +224,27 @@ export class CodeEditor {
     /** Build a fresh per-document state with the full shared extension set. */
     createState(content: string): EditorState {
         return EditorState.create({ doc: content, extensions: this.#baseExtensions() })
+    }
+
+    /**
+     * Serialize a document state (text, selection, AND undo/redo history) to a
+     * plain JSON value for persistence — the `{ doc, selection, history }` shape
+     * CodeMirror's {@link EditorState.toJSON} produces. Pair with
+     * {@link createStateFromJSON} to restore per-tab undo across page reloads.
+     */
+    serializeState(state: EditorState): unknown {
+        return state.toJSON({ history: historyField })
+    }
+
+    /**
+     * Rebuild a document state from a {@link serializeState} JSON value, with the
+     * full shared extension set, restoring the undo/redo history. Throws if the
+     * JSON is not a valid serialized state.
+     */
+    createStateFromJSON(json: unknown): EditorState {
+        return EditorState.fromJSON(json as Parameters<typeof EditorState.fromJSON>[0], {
+            extensions: this.#baseExtensions(),
+        }, { history: historyField })
     }
 
     /** Swap the active document state in, re-applying current options/theme. */

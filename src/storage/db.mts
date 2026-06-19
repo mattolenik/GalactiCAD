@@ -18,6 +18,13 @@ export interface DocumentRow {
     lastWriteToDisk?: number
     /** Last known time disk and DB copy were the same (file-backed only) */
     lastSyncWithDisk?: number
+    /**
+     * Serialized CodeMirror EditorState (text + selection + undo/redo history),
+     * so the per-tab undo stack survives a page reload. Restored only when its
+     * `doc` still matches `content` (else discarded — see DocumentTabs).
+     * Non-indexed, so adding it needs no Dexie version bump.
+     */
+    editorState?: unknown
 }
 
 export interface DocSettingsRow {
@@ -97,12 +104,16 @@ export async function setDocFileBacked(
     lastWriteToDisk?: number,
     lastSyncWithDisk?: number
 ): Promise<void> {
+    // Preserve any persisted editorState (undo history) across this full-row put —
+    // the debounced persister is its only writer, and this put would otherwise drop it.
+    const existing = await db.documents.get(name)
     await db.documents.put({
         name,
         content,
         lastWrittenContent,
         lastWriteToDisk,
         lastSyncWithDisk,
+        ...(existing?.editorState !== undefined ? { editorState: existing.editorState } : {}),
     })
 }
 

@@ -356,7 +356,7 @@ export class DocumentTabs extends HTMLElement {
             lastWritten = resolved.lastWritten
             lastSyncWithDisk = resolved.lastSyncWithDisk
         }
-        this.#docs.set(name, this.#editor.createState(resolvedContent))
+        this.#docs.set(name, await this.#stateFor(name, resolvedContent))
         if (handle) {
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, lastWritten)
@@ -400,7 +400,7 @@ export class DocumentTabs extends HTMLElement {
         }
         const row = await db.documents.get(name)
         if (!row) return
-        this.#docs.set(name, this.#editor.createState(row.content))
+        this.#docs.set(name, await this.#stateFor(name, row.content))
         this.#registerDoc(name)
         await this.switchTo(name)
         await this.#updateStoredOrder()
@@ -457,7 +457,7 @@ export class DocumentTabs extends HTMLElement {
         const entries = await listGcadFileHandles(dirHandle)
         for (const { name, handle } of entries) {
             const resolved = await this.#resolveFileContent(name, handle)
-            this.#docs.set(name, this.#editor.createState(resolved.content))
+            this.#docs.set(name, await this.#stateFor(name, resolved.content))
             this.#fileHandles.set(name, handle)
             this.#lastWrittenContent.set(name, resolved.lastWritten)
             await db.docFiles.put({ name, handle })
@@ -634,7 +634,7 @@ export class DocumentTabs extends HTMLElement {
                     if (fileHandle) {
                         const docRow = await db.documents.get(name)
                         const resolved = await this.#resolveFileContent(name, fileHandle, docRow)
-                        this.#docs.set(name, this.#editor.createState(resolved.content))
+                        this.#docs.set(name, await this.#stateFor(name, resolved.content))
                         this.#fileHandles.set(name, fileHandle)
                         this.#lastWrittenContent.set(name, resolved.lastWritten)
                         await db.docFiles.put({ name, handle: fileHandle })
@@ -643,14 +643,14 @@ export class DocumentTabs extends HTMLElement {
                     } else {
                         const docRow = await db.documents.get(name)
                         if (docRow) {
-                            this.#docs.set(name, this.#editor.createState(docRow.content))
+                            this.#docs.set(name, await this.#stateFor(name, docRow.content))
                             this.#registerDoc(name)
                         }
                     }
                 } catch {
                     const docRow = await db.documents.get(name)
                     if (docRow) {
-                        this.#docs.set(name, this.#editor.createState(docRow.content))
+                        this.#docs.set(name, await this.#stateFor(name, docRow.content))
                         this.#registerDoc(name)
                     }
                 }
@@ -666,7 +666,7 @@ export class DocumentTabs extends HTMLElement {
         for (const name of storedOrder) {
             const docRow = await db.documents.get(name)
             if (docRow) {
-                this.#docs.set(name, this.#editor.createState(docRow.content))
+                this.#docs.set(name, await this.#stateFor(name, docRow.content))
                 this.#registerDoc(name)
             } else {
                 const docFileRow = await db.docFiles.get(name)
@@ -674,7 +674,7 @@ export class DocumentTabs extends HTMLElement {
                     try {
                         const docRow = await db.documents.get(name)
                         const resolved = await this.#resolveFileContent(name, docFileRow.handle, docRow)
-                        this.#docs.set(name, this.#editor.createState(resolved.content))
+                        this.#docs.set(name, await this.#stateFor(name, resolved.content))
                         this.#fileHandles.set(name, docFileRow.handle)
                         this.#lastWrittenContent.set(name, resolved.lastWritten)
                         await setDocFileBacked(name, resolved.content, resolved.lastWritten, docRow?.lastWriteToDisk, resolved.lastSyncWithDisk)
@@ -702,6 +702,25 @@ export class DocumentTabs extends HTMLElement {
         else this.#persistStorage(name)
     }
 
+    /**
+     * Build the editor state for a doc being opened/restored, rehydrating its
+     * persisted undo/redo history when the saved snapshot's text still matches
+     * `content`. A mismatch (e.g. a file-backed doc reloaded from newer disk, or
+     * a corrupt snapshot) falls back to a clean state, so stale history can never
+     * be replayed against changed text.
+     */
+    async #stateFor(name: string, content: string): Promise<EditorState> {
+        const snap = (await db.documents.get(name))?.editorState
+        if (snap && typeof snap === "object" && (snap as { doc?: unknown }).doc === content) {
+            try {
+                return this.#editor.createStateFromJSON(snap)
+            } catch {
+                // Incompatible/corrupt snapshot — fall through to a clean state.
+            }
+        }
+        return this.#editor.createState(content)
+    }
+
     /** Replace a document's full text (revert / external reload), whether active or not. */
     #setDocText(name: string, text: string): void {
         if (name === this.#active) {
@@ -713,17 +732,21 @@ export class DocumentTabs extends HTMLElement {
     }
 
     #persistFileBacked(name: string): void {
-        const content = this.#docs.get(name)?.doc.toString()
-        if (content === undefined) return
+        const state = this.#docs.get(name)
+        if (state === undefined) return
         const lastWritten = this.#lastWrittenContent.get(name)
-        void db.documents.update(name, { content, lastWrittenContent: lastWritten })
+        void db.documents.update(name, {
+            content: state.doc.toString(),
+            lastWrittenContent: lastWritten,
+            editorState: this.#editor.serializeState(state),
+        })
         this.#renderTabs()
     }
 
     #persistStorage(name: string): void {
-        const content = this.#docs.get(name)?.doc.toString()
-        if (content === undefined) return
-        void db.documents.put({ name, content })
+        const state = this.#docs.get(name)
+        if (state === undefined) return
+        void db.documents.put({ name, content: state.doc.toString(), editorState: this.#editor.serializeState(state) })
     }
 
     closeCurrentTab(): Promise<boolean> {
@@ -876,6 +899,7 @@ export class DocumentTabs extends HTMLElement {
                 ...(docRow.lastWrittenContent !== undefined && { lastWrittenContent: docRow.lastWrittenContent }),
                 ...(docRow.lastWriteToDisk !== undefined && { lastWriteToDisk: docRow.lastWriteToDisk }),
                 ...(docRow.lastSyncWithDisk !== undefined && { lastSyncWithDisk: docRow.lastSyncWithDisk }),
+                ...(docRow.editorState !== undefined && { editorState: docRow.editorState }),
             })
         }
 

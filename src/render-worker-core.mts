@@ -297,6 +297,9 @@ export class RenderWorkerCore {
     #depthBindGroup: GPUBindGroup | null = null
     #sceneDepthTexture?: GPUTexture
     #sceneDepthTextureView?: GPUTextureView
+    /** 1-pixel MAP_READ staging for reading cursor surface depth (FG occlusion). */
+    #occlusionReadback?: GPUBuffer
+    #occlusionReadbackBusy = false
     #sceneDepthW = 0
     #sceneDepthH = 0
     /**
@@ -1112,6 +1115,15 @@ export class RenderWorkerCore {
         if (!this.#featureGraphOverlayEnabled) return
         const overlay = this.#featureGraphOverlay
         if (!overlay || !overlay.hasAliveFeatures) return
+        // Per-mode feature-type gate: each selection mode draws only its own
+        // feature type — edges in edge mode, corners in corner mode, both in
+        // auto, neither in face/object/seam. Skip the whole overlay (incl. the
+        // occlusion depth pass) when nothing would draw.
+        const mode = this.#lastSelectionMode
+        const drawEdges = mode === SEL_MODE_EDGE || mode === SEL_MODE_AUTO
+        const drawCorners = mode === SEL_MODE_CORNER || mode === SEL_MODE_AUTO
+        if (!drawEdges && !drawCorners) return
+        overlay.setDrawTypes(drawEdges, drawCorners)
         // Optional depth-occlusion: render the SDF surface depth into an
         // rgba32float world-position texture, then hand it (+ the mode) to the
         // overlay so it can hide/dim lines that sit behind the geometry. Returns
@@ -1206,7 +1218,9 @@ export class RenderWorkerCore {
             label: "FeatureGraph Scene Depth",
             size: [w, h],
             format: "rgba32float",
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            // COPY_SRC: the CPU FG hit-test reads the cursor pixel back to depth-
+            // occlude features (hide-behind), matching what the overlay draws.
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
         })
         this.#sceneDepthTextureView = this.#sceneDepthTexture.createView()
         this.#sceneDepthW = w
@@ -3648,6 +3662,58 @@ export class RenderWorkerCore {
         return this.#featureGraphLineWidth / 2 + 3
     }
 
+    /** Whether FG picking should depth-occlude features — true only in the
+     *  "hide behind" (hard) occlusion mode, matching what the overlay hides, so
+     *  you can't hover/select a feature the surface is drawn over. */
+    #fgDepthOcclusionActive(): boolean {
+        return this.#featureGraphOcclusionMode === occlusionModeToInt("hard")
+    }
+
+    /**
+     * Surface view-space depth (`viewZ`) at the cursor, read from the overlay's
+     * scene-depth texture (world-position rgba32float). Used to depth-occlude FG
+     * features in hide-behind mode. Returns undefined when occlusion is off, the
+     * depth texture isn't ready yet, or the cursor is over empty space (nothing
+     * to occlude behind). The texture is from the last overlay render — fine
+     * since the camera is static while hovering. Matches viewZ in
+     * feature_graph_overlay.wgsl (and feature-graph-hit-test's viewZOf).
+     */
+    async #cursorSurfaceViewZ(clickUV: [number, number], sab?: SharedArrayBuffer): Promise<number | undefined> {
+        if (!this.#fgDepthOcclusionActive()) return undefined
+        const tex = this.#sceneDepthTexture
+        if (!tex) return undefined
+        const w = this.#sceneDepthW
+        const h = this.#sceneDepthH
+        const px = Math.max(0, Math.min(w - 1, Math.round(clickUV[0] * w)))
+        const py = Math.max(0, Math.min(h - 1, Math.round((1 - clickUV[1]) * h)))
+        if (this.#occlusionReadbackBusy) return undefined // a prior hover's readback is still mapping
+        if (!this.#occlusionReadback) {
+            this.#occlusionReadback = this.#device.createBuffer({
+                label: "fgOcclusionReadback",
+                size: 256,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+            })
+        }
+        this.#occlusionReadbackBusy = true
+        const enc = this.#device.createCommandEncoder({ label: "fgOcclusionDepth" })
+        enc.copyTextureToBuffer({ texture: tex, origin: { x: px, y: py } }, { buffer: this.#occlusionReadback, bytesPerRow: 256 }, { width: 1, height: 1 })
+        this.#device.queue.submit([enc.finish()])
+        try {
+            await this.#occlusionReadback.mapAsync(GPUMapMode.READ, 0, 16)
+        } catch {
+            this.#occlusionReadbackBusy = false
+            return undefined
+        }
+        const f = new Float32Array(this.#occlusionReadback.getMappedRange(0, 16).slice(0))
+        this.#occlusionReadback.unmap()
+        this.#occlusionReadbackBusy = false
+        if ((f[3] ?? 0) <= 0.5) return undefined // miss: no surface at the cursor
+        const cam = this.#buildFgCameraParams(sab)
+        if (!cam) return undefined
+        const m = cam.viewTransformInv
+        return m[2]! * f[0]! + m[6]! * f[1]! + m[10]! * f[2]! + m[14]! - cam.origin[2]
+    }
+
     /**
      * Build the projection parameters the CPU hit-tester needs, mirroring the
      * overlay's `uploadCamera`: inverse view transform + ray-origin-pushed
@@ -3779,14 +3845,14 @@ export class RenderWorkerCore {
     // never defined. Minimal faithful impl (mirrors the pickAny path in
     // #handleFgClick): is any FeatureGraph feature under the cursor? Confirm or
     // replace with your intended version.
-    #fgClickHasFeature(clickUV: [number, number], sab?: SharedArrayBuffer): boolean {
+    #fgClickHasFeature(clickUV: [number, number], sab?: SharedArrayBuffer, occluderViewZ?: number): boolean {
         const cam = this.#buildFgCameraParams(sab)
         const ht = this.#fgHitTester
         if (!cam || !ht) return false
-        return ht.pickAny(clickUV, cam, this.#fgPickThresholdPx(), this.#fgEdgePickThresholdPx()) !== null
+        return ht.pickAny(clickUV, cam, this.#fgPickThresholdPx(), this.#fgEdgePickThresholdPx(), occluderViewZ) !== null
     }
 
-    #handleFgClick(clickUV: [number, number], mode: number, shiftKey: boolean, sab?: SharedArrayBuffer, documentName?: string): void {
+    #handleFgClick(clickUV: [number, number], mode: number, shiftKey: boolean, sab?: SharedArrayBuffer, documentName?: string, occluderViewZ?: number): void {
         const cam = this.#buildFgCameraParams(sab)
         const ht = this.#fgHitTester
         if (cam && ht) {
@@ -3795,20 +3861,20 @@ export class RenderWorkerCore {
             let kind: "edge" | "corner" | null = null
             let id = -1
             if (mode === SEL_MODE_CORNER || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "corner")) {
-                const h = ht.pickCorner(clickUV, cam, thr)
+                const h = ht.pickCorner(clickUV, cam, thr, occluderViewZ)
                 if (h) {
                     kind = "corner"
                     id = h.cornerVertexIndex
                 }
             } else if (mode === SEL_MODE_EDGE || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "edge")) {
-                const h = ht.pickEdgeChain(clickUV, cam, edgeThr)
+                const h = ht.pickEdgeChain(clickUV, cam, edgeThr, occluderViewZ)
                 if (h) {
                     kind = "edge"
                     id = h.chainId
                 }
             } else {
                 // Auto, no lock yet — nearest feature of any type.
-                const h = ht.pickAny(clickUV, cam, thr, edgeThr)
+                const h = ht.pickAny(clickUV, cam, thr, edgeThr, occluderViewZ)
                 if (h) {
                     kind = h.kind
                     id = h.id
@@ -3845,7 +3911,7 @@ export class RenderWorkerCore {
     }
 
     /** CPU feature pick for a hover in edge/corner/auto mode. */
-    #handleFgHover(clickUV: [number, number], mode: number, sab?: SharedArrayBuffer, documentName?: string, hoverRequestId?: number): void {
+    #handleFgHover(clickUV: [number, number], mode: number, sab?: SharedArrayBuffer, documentName?: string, hoverRequestId?: number, occluderViewZ?: number): void {
         this.#fgHoverChain = -1
         this.#fgHoverCorner = -1
         const cam = this.#buildFgCameraParams(sab)
@@ -3854,13 +3920,13 @@ export class RenderWorkerCore {
             const thr = this.#fgPickThresholdPx()
             const edgeThr = this.#fgEdgePickThresholdPx()
             if (mode === SEL_MODE_CORNER || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "corner")) {
-                const h = ht.pickCorner(clickUV, cam, thr)
+                const h = ht.pickCorner(clickUV, cam, thr, occluderViewZ)
                 if (h) this.#fgHoverCorner = h.cornerVertexIndex
             } else if (mode === SEL_MODE_EDGE || (mode === SEL_MODE_AUTO && this.#fgAutoLockedType === "edge")) {
-                const h = ht.pickEdgeChain(clickUV, cam, edgeThr)
+                const h = ht.pickEdgeChain(clickUV, cam, edgeThr, occluderViewZ)
                 if (h) this.#fgHoverChain = h.chainId
             } else {
-                const h = ht.pickAny(clickUV, cam, thr, edgeThr)
+                const h = ht.pickAny(clickUV, cam, thr, edgeThr, occluderViewZ)
                 if (h) {
                     if (h.kind === "corner") this.#fgHoverCorner = h.id
                     else this.#fgHoverChain = h.id
@@ -3883,16 +3949,18 @@ export class RenderWorkerCore {
         // Edge/corner modes pick FeatureGraph features on the CPU instead of the
         // GPU object/edge atomics — object selection never runs there.
         const mode = this.#readSelectionMode(sab)
-        if (mode === SEL_MODE_EDGE || mode === SEL_MODE_CORNER) {
-            this.#handleFgClick(clickUV, mode, shiftKey, sab, documentName)
-            return
-        }
-        // Auto picks the nearest FeatureGraph feature when one is under the
-        // cursor; otherwise it falls through to the GPU pick so the main thread
-        // can select the face/surface (auto = "select any feature", incl. caps).
-        if (mode === SEL_MODE_AUTO) {
-            if (this.#fgClickHasFeature(clickUV, sab)) {
-                this.#handleFgClick(clickUV, mode, shiftKey, sab, documentName)
+        if (mode === SEL_MODE_EDGE || mode === SEL_MODE_CORNER || mode === SEL_MODE_AUTO) {
+            // Hide-behind: occlude features behind the surface at the cursor.
+            const occZ = await this.#cursorSurfaceViewZ(clickUV, sab)
+            if (mode === SEL_MODE_EDGE || mode === SEL_MODE_CORNER) {
+                this.#handleFgClick(clickUV, mode, shiftKey, sab, documentName, occZ)
+                return
+            }
+            // Auto picks the nearest FeatureGraph feature when one is under the
+            // cursor; otherwise it falls through to the GPU pick so the main thread
+            // can select the face/surface (auto = "select any feature", incl. caps).
+            if (this.#fgClickHasFeature(clickUV, sab, occZ)) {
+                this.#handleFgClick(clickUV, mode, shiftKey, sab, documentName, occZ)
                 return
             }
             if (!shiftKey) this.clearFgSelection()
@@ -3933,13 +4001,16 @@ export class RenderWorkerCore {
         // face/surface hover below — so face-hover highlight works in Auto, not
         // just Face mode.
         const fgMode = this.#readSelectionMode(sab)
-        if (fgMode === SEL_MODE_EDGE || fgMode === SEL_MODE_CORNER) {
-            this.#handleFgHover(clickUV, fgMode, sab, documentName, hoverRequestId)
-            return
-        }
-        if (fgMode === SEL_MODE_AUTO) {
-            if (this.#fgClickHasFeature(clickUV, sab)) {
-                this.#handleFgHover(clickUV, fgMode, sab, documentName, hoverRequestId)
+        if (fgMode === SEL_MODE_EDGE || fgMode === SEL_MODE_CORNER || fgMode === SEL_MODE_AUTO) {
+            // In hide-behind mode, surface depth at the cursor occludes features
+            // drawn behind it (read once, threaded into the hit-test).
+            const occZ = await this.#cursorSurfaceViewZ(clickUV, sab)
+            if (fgMode === SEL_MODE_EDGE || fgMode === SEL_MODE_CORNER) {
+                this.#handleFgHover(clickUV, fgMode, sab, documentName, hoverRequestId, occZ)
+                return
+            }
+            if (this.#fgClickHasFeature(clickUV, sab, occZ)) {
+                this.#handleFgHover(clickUV, fgMode, sab, documentName, hoverRequestId, occZ)
                 return
             }
             // No FG feature near — drop any stale FG hover highlight, then let the

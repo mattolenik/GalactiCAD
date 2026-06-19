@@ -76,18 +76,31 @@ function clickToCentered(cam: FgCameraParams, clickUV: readonly [number, number]
     return [(clickUV[0] - 0.5) * cam.resX, (clickUV[1] - 0.5) * cam.resY]
 }
 
-/** Squared distance from point `q` to segment `a`–`b`. */
-function segDist2(qx: number, qy: number, ax: number, ay: number, bx: number, by: number): number {
+// Surface-occlusion bias in view-space (world) units — must match OCCLUSION_BIAS
+// in feature_graph_overlay.wgsl so the CPU hit-test hides exactly the features
+// the overlay hides in "hide behind" mode (features coincident with the surface
+// stay pickable; only those clearly behind it drop out).
+const OCCLUSION_BIAS = 0.5
+
+// View-space depth of a world point (== `viewZ` in the overlay shader). Larger
+// is nearer the camera, so a feature is occluded when its viewZ is below the
+// surface's viewZ at that pixel. `cam.viewTransformInv` is the world→camera
+// transform; this is the z row of (viewTransformInv · point) minus origin.z.
+export function viewZOf(cam: FgCameraParams, x: number, y: number, z: number): number {
+    const m = cam.viewTransformInv
+    return m[2]! * x + m[6]! * y + m[10]! * z + m[14]! - cam.origin[2]
+}
+
+/** Nearest point on segment a–b to q: squared distance + the clamped param t. */
+function segNearest(qx: number, qy: number, ax: number, ay: number, bx: number, by: number): { d2: number; t: number } {
     const dx = bx - ax
     const dy = by - ay
     const len2 = dx * dx + dy * dy
     let t = len2 > 0 ? ((qx - ax) * dx + (qy - ay) * dy) / len2 : 0
     t = t < 0 ? 0 : t > 1 ? 1 : t
-    const cx = ax + t * dx
-    const cy = ay + t * dy
-    const ex = qx - cx
-    const ey = qy - cy
-    return ex * ex + ey * ey
+    const ex = qx - (ax + t * dx)
+    const ey = qy - (ay + t * dy)
+    return { d2: ex * ex + ey * ey, t }
 }
 
 export class FeatureGraphHitTester {
@@ -125,28 +138,40 @@ export class FeatureGraphHitTester {
         return this.#cornerInstanceByVertex.get(vertexIndex) ?? -1
     }
 
-    /** Project every world vertex to centered pixels once (stride 2: x, y). */
+    /** Project every world vertex once: centered pixels + view-space depth
+     *  (stride 3: x, y, viewZ). viewZ feeds the surface-occlusion test. */
     #projectAll(cam: FgCameraParams): Float32Array {
         const w = this.#world.positions
         const n = this.#world.count
-        const out = new Float32Array(n * 2)
+        const out = new Float32Array(n * 3)
         const tmp: [number, number] = [0, 0]
         for (let i = 0; i < n; i++) {
-            projectCentered(cam, w[i * 3]!, w[i * 3 + 1]!, w[i * 3 + 2]!, tmp)
-            out[i * 2] = tmp[0]
-            out[i * 2 + 1] = tmp[1]
+            const x = w[i * 3]!
+            const y = w[i * 3 + 1]!
+            const z = w[i * 3 + 2]!
+            projectCentered(cam, x, y, z, tmp)
+            out[i * 3] = tmp[0]
+            out[i * 3 + 1] = tmp[1]
+            out[i * 3 + 2] = viewZOf(cam, x, y, z)
         }
         return out
     }
 
-    pickCorner(clickUV: readonly [number, number], cam: FgCameraParams, thresholdPx: number): FgCornerHit | null {
+    pickCorner(
+        clickUV: readonly [number, number],
+        cam: FgCameraParams,
+        thresholdPx: number,
+        occluderViewZ?: number,
+    ): FgCornerHit | null {
         const [qx, qy] = clickToCentered(cam, clickUV)
         const proj = this.#projectAll(cam)
+        const occ = occluderViewZ !== undefined ? occluderViewZ - OCCLUSION_BIAS : null
         let best = -1
         let bestD2 = thresholdPx * thresholdPx
         for (const v of this.#aliveCorners) {
-            const dx = proj[v * 2]! - qx
-            const dy = proj[v * 2 + 1]! - qy
+            if (occ !== null && proj[v * 3 + 2]! < occ) continue // behind the surface
+            const dx = proj[v * 3]! - qx
+            const dy = proj[v * 3 + 1]! - qy
             const d2 = dx * dx + dy * dy
             if (d2 < bestD2) {
                 bestD2 = d2
@@ -156,21 +181,32 @@ export class FeatureGraphHitTester {
         return best < 0 ? null : { cornerVertexIndex: best, distPx: Math.sqrt(bestD2) }
     }
 
-    pickEdgeChain(clickUV: readonly [number, number], cam: FgCameraParams, thresholdPx: number): FgEdgeHit | null {
+    pickEdgeChain(
+        clickUV: readonly [number, number],
+        cam: FgCameraParams,
+        thresholdPx: number,
+        occluderViewZ?: number,
+    ): FgEdgeHit | null {
         const [qx, qy] = clickToCentered(cam, clickUV)
         const proj = this.#projectAll(cam)
         const cpu = this.#cpu
+        const occ = occluderViewZ !== undefined ? occluderViewZ - OCCLUSION_BIAS : null
         let bestS = -1
         let bestD2 = thresholdPx * thresholdPx
         for (let s = 0; s < this.#aliveEdges.length; s++) {
             const e = this.#aliveEdges[s]!
             const a = cpu.edgeEndpoints[e * 2]!
             const b = cpu.edgeEndpoints[e * 2 + 1]!
-            const d2 = segDist2(qx, qy, proj[a * 2]!, proj[a * 2 + 1]!, proj[b * 2]!, proj[b * 2 + 1]!)
-            if (d2 < bestD2) {
-                bestD2 = d2
-                bestS = s
+            const nd = segNearest(qx, qy, proj[a * 3]!, proj[a * 3 + 1]!, proj[b * 3]!, proj[b * 3 + 1]!)
+            if (nd.d2 >= bestD2) continue
+            // Surface occlusion: the edge's depth at the point nearest the cursor,
+            // behind the surface ⇒ skip (matches the overlay's hide-behind).
+            if (occ !== null) {
+                const vz = proj[a * 3 + 2]! + (proj[b * 3 + 2]! - proj[a * 3 + 2]!) * nd.t
+                if (vz < occ) continue
             }
+            bestD2 = nd.d2
+            bestS = s
         }
         if (bestS < 0) return null
         return { chainId: this.#chains.edgeInstanceToChain[bestS]!, distPx: Math.sqrt(bestD2) }
@@ -187,9 +223,10 @@ export class FeatureGraphHitTester {
         cam: FgCameraParams,
         cornerThresholdPx: number,
         edgeThresholdPx: number = cornerThresholdPx,
+        occluderViewZ?: number,
     ): FgAnyHit | null {
-        const c = this.pickCorner(clickUV, cam, cornerThresholdPx)
-        const e = this.pickEdgeChain(clickUV, cam, edgeThresholdPx)
+        const c = this.pickCorner(clickUV, cam, cornerThresholdPx, occluderViewZ)
+        const e = this.pickEdgeChain(clickUV, cam, edgeThresholdPx, occluderViewZ)
         if (c && (!e || c.distPx <= e.distPx)) return { kind: "corner", id: c.cornerVertexIndex, distPx: c.distPx }
         if (e) return { kind: "edge", id: e.chainId, distPx: e.distPx }
         return null

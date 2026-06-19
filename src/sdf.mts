@@ -312,6 +312,11 @@ export class SDFRenderer {
                     })
                     return
                 }
+                // Double-click selects the whole object + focuses it in the editor —
+                // only meaningful for object/auto selection. In face/edge/corner/seam
+                // modes a double-click shouldn't hijack the editor or swap the object
+                // selection out from under the active feature mode.
+                if (this.#selectionMode !== "object" && this.#selectionMode !== "auto") return
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
                 if (uv) this.#worker.postMessage({ type: "doubleClick", clickUV: uv, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
@@ -490,12 +495,19 @@ export class SDFRenderer {
                 if (msg.requestId != null) this.#pendingBuild.delete(msg.requestId)
                 break
             }
-            case "clickResult":
+            case "clickResult": {
                 if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
+                // Clicking a face that's currently highlighted (the normal
+                // hover-then-click) reads back the FACE_HIGHLIGHT sentinel
+                // (1023/1022), not the real node — resolve it like the hover path,
+                // or the face-commit silently fails and the selection drops on the
+                // next hover. Non-sentinel ids pass through unchanged.
+                const clickedId = this.#resolveFaceSentinel(msg.clickedId)
                 this.#lastClickHitPos = msg.hitPos ? [msg.hitPos[0], msg.hitPos[1], msg.hitPos[2]] : null
-                this.#lastClickedId = msg.clickedId
-                this.#handleClickResult(msg.clickedId, msg.edgeHits, msg.shiftKey, msg.altKey)
+                this.#lastClickedId = clickedId
+                this.#handleClickResult(clickedId, msg.edgeHits, msg.shiftKey, msg.altKey)
                 break
+            }
             case "selectionInfo":
                 if (msg.documentName !== undefined && msg.documentName !== this.#getActiveDocument?.()) return
                 if (msg.hoverRequestId !== undefined && msg.hoverRequestId !== this.#latestHoverRequestId) return

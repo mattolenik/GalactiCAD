@@ -134,6 +134,10 @@ export class FeatureGraphOverlay {
     #edgeCount = 0
     /** Number of alive-corner instances uploaded; `draw(6, cornerCount)`. */
     #cornerCount = 0
+    /** Per-feature-type draw gates, driven by the active selection mode (see
+     *  {@link setDrawTypes}). Default both on (mode-agnostic debug overlay). */
+    #drawEdges = true
+    #drawCorners = true
     /**
      * 1×1 rgba32float placeholder bound at binding 1 whenever occlusion is off
      * (or no scene-depth texture has been supplied yet). The shader never reads
@@ -479,6 +483,16 @@ export class FeatureGraphOverlay {
     }
 
     /**
+     * Gate which feature types {@link render} draws — set from the active
+     * selection mode so each mode shows only its own feature type (edge mode →
+     * edges, corner mode → corners, auto → both, face/object → neither).
+     */
+    setDrawTypes(drawEdges: boolean, drawCorners: boolean): void {
+        this.#drawEdges = drawEdges
+        this.#drawCorners = drawCorners
+    }
+
+    /**
      * Toggle original-vs-subdivided edge coloring. `false` (default) draws all
      * edges cyan; `true` paints emitted (non-subdivided) creases green. Applied
      * on next {@link uploadCamera}.
@@ -494,7 +508,9 @@ export class FeatureGraphOverlay {
      * `loadOp: "load"`.
      */
     render(pass: GPURenderPassEncoder): void {
-        if (this.#edgeCount === 0 && this.#cornerCount === 0) return
+        const drawEdges = this.#drawEdges && this.#edgeCount > 0
+        const drawCorners = this.#drawCorners && this.#cornerCount > 0
+        if (!drawEdges && !drawCorners) return
         if (!this.#bindGroup) {
             this.#bindGroup = this.#device.createBindGroup({
                 label: "FeatureGraphOverlay.BindGroup",
@@ -508,12 +524,12 @@ export class FeatureGraphOverlay {
             })
         }
         pass.setBindGroup(0, this.#bindGroup)
-        if (this.#edgeCount > 0 && this.#instanceBuffer) {
+        if (drawEdges && this.#instanceBuffer) {
             pass.setPipeline(this.#linePipeline)
             pass.setVertexBuffer(0, this.#instanceBuffer)
             pass.draw(6, this.#edgeCount) // 6 verts (2 triangles) per edge instance
         }
-        if (this.#cornerCount > 0 && this.#cornerBuffer) {
+        if (drawCorners && this.#cornerBuffer) {
             pass.setPipeline(this.#pointPipeline)
             pass.setVertexBuffer(0, this.#cornerBuffer)
             pass.draw(6, this.#cornerCount) // 6 verts per corner-marker instance

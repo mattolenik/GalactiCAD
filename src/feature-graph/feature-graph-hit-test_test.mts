@@ -7,7 +7,7 @@ import {
 } from "../scene/feature-graph-buffer.mjs"
 import { Vec3f } from "../vecmat/vector.mjs"
 import { groupChains } from "./feature-graph-chains.mjs"
-import { FeatureGraphHitTester, type FgCameraParams } from "./feature-graph-hit-test.mjs"
+import { FeatureGraphHitTester, viewZOf, type FgCameraParams } from "./feature-graph-hit-test.mjs"
 import type { FeatureGraphWorldPositions } from "./feature-graph-stages.mjs"
 
 const v3 = (x: number, y: number, z: number) => new Vec3f([x, y, z])
@@ -94,4 +94,27 @@ test("hit-test: corner instance index maps back from vertex id", () => {
     assert.equal(ht.cornerInstanceIndex(a), 0)
     assert.equal(ht.cornerInstanceIndex(c), 1)
     assert.equal(ht.cornerInstanceIndex(999), -1)
+})
+
+test("viewZOf: identity camera → world z is the view depth (+ translation)", () => {
+    assert.equal(viewZOf(CAM, 1, 2, 7), 7)
+    // origin.z subtracts off; translation in the inverse's m[14] adds.
+    const cam: FgCameraParams = { ...CAM, origin: [0, 0, 3], viewTransformInv: (() => { const m = identityMat4(); m[14] = 10; return m })() }
+    assert.equal(viewZOf(cam, 0, 0, 4), 4 + 10 - 3)
+})
+
+test("hit-test: depth occlusion drops an edge behind the surface, keeps coincident/front ones", () => {
+    const { ht } = build() // edge along z=0 ⇒ viewZ 0 under identity CAM
+    const click = uvForWorld(0, 0)
+    assert.notEqual(ht.pickEdgeChain(click, CAM, 8), null) // no occluder: picks
+    assert.equal(ht.pickEdgeChain(click, CAM, 8, 5), null) // surface in front (viewZ 5) ⇒ behind ⇒ culled
+    assert.notEqual(ht.pickEdgeChain(click, CAM, 8, 0), null) // coincident (within bias) ⇒ kept
+    assert.notEqual(ht.pickEdgeChain(click, CAM, 8, -5), null) // surface behind ⇒ kept
+})
+
+test("hit-test: depth occlusion drops a corner behind the surface", () => {
+    const { ht, a } = build()
+    const click = uvForWorld(-0.5, 0) // corner a at z=0
+    assert.equal(ht.pickCorner(click, CAM, 8, 5), null) // behind surface ⇒ culled
+    assert.equal(ht.pickCorner(click, CAM, 8, -5)?.cornerVertexIndex, a) // in front ⇒ kept
 })

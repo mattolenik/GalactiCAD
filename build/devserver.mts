@@ -594,9 +594,21 @@ const INJECTED_BRIDGE_SCRIPT = `
             // expose hideBuildOverlay for completeness / future non-reloading builds.
             var BUILD_OVERLAY_ID = "__galacticad_build_overlay";
             var buildOverlayKeyBlocker = null;
-            function showBuildOverlay() {
+            function buildOverlaySubText(gcadWasm) {
+                return gcadWasm
+                    ? "[App+Rust] The page will reload when the build is done.";
+                    : "[App] The page will reload when the build is done.";
+            }
+            function showBuildOverlay(gcadWasm) {
                 try {
-                    if (document.getElementById(BUILD_OVERLAY_ID)) return;
+                    // Already up (overlapping builds): just refresh the sub-line so a build that
+                    // escalates to a gcad-wasm recompile updates the notice instead of being ignored.
+                    var existing = document.getElementById(BUILD_OVERLAY_ID);
+                    if (existing) {
+                        var existingSub = existing.querySelector("[data-build-sub]");
+                        if (existingSub) existingSub.textContent = buildOverlaySubText(gcadWasm);
+                        return;
+                    }
                     var host = document.body || document.documentElement;
                     if (!host) return;
                     var overlay = document.createElement("div");
@@ -633,7 +645,8 @@ const INJECTED_BRIDGE_SCRIPT = `
                     title.textContent = "Building\\u2026";
                     var sub = document.createElement("div");
                     sub.style.cssText = "opacity:0.8";
-                    sub.textContent = "The page will reload when the build is done.";
+                    sub.setAttribute("data-build-sub", "1");
+                    sub.textContent = buildOverlaySubText(gcadWasm);
                     box.appendChild(title);
                     box.appendChild(sub);
                     overlay.appendChild(box);
@@ -673,7 +686,7 @@ const INJECTED_BRIDGE_SCRIPT = `
                 var socket = event.target;
                 if (msg.type === "buildStart") {
                     if (autoReloadDisabled()) return;
-                    showBuildOverlay();
+                    showBuildOverlay(msg.gcadWasm === true);
                     return;
                 }
                 if (msg.type === "reload") {
@@ -916,9 +929,12 @@ export class DevServer {
         this.bridge.broadcastReload()
     }
 
-    /** Signal connected tabs that a build is starting; they show a dim build overlay until reload. */
-    public signalBuildStart() {
-        this.bridge.broadcastBuildStart()
+    /**
+     * Signal connected tabs that a build is starting; they show a dim build overlay until reload.
+     * Pass `gcadWasm` when the build also recompiles the gcad-wasm (Rust) kernel.
+     */
+    public signalBuildStart(gcadWasm = false) {
+        this.bridge.broadcastBuildStart(gcadWasm)
     }
 
     /**

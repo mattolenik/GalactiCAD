@@ -6,9 +6,11 @@ export type DevServerReloadMessage = { type: "reload" }
 /**
  * Server → browser: a build was just triggered by a file change. The injected client shows a
  * dim, interaction-blocking overlay until the matching `reload` arrives (which clears it by
- * navigating). Sent only when the build will be followed by a live reload.
+ * navigating). Sent only when the build will be followed by a live reload. `gcadWasm` is true
+ * when the build also recompiles the gcad-wasm (Rust) kernel, so the overlay can note the
+ * longer build.
  */
-export type DevServerBuildStartMessage = { type: "buildStart" }
+export type DevServerBuildStartMessage = { type: "buildStart"; gcadWasm?: boolean }
 
 export type DevServerConsoleLogLevel = "error" | "warn" | "info" | "debug"
 
@@ -205,10 +207,11 @@ export class BrowserBridge {
     /**
      * Tell every connected tab that a build has started so it can show the dim,
      * interaction-blocking overlay. The overlay is cleared when the page navigates on the
-     * subsequent `broadcastReload()`.
+     * subsequent `broadcastReload()`. Pass `gcadWasm` when the build also recompiles the
+     * gcad-wasm (Rust) kernel, so the overlay can note the longer build.
      */
-    broadcastBuildStart() {
-        const msg: DevServerBuildStartMessage = { type: "buildStart" }
+    broadcastBuildStart(gcadWasm = false) {
+        const msg: DevServerBuildStartMessage = { type: "buildStart", gcadWasm }
         const payload = JSON.stringify(msg)
         this.wsServer?.clients.forEach(client => {
             if (client.readyState === 1) client.send(payload)

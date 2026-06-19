@@ -1,10 +1,12 @@
 import chokidar from "chokidar"
 import { EventName } from "chokidar/handler.js"
+import { execFile } from "node:child_process"
 import * as esbuild from "esbuild"
 import fs from "fs/promises"
 import fsSync from "node:fs"
 import nodePath from "node:path"
 import { fileURLToPath } from "node:url"
+import { promisify } from "node:util"
 import { Subject } from "rxjs"
 import { debounceTime } from "rxjs/operators"
 import { DevServer, type RunFileData, AGENT_MODE } from "./devserver.mjs"
@@ -144,12 +146,55 @@ const WatchOptions = {
         // Ignore all of dist/ — site rebuilds, electron-builder buildResources,
         // and release artifacts should never trigger a watch rebuild.
         DIST_ROOT,
+        // gcad-wasm build OUTPUTS (all gitignored). A gcad-wasm *source* change makes the
+        // change handler spawn `make gcad-wasm`, which writes cargo artifacts to target/ and
+        // the wasm-pack bundle to wasm/pkg{,-threads}/. Watching those would loop/thrash, so
+        // ignore them; the .rs/Cargo source change is what drives the rebuild + reload.
+        (p: string) => /(^|\/)gcad-wasm\/(target|wasm\/pkg-threads|wasm\/pkg)(\/|$)/.test(p.replace(/\\/g, "/")),
     ],
     // Only build-tooling changes (the build script, devserver, esbuild plugins) require a
     // full process restart via re-exec — they're imported once at startup and can't be
     // hot-swapped. Everything else (app source, lockfiles, tsconfig, package.json) goes
     // through a normal esbuild rebuild + browser reload.
     causesRebuild: [/^build\//],
+}
+
+/**
+ * gcad-wasm (Rust) kernel sources whose change requires recompiling the wasm artifact before
+ * esbuild re-bundles it — `.rs` files plus the Cargo manifests/lockfile under `gcad-wasm/`.
+ * The generated `wasm/pkg{,-threads}/` and `target/` outputs are watch-ignored (see above), so
+ * only true source edits reach here.
+ */
+function isGcadWasmSource(relativePath: string): boolean {
+    const p = relativePath.replace(/\\/g, "/")
+    if (!p.startsWith("gcad-wasm/")) return false
+    return /\.rs$/.test(p) || /(^|\/)Cargo\.(toml|lock)$/.test(p)
+}
+
+const execFileAsync = promisify(execFile)
+
+/**
+ * Incrementally recompile the gcad-wasm Rust kernel via `make gcad-wasm` (stamp-tracked, so it
+ * only re-runs wasm-pack when sources are newer). Serialized through a single chain so two
+ * overlapping build cycles never run wasm-pack into the shared `pkg/` at once. Best-effort: a
+ * Rust compile error is logged and the build proceeds with the previous wasm so the reload
+ * still surfaces the current state.
+ */
+let gcadWasmRebuildChain: Promise<void> = Promise.resolve()
+function rebuildGcadWasm(): Promise<void> {
+    const run = async () => {
+        const startTime = performance.now()
+        log("🦀 Recompiling gcad-wasm (Rust kernel)…")
+        try {
+            await execFileAsync("make", ["gcad-wasm"], { cwd: process.cwd(), maxBuffer: 64 * 1024 * 1024 })
+            log(`🦀 gcad-wasm rebuilt in ${(performance.now() - startTime).toFixed(0)}ms`)
+        } catch (e) {
+            const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr?: unknown }).stderr ?? "") : ""
+            err(`🦀 gcad-wasm rebuild FAILED — keeping previous wasm:\n${stderr || (e instanceof Error ? e.message : String(e))}`)
+        }
+    }
+    gcadWasmRebuildChain = gcadWasmRebuildChain.then(run, run)
+    return gcadWasmRebuildChain
 }
 
 /** Relative paths matching these globs still run `build()` but skip WebSocket live reload. */
@@ -359,12 +404,22 @@ async function main() {
             process.exit(1)
         }
         const change$ = new Subject<{ event: EventName; path: string }>()
+        // Set when any change in the current (debounced) batch touched a gcad-wasm Rust source,
+        // so the build cycle recompiles the wasm and the overlay can say so. Read+reset per build.
+        let pendingGcadWasmRebuild = false
         change$.pipe(debounceTime(300)).subscribe(async ({ event, path }) => {
-            log(`Build triggered by ${event}: ${path}`)
+            const gcadWasm = pendingGcadWasmRebuild
+            pendingGcadWasmRebuild = false
+            log(`Build triggered by ${event}: ${path}${gcadWasm ? " (gcad-wasm recompile)" : ""}`)
             // Only the changes that will end in a live reload get the build overlay; .gcad edits
             // (NoRefresh) and the agent server rebuild silently with no reload, so no overlay.
             const willReload = !shouldSuppressLiveReload(path) && !AGENT_MODE
-            if (willReload) server?.signalBuildStart()
+            // Signal BEFORE the (slower, Rust) rebuild so the overlay is up for its whole duration.
+            if (willReload) server?.signalBuildStart(gcadWasm)
+            // The interactive server owns the incremental Rust→wasm rebuild so editing a kernel
+            // source hot-reloads. Skipped in agent mode so two side-by-side servers don't run
+            // wasm-pack into the shared pkg/ at once. esbuild (below) then bundles the fresh wasm.
+            if (gcadWasm && !AGENT_MODE) await rebuildGcadWasm()
             await build()
             if (willReload) {
                 server?.reload()
@@ -378,6 +433,7 @@ async function main() {
         let watcher = watch(
             ".",
             async (event, path) => {
+                if (isGcadWasmSource(path)) pendingGcadWasmRebuild = true
                 change$.next({ event, path })
             },
             async (event, eventPath) => {

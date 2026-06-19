@@ -361,8 +361,12 @@ async function main() {
         const change$ = new Subject<{ event: EventName; path: string }>()
         change$.pipe(debounceTime(300)).subscribe(async ({ event, path }) => {
             log(`Build triggered by ${event}: ${path}`)
+            // Only the changes that will end in a live reload get the build overlay; .gcad edits
+            // (NoRefresh) and the agent server rebuild silently with no reload, so no overlay.
+            const willReload = !shouldSuppressLiveReload(path) && !AGENT_MODE
+            if (willReload) server?.signalBuildStart()
             await build()
-            if (!shouldSuppressLiveReload(path) && !AGENT_MODE) {
+            if (willReload) {
                 server?.reload()
             }
         })

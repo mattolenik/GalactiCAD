@@ -582,13 +582,102 @@ const INJECTED_BRIDGE_SCRIPT = `
                 }
                 return true;
             }
+            // Master live-reload kill switch, flipped by the app's dev-tools "Auto reload"
+            // checkbox (default on). When the app sets this global true, every devserver-initiated
+            // reload — the build overlay, the post-build reload, and the server-restart reconnect
+            // reload — is ignored so the page stays put until the user reloads manually.
+            function autoReloadDisabled() {
+                try { return globalThis.__galacticadDevAutoReloadDisabled === true; } catch (_e) { return false; }
+            }
+            // Dim, interaction-blocking overlay shown between "buildStart" and the reload that
+            // follows a build. The reload navigates the page, which removes the overlay; we also
+            // expose hideBuildOverlay for completeness / future non-reloading builds.
+            var BUILD_OVERLAY_ID = "__galacticad_build_overlay";
+            var buildOverlayKeyBlocker = null;
+            function showBuildOverlay() {
+                try {
+                    if (document.getElementById(BUILD_OVERLAY_ID)) return;
+                    var host = document.body || document.documentElement;
+                    if (!host) return;
+                    var overlay = document.createElement("div");
+                    overlay.id = BUILD_OVERLAY_ID;
+                    overlay.setAttribute("role", "alert");
+                    overlay.setAttribute("aria-live", "assertive");
+                    overlay.style.cssText = [
+                        "position:fixed",
+                        "inset:0",
+                        "z-index:2147483647",
+                        "display:flex",
+                        "align-items:center",
+                        "justify-content:center",
+                        "background:rgba(15,17,21,0.45)",
+                        "cursor:progress",
+                        "font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif",
+                        "color:#f5f5f5",
+                        "user-select:none",
+                        "-webkit-user-select:none",
+                    ].join(";");
+                    var box = document.createElement("div");
+                    box.style.cssText = [
+                        "padding:18px 26px",
+                        "border-radius:10px",
+                        "background:rgba(20,22,28,0.92)",
+                        "box-shadow:0 8px 30px rgba(0,0,0,0.5)",
+                        "font-size:14px",
+                        "line-height:1.5",
+                        "text-align:center",
+                        "max-width:80vw",
+                    ].join(";");
+                    var title = document.createElement("div");
+                    title.style.cssText = "font-weight:600;font-size:15px;margin-bottom:4px";
+                    title.textContent = "Building\\u2026";
+                    var sub = document.createElement("div");
+                    sub.style.cssText = "opacity:0.8";
+                    sub.textContent = "The page will reload when the build is done.";
+                    box.appendChild(title);
+                    box.appendChild(sub);
+                    overlay.appendChild(box);
+                    // Swallow pointer interaction on the overlay itself; the full-window cover already
+                    // keeps the mouse off the canvas/editor beneath it.
+                    var swallow = function (e) { e.stopPropagation(); e.preventDefault(); };
+                    overlay.addEventListener("pointerdown", swallow, true);
+                    overlay.addEventListener("mousedown", swallow, true);
+                    overlay.addEventListener("click", swallow, true);
+                    host.appendChild(overlay);
+                    // Drop focus from any input (e.g. the editor) and stop app-level key handlers from
+                    // firing while building, so the page is effectively frozen until reload.
+                    try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (_b) {}
+                    buildOverlayKeyBlocker = function (e) { e.stopPropagation(); };
+                    window.addEventListener("keydown", buildOverlayKeyBlocker, true);
+                    window.addEventListener("keypress", buildOverlayKeyBlocker, true);
+                    window.addEventListener("keyup", buildOverlayKeyBlocker, true);
+                } catch (_e) {}
+            }
+            function hideBuildOverlay() {
+                try {
+                    var el = document.getElementById(BUILD_OVERLAY_ID);
+                    if (el && el.parentNode) el.parentNode.removeChild(el);
+                    if (buildOverlayKeyBlocker) {
+                        window.removeEventListener("keydown", buildOverlayKeyBlocker, true);
+                        window.removeEventListener("keypress", buildOverlayKeyBlocker, true);
+                        window.removeEventListener("keyup", buildOverlayKeyBlocker, true);
+                        buildOverlayKeyBlocker = null;
+                    }
+                } catch (_e) {}
+            }
             function onMessage(event) {
                 var data = event.data;
                 if (typeof data !== "string") return;
                 var msg;
                 try { msg = JSON.parse(data); } catch (_e) { return; }
                 var socket = event.target;
+                if (msg.type === "buildStart") {
+                    if (autoReloadDisabled()) return;
+                    showBuildOverlay();
+                    return;
+                }
                 if (msg.type === "reload") {
+                    if (autoReloadDisabled()) return;
                     intentionalClose = true;
                     if (reconnectTimer) {
                         clearTimeout(reconnectTimer);
@@ -710,6 +799,7 @@ const INJECTED_BRIDGE_SCRIPT = `
                         // Server-initiated reloads use the 'reload' message + intentionalClose
                         // path (page reloads directly), so this only fires for an unexpected
                         // drop+recover such as a restart.
+                        if (autoReloadDisabled()) return; // live reload off: stay on the (possibly stale) page
                         window.location.reload();
                         return;
                     }
@@ -824,6 +914,11 @@ export class DevServer {
 
     public reload() {
         this.bridge.broadcastReload()
+    }
+
+    /** Signal connected tabs that a build is starting; they show a dim build overlay until reload. */
+    public signalBuildStart() {
+        this.bridge.broadcastBuildStart()
     }
 
     /**

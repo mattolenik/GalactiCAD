@@ -51,6 +51,8 @@ export const DEFAULT_DEVTOOLS_COLLAPSE_OPEN: Partial<Record<DevToolsCollapseId, 
 
 /** Defaults when `devToolsSections[DEVTOOLS_SECTION_APP]` is missing or partial. */
 export const DEFAULT_APP_DEVTOOLS_STATE: Record<string, JSONValue> = {
+    // Devserver live-reload master switch (consumed by the injected bridge script).
+    autoReload: true,
     showFps: true,
     meshViewerEnabled: false,
     meshSimplifyOnExport: false,

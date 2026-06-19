@@ -3,6 +3,13 @@ import type { WebSocket, WebSocketServer } from "ws"
 /** Server → browser: reload the page. */
 export type DevServerReloadMessage = { type: "reload" }
 
+/**
+ * Server → browser: a build was just triggered by a file change. The injected client shows a
+ * dim, interaction-blocking overlay until the matching `reload` arrives (which clears it by
+ * navigating). Sent only when the build will be followed by a live reload.
+ */
+export type DevServerBuildStartMessage = { type: "buildStart" }
+
 export type DevServerConsoleLogLevel = "error" | "warn" | "info" | "debug"
 
 /** Server → browser: return up to `n` log lines (newest first, filtered + deduped in the injected script). */
@@ -78,6 +85,7 @@ export type DevServerScreenshotResultMessage = { type: "screenshotResult"; id: s
 
 export type DevServerToBrowserMessage =
     | DevServerReloadMessage
+    | DevServerBuildStartMessage
     | DevServerGetConsoleLogsMessage
     | DevServerGetActiveSceneSourceMessage
     | DevServerExportAgentTestcaseMessage
@@ -188,6 +196,19 @@ export class BrowserBridge {
 
     broadcastReload() {
         const msg: DevServerReloadMessage = { type: "reload" }
+        const payload = JSON.stringify(msg)
+        this.wsServer?.clients.forEach(client => {
+            if (client.readyState === 1) client.send(payload)
+        })
+    }
+
+    /**
+     * Tell every connected tab that a build has started so it can show the dim,
+     * interaction-blocking overlay. The overlay is cleared when the page navigates on the
+     * subsequent `broadcastReload()`.
+     */
+    broadcastBuildStart() {
+        const msg: DevServerBuildStartMessage = { type: "buildStart" }
         const payload = JSON.stringify(msg)
         this.wsServer?.clients.forEach(client => {
             if (client.readyState === 1) client.send(payload)

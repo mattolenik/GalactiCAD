@@ -31,6 +31,7 @@ export const RENDER_NORMALS_CHANGE_EVENT = "galacticad-render-normals-change" as
 export class DevToolsAppSection extends HTMLElement implements DevToolsPersistable {
     readonly devToolsSectionId = DEVTOOLS_SECTION_APP
     #applying = false
+    #autoReload$: BehaviorSubject<boolean>
     #showFps$: BehaviorSubject<boolean>
     #meshViewer$: BehaviorSubject<boolean>
     #meshSimplify$: BehaviorSubject<boolean>
@@ -87,6 +88,14 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         } finally {
             this.#applying = false
         }
+    }
+
+    get autoReload(): boolean {
+        return this.#autoReload$.value
+    }
+
+    set autoReload(v: boolean) {
+        this.#autoReload$.next(v)
     }
 
     get showFps(): boolean {
@@ -198,6 +207,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         shadow.appendChild(style)
 
         const d = DEFAULT_APP_DEVTOOLS_STATE
+        this.#autoReload$ = new BehaviorSubject(asBool(d.autoReload, true))
         this.#showFps$ = new BehaviorSubject(asBool(d.showFps, true))
         this.#meshViewer$ = new BehaviorSubject(asBool(d.meshViewerEnabled, false))
         this.#meshSimplify$ = new BehaviorSubject(asBool(d.meshSimplifyOnExport, false))
@@ -233,6 +243,22 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             if (this.#applying) return
             dispatchDevToolsStateChange(this, this.devToolsSectionId)
         }
+
+        // High-level master switch for devserver live reload (default on). Lives at the top of
+        // the App section, above the Viewport/Export sub-boxes. When unchecked, the injected
+        // devserver client ignores build overlays and page reloads entirely — implemented as a
+        // global flag the bridge script reads (see autoReloadDisabled() in build/devserver.mts).
+        const autoReloadCb = this.#addCheckbox(shadow, "Auto reload", this.#autoReload$.value)
+        this.#subscriptions.push(connectCheckbox(autoReloadCb, this.#autoReload$))
+        // Fires immediately with the current value, then on every change, so the global flag
+        // tracks the checkbox even when setDevToolsState() restores a persisted value.
+        this.#subscriptions.push(
+            this.#autoReload$.subscribe(enabled => {
+                ;(globalThis as { __galacticadDevAutoReloadDisabled?: boolean }).__galacticadDevAutoReloadDisabled =
+                    !enabled
+            }),
+        )
+        this.#subscriptions.push(this.#autoReload$.pipe(skip(1)).subscribe(() => persist()))
 
         const viewportBox = document.createElement("dev-tools-collapse")
         viewportBox.setAttribute("label", "Viewport")
@@ -526,6 +552,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
     getDevToolsState(): Record<string, JSONValue> {
         return {
+            autoReload: this.#autoReload$.value,
             showFps: this.#showFps$.value,
             meshViewerEnabled: this.#meshViewer$.value,
             meshSimplifyOnExport: this.#meshSimplify$.value,
@@ -538,6 +565,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#applying = true
         try {
             const d = DEFAULT_APP_DEVTOOLS_STATE
+            this.#autoReload$.next(asBool(state.autoReload, asBool(d.autoReload, true)))
             this.#showFps$.next(asBool(state.showFps, asBool(d.showFps, true)))
             this.#meshViewer$.next(asBool(state.meshViewerEnabled, asBool(d.meshViewerEnabled, false)))
             this.#meshSimplify$.next(asBool(state.meshSimplifyOnExport, asBool(d.meshSimplifyOnExport, false)))

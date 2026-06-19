@@ -12,9 +12,9 @@ import { vec3, type Vec3, Vec3f } from "../vecmat/vector.mjs"
  * Source location information for a shape in the code
  */
 export interface SourceLocation {
-    /** Starting line number (1-based, Monaco convention) */
+    /** Starting line number (1-based) */
     startLine: number
-    /** Starting column number (1-based, Monaco convention) */
+    /** Starting column number (1-based) */
     startColumn: number
     /** Ending line number (1-based) */
     endLine: number

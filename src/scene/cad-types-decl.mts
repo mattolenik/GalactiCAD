@@ -1,7 +1,7 @@
 /**
  * TypeScript type declarations for the GalacticAD CAD scripting API.
- * Injected into the Monaco editor as ambient global declarations so the
- * TypeScript language service provides completions and type-checking for
+ * Provided to the editor's TypeScript language service as ambient global
+ * declarations so it offers completions and type-checking for
  * the factory functions that are passed as parameters to user code.
  */
 export const CAD_TYPES_DECL = `

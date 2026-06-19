@@ -250,7 +250,7 @@ type GalacticadDevBridgeGlobals = {
 }
 
 /**
- * When the devserver injected the log bridge, register a getter for `GET /_sceneSource` (active Monaco document).
+ * When the devserver injected the log bridge, register a getter for `GET /_sceneSource` (active editor document).
  * No-op without devserver.
  */
 export function installDevActiveSceneSourceGetter(getSource: () => string): void {

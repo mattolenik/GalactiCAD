@@ -18,7 +18,7 @@ const err = (msg: any) => console.error(`${new Date().toLocaleTimeString(navigat
 const IS_PROD = !!process.env.PRODUCTION
 
 // The editor (CodeMirror 6) bundles as plain ESM into app.js — no worker-bundling
-// plugin and no MonacoEnvironment shim. The only editor worker is the TypeScript
+// plugin and no environment shim. The only editor worker is the TypeScript
 // language service (ts-worker), a normal esbuild entry point emitted to /editor/.
 const Static = {
     "src/index.html": "/",

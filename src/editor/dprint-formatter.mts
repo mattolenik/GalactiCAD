@@ -74,8 +74,8 @@ export function initDprintFormatting(): void {
 }
 
 /**
- * CM6 extension: a format command (Shift-Alt-F) plus format-on-paste, mirroring
- * Monaco's `formatOnPaste: true`. Both reformat the whole document via dprint.
+ * CM6 extension: a format command (Shift-Alt-F) plus format-on-paste. Both
+ * reformat the whole document via dprint.
  */
 export function dprintFormatting(): Extension {
     return [

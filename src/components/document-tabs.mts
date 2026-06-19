@@ -190,9 +190,8 @@ export class DocumentTabs extends HTMLElement {
 
         this.#renderTabs()
 
-        // A single update listener replaces Monaco's per-model onDidChangeContent
-        // and the editor-wide onDidChangeCursorSelection. Content changes keep the
-        // active doc's stored state in sync and fan into debounced persistence;
+        // A single update listener drives persistence and cursor-save. Content changes
+        // keep the active doc's stored state in sync and fan into debounced persistence;
         // selection changes persist the cursor/selection to SettingsManager.
         this.#editorUnsubscribe = editor.onUpdate(u => {
             if (!this.#active) return

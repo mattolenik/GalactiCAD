@@ -28,7 +28,7 @@ export interface ScreenshotBridgeDeps {
 /**
  * Exposes `globalThis.__galacticadCaptureScreenshot(viewport)` for the devserver WebSocket bridge.
  * Returns a literal PNG of the on-screen viewable area of the SDF preview or mesh viewer — the visible
- * region only (the part not covered by the Monaco editor overlay), captured from the live frame rather
+ * region only (the part not covered by the editor overlay), captured from the live frame rather
  * than re-rendered from re-supplied scene params.
  */
 export function registerScreenshotBridge(deps: ScreenshotBridgeDeps): void {

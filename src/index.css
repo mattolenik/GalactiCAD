@@ -99,7 +99,6 @@ mesh-viewer {
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    --vscode-focusBorder: transparent;
 }
 
 #editor::before {
@@ -123,22 +122,6 @@ mesh-viewer {
 }
 [data-theme="light"] #editor.visible::before {
     opacity: 0.03;
-}
-
-.monaco-editor {
-    opacity: 0.99;
-}
-#editor .monaco-editor,
-#editor .monaco-editor-background,
-#editor .monaco-editor .overflow-guard,
-#editor .monaco-editor .margin {
-    background: transparent !important;
-}
-#editor .monaco-editor,
-#editor .monaco-editor:focus,
-#editor .monaco-editor *:focus {
-    outline: none !important;
-    box-shadow: none !important;
 }
 
 #toolbar {

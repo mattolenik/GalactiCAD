@@ -1712,7 +1712,7 @@ Usage: agentcli screenshot [options]
 
 Save a literal PNG of the on-screen viewable area of the SDF preview and/or
 mesh viewer from a connected browser tab (GET /_agent/screenshot). This grabs
-the live frame as displayed — the visible region only, with the Monaco editor
+the live frame as displayed — the visible region only, with the editor
 overlay cropped out — rather than re-rendering the scene from captured params
 (that's `render`/`mirror`). Defaults to the interactive (human) devserver.
 

@@ -1,11 +1,9 @@
 /**
- * CodeMirror 6 editor wrapper for GalactiCAD — the single `EditorView` that
- * replaces Monaco's `IStandaloneCodeEditor`.
+ * CodeMirror 6 editor wrapper for GalactiCAD — the single `EditorView` for the app.
  *
  * Multi-document model: there is exactly ONE `EditorView`. Each open tab owns an
  * immutable `EditorState` (created via {@link CodeEditor.createState}); switching
- * tabs swaps it in with {@link CodeEditor.setState}. This mirrors Monaco's
- * one-editor / many-`ITextModel` arrangement, but document ownership stays in
+ * tabs swaps it in with {@link CodeEditor.setState}. Document ownership lives in
  * `DocumentTabs`.
  *
  * Reconfigurable editor options (line numbers, wrap, whitespace, folding, tab
@@ -14,9 +12,8 @@
  * re-applies them on every swap, options stay consistent across tabs regardless
  * of when a tab was opened.
  *
- * Forward hooks for later migration steps: a `language` compartment (so the TS
- * language service can extend the base JS/TS support) and a `decorations`
- * compartment (for the ported shape/selection decorations).
+ * A `language` compartment lets the TS language service extend the base JS/TS
+ * support; a `decorations` compartment carries the shape/selection highlights.
  */
 
 import {
@@ -58,7 +55,7 @@ import type { EditorSettings } from "../storage/settings.mjs"
 import { editorThemeExtension, type ThemeName } from "./codemirror-theme.mjs"
 import { dprintFormatting } from "./dprint-formatter.mjs"
 
-/** 1-based line/column position (matches Monaco + SettingsManager conventions). */
+/** 1-based line/column position (matches SettingsManager conventions). */
 export interface LineCol {
     line: number
     column: number
@@ -108,8 +105,8 @@ const relativeLineNumberGutter = gutter({
 const lineNumbersExt = (mode: EditorSettings["lineNumbers"]): Extension =>
     mode === "off" ? [] : mode === "relative" ? relativeLineNumberGutter : lineNumbers()
 const wrapExt = (w: EditorSettings["wordWrap"]): Extension => (w === "on" ? EditorView.lineWrapping : [])
-// CM6 only supports all-or-nothing whitespace rendering; Monaco's "boundary"/
-// "selection" modes have no equivalent, so any non-"none" value renders all.
+// CM6 only supports all-or-nothing whitespace rendering; "boundary"/"selection"
+// modes aren't available, so any non-"none" value renders all.
 const whitespaceExt = (mode: EditorSettings["renderWhitespace"]): Extension =>
     mode === "none" ? [] : highlightWhitespace()
 const foldExt = (on: boolean): Extension => (on ? [codeFolding(), foldGutter()] : [])
@@ -357,7 +354,7 @@ export class CodeEditor {
         this.view.focus()
     }
 
-    /** Monaco-compat no-op: CodeMirror reflows to its container automatically. */
+    /** No-op: CodeMirror reflows to its container automatically. */
     layout(): void {
         this.view.requestMeasure()
     }

@@ -12,7 +12,7 @@ feasibility note first for the build/skip rationale and the SDF paradigm boundar
 ## 0. Shape of the thing
 
 "Import OpenSCAD" is an in-memory, on-demand command: pick a `.scad` file → convert → open
-the result as a **new untitled document** (Monaco model, `language: "typescript"`) that the
+the result as a **new untitled document** (a new TypeScript editor document) that the
 user saves as `.gcad` like any other. No persistent intermediate, no OpenSCAD engine at
 runtime. The converter is a pure function:
 

@@ -68,7 +68,7 @@ The conversion has exactly two responsibilities:
    expression-functions, action-modules), so this is *static evaluation*, not interpreting
    mutable runtime state. [OpenSCAD manual]
 2. **Map** that flat tree to gcad's primitive/operator vocabulary and **emit gcad DSL
-   text** — which reuses gcad's entire existing stack (Monaco editor, source-parser,
+   text** — which reuses gcad's entire existing stack (the CodeMirror editor, source-parser,
    transpile → build → WGSL → mesh). The importer is a text-producing function; everything
    downstream is already built.
 
@@ -259,7 +259,7 @@ Remaining open items:
 
 ## Appendix — gcad import target (from codebase exploration)
 
-- **Format:** `.gcad` = TS/JS fluent-API DSL text. Authored in Monaco; transpiled →
+- **Format:** `.gcad` = TS/JS fluent-API DSL text. Authored in the editor; transpiled →
   executed → builds a `Node` tree → compiled to WGSL SDF → meshed.
   Key paths: `src/scene/cad-types-decl.mts` (DSL API surface), `src/scene/base.mts` +
   `src/scene/scene.mts` (Node/SceneInfo), `src/cad-transpile.mts`,

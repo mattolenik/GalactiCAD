@@ -266,7 +266,7 @@ export class BrowserBridge {
     }
 
     /**
-     * Ask one connected browser tab for the active document's scene source (Monaco value).
+     * Ask one connected browser tab for the active document's scene source (editor value).
      * First response wins. Returns `null` if no client, timeout, or bridge reports failure.
      */
     requestActiveSceneSource(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string | null> {

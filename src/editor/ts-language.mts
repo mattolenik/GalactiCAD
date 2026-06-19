@@ -2,7 +2,7 @@
  * CodeMirror 6 language-service integration for the CAD DSL: completion, hover,
  * and type-error diagnostics from a @typescript/vfs environment running in a Web
  * Worker (ts-worker.mts), via @valtown/codemirror-ts's `*Worker` extensions and
- * comlink. This replaces the IntelliSense Monaco's ts.worker gave us, off-thread.
+ * comlink. Provides the editor's IntelliSense off the main thread.
  *
  * Document syncing is driven by the caller (CodeEditor.onUpdate) rather than the
  * library's `tsSyncWorker`: that helper shares one "first load" flag across all

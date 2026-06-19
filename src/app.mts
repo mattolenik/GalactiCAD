@@ -92,7 +92,7 @@ debugLog("App").info(`GalactiCAD ${VERSION}`)
 // Start loading dprint formatter (non-blocking); registers providers when ready
 initDprintFormatting()
 
-/** Extract the compiler error message for display. Monaco handles location highlighting. */
+/** Extract the compiler error message for display. The TS linter handles location highlighting. */
 function formatSceneError(err: unknown, src: string): string {
     const msg = err instanceof Error ? err.message : String(err)
     const cleanMsg = msg.replace(/^Error:\s*/i, "").trim()
@@ -237,8 +237,8 @@ class App {
             debugLog("App").error("[Scene compilation]", err)
             // Do NOT clear decorations on build error. Parsing and fluent method
             // decorations run before build (error-tolerant). Color indicators and
-            // selection highlighting from the last successful build remain; Monaco
-            // tracks their positions as the user edits.
+            // selection highlighting from the last successful build remain; CodeMirror
+            // maps their positions as the user edits.
         }
     }
 
@@ -274,7 +274,7 @@ class App {
     }
 
     /**
-     * Update Monaco editor highlighting based on selected object IDs.
+     * Update editor highlighting based on selected object IDs.
      * Primary selection (no selected ancestor) gets solid border; children get dashed.
      */
     #updateEditorHighlighting() {
@@ -702,7 +702,7 @@ class App {
         const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)
         this.editor = new CodeEditor(codeDiv, editorOpts, initialTheme)
         // TypeScript IntelliSense (completion / hover / type-error diagnostics) for the
-        // CAD DSL, seeded with the ambient CAD API types (replaces Monaco's ts.worker).
+        // CAD DSL, seeded with the ambient CAD API types, served by the TS worker.
         const tsLang = createCadTsLanguageExtension()
         this.editor.setLanguageExtension(tsLang.extension)
         tsLang.sync(this.editor.getValue())
@@ -714,10 +714,9 @@ class App {
     }
 
     /**
-     * Build the editor right-click menu items for a 1-based source position. Replaces
-     * Monaco's addAction items + the internal-API "Insert shape" submenu. "Edit polygon"
-     * and "View Isolated" are gated by what sits at the click (app-side, replacing the
-     * `overIsolatable` context key); "Insert shape" is always offered.
+     * Build the editor right-click menu items for a 1-based source position.
+     * "Edit polygon" and "View Isolated" are gated by what sits at the click
+     * (app-side); "Insert shape" is always offered.
      */
     #buildEditorContextMenuItems(line: number, column: number): ContextMenuItem[] {
         const items: ContextMenuItem[] = []
@@ -1097,8 +1096,7 @@ class App {
                 showPolygonMenu(loc, clientX, clientY)
             }
         })
-        // Editor-side interactions (CM6: DOM listeners on the editor element +
-        // view.posAtCoords, replacing Monaco onMouseMove/onMouseDown/MouseTargetType):
+        // Editor-side interactions (DOM listeners on the editor element + view.posAtCoords):
         //   - hover "Edit Polygon" menu for polygon2d calls,
         //   - mouse-down shape selection,
         //   - editor→3D selection on a real (non-empty) text selection.

@@ -2,24 +2,22 @@
  * CadHighlighter — CodeMirror 6 decoration manager for GalactiCAD: shape color
  * indicators, selection-linked highlights, and fluent-method name coloring.
  *
- * Port of the former Monaco `MonacoHighlighter`. Three independently-updated
- * decoration families, each backed by its own `StateField<DecorationSet>` and
- * driven by a `StateEffect` (the app dispatches new sets after each build /
- * selection change). The combined extension is installed once via
- * `CodeEditor.setDecorationsExtension`.
+ * Three independently-updated decoration families, each backed by its own
+ * `StateField<DecorationSet>` and driven by a `StateEffect` (the app dispatches new
+ * sets after each build / selection change). The combined extension is installed
+ * once via `CodeEditor.setDecorationsExtension`.
  *
  *   1. Color indicators — `Decoration.mark` (colored underline + bold name) plus
  *      a leading SVG icon `Decoration.widget` (side -1, so the caret sits to the
- *      LEFT of the icon, matching Monaco's injected `before` text). Per-indicator
- *      CSS is generated into a dedicated <style> element.
+ *      LEFT of the icon). Per-indicator CSS is generated into a dedicated <style>.
  *   2. Selection highlights — primary `Decoration.mark` (solid underline) + child
  *      mark (dashed) + whole-line `Decoration.line` wash. The static class CSS
  *      lives in app `#injectStyles`.
  *   3. Fluent methods — `Decoration.mark` (`.cad-fluent-method`).
  *
- * Monaco `NeverGrowsWhenTypingAtEdges` stickiness maps to CM6 mark decorations'
- * default (inclusiveStart/End = false). The Monaco overview-ruler markers have no
- * CM6 equivalent and are dropped (the `overviewRulerColor` arg is ignored).
+ * Mark decorations use the default inclusive:false stickiness (they shift with, but
+ * never swallow, text typed at their edges). There are no scrollbar/overview-ruler
+ * markers (the `overviewRulerColor` arg is ignored).
  */
 
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view"
@@ -98,7 +96,7 @@ class IconWidget extends WidgetType {
 /**
  * Generate CSS for one shape indicator. `textClass` styles the function name
  * (colored bottom underline + subtle bold); `iconClass` styles the leading icon
- * widget (SVG data-URI background). Ported verbatim from the Monaco highlighter.
+ * widget (SVG data-URI background).
  */
 function generateIndicatorCss(textClass: string, iconClass: string, svg: string, r: number, g: number, b: number): string {
     const colorRgb = `rgb(${r},${g},${b})`

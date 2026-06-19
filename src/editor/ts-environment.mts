@@ -1,10 +1,10 @@
 /**
  * TypeScript language-service environment for the CAD DSL, backed by
- * @typescript/vfs. This restores the IntelliSense Monaco's ts.worker used to
- * provide (completion, hover, type-error diagnostics) without Monaco.
+ * @typescript/vfs. Provides IntelliSense (completion, hover, type-error
+ * diagnostics) to the CodeMirror editor.
  *
- * The CAD ambient API types (`CAD_TYPES_DECL`) are seeded as `/cad-api.d.ts` —
- * the direct analog of Monaco's `addExtraLib(CAD_TYPES_DECL, "file:///cad-api.d.ts")`.
+ * The CAD ambient API types (`CAD_TYPES_DECL`) are seeded as `/cad-api.d.ts`,
+ * so the factory functions resolve like an injected `.d.ts`.
  * The lib.*.d.ts files are bundled locally via the `ts-libs` virtual module
  * (build/ts-libs-plugin.mts), so type-checking works fully offline.
  *
@@ -25,8 +25,8 @@ import { CAD_TYPES_DECL } from "../scene/cad-types-decl.mjs"
 
 const CAD_TYPES_PATH = "/cad-api.d.ts"
 
-/** Compiler options mirror the former Monaco `cadCompilerOptions` (app.mts). DOM lib
- *  is omitted on purpose so completions aren't flooded with DOM globals. */
+/** Compiler options for the CAD DSL. DOM lib is omitted on purpose so completions
+ *  aren't flooded with DOM globals. */
 const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ESNext,
     module: ts.ModuleKind.None,

@@ -84,7 +84,7 @@ This is non-negotiable. Even "I'll delete it in a second" tmpfiles must use one 
 ## When to use
 
 - **Logs (`/_logs`):** validate runtime, check WebGPU / app errors, read dev log buffer without DevTools.
-- **Scene source (`/_sceneSource`):** dump the active editor tab's full Monaco buffer (unsaved edits included).
+- **Scene source (`/_sceneSource`):** dump the active editor tab's full text buffer (unsaved edits included).
 - **Agent automation:** fetch a testcase YAML from the live editor, or render a PNG from a saved testcase file (GET), inline YAML (POST testcase-body), or inline JSON (POST). Each success also mirrors into `.agents/imagelog/`.
 
 Use the **interactive** port to read what the human sees (`/_sceneSource`, `/_agent/capture-testcase`, and `/_logs` via `agentcli logs --browser`). Use the **agent** port for `/_agent/render*` and for `/_logs` after those headless renders (`agentcli logs --agent`, the default) — the interactive tab does not execute agent render RPCs.
@@ -100,7 +100,7 @@ After local code changes, the interactive browser may livereload; the **agent** 
 ## `GET /_sceneSource`
 
 - `GET` only; other methods → **405** with `Allow: GET`. No query params.
-- Response: `text/plain; charset=utf-8` — full Monaco model value for the active tab, unsaved edits included.
+- Response: `text/plain; charset=utf-8` — full editor document value for the active tab, unsaved edits included.
 - Backed by `globalThis.__galacticadDevGetActiveSceneSource()` via WebSocket.
 - **200 + empty body** when: no connected tab, bridge timeout (~5s), getter throws, no editor model, or app wasn't loaded through this devserver's injected bridge.
 - CORS: `Access-Control-Allow-Origin: *` on success and 405.

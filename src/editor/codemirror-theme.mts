@@ -1,13 +1,9 @@
 /**
- * CodeMirror 6 theme + syntax-highlight definitions for GalactiCAD.
- *
- * Ports the two Monaco `IStandaloneThemeData` themes (see the former themes.mts):
+ * CodeMirror 6 theme + syntax-highlight definitions for GalactiCAD:
  *   - editor chrome colors  → `EditorView.theme`
  *   - token colors          → `HighlightStyle` over @lezer/highlight tags
  *
- * Token mapping is approximate vs Monaco's TextMate scopes (full-fidelity tuning
- * is deferred to the "Formatting + theme polish" migration step); the dimmed
- * parentheses from the dark theme's `delimiter.parenthesis.ts` rule are preserved.
+ * Dark and light variants; the dark theme dims parentheses/brackets.
  */
 
 import { EditorView } from "@codemirror/view"
@@ -30,12 +26,15 @@ const baseTheme = EditorView.theme({
         lineHeight: "1.5",
     },
     ".cm-content": { fontVariantLigatures: "contextual" },
+    // The editor is transparent so the #editor panel background (themed, translucent)
+    // and its faint watermark show through; no focus ring.
+    "&.cm-focused": { outline: "none" },
 })
 
 // ── Dark (ports GALACTICAD_DARK_THEME, base "vs-dark") ──────────────────────
 const darkChrome = EditorView.theme(
     {
-        "&": { color: "#d4d4d4", backgroundColor: "#1e1e1e" },
+        "&": { color: "#d4d4d4", backgroundColor: "transparent" },
         ".cm-content": { caretColor: "#aeafad" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#aeafad" },
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
@@ -43,7 +42,7 @@ const darkChrome = EditorView.theme(
         },
         ".cm-activeLine": { backgroundColor: "#3a3a3ecc" },
         ".cm-activeLineGutter": { backgroundColor: "#3a3a3ecc" },
-        ".cm-gutters": { backgroundColor: "#1e1e1e", color: "#858585", border: "none" },
+        ".cm-gutters": { backgroundColor: "transparent", color: "#858585", border: "none" },
         ".cm-foldPlaceholder": { backgroundColor: "#3a3a3e", border: "none", color: "#888" },
     },
     { dark: true },
@@ -64,7 +63,7 @@ const darkHighlight = HighlightStyle.define([
     { tag: t.constant(t.variableName), color: "#4fc1ff" },
     { tag: t.regexp, color: "#d16969" },
     { tag: t.escape, color: "#d7ba7d" },
-    // Echoes the Monaco `delimiter.parenthesis.ts → #555555` rule.
+    // Dimmed parentheses / braces / brackets.
     { tag: [t.paren, t.brace, t.squareBracket], color: "#555555" },
     { tag: t.invalid, color: "#f44747" },
 ])
@@ -72,7 +71,7 @@ const darkHighlight = HighlightStyle.define([
 // ── Light (ports GALACTICAD_LIGHT_THEME, base "vs") ─────────────────────────
 const lightChrome = EditorView.theme(
     {
-        "&": { color: "#000000", backgroundColor: "#F1F1F1" },
+        "&": { color: "#000000", backgroundColor: "transparent" },
         ".cm-content": { caretColor: "#000000" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#000000" },
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
@@ -80,7 +79,7 @@ const lightChrome = EditorView.theme(
         },
         ".cm-activeLine": { backgroundColor: "#00000026" },
         ".cm-activeLineGutter": { backgroundColor: "#00000026" },
-        ".cm-gutters": { backgroundColor: "#F1F1F1", color: "#999999", border: "none" },
+        ".cm-gutters": { backgroundColor: "transparent", color: "#999999", border: "none" },
         ".cm-foldPlaceholder": { backgroundColor: "#e0e0e0", border: "none", color: "#666" },
     },
     { dark: false },

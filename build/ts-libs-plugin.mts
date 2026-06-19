@@ -11,8 +11,7 @@ const require = createRequire(import.meta.url)
  * Bundles the TypeScript `lib.*.d.ts` files the CAD language service needs into a
  * virtual `ts-libs` module, so the in-browser @typescript/vfs environment type-checks
  * fully OFFLINE — no runtime CDN fetch (the alternative, `createDefaultMapFromCDN`,
- * would flag every built-in as an error when offline). This mirrors how the old
- * Monaco integration pre-bundled its workers locally.
+ * would flag every built-in as an error when offline).
  *
  * The exported value is a `Record<"/lib.xxx.d.ts", string>` keyed the same way
  * @typescript/vfs keys its fsMap (leading slash), ready to spread into the fsMap.

@@ -300,7 +300,7 @@ setValue(v: string) {
 
 ### Wrapping event emitters with fromEventPattern
 
-Wrap non-standard event sources (e.g. Monaco editor) into observables.
+Wrap non-standard event sources (e.g. a code editor) into observables.
 
 ```typescript
 import { fromEventPattern, Subscription } from "rxjs"

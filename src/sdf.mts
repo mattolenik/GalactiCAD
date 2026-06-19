@@ -1314,7 +1314,7 @@ export class SDFRenderer {
 
     /**
      * Split selected IDs into primary (no selected ancestor) and children (have selected ancestor).
-     * Used for Monaco editor highlighting: primary gets solid border, children get dashed.
+     * Used for editor highlighting: primary gets solid border, children get dashed.
      * Resolves virtual caps (extrude top/bottom) to their polygon2d so the profile is highlighted.
      */
     getSelectionPrimaryAndChildIds(): { primary: number[]; children: number[] } {

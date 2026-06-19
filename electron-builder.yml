@@ -17,7 +17,7 @@ directories:
 # Every package.json "dependency" is BUILD-time only: esbuild bundles them all into
 # dist/site, and neither main.mjs nor preload.cjs require() anything outside node:/
 # electron. electron-builder otherwise copies ALL production dependencies into the
-# asar (~100MB of monaco-editor + typescript + rxjs that the runtime never loads),
+# asar (tens of MB of typescript + rxjs + other deps that the runtime never loads),
 # so node_modules is excluded explicitly. dist/build and dist/release are excluded too.
 files:
   - "electron/**"

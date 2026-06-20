@@ -186,7 +186,7 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         boundsPaddingMm: num(o.boundsPaddingMm, d.boundsPaddingMm, 0, 100),
         enforceEdgeBalance: bool(o.enforceEdgeBalance, d.enforceEdgeBalance),
 
-        normalVariationDeg: num(o.normalVariationDeg, d.normalVariationDeg, 5, 90),
+        normalVariationDeg: num(o.normalVariationDeg, d.normalVariationDeg, 1, 90),
         blendCurvatureRefine: bool(o.blendCurvatureRefine, d.blendCurvatureRefine),
         blendCurvatureDeg: num(o.blendCurvatureDeg, d.blendCurvatureDeg, 1, 90),
         blendCurvatureAnalytic: bool(o.blendCurvatureAnalytic, d.blendCurvatureAnalytic),

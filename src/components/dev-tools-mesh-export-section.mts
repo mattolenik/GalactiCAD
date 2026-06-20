@@ -1089,7 +1089,7 @@ const SFCC_RANGE_KNOBS: {
     { key: "surfaceTolMm", label: "Surface tol (mm)", min: 0.001, max: 0.1, step: 0.001 },
     { key: "curveChordTolMm", label: "Curve chord tol (mm)", min: 0.001, max: 0.5, step: 0.001 },
     { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1, int: true },
-    { key: "normalVariationDeg", label: "Surface curvature °", min: 5, max: 90, step: 1, int: true },
+    { key: "normalVariationDeg", label: "Surface curvature °", min: 1, max: 90, step: 1, int: true },
     { key: "blendCurvatureDeg", label: "Blend curvature °", min: 1, max: 90, step: 1, int: true },
 ]
 

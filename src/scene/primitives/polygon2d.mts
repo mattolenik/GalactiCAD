@@ -56,7 +56,25 @@ export class Polygon2D extends Node {
         return Math.max(BVH_MIN_COST, this.vertices.length)
     }
     override getIndicatorSvg(): string {
-        return `<polygon points="6,1 11,5 9,11 3,11 1,5" fill="currentColor"/>`
+        // The indicator IS the actual polygon: fit the real outline into the 12×12
+        // indicator viewBox (uniform scale, 1u padding, Y flipped for screen space).
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const [x, y] of this.vertices) {
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+            if (y < minY) minY = y
+            if (y > maxY) maxY = y
+        }
+        const PAD = 1
+        const inner = 12 - 2 * PAD
+        const span = Math.max(maxX - minX, maxY - minY) || 1
+        const scale = inner / span
+        const offX = PAD + (inner - (maxX - minX) * scale) / 2
+        const offY = PAD + (inner - (maxY - minY) * scale) / 2
+        const points = this.vertices
+            .map(([x, y]) => `${(offX + (x - minX) * scale).toFixed(2)},${(offY + (maxY - y) * scale).toFixed(2)}`)
+            .join(" ")
+        return `<polygon points="${points}" fill="currentColor"/>`
     }
 
     override build() {

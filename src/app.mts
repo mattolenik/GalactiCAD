@@ -447,31 +447,14 @@ class App {
     }
 
     /**
-     * Inline SVG of a node's actual polygon, normalized into a 100×100 viewBox
-     * (uniform fit, padded, Y flipped for screen space) and filled with
-     * `currentColor`. Returns undefined for non-polygon nodes / degenerate shapes.
+     * Inline SVG for the Edit-button preview — the node's shape indicator (the real
+     * polygon for polygon2d) scaled up. Reuses `getIndicatorSvg` so the button shows
+     * exactly the editor icon's shape; `currentColor` inherits the button's color.
      */
     #polygonPreviewSvg(nodeId: number): string | undefined {
-        const verts = this.#sceneNodeMap.get(nodeId)?.vertices
-        if (!verts || verts.length < 3) return undefined
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-        for (const [x, y] of verts) {
-            if (x < minX) minX = x
-            if (x > maxX) maxX = x
-            if (y < minY) minY = y
-            if (y > maxY) maxY = y
-        }
-        const PAD = 10
-        const inner = 100 - 2 * PAD
-        const span = Math.max(maxX - minX, maxY - minY) || 1
-        const scale = inner / span
-        // Center the fitted shape within the inner box.
-        const offX = PAD + (inner - (maxX - minX) * scale) / 2
-        const offY = PAD + (inner - (maxY - minY) * scale) / 2
-        const points = verts
-            .map(([x, y]) => `${(offX + (x - minX) * scale).toFixed(2)},${(offY + (maxY - y) * scale).toFixed(2)}`)
-            .join(" ")
-        return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polygon points="${points}" fill="currentColor"/></svg>`
+        const inner = this.#sceneNodeMap.get(nodeId)?.getIndicatorSvg?.()
+        if (!inner) return undefined
+        return `<svg viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`
     }
 
     #tryOpenPolygonEditor(line: number, column: number): boolean {

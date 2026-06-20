@@ -8,14 +8,14 @@ import type { CameraState } from "./controls/camera-controller.mjs"
 import { styleInfo } from "./scene/scene.mjs"
 import { MeshExportCancelledError } from "./export/mesh-exporter.mjs"
 import { SDFRenderer, type NodeStub } from "./sdf.mjs"
-import { __active_bg, __bg_color, __bg_color_dark, __fg_color, __preview_bg, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
+import { __active_bg, __bg_color, __bg_color_dark, __editor_panel_bg, __fg_color, __preview_bg, __tone_1, __tone_2, __tone_3, __tone_accent, __toolbar_height } from "./style/style.mjs"
 import {
     resolveEffectiveTheme,
     subscribeToThemeChanges,
     THEME_PALETTES,
     type EffectiveTheme,
 } from "./style/theme.mjs"
-import { getShapePalette } from "./colorPalette.mjs"
+import { getShapePalette, PALETTE_SIZE } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
 import type { CameraSettings, EditorSettings, ThemeMode } from "./storage/settings.mjs"
 import type { MeshData } from "./export/export.mjs"
@@ -336,22 +336,18 @@ class App {
     }
 
     /**
-     * Resolve the node the Isolate toggle should target, in priority order:
-     *   1. the object currently selected (outlined) in the 3D preview,
-     *   2. the isolatable symbol under the editor caret,
-     *   3. the most-recently-isolated node (if it still exists).
-     * Returns 0 when nothing applies. Never moves the editor caret/selection.
+     * Resolve the node(s) the Isolate toggle should target, in priority order:
+     *   1. the objects currently selected (outlined) in the 3D preview,
+     *   2. the most-recently-isolated set (if it still exists).
+     * Returns [] when nothing applies (the caller then leaves the toggle off).
+     * Never moves the editor caret/selection.
      */
     #resolveIsolationTarget(): number[] {
-        // Priority: the whole 3D-preview selection (multi-select), else the
-        // isolatable symbol under the caret, else the last isolated survivors.
+        // Selected objects win (multi-select supported; only object/auto modes
+        // populate this). With nothing selected, restore whatever was isolated last.
         const selected = this.renderer.selectedObjectIds.filter(id => this.#sceneNodeMap.has(id))
         if (selected.length > 0) return selected
-        const pos = this.editor.getCursor()
-        const atCursor = pos ? this.#findIsolatableNodeIdAtPosition(pos.line, pos.column) : null
-        if (atCursor) return [atCursor]
-        const survivors = this.#lastIsolatedIds.filter(id => this.#sceneNodeMap.has(id))
-        return survivors
+        return this.#lastIsolatedIds.filter(id => this.#sceneNodeMap.has(id))
     }
 
     /**
@@ -441,6 +437,26 @@ class App {
      * Try to open the polygon editor at the given source position.
      * Returns true if opened (polygon2d call found and editor opened).
      */
+    /**
+     * CSS `rgb(...)` for a node's shape color — the same palette/index mapping the
+     * editor shape-icon (and 3D object) uses, so the Edit button matches the icon.
+     */
+    #shapeColorCss(nodeId: number): string {
+        const c = getShapePalette(this.#effectiveTheme)[nodeId % PALETTE_SIZE]
+        return `rgb(${Math.round(c.x * 255)}, ${Math.round(c.y * 255)}, ${Math.round(c.z * 255)})`
+    }
+
+    /**
+     * Inline SVG for the Edit-button preview — the node's shape indicator (the real
+     * polygon for polygon2d) scaled up. Reuses `getIndicatorSvg` so the button shows
+     * exactly the editor icon's shape; `currentColor` inherits the button's color.
+     */
+    #polygonPreviewSvg(nodeId: number): string | undefined {
+        const inner = this.#sceneNodeMap.get(nodeId)?.getIndicatorSvg?.()
+        if (!inner) return undefined
+        return `<svg viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${inner}</svg>`
+    }
+
     #tryOpenPolygonEditor(line: number, column: number): boolean {
         const src = this.editor.getValue()
         const cached = this.#sourceParser.getCachedSourceFile(src)
@@ -1071,24 +1087,28 @@ class App {
         }
         const TRIGGER_PADDING = 24
         const SAFE_ZONE_PADDING = 8
-        const showPolygonMenu = (loc: SourceLocation, clientX: number, clientY: number) => {
+        const showPolygonMenu = (loc: SourceLocation, nodeId: number, clientX: number, clientY: number, anchorRect?: DOMRect) => {
             if (!this.#contextMenu) return
             this.#contextMenuSafeZoneCleanup?.()
             this.#contextMenuSafeZoneCleanup = null
-            this.#contextMenu.setItems([
-                { label: "Edit Polygon", action: () => this.#tryOpenPolygonEditor(loc.startLine, loc.startColumn) },
-            ])
-            this.#contextMenu.showAt(clientX, clientY, () => {
+            // Rounded "Edit" button tinted with the shape's own color; the label and the
+            // small polygon preview use the editor's background color (via currentColor),
+            // so they read correctly in both light and dark themes.
+            this.#contextMenu.setButton(
+                "Edit",
+                () => this.#tryOpenPolygonEditor(loc.startLine, loc.startColumn),
+                { background: this.#shapeColorCss(nodeId), color: `var(${__editor_panel_bg})` },
+                this.#polygonPreviewSvg(nodeId),
+            )
+            // Hover dismissal: keep the menu open while the pointer stays within a
+            // rectangle covering both the trigger region and the menu; hide once it leaves.
+            const armSafeZone = (trigger: { left: number; top: number; right: number; bottom: number }) => {
                 if (!this.#contextMenu) return
                 const menuRect = this.#contextMenu.getMenuRect()
-                const triggerLeft = clientX - TRIGGER_PADDING
-                const triggerTop = clientY - TRIGGER_PADDING
-                const triggerRight = clientX + TRIGGER_PADDING
-                const triggerBottom = clientY + TRIGGER_PADDING
-                const safeLeft = Math.min(triggerLeft, menuRect.left) - SAFE_ZONE_PADDING
-                const safeTop = Math.min(triggerTop, menuRect.top) - SAFE_ZONE_PADDING
-                const safeRight = Math.max(triggerRight, menuRect.right) + SAFE_ZONE_PADDING
-                const safeBottom = Math.max(triggerBottom, menuRect.bottom) + SAFE_ZONE_PADDING
+                const safeLeft = Math.min(trigger.left, menuRect.left) - SAFE_ZONE_PADDING
+                const safeTop = Math.min(trigger.top, menuRect.top) - SAFE_ZONE_PADDING
+                const safeRight = Math.max(trigger.right, menuRect.right) + SAFE_ZONE_PADDING
+                const safeBottom = Math.max(trigger.bottom, menuRect.bottom) + SAFE_ZONE_PADDING
                 const inSafeZone = (x: number, y: number) =>
                     x >= safeLeft && x <= safeRight && y >= safeTop && y <= safeBottom
                 const onMouseMove = (e: MouseEvent) => {
@@ -1103,15 +1123,28 @@ class App {
                 }
                 this.#contextMenuSafeZoneCleanup = cleanup
                 this.#contextMenu.onHide = cleanup
-            })
+            }
+            if (anchorRect) {
+                // Editor shape-indicator hover: pin the menu just above the symbol,
+                // horizontally centered over it (rather than following the cursor).
+                this.#contextMenu.showAboveAnchor(anchorRect, () => armSafeZone(anchorRect))
+            } else {
+                this.#contextMenu.showAt(clientX, clientY, () =>
+                    armSafeZone({
+                        left: clientX - TRIGGER_PADDING,
+                        top: clientY - TRIGGER_PADDING,
+                        right: clientX + TRIGGER_PADDING,
+                        bottom: clientY + TRIGGER_PADDING,
+                    }))
+            }
         }
         this.#contextMenuHoverSub = this.renderer.contextMenu$.subscribe(({ objectId, clientX, clientY }) => {
             const polyId = objectId > 0 ? this.renderer.resolvePolygon2dForHover(objectId) : null
             const loc = polyId != null ? this.#sourceLocationMap.get(polyId) : null
             const relatedIds = this.renderer.getPolygonContextMenuSelectionIds(objectId)
             const isSelected = relatedIds.some(id => this.renderer.selectedObjectIds.includes(id))
-            if (loc?.functionName === "polygon2d" && isSelected) {
-                showPolygonMenu(loc, clientX, clientY)
+            if (loc?.functionName === "polygon2d" && isSelected && polyId != null) {
+                showPolygonMenu(loc, polyId, clientX, clientY)
             }
         })
         // Editor-side interactions (DOM listeners on the editor element + view.posAtCoords):
@@ -1121,13 +1154,14 @@ class App {
         // All torn down together via #contextMenuEditorMoveDispose, which is disposed
         // at the top of this method on re-wire (prevents duplicate listeners).
         const CONTEXT_MENU_DELAY_MS = 350
-        const scheduleOrShowEditorMenu = (key: string, loc: SourceLocation, clientX: number, clientY: number) => {
+        const scheduleOrShowEditorMenu = (key: string, loc: SourceLocation, iconEl: HTMLElement, nodeId: number) => {
             if (key !== this.#contextMenuLastKey) {
                 if (this.#contextMenuShowTimer) clearTimeout(this.#contextMenuShowTimer)
                 this.#contextMenuLastKey = key
                 this.#contextMenuShowTimer = window.setTimeout(() => {
                     this.#contextMenuShowTimer = null
-                    showPolygonMenu(loc, clientX, clientY)
+                    // Re-measure at fire time (the editor may have scrolled during the delay).
+                    showPolygonMenu(loc, nodeId, 0, 0, iconEl.getBoundingClientRect())
                 }, CONTEXT_MENU_DELAY_MS)
             }
         }
@@ -1170,7 +1204,7 @@ class App {
             const nodeId = Number(iconEl.dataset.nodeId)
             const loc = Number.isFinite(nodeId) ? this.#sourceLocationMap.get(nodeId) : undefined
             if (loc?.functionName === "polygon2d") {
-                scheduleOrShowEditorMenu(`editor-${loc.startLine}-${loc.startColumn}`, loc, e.clientX, e.clientY)
+                scheduleOrShowEditorMenu(`editor-${loc.startLine}-${loc.startColumn}`, loc, iconEl, nodeId)
             } else {
                 cancelEditorHover()
             }
@@ -1242,7 +1276,7 @@ class App {
             if (target.length > 0) {
                 this.#applyIsolation(target)
             } else {
-                // Nothing selected/under the caret and no prior target: leave the toggle off.
+                // Nothing selected and no prior isolated set: leave the toggle off.
                 isolateToggle.checked = false
             }
         }

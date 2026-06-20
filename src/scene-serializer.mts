@@ -5,36 +5,10 @@
 
 import type { Node } from "./scene/base.mjs"
 import type { SerializedNode } from "./render-worker-protocol.mjs"
-import { BinaryOperator, UnaryOperator } from "./scene/base.mjs"
-import { Box, Cone, Cylinder, Extrude, Lathe, Loft, PlaneNode, Polygon2D, ThreadedRod, Union, VirtualCapNode } from "./scene/scene.mjs"
-
-function getChildren(node: Node): Node[] {
-    if (node instanceof Union) {
-        return [...node.children]
-    }
-    if (node instanceof BinaryOperator) {
-        return [node.lh, node.rh]
-    }
-    if (node instanceof UnaryOperator) {
-        return [node.arg]
-    }
-    if (node instanceof Extrude) {
-        return [node.child, node.capTop, node.capBottom]
-    }
-    if (node instanceof Loft) {
-        return [...node.profiles]
-    }
-    if (node instanceof ThreadedRod) {
-        return [node.capTop, node.capBottom]
-    }
-    if (node instanceof Lathe) {
-        return [node.child]
-    }
-    return []
-}
+import { Box, childNodes, Cone, Cylinder, Extrude, Loft, PlaneNode, Polygon2D, ThreadedRod, VirtualCapNode } from "./scene/scene.mjs"
 
 function serializeNode(node: Node, parentId: number): SerializedNode {
-    const children = getChildren(node)
+    const children = childNodes(node)
     const s: SerializedNode = {
         id: node.id,
         shapeType: node.getShapeType(),
@@ -128,7 +102,7 @@ export function serializeSceneNodes(scene: { root?: Node; getAllNodes(): Node[] 
         if (visited.has(node.id)) return
         visited.add(node.id)
         result.push(serializeNode(node, parentId))
-        for (const child of getChildren(node)) {
+        for (const child of childNodes(node)) {
             visit(child, node.id)
         }
     }

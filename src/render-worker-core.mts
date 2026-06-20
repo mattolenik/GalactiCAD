@@ -4237,6 +4237,11 @@ export class RenderWorkerCore {
         }
         if (msg.polygonVertices) {
             this.#device.queue.writeBuffer(this.#uniformBuffers.polygonVertices, msg.polygonVertices.offset, msg.polygonVertices.data)
+            // This patches the buffer out-of-band, so the dedup cache no longer mirrors the
+            // GPU. Invalidate it so the next build always re-uploads — otherwise an undo that
+            // repacks identical vertices would dedup-skip and leave the live side-face drag on
+            // screen (preview doesn't revert on cmd-z).
+            this.#lastPolygonVertexLen = -1
         }
         if (msg.previewParamsF32Patch) {
             const patch = new Float32Array(msg.previewParamsF32Patch.data)
@@ -4253,6 +4258,11 @@ export class RenderWorkerCore {
                 dataByteOffset,
                 8,
             )
+            // previewCapParamDrag was patched out-of-band, so the dedup cache no longer
+            // mirrors the GPU. Invalidate it so the next build re-uploads both preview banks —
+            // otherwise an undo whose repacked params equal the cache would dedup-skip and
+            // leave the dragged cap height/shift on screen (preview doesn't revert on cmd-z).
+            this.#lastPreviewF32Len = -1
         }
         if (msg.selectedObjectIds) {
             if (msg.selectedObjectIds instanceof ArrayBuffer) {

@@ -98,7 +98,7 @@ class IconWidget extends WidgetType {
  * (colored bottom underline + subtle bold); `iconClass` styles the leading icon
  * widget (SVG data-URI background).
  */
-function generateIndicatorCss(textClass: string, iconClass: string, svg: string, r: number, g: number, b: number): string {
+function generateIndicatorCss(textClass: string, iconClass: string, svg: string, r: number, g: number, b: number, iconPx = 12): string {
     const colorRgb = `rgb(${r},${g},${b})`
     const svgWithColor = svg.replace(/currentColor/g, colorRgb)
     const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">${svgWithColor}</svg>`
@@ -122,11 +122,11 @@ function generateIndicatorCss(textClass: string, iconClass: string, svg: string,
     }
     .${iconClass} {
         display: inline-block;
-        width: 22px;
-        height: 12px;
+        width: ${iconPx + 10}px;
+        height: ${iconPx}px;
         vertical-align: middle;
         background-image: url("${dataUri}");
-        background-size: 12px 12px;
+        background-size: ${iconPx}px ${iconPx}px;
         background-position: center;
         background-repeat: no-repeat;
         cursor: default;
@@ -178,7 +178,9 @@ export class CadHighlighter {
             const b = Math.round(color.z * 255)
             const textClass = `shape-indicator-${idx}`
             const iconClass = `shape-indicator-icon-${idx}`
-            css += generateIndicatorCss(textClass, iconClass, indicator.svg, r, g, b)
+            // polygon2d icons show the real outline — render them a bit larger.
+            const iconPx = indicator.functionName === "polygon2d" ? 16 : 12
+            css += generateIndicatorCss(textClass, iconClass, indicator.svg, r, g, b, iconPx)
 
             const from = this.#offset(doc, indicator.startLine, indicator.startColumn)
             const to = this.#offset(doc, indicator.endLine, indicator.endColumn)

@@ -254,6 +254,19 @@ export type MainToWorkerMessage =
     | { type: "setDeferredShading"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
     | { type: "clearFgSelection" }
+    // Query the world-space AABB of a scene node (for gizmo placement). Replies `nodeBoundsResult`.
+    | { type: "getNodeBounds"; nodeId: number; requestId: number }
+    // Transform-gizmo overlay state: world-space anchor + size, visibility, and
+    // the hovered/active handle (-1 = none). Worker stores it and draws the
+    // gizmo each frame; pass `visible: false` to hide.
+    | {
+          type: "setGizmo"
+          visible: boolean
+          center?: [number, number, number]
+          sizePx?: number
+          hoverHandle?: number
+          activeHandle?: number
+      }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]
@@ -441,4 +454,9 @@ export type WorkerToMainMessage =
     | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number; documentName?: string }
     | { type: "pickPosResult"; hitPos: [number, number, number] | null; requestId: number }
     | { type: "pickObjectResult"; objectId: number; requestId: number }
+    | {
+          type: "nodeBoundsResult"
+          bounds: { center: [number, number, number]; half: [number, number, number] } | null
+          requestId: number
+      }
     | { type: "fps"; fps: number }

@@ -238,6 +238,14 @@ export class SDFRenderer {
         { resolve: (v: ImageData) => void; reject: (err: unknown) => void; skipDocumentGuard?: boolean }
     >()
     #pendingPickPos = new Map<number, { resolve: (v: [number, number, number] | null) => void }>()
+    #pendingNodeBounds = new Map<
+        number,
+        { resolve: (v: { center: [number, number, number]; half: [number, number, number] } | null) => void }
+    >()
+    /** Transform-gizmo state. `#gizmoToken` guards against stale async bounds replies. */
+    #gizmoShown = false
+    #gizmoNodeId = 0
+    #gizmoToken = 0
     #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
     #pickObjectRequestId = 0
     #sharedBuffer: SharedArrayBuffer | null = null
@@ -433,6 +441,54 @@ export class SDFRenderer {
         })
     }
 
+    /** Query the world-space AABB of a scene node (for gizmo placement). */
+    getNodeBounds(
+        nodeId: number,
+    ): Promise<{ center: [number, number, number]; half: [number, number, number] } | null> {
+        const requestId = ++this.#requestIdCounter
+        return new Promise(resolve => {
+            this.#pendingNodeBounds.set(requestId, { resolve })
+            this.#worker.postMessage({ type: "getNodeBounds", nodeId, requestId })
+        })
+    }
+
+    /**
+     * Show the transform gizmo when exactly one object is selected in object
+     * mode, anchored at that object's bbox center; hide it otherwise. The bounds
+     * query is async, so `#gizmoToken` discards replies superseded by a newer
+     * selection. The worker re-projects the stored anchor each frame, so the
+     * gizmo tracks camera moves without further messages.
+     */
+    #updateGizmoForSelection(): void {
+        const ids = this.#getCompactSelectedIds()
+        const single = this.#selectionMode === "object" && ids.length === 1 ? ids[0]! : 0
+        const token = ++this.#gizmoToken
+        if (single <= 0) {
+            this.#gizmoNodeId = 0
+            if (this.#gizmoShown) {
+                this.#gizmoShown = false
+                this.#worker.postMessage({ type: "setGizmo", visible: false })
+                this.requestRender()
+            }
+            return
+        }
+        this.#gizmoNodeId = single
+        void this.getNodeBounds(single).then(bounds => {
+            if (token !== this.#gizmoToken) return // superseded by a newer selection
+            if (!bounds) {
+                if (this.#gizmoShown) {
+                    this.#gizmoShown = false
+                    this.#worker.postMessage({ type: "setGizmo", visible: false })
+                    this.requestRender()
+                }
+                return
+            }
+            this.#gizmoShown = true
+            this.#worker.postMessage({ type: "setGizmo", visible: true, center: bounds.center })
+            this.requestRender()
+        })
+    }
+
     #loadPreviewSettings(): void {
         const prev = this.#settings.getPreview()
         const global = this.#settings.getGlobal()
@@ -513,6 +569,9 @@ export class SDFRenderer {
                             this.#controls.loadCameraFromSettings()
                             this.#needsRender = true
                             this.#lastBuildTimingMs = msg.timingMs ?? null
+                            // Re-anchor the gizmo to the (possibly moved) selected
+                            // object after a rebuild, or hide it if it's gone.
+                            this.#updateGizmoForSelection()
                         }
                     }
                     pending.resolve(!msg.superseded)
@@ -651,6 +710,14 @@ export class SDFRenderer {
                 if (pending) {
                     this.contextMenu$.next({ objectId: msg.objectId, clientX: pending.clientX, clientY: pending.clientY })
                     this.#pendingPickObject.delete(msg.requestId)
+                }
+                break
+            }
+            case "nodeBoundsResult": {
+                const pending = this.#pendingNodeBounds.get(msg.requestId)
+                if (pending) {
+                    pending.resolve(msg.bounds)
+                    this.#pendingNodeBounds.delete(msg.requestId)
                 }
                 break
             }
@@ -845,6 +912,7 @@ export class SDFRenderer {
             this.selectionChange$.next([])
         }
         this.#pushSelectionInfo()
+        this.#updateGizmoForSelection()
         this.#needsRender = true
     }
 
@@ -1549,6 +1617,7 @@ export class SDFRenderer {
         this.#selectionDirty = true
         if (notify) this.selectionChange$.next(this.selectedObjectIds)
         this.#pushSelectionInfo()
+        this.#updateGizmoForSelection()
         this.#needsRender = true
     }
 
@@ -1781,6 +1850,7 @@ export class SDFRenderer {
         this.#selectionDirty = true
         this.selectionChange$.next([])
         this.#pushSelectionInfo()
+        this.#updateGizmoForSelection()
         this.#needsRender = true
     }
     get selectionMode(): SelectionMode {

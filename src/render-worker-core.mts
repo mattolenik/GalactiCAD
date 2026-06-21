@@ -37,6 +37,8 @@ import {
     occlusionModeToInt,
     type FeatureGraphOcclusionMode,
 } from "./feature-graph/feature-graph-overlay.mjs"
+import { GizmoOverlay } from "./gizmo/gizmo-overlay.mjs"
+import { worldCenterForNode } from "./gizmo/world-transform.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import type { Node } from "./scene/base.mjs"
@@ -261,6 +263,15 @@ export class RenderWorkerCore {
     #featureGraphIsoBatch: IsoSampleBatch | null = null
     /** Lazy-constructed debug overlay pipeline; created on first frame. */
     #featureGraphOverlay: FeatureGraphOverlay | null = null
+    // ----- Transform gizmo overlay (translate arrows + rotate rings) -----
+    /** Lazy-constructed gizmo overlay pipeline; created when first shown. */
+    #gizmoOverlay: GizmoOverlay | null = null
+    #gizmoVisible = false
+    #gizmoCenter: [number, number, number] = [0, 0, 0]
+    /** Gizmo radius in framebuffer pixels (constant on-screen size). */
+    #gizmoSizePx = 90
+    #gizmoHoverHandle = -1
+    #gizmoActiveHandle = -1
     // ----- Interactive FeatureGraph feature selection (edge/corner/auto) -----
     // Retained from the latest build so CPU hit-testing can run on click/hover.
     #fgCpu: FeatureGraphCpu | null = null
@@ -731,6 +742,38 @@ export class RenderWorkerCore {
         this.#forceNextRender = true
     }
 
+    /** Reply with the world-space center (+ local half-extents) of a scene node,
+     * for gizmo placement. The center pushes the node's local bbox center back
+     * out through ancestor transforms so it lines up with the rendered surface. */
+    handleGetNodeBounds(nodeId: number, requestId: number): void {
+        let bounds: { center: [number, number, number]; half: [number, number, number] } | null = null
+        const scene = this.#scene
+        const node = scene?.get(nodeId)
+        const b = node?.computeBounds()
+        if (scene && b) {
+            const center = worldCenterForNode(scene.root, nodeId) ?? [b.cx, b.cy, b.cz]
+            bounds = { center, half: [b.hx, b.hy, b.hz] }
+        }
+        self.postMessage({ type: "nodeBoundsResult", bounds, requestId })
+    }
+
+    /** Update the transform-gizmo overlay state. The gizmo is drawn each frame
+     * (re-projected from its stored world anchor) so it tracks camera moves with
+     * no further messages; this just sets visibility / anchor / handle state. */
+    setGizmo(msg: Extract<MainToWorkerMessage, { type: "setGizmo" }>): void {
+        this.#gizmoVisible = msg.visible
+        // Construct the overlay (compiles its shader + pipelines) here, outside
+        // the frame encode, the first time the gizmo is shown.
+        if (msg.visible && !this.#gizmoOverlay) {
+            this.#gizmoOverlay = new GizmoOverlay(this.#helper, this.#format)
+        }
+        if (msg.center) this.#gizmoCenter = msg.center
+        if (msg.sizePx !== undefined) this.#gizmoSizePx = msg.sizePx
+        this.#gizmoHoverHandle = msg.hoverHandle ?? -1
+        this.#gizmoActiveHandle = msg.activeHandle ?? -1
+        this.#forceNextRender = true
+    }
+
     cancelBuilds(): void {
         this.#buildGeneration++
         // Supersede any in-flight background FG build too — its upload is
@@ -1147,6 +1190,34 @@ export class RenderWorkerCore {
             label: "FeatureGraph Overlay",
             colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
             timestampWrites: this.#timestampWritesFor("overlay"),
+        })
+        overlay.render(pass)
+        pass.end()
+    }
+
+    /**
+     * Open a render pass on the canvas target with `loadOp: "load"` and draw the
+     * transform gizmo (translate arrows + rotate rings) for the selected object.
+     * No-op when hidden. Lazily constructs the overlay on first show. Always
+     * draws on top (no depth attachment) so handles stay grabbable.
+     */
+    #renderGizmoOverlay(
+        commandEncoder: GPUCommandEncoder,
+        target: GPUTextureView,
+        viewTransform: Float32Array | ArrayBuffer,
+        cameraPosition: readonly [number, number, number],
+        width: number,
+        height: number,
+        zoom: number,
+        viewCenter: readonly [number, number],
+    ): void {
+        const overlay = this.#gizmoOverlay
+        if (!this.#gizmoVisible || !overlay) return
+        overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
+        overlay.setState(this.#gizmoCenter, this.#gizmoSizePx, true, this.#gizmoHoverHandle, this.#gizmoActiveHandle)
+        const pass = commandEncoder.beginRenderPass({
+            label: "Gizmo Overlay",
+            colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
         })
         overlay.render(pass)
         pass.end()
@@ -1814,6 +1885,16 @@ export class RenderWorkerCore {
             sceneHeight,
             deferred,
         )
+        this.#renderGizmoOverlay(
+            commandEncoder,
+            finalTarget,
+            viewTransform,
+            cameraPosition,
+            overlayW,
+            overlayH,
+            orthoHalfFromDolly(msg.cameraState.dollyDistance),
+            viewCenter,
+        )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)
         this.#device.queue.submit([commandEncoder.finish()])
@@ -2150,6 +2231,16 @@ export class RenderWorkerCore {
             sceneWidth,
             sceneHeight,
             deferred,
+        )
+        this.#renderGizmoOverlay(
+            commandEncoder,
+            canvasView,
+            viewTransform,
+            cameraPosition,
+            overlayW,
+            overlayH,
+            f32[b4 + L.O_ZOOM / 4]!,
+            viewCenter,
         )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)

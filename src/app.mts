@@ -45,6 +45,7 @@ import cameraViewTopIcon from "./assets/camera-view-top.svg"
 import cameraViewBottomIcon from "./assets/camera-view-bottom.svg"
 import toolbarCameraViewsIcon from "./assets/toolbar-camera-views.svg"
 import toolbarXrayIcon from "./assets/toolbar-xray.svg"
+import toolbarGhostIcon from "./assets/toolbar-ghost.svg"
 import toolbarPreviewNormalIcon from "./assets/toolbar-preview-normal.svg"
 import toolbarIsolateIcon from "./assets/toolbar-isolate.svg"
 import toolbarOcclusionIcon from "./assets/toolbar-occlusion.svg"
@@ -161,6 +162,7 @@ class App {
     #getVisiblePreviewRect!: () => DOMRect
     #toolbarRefs!: {
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton
+        ghostToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
@@ -662,13 +664,13 @@ class App {
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
-        const { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools } = this.#toolbarRefs
+        const { xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
                 .ready()
             this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
             this.renderer.setShapePalette(getShapePalette(this.#effectiveTheme))
-            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle)
+            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle)
             this.#updateViewCenter?.()
             if (isInitial) {
                 this.#wireEditorAndTabs()
@@ -938,6 +940,11 @@ class App {
         toolbar.addSpacer()
 
         const xrayCheckbox = toolbar.addToggleButton(toolbarXrayIcon, "Toggle X-ray")
+        const ghostToggle = toolbar.addToggleButton(
+            toolbarGhostIcon,
+            "Show subtracted shapes as translucent red (per-tab, not saved in code)",
+            false,
+        )
         const previewNormalShadingToggle = toolbar.addToggleButton(
             toolbarPreviewNormalIcon,
             "Toggle normal shading",
@@ -988,7 +995,7 @@ class App {
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
 
-        return { xrayCheckbox, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools }
+        return { xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools }
     }
 
     #setupLayoutObservers(editorContainer: HTMLDivElement) {
@@ -1052,6 +1059,7 @@ class App {
         preview: PreviewWindow,
         devTools: DevToolsPanel,
         xrayCheckbox: import("./components/toolbar.mjs").ToolbarToggleButton,
+        ghostToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         previewNormalShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>,
@@ -1244,6 +1252,18 @@ class App {
         xrayCheckbox.checked = this.renderer.xrayMode
         xrayCheckbox.onChange = (enabled) => {
             this.renderer.xrayMode = enabled
+        }
+
+        // Ghost overlay: show subtracted shapes as translucent red. Deliberately a
+        // PER-TAB view toggle that survives refresh but is not saved in the doc or
+        // global settings — persisted in sessionStorage (scoped to this tab).
+        const GHOST_STORAGE_KEY = "galacticad.ghostSubtracted"
+        const ghostInitial = sessionStorage.getItem(GHOST_STORAGE_KEY) === "1"
+        this.renderer.ghostMode = ghostInitial
+        ghostToggle.checked = ghostInitial
+        ghostToggle.onChange = (enabled) => {
+            this.renderer.ghostMode = enabled
+            sessionStorage.setItem(GHOST_STORAGE_KEY, enabled ? "1" : "0")
         }
 
         // Shared "render normals" mode: the toolbar icon, the SDF preview, the mesh

@@ -547,6 +547,40 @@ export class SceneInfo {
         return `\nreturn ${compiledResult.text};\n`
     }
 
+    /** Every cutter (`rh`) of every `subtract` in the tree — the nodes a subtract hides. */
+    subtractedCutters(): Node[] {
+        return this.getAllNodes().filter(n => n instanceof Subtract).map(n => (n as Subtract).rh)
+    }
+
+    /**
+     * Body for the preview shader's `ghostSDF_fast(p)` — the union of every
+     * subtracted cutter compiled as its FULL solid (the `subtract` that normally
+     * hides it is bypassed here). Each cutter is already a built scene node, so its
+     * fast SDF, aux functions and packed params are all valid in the preview
+     * shader; we just OR them into a second field the ghost pass marches.
+     *
+     * Always emitted (cheap empty body when nothing is subtracted); whether it is
+     * actually composited is a runtime toggle (`viewSettings.ghostEnabled`), so
+     * flipping the toolbar button is a uniform update + repaint, not a rebuild.
+     */
+    compileGhostFastForPreview(): string {
+        const cutters = this.subtractedCutters()
+        if (cutters.length === 0) {
+            return "return sdfFast(1e9, 1.0, 1.0);"
+        }
+        setCompileParamMode("preview")
+        let blocks = ""
+        for (let i = 0; i < cutters.length; i++) {
+            const r = cutters[i].compileFast(1)
+            const expr = r.prelude ? (r.varName ?? r.text!) : r.text!
+            const prelude = r.prelude ?? ""
+            // Each cutter gets its own `{ ... }` scope so per-cutter prelude var
+            // names (BVH accumulators) can never collide across ghosts.
+            blocks += `{\n${prelude}let gc_${i} = ${expr};\nghostAcc = opUnionFast(ghostAcc, gc_${i});\n}\n`
+        }
+        return `\nvar ghostAcc = sdfFast(1e9, 1.0, 1.0);\n${blocks}return ghostAcc;\n`
+    }
+
     compileMid(): string {
         setCompileParamMode("storage")
         const compiledResult = this.root.compileMid(1)

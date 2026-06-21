@@ -147,6 +147,7 @@ export class SDFRenderer {
     #needsRender = true
     #started = false
     #xrayMode = false
+    #ghostMode = false
     #isolatedIds: number[] = []
     #beamEnabled = false
     #previewShading: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
@@ -1612,6 +1613,20 @@ export class SDFRenderer {
     }
 
     /**
+     * Ghost overlay: render all subtracted cutters as translucent red. Unlike
+     * xray, this is NOT written to the persistent settings store — it's a per-tab
+     * view toggle (the app owns its sessionStorage persistence), so it only sets
+     * the runtime flag uploaded to the worker each frame and requests a repaint.
+     */
+    set ghostMode(enabled: boolean) {
+        this.#ghostMode = enabled
+        this.#needsRender = true
+    }
+    get ghostMode(): boolean {
+        return this.#ghostMode
+    }
+
+    /**
      * Isolate-view target. 0 = off (full scene). Otherwise the scene node id whose
      * subtree should be rendered alone. The worker RECOMPILES the preview SDF from
      * the isolated subtree(s) as root (no DSL re-eval, no param re-upload) and
@@ -1885,6 +1900,7 @@ export class SDFRenderer {
         p.selectionState.hoveredObjectId = this.#hoveredObjectId
         p.selectionState.hoveredEdges = this.#hoveredEdges
         p.viewSettings.xrayMode = this.#xrayMode
+        p.viewSettings.ghostMode = this.#ghostMode
         p.viewSettings.beamEnabled = this.#beamEnabled
         // corner appended as 5 (not renumbered) to keep existing values stable
         // in the SAB 3-bit field and the preview shader.

@@ -405,6 +405,8 @@ export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
 
 export interface RenderViewSettings {
     xrayMode: boolean
+    /** Show all subtracted cutters as a translucent red ghost overlay (toolbar toggle, per-tab). */
+    ghostMode?: boolean
     beamEnabled: boolean
     selectionMode: number
     outlineMode: number

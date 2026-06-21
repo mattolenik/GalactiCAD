@@ -80,6 +80,7 @@ struct ViewSettings {
     debugHeatmap: u32,   // 0 = normal shading, 1 = render per-pixel sceneSDF_fast call count as a turbo-like color ramp
     beamEnabled: u32,    // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
     selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
+    ghostEnabled: u32,   // 0 = off, 1 = show subtracted cutters as a translucent red ghost overlay
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -553,6 +554,21 @@ fn sceneSDF_fast(p: vec3f) -> FastSDFResult {
     return sdfFast(0.0, 1.0, 1.0); //:) insert sceneSDF_fast
 }
 
+// ── Subtracted-cutter "ghost" overlay ──────────────────────────────────────
+// Subtracted cutters are normally invisible once a `subtract` carves them away.
+// When the toolbar ghost toggle is on (`viewSettings.ghostEnabled`), the ghost
+// pass re-evaluates ALL cutters as full solids in a second SDF and composites
+// them as a translucent red overlay wherever they sit in front of the opaque
+// surface. The toggle is a runtime uniform, so the body below is always emitted;
+// when the scene has no subtracts it is the inert (far-away) default.
+const GHOST_COLOR: vec3f = vec3f(0.85, 0.12, 0.12);
+const GHOST_ALPHA: f32 = 0.45;
+
+// Union of all subtracted cutters as full solids. Replaced at runtime.
+fn ghostSDF_fast(p: vec3f) -> FastSDFResult {
+    return sdfFast(1e9, 1.0, 1.0); //:) insert ghostSDF_fast
+}
+
 // Narrow the ray parameter so the full sceneSDF sample is not stuck at the first
 // in-band fast sample (important when t_start is shared per 8x8 beam tile).
 // `stepCount` accumulates `sceneSDF_fast` invocations for the debug heatmap;
@@ -630,6 +646,57 @@ fn bisectSurfaceCrossing(origin: vec3f, dir: vec3f, tInside: f32, tOutside: f32,
         }
     }
     return hi;
+}
+
+// Finite-difference normal of the ghost field — it has no analytic normal like
+// sceneSDF. Tetrahedron sampling; `eps` scales with the on-screen pixel size so
+// it adapts to zoom and scene scale.
+fn ghostNormal(p: vec3f, eps: f32) -> vec3f {
+    let k = vec2f(1.0, -1.0);
+    let n = k.xyy * ghostSDF_fast(p + k.xyy * eps).d
+          + k.yyx * ghostSDF_fast(p + k.yyx * eps).d
+          + k.yxy * ghostSDF_fast(p + k.yxy * eps).d
+          + k.xxx * ghostSDF_fast(p + k.xxx * eps).d;
+    return normalize(n);
+}
+
+// March the ghost field for the nearest front surface, stopping at `maxT` (the
+// opaque hit, so a ghost behind solid material stays hidden). Returns t<=0 miss.
+fn raymarchGhost(origin: vec3f, dir: vec3f, maxT: f32, stepCount: ptr<function, u32>) -> f32 {
+    var t: f32 = 0.0;
+    for (var i: i32 = 0; i < rayMarchParams.maxSteps; i = i + 1) {
+        let d = ghostSDF_fast(origin + t * dir).d;
+        *stepCount = *stepCount + 1u;
+        if (d < SURF_DIST) {
+            return t;
+        }
+        t = t + max(d, SURF_DIST);
+        if (t >= maxT) {
+            return -1.0;
+        }
+    }
+    return -1.0;
+}
+
+// Composite the translucent-red ghost over a PREMULTIPLIED base color (`base.rgb`
+// already scaled by `base.a`, matching every fragmentMain/shadeMain return). Uses
+// the standard premultiplied src-over operator, so it works on miss pixels
+// (base.a == 0) too. `opaqueT` is the opaque hit distance — <=0 for a miss, where
+// the ghost shows against the background. A no-op when the toggle is off.
+fn compositeGhost(base: vec4f, origin: vec3f, dir: vec3f, viewDir: vec3f, opaqueT: f32, wppu: f32, stepCount: ptr<function, u32>) -> vec4f {
+    if (viewSettings.ghostEnabled == 0u) { return base; }
+    let maxT = select(rayMarchParams.maxDist, opaqueT, opaqueT > 0.0);
+    if (maxT <= 0.0) { return base; }
+    let t = raymarchGhost(origin, dir, maxT, stepCount);
+    if (t <= 0.0) { return base; }
+    let p = origin + t * dir;
+    let n = ghostNormal(p, max(wppu, 1e-4));
+    let diff = 0.35 + 0.65 * clamp(dot(n, viewDir), 0.0, 1.0);
+    let a = GHOST_ALPHA;
+    let srcPremult = GHOST_COLOR * diff * a;
+    let outRgb = srcPremult + base.rgb * (1.0 - a);
+    let outA = a + base.a * (1.0 - a);
+    return vec4f(outRgb, outA);
 }
 
 fn diffuseWrap(n: vec3f, l: vec3f, wrap: f32) -> f32 {
@@ -1163,17 +1230,21 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
                 backColor = applySelectedEdgeHighlight(backColor, backPos, backHit, wppu);
                 let frontAlpha = 0.4;
                 let composited = shadedColor * frontAlpha + backColor * (1.0 - frontAlpha);
-                return heatmapOverlay(vec4f(composited, 1.0), stepCount);
+                let withGhost = compositeGhost(vec4f(composited, 1.0), transformedOrigin, transformedDir, viewDir, hit.t, wppu, &stepCount);
+                return heatmapOverlay(withGhost, stepCount);
             } else {
                 let alpha = 0.6;
-                return heatmapOverlay(vec4f(shadedColor * alpha, alpha), stepCount);
+                let withGhost = compositeGhost(vec4f(shadedColor * alpha, alpha), transformedOrigin, transformedDir, viewDir, hit.t, wppu, &stepCount);
+                return heatmapOverlay(withGhost, stepCount);
             }
         }
 
-        return heatmapOverlay(vec4f(shadedColor, 1.0), stepCount);
+        let withGhost = compositeGhost(vec4f(shadedColor, 1.0), transformedOrigin, transformedDir, viewDir, hit.t, wppu, &stepCount);
+        return heatmapOverlay(withGhost, stepCount);
     } else {
-        // Miss pixel — fully transparent.
-        return heatmapOverlay(vec4f(0.0), stepCount);
+        // Miss pixel — fully transparent, unless a highlighted ghost sits here.
+        let withGhost = compositeGhost(vec4f(0.0), transformedOrigin, transformedDir, viewDir, hit.t, wppu, &stepCount);
+        return heatmapOverlay(withGhost, stepCount);
     }
 }
 
@@ -1315,14 +1386,31 @@ fn shadeMain(@builtin(position) pos: vec4f, @location(0) fragCoord: vec2f) -> @l
     forceDeferredBindings();
 
     let g = gbuffer[gbufferIndex(pos)];
-    if (g.t <= 0.0) {
-        // Miss pixel — fully transparent (matches fragmentMain).
-        return heatmapOverlay(vec4f(0.0), g.steps);
-    }
 
     let uv = fragCoord;
     let pixelCoord = uv * camera.res;
     let wppu = (2.0 * camera.zoom) / camera.res.y;
+
+    // Ray reconstruction (same ray as geometryMain) — hoisted above the miss
+    // check so the ghost overlay can march on miss pixels too. `stepCount` seeds
+    // from the geometry pass so the heatmap keeps counting through the ghost march.
+    let aspect = camera.res.x / camera.res.y;
+    let uvAspect = vec2f(
+        (uv.x - camera.viewCenter.x) * aspect + 0.5,
+        uv.y - camera.viewCenter.y + 0.5
+    );
+    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
+    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
+    let transformedDir = -camera.transform[2].xyz;
+    let viewDir = camera.transform[2].xyz;
+    var stepCount: u32 = g.steps;
+
+    if (g.t <= 0.0) {
+        // Miss pixel — fully transparent (matches fragmentMain), unless a
+        // highlighted ghost sits in front of the background here.
+        let withGhost = compositeGhost(vec4f(0.0), transformedOrigin, transformedDir, viewDir, -1.0, wppu, &stepCount);
+        return heatmapOverlay(withGhost, stepCount);
+    }
 
     var hit: HitData;
     hit.t = g.t;
@@ -1336,15 +1424,7 @@ fn shadeMain(@builtin(position) pos: vec4f, @location(0) fragCoord: vec2f) -> @l
     hit.seamGap = g.seamGap;
     hit.seamTangent = g.seamTangent;
 
-    // World hit position — same ray as geometryMain.
-    let aspect = camera.res.x / camera.res.y;
-    let uvAspect = vec2f(
-        (uv.x - camera.viewCenter.x) * aspect + 0.5,
-        uv.y - camera.viewCenter.y + 0.5
-    );
-    let rayOrigin = computeRayOrigin(uvAspect, camera.position);
-    let transformedOrigin = (camera.transform * vec4f(rayOrigin, 1.0)).xyz;
-    let transformedDir = -camera.transform[2].xyz;
+    // World hit position — same ray as geometryMain (origin/dir hoisted above).
     let hitPos = transformedOrigin + transformedDir * hit.t;
 
     let selFloat = f32(selectedObjectIds[hit.id] != 0u);
@@ -1353,7 +1433,8 @@ fn shadeMain(@builtin(position) pos: vec4f, @location(0) fragCoord: vec2f) -> @l
     shadedColor = applySelectionOverlay(shadedColor, pixelCoord, frontResult.faceSelected, frontResult.lit);
     shadedColor = applySelectedEdgeHighlight(shadedColor, hitPos, hit, wppu);
 
-    return heatmapOverlay(vec4f(shadedColor, 1.0), g.steps);
+    let withGhost = compositeGhost(vec4f(shadedColor, 1.0), transformedOrigin, transformedDir, viewDir, g.t, wppu, &stepCount);
+    return heatmapOverlay(withGhost, stepCount);
 }
 
 // Occlusion depth for the FeatureGraph overlay, reconstructed from the deferred

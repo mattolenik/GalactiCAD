@@ -382,8 +382,9 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
-    // [0..3]=xray,heatmap,beam,selMode (matches ViewSettings in preview.wgsl).
-    #viewSettingsBuf = new Uint32Array(4)
+    // [0..4]=xray,heatmap,beam,selMode,ghost (matches ViewSettings in preview.wgsl);
+    // padded to 8 (32 bytes) for uniform 16-byte size alignment.
+    #viewSettingsBuf = new Uint32Array(8)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
     // inline into preview.wgsl, so the post-process pass has no per-frame
@@ -398,7 +399,7 @@ export class RenderWorkerCore {
     #camTransform = new Mat4x4f(new Float32Array(16))
     /** Dirty-state caches: last uploaded bytes. Compare before writeBuffer to skip redundant uploads. */
     #cameraCache = new ArrayBuffer(256)
-    #viewSettingsCache = new ArrayBuffer(16)
+    #viewSettingsCache = new ArrayBuffer(32)
     #selectionStylesCache = new ArrayBuffer(80)
     #selectedIdsCache = new ArrayBuffer(4096)
     #selectedEdgesCache = new ArrayBuffer(SELECTED_EDGES_TOTAL)
@@ -789,6 +790,7 @@ export class RenderWorkerCore {
         const tSdf = performance.now()
         const sceneSDF_fast = scene.compileFastForPreview(sdfRoot)
         const tSdfFast = performance.now()
+        const ghostSDFFast = scene.compileGhostFastForPreview()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
         const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
         const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
@@ -799,6 +801,7 @@ export class RenderWorkerCore {
             .replace("insert", "sceneAux", sceneAux)
             .replace("insert", "sceneSDF_fast", sceneSDF_fast)
             .replace("insert", "sceneSDF", sceneSDF)
+            .replace("insert", "ghostSDF_fast", ghostSDFFast)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
             .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
             .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
@@ -1665,6 +1668,7 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // matches `debugHeatmap` in preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
+        this.#viewSettingsBuf[4] = viewSettings.ghostMode ? 1 : 0
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
@@ -1955,6 +1959,7 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[1] = this.#stepHeatmapEnabled ? 1 : 0 // debugHeatmap; see preview.wgsl ViewSettings
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
+        this.#viewSettingsBuf[4] = packed & 256 ? 1 : 0 // ghostMode (SAB bit 8)
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
@@ -3412,7 +3417,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 16, // 4 u32: xrayMode, debugHeatmap, beamEnabled, selectionMode
+            size: 32, // u32: xrayMode, debugHeatmap, beamEnabled, selectionMode, ghostEnabled (+ pad)
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })

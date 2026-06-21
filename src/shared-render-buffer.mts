@@ -225,7 +225,8 @@ export function writeRenderPayloadSlot(
         (vs.beamEnabled ? 2 : 0) |
         (vs.selectionMode << 2) |
         (vs.outlineMode << 5) |
-        (vs.previewNormalShading ? 128 : 0)
+        (vs.previewNormalShading ? 128 : 0) |
+        (vs.ghostMode ? 256 : 0)
     u32[b4 + S_O_VIEW_SETTINGS / 4] = packed
     u32[b4 + S_O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
     f32.set(vs.outlineColor, base / 4 + S_O_OUTLINE_COLOR / 4)
@@ -338,6 +339,7 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
     const psB = b4 + S_O_PREVIEW_SHADING / 4
     const viewSettings: RenderViewSettings = {
         xrayMode: (packed & 1) !== 0,
+        ghostMode: (packed & 256) !== 0,
         beamEnabled: (packed & 2) !== 0,
         selectionMode: (packed >> 2) & 7,
         outlineMode: (packed >> 5) & 3,

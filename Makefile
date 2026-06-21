@@ -30,7 +30,7 @@ default: setup build test
 .PHONY: setup
 setup:
 	@mkdir -p $(DIST)
-	pnpm install
+	pnpm install --loglevel warn
 	if ! $(BROWSERS_CLI) list --path $(BROWSERS_DIR) | grep -q chromium; then
 		$(BROWSERS_CLI) install chromium@latest --path $(BROWSERS_DIR)
 	fi
@@ -337,3 +337,4 @@ gcad-wasm/wasm/pkg-threads/.stamp: $(GCAD_WASM_SRC)
 
 .PHONY: gcad-wasm-threads
 gcad-wasm-threads: gcad-wasm/wasm/pkg-threads/.stamp
+

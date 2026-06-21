@@ -12,8 +12,7 @@
 //! is evaluated exactly once, so neighboring faces and cells always agree on
 //! signs. Sign convention: inside ⇔ f < 0.
 //!
-//! M3a notes: single-threaded; `HashMap`/`HashSet` cell storage (the
-//! deterministic-weld / rayon restructure is M6). The `needs_split` criteria
+//! M3a notes: single-threaded; `HashMap`/`HashSet` cell storage. The `needs_split` criteria
 //! callback is supplied by the caller — for M3a it is the smooth-only
 //! [`crate::sfcc::refine_criteria::needs_split_smooth`].
 //!
@@ -59,14 +58,13 @@ pub struct SfccCell {
 /// most once (interior mutability so the criteria callback and the octree share
 /// one map).
 ///
-/// M6d: the refine WORKLIST is now round-batched, and within a round every
-/// frontier cell's 8 corners are already cached (each `make_leaf` samples them
-/// before the cell joins the worklist). The per-cell split DECISION therefore
-/// reads the cache without ever writing it — so the decision pass can run in
-/// parallel (rayon) over an immutable [`SampleView`] borrow (which IS `Sync`)
-/// instead of through this `RefCell` (which is NOT). Cache writes (`sample_at`)
-/// stay on the serial path: cell creation (`make_leaf` / `make_probe` corner
-/// reads) and the edge-interior walks in face-contour.
+/// The refine WORKLIST is round-batched, and within a round every frontier cell's
+/// 8 corners are already cached (each `make_leaf` samples them before the cell
+/// joins the worklist). The per-cell split DECISION therefore reads the cache
+/// without ever writing it — so the decision pass runs over an immutable
+/// [`SampleView`] borrow instead of through this `RefCell`. Cache writes
+/// (`sample_at`) happen at cell creation (`make_leaf` / `make_probe` corner reads)
+/// and the edge-interior walks in face-contour.
 pub struct Sampler<'a> {
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
@@ -96,11 +94,11 @@ impl<'a> Sampler<'a> {
     }
 }
 
-/// A READ-ONLY view of the sample cache over an immutable borrow — `Sync`, so it
-/// can be shared across the rayon par_iter in the round-batched decision pass.
-/// `make_probe` corner reads go through `sample_at`; in the decision pass every
-/// corner is already populated (cell creation cached them), so a missing key
-/// would be a bug — we fall back to a direct (un-cached) tree eval to stay safe.
+/// A READ-ONLY view of the sample cache over an immutable borrow, used by the
+/// round-batched decision pass. `make_probe` corner reads go through `sample_at`;
+/// in the decision pass every corner is already populated (cell creation cached
+/// them), so a missing key would be a bug — we fall back to a direct (un-cached)
+/// tree eval to stay safe.
 pub struct SampleView<'a> {
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
@@ -124,8 +122,8 @@ impl<'a> SampleView<'a> {
 
 /// The per-cell split DECISION: split-or-not plus the feature tags the criteria
 /// classification stamps onto a kept (or to-be-meshed degenerate) leaf. Returned
-/// by the pure decision callback so the decision pass holds no `&mut SfccCell`
-/// and can run under rayon. The tags are persisted onto the live cell serially.
+/// by the pure decision callback so the decision pass holds no `&mut SfccCell`;
+/// the tags are persisted onto the live cell afterward.
 #[derive(Clone, Copy, Debug)]
 pub struct CellDecision {
     pub split: bool,
@@ -133,34 +131,16 @@ pub struct CellDecision {
     pub feature_corner: i64,
 }
 
-/// Decide every frontier cell — the parallelism site (the ~67% `classifyCellFeatures`
-/// hot path). `par_iter().map().collect()` preserves INDEX ORDER, so `decisions[i]`
-/// is the decision for `frontier[i]` regardless of which thread computed it; the
-/// apply phase then consumes them in that deterministic order. `decide` is pure
-/// (`Fn + Sync`), the `SampleView` is an immutable cache borrow (`Sync`), and the
-/// feature set behind the closure is immutable during refine — so this is
-/// data-race-free by construction. Falls back to a serial `iter()` when the
-/// `threads` feature is off (the default build stays single-threaded + stable).
-/// The per-cell decision-closure bound. Carries `Sync` ONLY on the `threads` build (the
-/// parallel `decide_frontier` requires it); on the default serial build it is plain `Fn`,
-/// so a decision context with interior-mutable state — e.g. the coarse-prune `RefCell`
-/// cache in `PipelineContext` — is permitted.
-#[cfg(feature = "threads")]
-pub trait DecideFn: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync {}
-#[cfg(feature = "threads")]
-impl<T: Fn(&SfccCell, &SampleView<'_>) -> CellDecision + Sync> DecideFn for T {}
-#[cfg(not(feature = "threads"))]
+/// Decide every frontier cell (the ~67% `classifyCellFeatures` hot path), producing
+/// one `CellDecision` per cell in INDEX ORDER so `decisions[i]` is the decision for
+/// `frontier[i]`; the apply phase then consumes them in that deterministic order.
+///
+/// The per-cell decision-closure bound. `decide` is plain `Fn`, so a decision context
+/// with interior-mutable state — e.g. the coarse-prune `RefCell` cache in
+/// `PipelineContext` — is permitted.
 pub trait DecideFn: Fn(&SfccCell, &SampleView<'_>) -> CellDecision {}
-#[cfg(not(feature = "threads"))]
 impl<T: Fn(&SfccCell, &SampleView<'_>) -> CellDecision> DecideFn for T {}
 
-#[cfg(feature = "threads")]
-fn decide_frontier<F: DecideFn>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision> {
-    use rayon::prelude::*;
-    frontier.par_iter().map(|cell| decide(cell, view)).collect()
-}
-
-#[cfg(not(feature = "threads"))]
 fn decide_frontier<F: DecideFn>(frontier: &[SfccCell], view: &SampleView<'_>, decide: &F) -> Vec<CellDecision> {
     frontier.iter().map(|cell| decide(cell, view)).collect()
 }
@@ -502,11 +482,9 @@ impl<'a> Builder<'a> {
 /// tags to stamp. It is never invoked above `depth_min`, and it is a PURE READ
 /// over the immutable feature set + the pre-populated sample cache (every
 /// frontier cell's 8 corners are cached at creation), so the decision pass runs
-/// over a round's frontier in parallel under the `threads` feature (rayon
-/// `par_iter` + an order-preserving `collect`) — and serially otherwise. The
-/// FINAL leaf set is confluent (criteria are pure; the 2:1 balance is a fixpoint
-/// independent of worklist order), so parallel output == serial output. Port of
-/// `buildOctree`.
+/// over a round's frontier with an order-preserving `collect`. The FINAL leaf set
+/// is confluent (criteria are pure; the 2:1 balance is a fixpoint independent of
+/// worklist order). Port of `buildOctree`.
 pub fn build_octree<'a, F>(
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
@@ -574,7 +552,7 @@ where
 
     // --- refinement worklist with balance ripple, ROUND-BATCHED -------------
     // Each round: (1) snapshot the current frontier (cells still live as leaves),
-    // (2) DECIDE all of them — the parallel section (pure reads over the cache +
+    // (2) DECIDE all of them — the decide section (pure reads over the cache +
     // feature set), (3) APPLY serially (stamp tags, split + balance-ripple). The
     // ripple may split a cell earlier in the same round; the identity guard
     // (cell gone from the leaf map ⇒ skip) handles that exactly as the serial
@@ -597,7 +575,7 @@ where
         let frontier_len = frontier.len();
         let decide_t0 = now.map(|f| f());
 
-        // (2) DECIDE — pure-read over an immutable cache borrow (Sync). The corner
+        // (2) DECIDE — pure-read over an immutable cache borrow. The corner
         // samples for every frontier cell are already in the cache (cell creation
         // populated them), so no writes occur; `decide` only reads.
         let decisions: Vec<CellDecision> = {
@@ -778,7 +756,7 @@ pub fn build_uniform_octree<'a>(tree: &'a CsgNode, lat: &'a SfccLattice, leaf_de
 /// every certificate eval of every cell decided under it. The build cost (`prune_to_box`
 /// is `O(tree²)` per region) is what sank the per-cell Lever 1; amortizing it over a
 /// whole region is the fix (proven net-positive on the contour phase). Built ONCE up
-/// front so the read-only cache satisfies the `Fn + Sync` decide-callback bound.
+/// front and shared read-only across every decide call.
 const OCTREE_PRUNE_LEVEL: u32 = 5;
 
 /// Pack a coarse cell `(level, ix, iy, iz)` into a cache key.
@@ -844,7 +822,7 @@ pub fn build_octree_feature_aware<'a>(
     let has_blend = tree.has_blend();
     // Coarse-region CSG pruning (replaces the net-negative per-cell Lever 1): build one
     // pruned view per surface coarse cell up front, reuse it across every cell decided
-    // under it. Read-only cache ⇒ the `Fn + Sync` decide callback can share `&`. Gated to
+    // under it. Read-only cache ⇒ the decide callback can share `&`. Gated to
     // non-trivial trees (a coarse cell must touch a small fraction of the tree to win).
     let prune = tree.leaf_count() > LEVER1_MIN_LEAVES;
     let coarse_prunes: HashMap<u64, Pruned> = if prune {

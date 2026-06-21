@@ -14,7 +14,6 @@
 //! (round-0) fallback cells.
 
 use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, stride_at_level, SfccLattice};
-#[cfg(not(feature = "threads"))]
 use crate::math::grid::point_to_world;
 use crate::sdf::CsgNode;
 use crate::sfcc::cell_mesh::{
@@ -448,20 +447,15 @@ pub(crate) struct PipelineContext<'a> {
     smooth_opts: SmoothCriteriaOptions,
     grad_bound: f64,
     has_blend: bool,
-    /// Coarse-prune gate (tree large enough to benefit) — drives `self.coarse` on the
-    /// serial build; the `threads` build never prunes (see `coarse`).
-    #[cfg(not(feature = "threads"))]
+    /// Coarse-prune gate (tree large enough to benefit) — drives `self.coarse`.
     prune: bool,
     max_depth: u32,
     total_size: f64,
     tree: &'a CsgNode,
     /// Coarse-region pruned views, keyed by `OCTREE_PRUNE_LEVEL` ancestor and reused
     /// across every leaf under that ancestor — amortizes the `O(tree²)` `prune_to_box`
-    /// build (the cost that sank the per-cell Lever 1). Lazy + serial: only built on the
-    /// non-threads build, where the decision pass runs serially (a `RefCell` field would
-    /// make the context `!Sync`); the `threads` build evaluates the full tree (bit-exact,
-    /// just unpruned). Mirrors the coarse contour prune (`face_contour::contour_into`).
-    #[cfg(not(feature = "threads"))]
+    /// build (the cost that sank the per-cell Lever 1). Lazy. Mirrors the coarse contour
+    /// prune (`face_contour::contour_into`).
     coarse: std::cell::RefCell<std::collections::HashMap<u64, crate::sdf::Pruned<'a>>>,
 }
 
@@ -470,11 +464,9 @@ pub(crate) struct PipelineContext<'a> {
 /// coarser cells are their own region. Coarser = fewer `O(tree²)` builds (the dominant
 /// cost), which is what flips pruning net-positive (see `face_contour::CONTOUR_PRUNE_LEVEL`,
 /// L5 measured best for contour).
-#[cfg(not(feature = "threads"))]
 const OCTREE_PRUNE_LEVEL: u32 = 5;
 
 /// Cache key for a cell's coarse-prune region (its `OCTREE_PRUNE_LEVEL` ancestor).
-#[cfg(not(feature = "threads"))]
 fn octree_coarse_key(cell: &SfccCell) -> u64 {
     let l = cell.level.min(OCTREE_PRUNE_LEVEL);
     let s = cell.level - l;
@@ -488,7 +480,6 @@ fn octree_coarse_key(cell: &SfccCell) -> u64 {
 /// thin margin (decide evals sit on the cell's corners/center — inside the coarse cell —
 /// so only a boundary margin is needed). Bit-exact over this box ⇒ bit-exact for every
 /// `decide_cell` certificate eval of a cell under it.
-#[cfg(not(feature = "threads"))]
 fn octree_coarse_box(lat: &SfccLattice, cell: &SfccCell) -> ([f64; 3], [f64; 3]) {
     let l = cell.level.min(OCTREE_PRUNE_LEVEL);
     let s = cell.level - l;
@@ -513,7 +504,7 @@ impl<'a> PipelineContext<'a> {
     ///
     /// `forced` is the accumulated forced-split marker list for the current round
     /// (empty on round 0 / the worker's single build); `sample` reads the shared
-    /// corner-sample cache (the [`crate::sfcc::octree::SampleView`] in the parallel
+    /// corner-sample cache (the [`crate::sfcc::octree::SampleView`] used in the
     /// decision pass).
     fn decide_cell<S: Fn(i64, i64, i64) -> f64>(
         &self,
@@ -560,14 +551,11 @@ impl<'a> PipelineContext<'a> {
             // path either, so keep them unset).
             return CellDecision { split: true, feature_curve: -1, feature_corner: -1 };
         }
-        // Coarse-region prune (default/serial build): one pruned view per
-        // OCTREE_PRUNE_LEVEL ancestor, reused across all leaves under it — every
-        // certificate eval (center f + per-stratum / blend-band ∇f + owner queries)
-        // queries points inside this cell, hence inside the coarse cell, where the
-        // pruned view is bit-exact. Lazily built & cached on `self.coarse`. On the
-        // `threads` build the cache is absent (would be `!Sync`) → the full tree, which
-        // is bit-exact, so decisions are identical either way.
-        #[cfg(not(feature = "threads"))]
+        // Coarse-region prune: one pruned view per OCTREE_PRUNE_LEVEL ancestor, reused
+        // across all leaves under it — every certificate eval (center f + per-stratum /
+        // blend-band ∇f + owner queries) queries points inside this cell, hence inside
+        // the coarse cell, where the pruned view is bit-exact. Lazily built & cached on
+        // `self.coarse`.
         let coarse_view = if self.prune {
             let key = octree_coarse_key(cell);
             {
@@ -581,13 +569,10 @@ impl<'a> PipelineContext<'a> {
         } else {
             None
         };
-        #[cfg(not(feature = "threads"))]
         let q: &dyn crate::sdf::SdfQuery = match &coarse_view {
             Some(m) => m.get(&octree_coarse_key(cell)).map(|p| p as &dyn crate::sdf::SdfQuery).unwrap_or(self.tree),
             None => self.tree,
         };
-        #[cfg(feature = "threads")]
-        let q: &dyn crate::sdf::SdfQuery = self.tree;
         let probe = make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
         if cls.corner >= 0 {
             // Corner cells exempt from per-stratum + sign-change gates.
@@ -753,7 +738,6 @@ pub(crate) fn build_pipeline_context<'a>(
     let has_blend = tree.has_blend();
     // Coarse-region pruning pays off only when a coarse cell touches a small fraction
     // of the tree; below a handful of leaves the full-tree tight loop wins.
-    #[cfg(not(feature = "threads"))]
     let prune = tree.leaf_count() > crate::sfcc::octree::LEVER1_MIN_LEAVES;
     let blend_curvature_analytic = if tuning.blend_curvature_analytic && tuning.blend_curvature_refine {
         tree.blend_curvature_bound()
@@ -783,12 +767,10 @@ pub(crate) fn build_pipeline_context<'a>(
         smooth_opts,
         grad_bound,
         has_blend,
-        #[cfg(not(feature = "threads"))]
         prune,
         max_depth,
         total_size,
         tree,
-        #[cfg(not(feature = "threads"))]
         coarse: std::cell::RefCell::new(std::collections::HashMap::new()),
     }
 }
@@ -1164,7 +1146,7 @@ fn run_sfcc_pipeline_impl(
         // `prepare` path so the expensive DECISION (classify + smoothCrit) can
         // never drift between serial and partitioned exports. Pure read over the
         // immutable feature set + the pre-populated sample cache, so the octree
-        // driver runs it over the round's frontier in parallel (rayon, `threads`).
+        // driver runs it over the round's frontier with a deterministic collect.
         let decide_cb =
             |cell: &SfccCell, sampler: &crate::sfcc::octree::SampleView<'_>| {
                 ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot)

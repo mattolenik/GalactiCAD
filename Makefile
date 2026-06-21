@@ -268,8 +268,8 @@ GCAD_WASM_SRC := $(shell find gcad-wasm/kernel/src gcad-wasm/wasm/src -name '*.r
 # Guard file recording the VERSION the wasm artifacts were stamped with. The
 # Makefile exports VERSION, which the kernel's build.rs bakes into the binary
 # (gcad_kernel::version()); rewriting this file only when VERSION actually
-# changes (cmp -s, via the always-stale FORCE prereq) makes the wasm/threads
-# stamps go stale and rebuild on a new commit even when no .rs source changed.
+# changes (cmp -s, via the always-stale FORCE prereq) makes the wasm stamp go
+# stale and rebuild on a new commit even when no .rs source changed.
 gcad-wasm/.version: FORCE
 	@printf '%s\n' '$(VERSION)' | cmp -s - $@ 2>/dev/null || printf '%s\n' '$(VERSION)' > $@
 .PHONY: FORCE
@@ -285,56 +285,4 @@ gcad-wasm/wasm/pkg/.stamp: $(GCAD_WASM_SRC)
 
 .PHONY: gcad-wasm
 gcad-wasm: gcad-wasm/wasm/pkg/.stamp
-
-# M6b: the THREADED wasm artifact (rayon-in-wasm). OPT-IN — NOT a dependency of
-# check/build/_start (nightly + rust-src + -Zbuild-std isn't universal). Built into
-# a SEPARATE out-dir (pkg-threads/) so the single-thread pkg/ is left untouched;
-# the render worker only loads it behind the `?sfccThreads` flag. The build script
-# auto-emits the rayon pool-worker (workerHelpers.js) at the site root when this
-# pkg-threads/ exists. pkg-threads/ is gitignored; stamp-tracked like gcad-wasm.
-# Recipe per docs/research/gcad-wasm-rust-port.md §4.
-gcad-wasm/wasm/pkg-threads/.stamp: $(GCAD_WASM_SRC)
-	# Shared memory is the crux of the rayon-in-wasm pool: every pool worker must
-	# instantiate against the SAME WebAssembly.Memory, posted from the render worker
-	# via `postMessage`. `+atomics,+bulk-memory` alone is NOT enough on current
-	# rust-lld — it emits a plain (non-shared, exported, no-max) memory, so the
-	# postMessage fails with "#<Memory> could not be cloned" and wasm-bindgen's
-	# thread transform never activates. The linker must emit an IMPORTED, SHARED,
-	# max-bounded memory, which in turn GC's the thread-model symbols wasm-bindgen
-	# needs (panics "failed to find __heap_base / __wasm_init_tls"), so they're
-	# force-exported:
-	#   --shared-memory --import-memory --max-memory=<bytes>  (shared ⇒ requires max)
-	#   --export={__wasm_init_tls,__tls_size,__tls_align,__tls_base,__heap_base}
-	# --no-opt: wasm-pack's bundled wasm-opt runs WITHOUT --enable-threads, so it
-	# lowers the shared memory back to non-shared (and drops atomics), reintroducing
-	# the clone failure. We skip it here and run an EXPLICIT optimized wasm-opt pass
-	# (M6d) below with the thread features turned on. Only this threaded artifact is
-	# affected; the single-thread pkg/ build is untouched.
-	( cd gcad-wasm/wasm && RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=1073741824 -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base -C link-arg=--export=__heap_base' \
-		rustup run nightly wasm-pack build --target web --no-opt --out-dir pkg-threads . \
-		-- -Z build-std=panic_abort,std --features threads )
-	# M6d OPTIMIZED THREADED BUILD: wasm-pack's wasm-opt can't be told to keep
-	# threads, so we run our own pass with the features EXPLICITLY enabled —
-	# --enable-threads (atomics) + --enable-bulk-memory + --enable-mutable-globals —
-	# which preserves the IMPORTED SHARED memory (verified: `(memory … shared)`
-	# survives) while still applying -O3. Without -O3 the rayon classify frontier
-	# runs un-inlined and the speedup is meaningless. wasm-opt lives in wasm-pack's
-	# content-hashed cache (or homebrew/PATH); discover it, and if none is found
-	# leave the un-optimized (but still correct) artifact in place with a warning.
-	WO="$$(find $$HOME/Library/Caches/.wasm-pack $$HOME/.cache/.wasm-pack -name wasm-opt -type f 2>/dev/null | head -1)"; \
-	[ -n "$$WO" ] || WO="$$(command -v wasm-opt 2>/dev/null)"; \
-	if [ -n "$$WO" ]; then \
-		echo "M6d: optimizing threaded wasm (shared-memory-preserving): $$WO"; \
-		"$$WO" -O3 --enable-threads --enable-bulk-memory --enable-mutable-globals \
-			gcad-wasm/wasm/pkg-threads/gcad_wasm_bg.wasm -o gcad-wasm/wasm/pkg-threads/gcad_wasm_bg.wasm; \
-		echo "M6d: verifying shared memory survived optimization..."; \
-		grep -q 'shared:true' gcad-wasm/wasm/pkg-threads/gcad_wasm.js \
-			|| { echo "ERROR: threaded glue lost shared memory after wasm-opt"; exit 1; }; \
-	else \
-		echo "WARN: wasm-opt not found — threaded artifact left UN-optimized (perf numbers will be off)"; \
-	fi
-	touch $@
-
-.PHONY: gcad-wasm-threads
-gcad-wasm-threads: gcad-wasm/wasm/pkg-threads/.stamp
 

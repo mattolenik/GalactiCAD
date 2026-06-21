@@ -442,19 +442,3 @@ pub fn sfcc_worker_merge(
     Ok(SfccExportResult { verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json, cancelled: false })
 }
 
-// --- M6 threading smoke (opt-in `threads` feature) ---------------------------
-// Feasibility probe for rayon-in-wasm (Web Workers + SharedArrayBuffer + atomics).
-// `init_thread_pool` is the wasm-bindgen-rayon entry the JS side awaits ONCE at
-// worker startup; `par_smoke` exercises a rayon par_iter so we can confirm the
-// pool actually parallelizes from inside the render worker BEFORE parallelizing
-// the real classifyCellFeatures frontier. Built only with `--features threads`
-// (nightly + -Zbuild-std + +atomics,+bulk-memory); the default build is unaffected.
-#[cfg(feature = "threads")]
-pub use wasm_bindgen_rayon::init_thread_pool;
-
-#[cfg(feature = "threads")]
-#[wasm_bindgen]
-pub fn par_smoke(n: u32) -> u64 {
-    use rayon::prelude::*;
-    (0..n as u64).into_par_iter().map(|i| i * i).sum()
-}

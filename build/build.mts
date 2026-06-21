@@ -3,7 +3,6 @@ import { EventName } from "chokidar/handler.js"
 import { execFile } from "node:child_process"
 import * as esbuild from "esbuild"
 import fs from "fs/promises"
-import fsSync from "node:fs"
 import nodePath from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
@@ -45,69 +44,6 @@ const Static = {
 //   ./dist/release  — electron-builder packaged installers/archives
 const DIST_ROOT = "./dist"
 
-/**
- * M6b threaded SFCC (rayon-in-wasm): wasm-bindgen-rayon's pool workers self-spawn
- * via `new Worker(new URL("./workerHelpers.js", import.meta.url))`. esbuild inlines
- * that snippet into the render-worker bundle but leaves the URL literal, so the
- * standalone worker file must ALSO be emitted at the SITE ROOT (where the
- * `import.meta.url`-relative resolution from `/render-worker.js` finds it).
- *
- * Built ONLY by `make gcad-wasm-threads` (opt-in nightly path) → `pkg-threads/`;
- * the snippet dir carries a content hash, so glob for it. When `pkg-threads/` is
- * absent (the default single-thread build) this returns null and nothing is
- * emitted — the non-threaded output stays byte-identical. It's bundled in a
- * SEPARATE esbuild call (not the main `entryPoints`) so the main build's outbase
- * (and thus every other worker's output path) is untouched.
- */
-function rayonWorkerHelpersEntry(): string | null {
-    const snippetsRoot = "./gcad-wasm/wasm/pkg-threads/snippets"
-    try {
-        for (const d of fsSync.readdirSync(snippetsRoot)) {
-            const helper = nodePath.join(snippetsRoot, d, "src", "workerHelpers.js")
-            if (fsSync.existsSync(helper)) return helper
-        }
-    } catch {
-        /* pkg-threads/ not built — single-thread default path only. */
-    }
-    return null
-}
-
-const PKG_THREADS_GLUE = "./gcad-wasm/wasm/pkg-threads/gcad_wasm.js"
-
-/**
- * M6b: the threaded SFCC loader (`wasm-loader-threads.mts`) statically imports the
- * `pkg-threads/` artifact, which only exists after the opt-in `make gcad-wasm-threads`
- * nightly build. When it's ABSENT (a normal checkout / `make gcad-wasm`), esbuild
- * can't resolve those imports and the WHOLE build fails — even though nothing on the
- * default path runs the threaded code. This plugin redirects `wasm-loader-threads.mts`
- * to a runtime-throwing stub when `pkg-threads/` is missing, so the default build is
- * unaffected and the `?sfccThreads` flag path fails with a clear "build pkg-threads"
- * error instead of a hard build break.
- */
-function threadedLoaderStubPlugin(): esbuild.Plugin {
-    return {
-        name: "sfcc-threads-loader-stub",
-        setup(build) {
-            const haveThreads = fsSync.existsSync(PKG_THREADS_GLUE)
-            if (haveThreads) return // pkg-threads/ present → resolve the real loader normally.
-            build.onResolve({ filter: /wasm-loader-threads(\.mjs|\.mts)?$/ }, args => ({
-                path: args.path,
-                namespace: "sfcc-threads-stub",
-            }))
-            build.onLoad({ filter: /.*/, namespace: "sfcc-threads-stub" }, () => ({
-                contents:
-                    "const MSG = 'gcad-wasm threaded artifact (pkg-threads/) not built — run `make gcad-wasm-threads`';\n" +
-                    "export async function ensureThreadedWasmReady() { throw new Error(MSG) }\n" +
-                    "export function par_smoke() { throw new Error(MSG) }\n" +
-                    "export function export_sfcc() { throw new Error(MSG) }\n" +
-                    "export async function initThreadPool() { throw new Error(MSG) }\n" +
-                    "export function version() { throw new Error(MSG) }\n",
-                loader: "js",
-            }))
-        },
-    }
-}
-
 const Options = {
     entryPoints: [
         "./src/app.mts",
@@ -120,7 +56,6 @@ const Options = {
         "./src/export/sfcc-rs/partition-worker.mts",
     ],
     plugins: [
-        threadedLoaderStubPlugin(),
         await wgslLoader(),
         await versionPlugin(),
         await fileListerPlugin(),
@@ -148,9 +83,9 @@ const WatchOptions = {
         DIST_ROOT,
         // gcad-wasm build OUTPUTS (all gitignored). A gcad-wasm *source* change makes the
         // change handler spawn `make gcad-wasm`, which writes cargo artifacts to target/ and
-        // the wasm-pack bundle to wasm/pkg{,-threads}/. Watching those would loop/thrash, so
-        // ignore them; the .rs/Cargo source change is what drives the rebuild + reload.
-        (p: string) => /(^|\/)gcad-wasm\/(target|wasm\/pkg-threads|wasm\/pkg)(\/|$)/.test(p.replace(/\\/g, "/")),
+        // the wasm-pack bundle to wasm/pkg/. Watching those would loop/thrash, so ignore
+        // them; the .rs/Cargo source change is what drives the rebuild + reload.
+        (p: string) => /(^|\/)gcad-wasm\/(target|wasm\/pkg)(\/|$)/.test(p.replace(/\\/g, "/")),
     ],
     // Only build-tooling changes (the build script, devserver, esbuild plugins) require a
     // full process restart via re-exec — they're imported once at startup and can't be
@@ -298,18 +233,6 @@ async function build() {
             // the `.wasm` → file loader the sfcc-rs exporter needs; no inline override.
             plugins: Options.plugins,
         })
-        // M6b threaded SFCC: emit the rayon pool-worker self-spawn target
-        // (`workerHelpers.js`) at the site root in its own build call so the main
-        // build's outbase — and every other worker's output path — is untouched.
-        // No-op (and zero overhead) unless `pkg-threads/` has been built.
-        const rayonHelper = rayonWorkerHelpersEntry()
-        if (rayonHelper) {
-            await esbuild.build({
-                ...SharedEsbuildOptions,
-                entryPoints: { workerHelpers: rayonHelper },
-                outdir: Options.outDir,
-            })
-        }
         const elapsed = performance.now() - startTime
         log(`🌱🐢 ${elapsed.toFixed(2)}ms`)
         return results.errors.length === 0

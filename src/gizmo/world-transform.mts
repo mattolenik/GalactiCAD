@@ -19,6 +19,7 @@ import { Translate } from "../scene/operators/translate.mjs"
 import { Rotate } from "../scene/operators/rotate.mjs"
 import { Scale } from "../scene/operators/scale.mjs"
 import { mat4FromTranslation, mat4FromRotationFwd, mat4FromScale } from "../scene/feature-graph-buffer.mjs"
+import { eulerMatrices, matMul3 } from "../scene/transform-math.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { type Vec3f, vec3 } from "../vecmat/vector.mjs"
 
@@ -138,16 +139,27 @@ export function nodePlacement(
     // Upper-left 3×3 of the column-major acc, read row-major.
     const a = found.acc
     const linear = [a[0]!, a[4]!, a[8]!, a[1]!, a[5]!, a[9]!, a[2]!, a[6]!, a[10]!]
-    // Object's world orientation (column-major 3×3) for local-aligned rings.
-    const orient = [a[0]!, a[1]!, a[2]!, a[4]!, a[5]!, a[6]!, a[8]!, a[9]!, a[10]!]
-    const rot = preShiftRotate(found.path)
-    return {
-        center: [center.x, center.y, center.z],
-        invLinear: invert3x3(linear) ?? IDENTITY_3X3,
-        orient,
-        rotateNodeId: rot ? rot.id : 0,
-        rotateEuler: rot ? [rot.rx, rot.ry, rot.rz] : [0, 0, 0],
+    // Object's world orientation (column-major 3×3) for local-aligned rings:
+    // ancestor linear, then the primitive's own `rot` if it supports the field.
+    let orient = [a[0]!, a[1]!, a[2]!, a[4]!, a[5]!, a[6]!, a[8]!, a[9]!, a[10]!]
+    let rotateNodeId = 0
+    let rotateEuler: [number, number, number] = [0, 0, 0]
+    const target = found.node
+    if (target.rotPreviewMat3Slot >= 0) {
+        // Primitive `rot` field: the gizmo edits it directly (param-only/live).
+        const { fwd } = eulerMatrices(target.rot.x, target.rot.y, target.rot.z)
+        orient = matMul3(orient, fwd)
+        rotateNodeId = targetId
+        rotateEuler = [target.rot.x, target.rot.y, target.rot.z]
+    } else {
+        // Operator fallback: nearest pre-shift Rotate node.
+        const rot = preShiftRotate(found.path)
+        if (rot) {
+            rotateNodeId = rot.id
+            rotateEuler = [rot.rx, rot.ry, rot.rz]
+        }
     }
+    return { center: [center.x, center.y, center.z], invLinear: invert3x3(linear) ?? IDENTITY_3X3, orient, rotateNodeId, rotateEuler }
 }
 
 const IDENTITY_3X3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]
@@ -195,12 +207,17 @@ export function getNodeTranslation(node: Node): [number, number, number] | null 
     return null
 }
 
-/** Set a `Rotate` node's Euler (deg) in place. Returns false if it isn't a Rotate. */
+/** Set a node's rotation (deg) in place: a primitive's `rot` field if it supports
+ * one, else a `Rotate` operator's Euler. Returns false if neither applies. */
 export function setNodeRotation(node: Node, euler: readonly [number, number, number]): boolean {
     if (node instanceof Rotate) {
         node.rx = euler[0]
         node.ry = euler[1]
         node.rz = euler[2]
+        return true
+    }
+    if (node.rotPreviewMat3Slot >= 0) {
+        node.rot = vec3(euler[0], euler[1], euler[2])
         return true
     }
     return false

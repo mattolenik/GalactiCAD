@@ -1,8 +1,10 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
 import { Vec3, Vec3f, vec3 } from "../../vecmat/vector.mjs"
+import { composeEuler, eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import type { ContourBuffer } from "../contour-buffer.mjs"
 import {
     FG_FLAG_CORNER,
@@ -13,6 +15,8 @@ import {
 export class Box extends Node {
     pos = vec3([0, 0, 0])
     size = vec3([0, 0, 0])
+    /** Whether `.shift` has been applied — gates `.rotate` (pre-shift → local `rot`; post-shift → pivot operator). */
+    #shifted = false
 
     constructor(pos: Vec3, size: Vec3) {
         super()
@@ -47,12 +51,15 @@ export class Box extends Node {
         out.vec3[b + 1] = this.size.data[1]!
         out.vec3[b + 2] = this.size.data[2]!
         out.vec3[b + 3] = 0
+        this.writeRotPreview(out)
     }
 
     #paramSlice(): Float32Array {
-        const buf = new Float32Array(6)
+        // pos (3) + size (3) + rot inverse (9, contiguous via reservePrimitiveRot).
+        const buf = new Float32Array(15)
         buf.set(this.pos.data, 0)
         buf.set(this.size.data, 3)
+        this.writeRotScene(buf, 6)
         return buf
     }
 
@@ -61,6 +68,7 @@ export class Box extends Node {
         this.previewVec3Slot = this.scene.allocPreviewVec3(2)
         this.paramOffset = this.scene.allocSceneParamFloats(6)
         this.paramCount = 6
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
     }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Box${this.id}`
@@ -71,7 +79,7 @@ export class Box extends Node {
         return {
             funcName,
             varName,
-            text: `fBoxEx(p - ${pos}, ${half}, ${this.id}u)`,
+            text: this.warpRot(`fBoxEx(p - ${pos}, ${half}, ${this.id}u)`, pos),
         }
     }
     override compileFast(indentLevel = 0): CompileResult {
@@ -83,7 +91,7 @@ export class Box extends Node {
         return {
             funcName,
             varName,
-            text: `fBoxFast(p - ${pos}, ${half})`,
+            text: this.warpRot(`fBoxFast(p - ${pos}, ${half})`, pos),
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
@@ -95,12 +103,15 @@ export class Box extends Node {
         return {
             funcName,
             varName,
-            text: `sdfMidSetOwner(fBoxMid(p - ${pos}, ${half}), ${this.id}u)`,
+            text: this.warpRot(`sdfMidSetOwner(fBoxMid(p - ${pos}, ${half}), ${this.id}u)`, pos),
         }
     }
 
     protected override computeBoundsCore(): AABB {
-        return aabb(this.pos.x, this.pos.y, this.pos.z, this.size.x, this.size.y, this.size.z)
+        // Box rotated about its own center (pos) by `rot`: expand the AABB.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, 0, 0, this.size.x, this.size.y, this.size.z), fwd)
+        return aabb(this.pos.x, this.pos.y, this.pos.z, r.hx, r.hy, r.hz)
     }
 
     /**
@@ -151,7 +162,24 @@ export class Box extends Node {
 
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.#shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the box about its own center, param-only/live). AFTER a `.shift` it falls
+     * back to a `Rotate` operator (the shift becomes the pivot), preserving the
+     * historical chain-order semantics.
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.#shifted) return rotateOp(r, this)
+        const c = composeEuler([this.rot.x, this.rot.y, this.rot.z], [r.x, r.y, r.z])
+        this.rot = vec3(c[0], c[1], c[2])
+        // Returns the mutated box itself (no node added); typed as the chain's
+        // declared `Rotate` so `Box` stays a valid `Node` for the type system.
+        return this as unknown as Rotate
     }
 
     /**

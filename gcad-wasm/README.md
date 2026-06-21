@@ -4,8 +4,6 @@ Rust→WASM port of galacticad's CPU geometry kernel (scene graph, WGSL codegen,
 f64 SDF evaluator, SFCC mesh exporter). Design + rationale:
 [`../docs/research/gcad-wasm-rust-port.md`](../docs/research/gcad-wasm-rust-port.md).
 
-**Status:** scaffold only — the kernel modules are stubs to be ported incrementally.
-
 ## Layout
 - `kernel/` — pure geometry, no wasm-bindgen. Builds + tests **natively**.
 - `wasm/`   — thin `#[wasm_bindgen]` boundary (cdylib). Marshaling only.

@@ -110,7 +110,11 @@ export interface ExtrudeLoftCallInfo {
     /** Offset in source of the `h:` value expression (start, end). */
     hValueStart: number
     hValueEnd: number
-    /** Offset in source of the position array argument, if present. null when no pos arg. */
+    /**
+     * Source range of the `.shift(...)` position arguments, if present. Covers both
+     * the array/string form (`.shift([x,y,z])`) and the literal form
+     * (`.shift(x, y, z)`, spanning all three components). null when no pos arg.
+     */
     posArgStart: number | null
     posArgEnd: number | null
     /** Offset in user source where `.shift([...])` is appended when there is no shift (end of the full fluent call). */
@@ -707,16 +711,16 @@ export class SourceParser {
             } else if (method === "twist" && args.length >= 1) {
                 const v = this.evaluateExpression(args[0])
                 if (typeof v === "number") parsedCall.t = v
-            } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                const v = this.evaluateExpression(args[0])
-                if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+            } else if (method === "shift") {
+                const v = this.extractVec3Args(args)
+                if (v !== undefined) parsedCall.pos = vec3(v)
             }
         }
     }
 
     /** Walk the fluent chain and return [{ method, args }, ...] from left to right */
-    #collectFluentChain(callNode: ts.CallExpression): Array<{ method: string; args: ts.Node[] }> {
-        const chain: Array<{ method: string; args: ts.Node[] }> = []
+    #collectFluentChain(callNode: ts.CallExpression): Array<{ method: string; args: ts.Expression[] }> {
+        const chain: Array<{ method: string; args: ts.Expression[] }> = []
         let expr: ts.Node = callNode
         while (true) {
             if (ts.isCallExpression(expr)) {
@@ -744,9 +748,9 @@ export class SourceParser {
                 if (method === "radius" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.r = v
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                } else if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -773,9 +777,9 @@ export class SourceParser {
             }
             const chain = this.#collectFluentChain(callNode)
             for (const { method, args } of chain) {
-                if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -810,9 +814,9 @@ export class SourceParser {
                 } else if (method === "height" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.h = v
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                } else if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -851,9 +855,9 @@ export class SourceParser {
                     if (sideFlags & BOTTOM) parsedCall.filletBottom = rad
                     if (sideFlags & TOP) parsedCall.chamferTop = 0
                     if (sideFlags & BOTTOM) parsedCall.chamferBottom = 0
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                } else if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
             if (typeof parsedCall.r === "number" && typeof parsedCall.h === "number") {
@@ -883,9 +887,9 @@ export class SourceParser {
                 } else if (method === "largeRadius" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.lr = v
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                } else if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -978,9 +982,9 @@ export class SourceParser {
                     if (sideFlags & BOTTOM) parsedCall.filletBottom = rad
                     if (sideFlags & TOP) parsedCall.chamferTop = 0
                     if (sideFlags & BOTTOM) parsedCall.chamferBottom = 0
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                } else if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
             if (typeof parsedCall.r === "number" && typeof parsedCall.h === "number") {
@@ -1025,9 +1029,9 @@ export class SourceParser {
                 } else if (method === "cylinderLength" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.c = v
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                } else if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -1039,15 +1043,15 @@ export class SourceParser {
         try {
             const chain = this.#collectFluentChain(callNode)
             for (const { method, args } of chain) {
-                if (method === "normal" && args.length >= 1) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.normal = vec3(v as Vec3)
+                if (method === "normal") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.normal = vec3(v)
                 } else if (method === "dist" && args.length >= 1) {
                     const v = this.evaluateExpression(args[0])
                     if (typeof v === "number") parsedCall.planeOffset = v
-                } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                } else if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -1059,9 +1063,9 @@ export class SourceParser {
         try {
             const chain = this.#collectFluentChain(callNode)
             for (const { method, args } of chain) {
-                if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -1124,9 +1128,9 @@ export class SourceParser {
         try {
             const chain = this.#collectFluentChain(callNode)
             for (const { method, args } of chain) {
-                if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                    const v = this.evaluateExpression(args[0])
-                    if (v !== undefined) parsedCall.pos = vec3(v as Vec3)
+                if (method === "shift") {
+                    const v = this.extractVec3Args(args)
+                    if (v !== undefined) parsedCall.pos = vec3(v)
                 }
             }
         } catch (err) {
@@ -1136,10 +1140,8 @@ export class SourceParser {
 
     private parsePolygon2DArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
         try {
-            if (callNode.arguments.length >= 1 && ts.isArrayLiteralExpression(callNode.arguments[0])) {
-                const vertices = this.evaluateVertexArray(callNode.arguments[0])
-                if (vertices) parsedCall.vertices = vertices
-            }
+            const vertices = this.evaluateVertexArgs(callNode.arguments)
+            if (vertices) parsedCall.vertices = vertices
         } catch (err) {
             log("SourceParser").debug(`Could not parse polygon2d args:`, err)
         }
@@ -1161,6 +1163,42 @@ export class SourceParser {
             )
         }
         return false
+    }
+
+    /**
+     * Extract a 3D vector from `.shift(...)` / `plane.normal(...)`-style args,
+     * accepting BOTH the array/string form (`[x, y, z]`, `"x y z"`) and the
+     * literal component form (`x, y, z`). Returns undefined if neither matches.
+     */
+    private extractVec3Args(args: readonly ts.Expression[]): Vec3 | undefined {
+        if (args.length >= 1 && this.isPositionArg(args[0])) {
+            const v = this.evaluateExpression(args[0])
+            return v === undefined ? undefined : (v as Vec3)
+        }
+        if (args.length >= 3) {
+            const x = this.evaluateExpression(args[0])
+            const y = this.evaluateExpression(args[1])
+            const z = this.evaluateExpression(args[2])
+            if (typeof x === "number" && typeof y === "number" && typeof z === "number") {
+                return [x, y, z]
+            }
+        }
+        return undefined
+    }
+
+    /**
+     * Source range spanning the position arguments of a `.shift(...)` call, for
+     * surgical writeback. Covers BOTH the array/string form (`.shift([x,y,z])`,
+     * one arg) and the literal component form (`.shift(x, y, z)`, three args) —
+     * the range runs from the first arg's start to the last arg's end. Returns
+     * null when the args are not a recognizable position.
+     */
+    private shiftPosRange(args: readonly ts.Expression[]): { start: number; end: number } | null {
+        if (this.extractVec3Args(args) === undefined) return null
+        return {
+            start: args[0].getStart() - WRAP_PREFIX_CHARS,
+            end: args[args.length - 1].getEnd() - WRAP_PREFIX_CHARS,
+        }
     }
 
     private evaluateExpression(node: ts.Node): unknown {
@@ -1207,9 +1245,13 @@ export class SourceParser {
         return undefined
     }
 
-    private evaluateVertexArray(node: ts.ArrayLiteralExpression): [number, number][] | null {
+    /**
+     * Evaluate a `polygon2d([x, y], [x, y], …)` var-arg list into vertex pairs.
+     * Each argument must be a `[x, y]` numeric array literal.
+     */
+    private evaluateVertexArgs(args: readonly ts.Expression[]): [number, number][] | null {
         const vertices: [number, number][] = []
-        for (const elem of node.elements) {
+        for (const elem of args) {
             if (!elem || !ts.isArrayLiteralExpression(elem)) return null
             const inner = elem.elements
             if (inner.length !== 2) return null
@@ -1256,16 +1298,14 @@ export class SourceParser {
     }
 
     private extractPolygon2DInfo(callNode: ts.CallExpression, sourceFile: ts.SourceFile): Polygon2DCallInfo | null {
-        if (callNode.arguments.length < 1) return null
+        const args = callNode.arguments
+        if (args.length < 1) return null
 
-        const arrayArg = callNode.arguments[0]
-        if (!ts.isArrayLiteralExpression(arrayArg)) return null
-
-        const vertices = this.evaluateVertexArray(arrayArg)
+        const vertices = this.evaluateVertexArgs(args)
         if (!vertices) return null
 
         const vertexRanges: { start: number; end: number }[] = []
-        for (const elem of arrayArg.elements) {
+        for (const elem of args) {
             if (elem && ts.isArrayLiteralExpression(elem)) {
                 vertexRanges.push({
                     start: elem.getStart() - WRAP_PREFIX_CHARS,
@@ -1281,8 +1321,11 @@ export class SourceParser {
         return {
             callStartOffset: callNode.getStart() - WRAP_PREFIX_CHARS,
             callEndOffset: callNode.getEnd() - WRAP_PREFIX_CHARS,
-            arrayStartOffset: arrayArg.getStart() - WRAP_PREFIX_CHARS,
-            arrayEndOffset: arrayArg.getEnd() - WRAP_PREFIX_CHARS,
+            // Var-arg list: the replaceable vertex region spans the first arg start
+            // to the last arg end (the content between the parens, minus surrounding
+            // whitespace/newlines, which are preserved on count-changing edits).
+            arrayStartOffset: args[0].getStart() - WRAP_PREFIX_CHARS,
+            arrayEndOffset: args[args.length - 1].getEnd() - WRAP_PREFIX_CHARS,
             vertices,
             vertexRanges,
             location: {
@@ -1394,9 +1437,9 @@ export class SourceParser {
             if (method === "height" && args.length >= 1) {
                 hValueStart = args[0].getStart() - WRAP_PREFIX_CHARS
                 hValueEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
-            } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                posArgStart = args[0].getStart() - WRAP_PREFIX_CHARS
-                posArgEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+            } else if (method === "shift") {
+                const range = this.shiftPosRange(args)
+                if (range) { posArgStart = range.start; posArgEnd = range.end }
             }
         }
         if (hValueStart === null || hValueEnd === null) return null
@@ -1445,9 +1488,9 @@ export class SourceParser {
             if (method === "height" && args.length >= 1) {
                 hValueStart = args[0].getStart() - WRAP_PREFIX_CHARS
                 hValueEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
-            } else if (method === "shift" && args.length >= 1 && this.isPositionArg(args[0])) {
-                posArgStart = args[0].getStart() - WRAP_PREFIX_CHARS
-                posArgEnd = args[0].getEnd() - WRAP_PREFIX_CHARS
+            } else if (method === "shift") {
+                const range = this.shiftPosRange(args)
+                if (range) { posArgStart = range.start; posArgEnd = range.end }
             }
         }
         if (hValueStart === null || hValueEnd === null) return null

@@ -13,7 +13,8 @@ export function formatNumber(n: number): string {
 
 /**
  * Update the Y component of a position argument in source.
- * Handles string-form "x y z" and array-form [x, y, z].
+ * Handles string-form "x y z", array-form [x, y, z], and the literal
+ * component form x, y, z (from `.shift(x, y, z)`).
  */
 export function updatePosY(posText: string, newY: number): string | null {
     const trimmed = posText.trim()
@@ -39,6 +40,14 @@ export function updatePosY(posText: string, newY: number): string | null {
             return `[${parts.join(", ")}]`
         }
         return null
+    }
+
+    // Literal component form: x, y, z (from .shift(x, y, z) — no brackets; the
+    // parser's posArg range spans all three components).
+    const parts = trimmed.split(",").map(s => s.trim())
+    if (parts.length === 3) {
+        parts[1] = formatNumber(newY)
+        return parts.join(", ")
     }
 
     return null

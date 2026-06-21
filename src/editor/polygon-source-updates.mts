@@ -15,7 +15,8 @@ export function analyzeArrayFormatting(text: string): ArrayFormat {
     if (!text.includes("\n")) {
         return { indent: "", newlinePerVertex: false }
     }
-    // Find indent: between first "[" (outer) and second "[" (first vertex)
+    // `text` is the var-arg vertex region (`[x, y],\n   [x, y], …`). The indent
+    // is the whitespace between the first vertex `[` and the second vertex `[`.
     const firstBracket = text.indexOf("[")
     const between = text.slice(firstBracket + 1, text.indexOf("[", firstBracket + 1))
     const match = between.match(/\n([ \t]*)$/)
@@ -29,14 +30,18 @@ export function formatVertex([x, y]: [number, number]): string {
     return `[${xs}, ${ys}]`
 }
 
+/**
+ * Format a vertex list as the body of a `polygon2d(...)` var-arg call — a
+ * comma-separated list of `[x, y]` pairs with NO enclosing array. The
+ * surrounding `polygon2d(` / `)` (and any leading/trailing newline) live
+ * outside the replaced region.
+ */
 export function formatVertices(vertices: [number, number][], format?: ArrayFormat): string {
     const pairs = vertices.map(formatVertex)
     if (format?.newlinePerVertex && pairs.length > 0) {
-        const indent = format.indent
-        const lines = pairs.map((p, i) => indent + p + (i < pairs.length - 1 ? "," : ""))
-        return "[\n" + lines.join("\n") + "\n]"
+        return pairs.join(",\n" + format.indent)
     }
-    return `[${pairs.join(", ")}]`
+    return pairs.join(", ")
 }
 
 /**

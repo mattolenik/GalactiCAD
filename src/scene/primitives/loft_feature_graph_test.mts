@@ -21,7 +21,7 @@ const SQUARE: [number, number][] = [
 ]
 
 test("Loft.accumulateFeatureGraph: 2 same-topology profiles → top + bot caps + connecting edges", () => {
-    const root = loft.sections([polygon2d(TRIANGLE), polygon2d(TRIANGLE)])
+    const root = loft.sections(polygon2d(...TRIANGLE), polygon2d(...TRIANGLE))
     root.h = 5
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
@@ -35,7 +35,7 @@ test("Loft.accumulateFeatureGraph: 2 same-topology profiles → top + bot caps +
 })
 
 test("Loft.accumulateFeatureGraph: 3 same-topology profiles → intermediate vertices on side edges", () => {
-    const root = loft.sections([polygon2d(TRIANGLE), polygon2d(TRIANGLE), polygon2d(TRIANGLE)])
+    const root = loft.sections(polygon2d(...TRIANGLE), polygon2d(...TRIANGLE), polygon2d(...TRIANGLE))
     root.h = 5
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
@@ -51,7 +51,7 @@ test("Loft.accumulateFeatureGraph: 3 same-topology profiles → intermediate ver
 
 test("Loft.accumulateFeatureGraph: different vertex counts → caps only, no side edges", () => {
     // SQUARE has 4 vertices, TRIANGLE has 3 — sameTopology = false.
-    const root = loft.sections([polygon2d(SQUARE), polygon2d(TRIANGLE)])
+    const root = loft.sections(polygon2d(...SQUARE), polygon2d(...TRIANGLE))
     root.h = 5
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
@@ -65,7 +65,7 @@ test("Loft.accumulateFeatureGraph: different vertex counts → caps only, no sid
 })
 
 test("Loft.accumulateFeatureGraph: cap corners get FG_FLAG_CORNER when polygon turn is sharp", () => {
-    const root = loft.sections([polygon2d(TRIANGLE), polygon2d(TRIANGLE)])
+    const root = loft.sections(polygon2d(...TRIANGLE), polygon2d(...TRIANGLE))
     root.h = 5
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
@@ -79,7 +79,7 @@ test("Loft.accumulateFeatureGraph: cap corners get FG_FLAG_CORNER when polygon t
 })
 
 test("Loft.accumulateFeatureGraph: cap positions at y = ±h", () => {
-    const root = loft.sections([polygon2d(TRIANGLE), polygon2d(TRIANGLE)])
+    const root = loft.sections(polygon2d(...TRIANGLE), polygon2d(...TRIANGLE))
     root.h = 3
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)

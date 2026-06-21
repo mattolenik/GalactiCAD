@@ -2,15 +2,15 @@
 // Demonstrates 2D polygon extrusion, lofting, and revolution
 
 // === EXTRUDE: Triangle ===
-let tri = polygon2d([[-5, -3], [5, -3], [0, 5]])
-let extrudedTri = extrude.profile(tri).height(6.399).shift([0, -3.212, 0])
+let tri = polygon2d([-5, -3], [5, -3], [0, 5])
+let extrudedTri = extrude.profile(tri).height(6.399).shift(0, -3.212, 0)
 
 // === EXTRUDE: L-shaped profile with position offset ===
-let lShape = polygon2d([[-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3]])
-let extrudedL = extrude.profile(lShape).height(12.278).twist(22).shift([20, 7.278, 0])
+let lShape = polygon2d([-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3])
+let extrudedL = extrude.profile(lShape).height(12.278).twist(22).shift(20, 7.278, 0)
 
 // === EXTRUDE with TWIST: Star twisted 180° ===
-let star = polygon2d([
+let star = polygon2d(
   [0, 4],
   [4.66, 4.94],
   [4, 1.2],
@@ -21,17 +21,17 @@ let star = polygon2d([
   [-1.52, -1.73],
   [0.23, -0.04],
   [-0.69, 2.27],
-])
-let twistedStar = extrude.profile(star).height(6.256).twist(90).shift([40, -1.744, 0])
+)
+let twistedStar = extrude.profile(star).height(6.256).twist(90).shift(40, -1.744, 0)
 
 // === LOFT: Square to triangle ===
-let square = polygon2d([[-4, -4], [4, -4], [4, 4], [-4, 4]])
-let triangle = polygon2d([[-2, -2], [2, -2], [0, 3]])
-let lofted = loft.sections([square, triangle]).height(8.231).shift([0, 0.231, -20])
+let square = polygon2d([-4, -4], [4, -4], [4, 4], [-4, 4])
+let triangle = polygon2d([-2, -2], [2, -2], [0, 3])
+let lofted = loft.sections(square, triangle).height(8.231).shift(0, 0.231, -20)
 
 // === LATHE: Vase ===
 // Profile is in (radius, height) space — revolved around Y axis
-let vaseProfile = polygon2d([
+let vaseProfile = polygon2d(
   [1.27, -4.97],
   [3, -5],
   [5.42, -4.45],
@@ -45,8 +45,8 @@ let vaseProfile = polygon2d([
   [4.47, 2.77],
   [2.07, 3.07],
   [0.93, 0.05],
-])
-let vase = lathe.profile(vaseProfile).shift([-20, 0, 0])
+)
+let vase = lathe.profile(vaseProfile).shift(-20, 0, 0)
 
 // === ASSEMBLY ===
 return union(

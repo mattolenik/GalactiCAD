@@ -1,7 +1,7 @@
 let block = box(2, 2, 2)
-let bump = sphere.radius(1.5).shift([2, 2, 2])
-let c = box(1, 2, 3).shift([1.1, -1.1, 1.1]).rotate([10, 20, 30])
-let d = box(1, 1, 1).shift([-1.2, -0.2, -1.2])
-let e = sphere.radius(0.8).shift([-1.1, -1, -1])
+let bump = sphere.radius(1.5).shift(2, 2, 2)
+let c = box(1, 2, 3).shift(1.1, -1.1, 1.1).rotate(10, 20, 30)
+let d = box(1, 1, 1).shift(-1.2, -0.2, -1.2)
+let e = sphere.radius(0.8).shift(-1.1, -1, -1)
 
 return subtract(union(block, bump), c, d, e)

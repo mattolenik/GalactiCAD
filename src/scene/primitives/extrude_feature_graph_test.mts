@@ -27,7 +27,7 @@ const TRIANGLE: [number, number][] = [
 ]
 
 test("Extrude.accumulateFeatureGraph: triangle emits 6 verts, 9 edges, 2 loops", () => {
-    const root = extrude.profile(polygon2d(TRIANGLE)).height(5)
+    const root = extrude.profile(polygon2d(...TRIANGLE)).height(5)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -41,7 +41,7 @@ test("Extrude.accumulateFeatureGraph: triangle emits 6 verts, 9 edges, 2 loops",
 })
 
 test("Extrude.accumulateFeatureGraph: all sharp polygon vertices get FG_FLAG_CORNER", () => {
-    const root = extrude.profile(polygon2d(TRIANGLE)).height(5)
+    const root = extrude.profile(polygon2d(...TRIANGLE)).height(5)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -55,7 +55,7 @@ test("Extrude.accumulateFeatureGraph: all sharp polygon vertices get FG_FLAG_COR
 })
 
 test("Extrude.accumulateFeatureGraph: top/bottom vertex positions match polygon × ±h", () => {
-    const root = extrude.profile(polygon2d(TRIANGLE)).height(5)
+    const root = extrude.profile(polygon2d(...TRIANGLE)).height(5)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -76,7 +76,7 @@ test("Extrude.accumulateFeatureGraph: top/bottom vertex positions match polygon 
 })
 
 test("Extrude.accumulateFeatureGraph: cap loops have +Y / -Y normals", () => {
-    const root = extrude.profile(polygon2d(TRIANGLE)).height(5)
+    const root = extrude.profile(polygon2d(...TRIANGLE)).height(5)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -117,7 +117,7 @@ test("Extrude.accumulateFeatureGraph: cap loops have +Y / -Y normals", () => {
 })
 
 test("Extrude.accumulateFeatureGraph: each vertex carries 3 source-face normals", () => {
-    const root = extrude.profile(polygon2d(TRIANGLE)).height(5)
+    const root = extrude.profile(polygon2d(...TRIANGLE)).height(5)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -136,7 +136,7 @@ test("Extrude.accumulateFeatureGraph: each vertex carries 3 source-face normals"
 })
 
 test("Extrude under Twist: non-affine gate produces zero emission", () => {
-    const root = twist(45, extrude.profile(polygon2d(TRIANGLE)).height(5))
+    const root = twist(45, extrude.profile(polygon2d(...TRIANGLE)).height(5))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -170,7 +170,7 @@ test("FeatureGraphBuilder.pushNonAffine: emitter that runs anyway tags vertices 
 })
 
 test("Extrude with .twist(45): top corners rotated, bottom corners unrotated", () => {
-    const root = extrude.profile(polygon2d(TRIANGLE)).height(5).twist(45)
+    const root = extrude.profile(polygon2d(...TRIANGLE)).height(5).twist(45)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -207,7 +207,7 @@ test("Extrude with .twist(45): top corners rotated, bottom corners unrotated", (
 })
 
 test("Extrude with .twist(0): no helical subdivision; behaves identically to untwisted case", () => {
-    const root = extrude.profile(polygon2d(TRIANGLE)).height(5).twist(0)
+    const root = extrude.profile(polygon2d(...TRIANGLE)).height(5).twist(0)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -216,7 +216,7 @@ test("Extrude with .twist(0): no helical subdivision; behaves identically to unt
 })
 
 test("Extrude under Translate: transform stack records affine matrix", () => {
-    const root = translate([10, 0, 0], extrude.profile(polygon2d(TRIANGLE)).height(5))
+    const root = translate([10, 0, 0], extrude.profile(polygon2d(...TRIANGLE)).height(5))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -242,7 +242,7 @@ test("Extrude under Translate: transform stack records affine matrix", () => {
 })
 
 test("Extrude under Scale: transform stack records scale matrix", () => {
-    const root = scale([2, 1, 1], extrude.profile(polygon2d(TRIANGLE)).height(5))
+    const root = scale([2, 1, 1], extrude.profile(polygon2d(...TRIANGLE)).height(5))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -269,7 +269,7 @@ const SQUARE_WITH_COLLINEAR: [number, number][] = [
 ]
 
 test("Extrude.accumulateFeatureGraph: real-turn vertices cast a side edge; collinear vertices do not", () => {
-    const root = extrude.profile(polygon2d(SQUARE_WITH_COLLINEAR)).height(5)
+    const root = extrude.profile(polygon2d(...SQUARE_WITH_COLLINEAR)).height(5)
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()

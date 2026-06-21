@@ -87,8 +87,8 @@ export class Cone extends Node {
         this.h = h
         return this
     }
-    @fluent shift(v: Vec3): this {
-        this.pos = vec3(v)
+    @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
+        this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
         return this
     }
 }

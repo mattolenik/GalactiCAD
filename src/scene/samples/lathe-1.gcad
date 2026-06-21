@@ -1,4 +1,4 @@
-return lathe.profile(polygon2d([
+return lathe.profile(polygon2d(
   [1.27, -4.97],
   [3, -5],
   [5.42, -4.45],
@@ -12,4 +12,4 @@ return lathe.profile(polygon2d([
   [4.47, 2.77],
   [2.07, 3.07],
   [0.93, 0.05],
-]))
+))

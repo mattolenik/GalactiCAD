@@ -510,8 +510,8 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         return this
     }
 
-    @fluent shift(v: Vec3): this {
-        this.pos = vec3(v)
+    @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
+        this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
         return this
     }
 
@@ -682,7 +682,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     }
 }
 
-function loftSections(sections: Polygon2D[]): Loft {
+function loftSections(...sections: Polygon2D[]): Loft {
     if (sections.length < 2) {
         throw new Error("loft requires at least 2 profiles in sections")
     }

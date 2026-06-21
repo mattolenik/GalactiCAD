@@ -82,22 +82,22 @@ export class PlaneNode extends Node {
         return { funcName, varName, text: `sdfMidSetOwner(fPlaneMid(p - ${pos}, ${nrm}, ${d}), ${this.id}u)` }
     }
 
-    @fluent withNormal(n: Vec3): this {
-        this.normal = vec3(n).normalize()
+    @fluent withNormal(n: Vec3 | number, ny?: number, nz?: number): this {
+        this.normal = (typeof n === "number" ? vec3(n, ny!, nz!) : vec3(n)).normalize()
         return this
     }
     @fluent withDist(d: number): this {
         this.dist = d
         return this
     }
-    @fluent shift(v: Vec3): this {
-        this.pos = vec3(v)
+    @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
+        this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
         return this
     }
 }
 
-function planeNormal(n: Vec3): PlaneNode {
-    return new PlaneNode(DEFAULT_POS, { n: vec3(n) })
+function planeNormal(n: Vec3 | number, ny?: number, nz?: number): PlaneNode {
+    return new PlaneNode(DEFAULT_POS, { n: typeof n === "number" ? vec3(n, ny!, nz!) : vec3(n) })
 }
 
 function planeDist(d: number): PlaneNode {

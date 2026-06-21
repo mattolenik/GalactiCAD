@@ -3,64 +3,64 @@
 
 // === SHELL ===
 // Hollow out a sphere into a thin shell
-let shellSphere = shell(0.3, sphere.radius(5).shift([0, 0, 10]))
+let shellSphere = shell(0.3, sphere.radius(5).shift(0, 0, 10))
 
 // Shell of a box - creates a hollow cube
-let shellBox = shell(0.3, box([4, 4, 4]).shift([15, 0, 10]))
+let shellBox = shell(0.3, box(4, 4, 4).shift(15, 0, 10))
 
 // === OFFSET ===
 // Offset a box to round all its edges
-let roundedBox = offset(0.5, box([3.5, 3.5, 3.5]).shift([30, 0, 10]))
+let roundedBox = offset(0.5, box(3.5, 3.5, 3.5).shift(30, 0, 10))
 
 // Negative offset - shrink a sphere
-let shrunkSphere = offset(-1, sphere.radius(5).shift([45, 0, 10]))
+let shrunkSphere = offset(-1, sphere.radius(5).shift(45, 0, 10))
 
 // === ELONGATE ===
 // Elongate a sphere along Y to make a capsule-like shape
-let elongatedSphere = elongate([0, 4, 0], sphere.radius(3).shift([0, 20, 10]))
+let elongatedSphere = elongate(0, 4, 0, sphere.radius(3).shift(0, 20, 10))
 
 // Elongate a box along X
-let elongatedBox = elongate([5, 0, 0], box([2, 3, 3]).shift([20, 20, 10]))
+let elongatedBox = elongate(5, 0, 0, box(2, 3, 3).shift(20, 20, 10))
 
 // === TWIST ===
 // Twist a box around the Y axis
-let twistedBox = twist(0.4, box([3, 8, 3]).shift([40, 20, 10]))
+let twistedBox = twist(0.4, box(3, 8, 3).shift(40, 20, 10))
 
 // === BEND ===
 // Bend a tall box into an arch
-let bentBox = bend(0.1, box([8, 3, 3]).shift([0, -20, 10]))
+let bentBox = bend(0.1, box(8, 3, 3).shift(0, -20, 10))
 
 // === TAPER ===
 // Taper a cylinder: wide at bottom, narrow at top
-let taperedCyl = taper(0.3, 10, cylinder.radius(4).height(5).shift([20, -20, 5]))
+let taperedCyl = taper(0.3, 10, cylinder.radius(4).height(5).shift(20, -20, 5))
 
 // Taper a box: creates a truncated pyramid
-let taperedBox = taper(0.5, 8, box([4, 4, 4]).shift([35, -20, 4]))
+let taperedBox = taper(0.5, 8, box(4, 4, 4).shift(35, -20, 4))
 
 // === MORPH ===
 // Morph 25% between sphere and box (mostly sphere)
 let morph25 = morph(
-    sphere.radius(5).shift([-20, -20, 10]),
-    box([4, 4, 4]).shift([-20, -20, 10])
+    sphere.radius(5).shift(-20, -20, 10),
+    box(4, 4, 4).shift(-20, -20, 10)
 ).t(0.25)
 
 // Morph 75% between sphere and box (mostly box)
 let morph75 = morph(
-    sphere.radius(5).shift([-35, -20, 10]),
-    box([4, 4, 4]).shift([-35, -20, 10])
+    sphere.radius(5).shift(-35, -20, 10),
+    box(4, 4, 4).shift(-35, -20, 10)
 ).t(0.75)
 
 // === SEAM ===
 // Weld bead at the junction of two shapes
 let seamDemo = seam(
-    sphere.radius(4).shift([-20, 0, 10]),
-    box([3, 3, 6]).shift([-20, 0, 10])
+    sphere.radius(4).shift(-20, 0, 10),
+    box(3, 3, 6).shift(-20, 0, 10)
 ).radius(0.5)
 
 // Seam between two spheres
 let seamSpheres = seam(
-    sphere.radius(4).shift([-35, 0, 7]),
-    sphere.radius(4).shift([-35, 0, 13])
+    sphere.radius(4).shift(-35, 0, 7),
+    sphere.radius(4).shift(-35, 0, 13)
 ).radius(0.4)
 
 // === ASSEMBLY ===

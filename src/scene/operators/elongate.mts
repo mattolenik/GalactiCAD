@@ -75,6 +75,6 @@ export class Elongate extends UnaryOperator {
     }
 }
 
-export const elongate = fluent(function elongate(h: Vec3, node: Node): Elongate {
-    return new Elongate(h, node)
+export const elongate = fluent(function elongate(a: Vec3 | number, b: Node | number, c?: number, d?: Node): Elongate {
+    return typeof a === "number" ? new Elongate([a, b as number, c as number], d as Node) : new Elongate(a, b as Node)
 })

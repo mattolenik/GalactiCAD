@@ -1,6 +1,6 @@
 schemaVersion: 1
 source: |-
-  let lShape = polygon2d([[-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3]])
+  let lShape = polygon2d([-3, -3], [3, -3], [3, -1], [-1, -1], [-1, 3], [-3, 3])
   let extrudedL = extrude.profile(lShape).height(9.84).twist(500)
 
   return extrudedL

@@ -21,7 +21,7 @@ const SQUARE_TUBE: [number, number][] = [
 ]
 
 test(`Lathe.accumulateFeatureGraph: 4 sharp profile vertices → 4 rings × ${RING_SEGMENTS} segments`, () => {
-    const root = lathe.profile(polygon2d(SQUARE_TUBE))
+    const root = lathe.profile(polygon2d(...SQUARE_TUBE))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -33,7 +33,7 @@ test(`Lathe.accumulateFeatureGraph: 4 sharp profile vertices → 4 rings × ${RI
 })
 
 test("Lathe.accumulateFeatureGraph: ring vertices are crease (not corner) with 2 source-face normals", () => {
-    const root = lathe.profile(polygon2d(SQUARE_TUBE))
+    const root = lathe.profile(polygon2d(...SQUARE_TUBE))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -48,7 +48,7 @@ test("Lathe.accumulateFeatureGraph: ring vertices are crease (not corner) with 2
 })
 
 test("Lathe.accumulateFeatureGraph: rings sit at the profile vertex's (r, y) revolved around Y", () => {
-    const root = lathe.profile(polygon2d(SQUARE_TUBE))
+    const root = lathe.profile(polygon2d(...SQUARE_TUBE))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -95,7 +95,7 @@ test("Lathe.accumulateFeatureGraph: smooth (collinear) profile vertices produce 
         const t = (i / N) * 2 * Math.PI
         SMOOTH_CIRCLE.push([3 + Math.cos(t), Math.sin(t)])
     }
-    const root = lathe.profile(polygon2d(SMOOTH_CIRCLE))
+    const root = lathe.profile(polygon2d(...SMOOTH_CIRCLE))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()
@@ -109,7 +109,7 @@ test("Lathe.accumulateFeatureGraph: profile vertex at r=0 (axis) is skipped", ()
         [3, -2],
         [0, -2],  // base center (axis pole)
     ]
-    const root = lathe.profile(polygon2d(CONE))
+    const root = lathe.profile(polygon2d(...CONE))
     const builder = new FeatureGraphBuilder()
     root.accumulateFeatureGraph(builder)
     const cpu = builder.finish()

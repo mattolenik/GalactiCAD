@@ -7,14 +7,14 @@ let coarse = threaded_rod
   .radius(12)
   .height(50)
   .pitch(5.5)
-  .shift([0, 50, 0])
+  .shift(0, 50, 0)
 
 // Finer pitch — depth follows automatically (smaller A)
 let fine = threaded_rod
   .radius(8.5)
   .height(35)
   .pitch(2.8)
-  .shift([90, 35, 0])
+  .shift(90, 35, 0)
 
 // Explicit radial amplitude (optional): disables pitch+angle depth
 let stub = threaded_rod
@@ -22,7 +22,7 @@ let stub = threaded_rod
   .height(18)
   .pitch(4)
   .depth(1.2)
-  .shift([-100, 18, 0])
+  .shift(-100, 18, 0)
 
 // Default threaded_rod.radius(...) is FDM (smooth sine). profile.iso() is a triangular V-groove / ISO-ish silhouette.
 let isoRod = threaded_rod.profile
@@ -30,7 +30,7 @@ let isoRod = threaded_rod.profile
   .radius(10)
   .height(40)
   .pitch(4)
-  .shift([0, 40, -120])
+  .shift(0, 40, -120)
 
 // Left-hand ISO: helix advances the opposite way along +Y vs threaded_rod / .right (default right-hand).
 let leftIso = threaded_rod.left.profile
@@ -38,7 +38,7 @@ let leftIso = threaded_rod.left.profile
   .radius(9)
   .height(38)
   .pitch(3.5)
-  .shift([110, 38, -120])
+  .shift(110, 38, -120)
 
 // ACME-style trapezoidal helix (flat crest/root); profile.acme() defaults threadAngle to 61° (90° − 29° ACME reference).
 let acmeRod = threaded_rod.profile
@@ -46,6 +46,6 @@ let acmeRod = threaded_rod.profile
   .radius(11)
   .height(42)
   .pitch(5)
-  .shift([-110, 42, -120])
+  .shift(-110, 42, -120)
 
 return union(coarse, fine, stub, isoRod, leftIso, acmeRod)

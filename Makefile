@@ -36,7 +36,7 @@ setup:
 	fi
 
 .PHONY: build
-build: check
+build: setup check
 	$(BUILD) $(BUILD_FLAGS)
 
 .PHONY: test

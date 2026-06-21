@@ -1525,6 +1525,9 @@ export class SDFRenderer {
             if (gc.handlePointerDown(e.clientX, e.clientY)) {
                 canvas.setPointerCapture(e.pointerId)
                 canvas.style.cursor = "grabbing"
+                // Drop to reduced-resolution rendering during the drag (same
+                // signal the camera uses), so a complex scene stays interactive.
+                this.#controls.isDragging = true
                 e.preventDefault()
                 e.stopPropagation()
             }
@@ -1548,12 +1551,17 @@ export class SDFRenderer {
             gc.handlePointerUp(e.clientX, e.clientY)
             if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
             canvas.style.cursor = "grab"
+            // Back to full resolution; force a settle re-render.
+            this.#controls.isDragging = false
+            this.#needsRender = true
             e.preventDefault()
             e.stopPropagation()
         }, { capture: true })
         document.addEventListener("keydown", (e: KeyboardEvent) => {
             if (e.key === "Escape" && this.#gizmoController?.dragging) {
                 this.#gizmoController.cancelDrag()
+                this.#controls.isDragging = false
+                this.#needsRender = true
                 this.#preview.canvas.style.cursor = ""
                 e.preventDefault()
             }

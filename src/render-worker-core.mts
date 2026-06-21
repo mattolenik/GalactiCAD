@@ -55,8 +55,11 @@ import {
     PREVIEW_UNIFORM_VEC2_COUNT,
     PREVIEW_UNIFORM_VEC3_COUNT,
     PREVIEW_MAT3_PACK_FLOATS,
+    packMat3ColumnMajorToPreviewOut,
     type PreviewParamsOut,
 } from "./scene/scene-params.mjs"
+import { eulerMatrices } from "./scene/transform-math.mjs"
+import { Rotate } from "./scene/operators/rotate.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
@@ -781,20 +784,56 @@ export class RenderWorkerCore {
         this.#gizmoDrag = base ? { nodeId, base } : null
     }
 
-    /** Live-preview a gizmo drag: translate sets node translation = base + local
-     * delta; rotate sets the Rotate node's Euler absolutely. Re-uploads the
-     * preview param banks (no recompile). */
+    /** Live-preview a gizmo drag with a TARGETED slot patch (one tiny
+     * `writeBuffer`, no full repack/recompile) so it stays interactive on big
+     * scenes. Falls back to a full param re-pack for nodes whose slots we don't
+     * recognise. */
     gizmoPreview(msg: Extract<MainToWorkerMessage, { type: "gizmoPreview" }>): void {
         const drag = this.#gizmoDrag
         const node = drag ? this.#scene?.get(drag.nodeId) : null
         if (!drag || !node) return
+        let patched = false
         if (msg.translate) {
             const t = msg.translate
-            setNodeTranslation(node, [drag.base[0] + t[0], drag.base[1] + t[1], drag.base[2] + t[2]])
+            const p: [number, number, number] = [drag.base[0] + t[0], drag.base[1] + t[1], drag.base[2] + t[2]]
+            setNodeTranslation(node, p)
+            if (node.previewVec3Slot >= 0) {
+                this.#patchPreviewVec3(node.previewVec3Slot, p)
+                patched = true
+            }
         } else if (msg.rotate) {
             setNodeRotation(node, msg.rotate)
+            if (node.rotPreviewMat3Slot >= 0) {
+                // Primitive rot field: only the inverse matrix is read by warpRot.
+                this.#patchPreviewMat3(node.rotPreviewMat3Slot, eulerMatrices(node.rot.x, node.rot.y, node.rot.z).inv)
+                patched = true
+            } else if (node instanceof Rotate && node.previewMat3Slot >= 0) {
+                const { inv, fwd } = node.getWgslMatrices()
+                this.#patchPreviewMat3(node.previewMat3Slot, inv)
+                this.#patchPreviewMat3(node.previewMat3Slot + 1, fwd)
+                patched = true
+            }
         }
-        this.#repackAndUploadParams()
+        if (!patched) this.#repackAndUploadParams()
+        this.#forceNextRender = true
+    }
+
+    /** Write one vec3 (vec4-packed) slot of `previewParamsVec3` from the shadow. */
+    #patchPreviewVec3(slot: number, v: readonly [number, number, number]): void {
+        const f = this.#previewVec3Shadow
+        const b = slot * 4
+        f[b] = v[0]; f[b + 1] = v[1]; f[b + 2] = v[2]; f[b + 3] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsVec3, slot * 16, f.buffer, f.byteOffset + slot * 16, 16)
+        this.#lastPreviewVec3Len = -1 // patched out-of-band; force full re-upload on next build
+    }
+
+    /** Write one mat3 slot of `previewParamsMat3` (column-major flat 9) from the shadow. */
+    #patchPreviewMat3(slot: number, colMajor9: number[]): void {
+        const f = this.#previewMat3Shadow
+        packMat3ColumnMajorToPreviewOut(f, slot, colMajor9)
+        const stride = PREVIEW_MAT3_PACK_FLOATS * 4
+        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsMat3, slot * stride, f.buffer, f.byteOffset + slot * stride, stride)
+        this.#lastPreviewMat3Len = -1
     }
 
     /** End a gizmo drag; the pointer-up source edit + rebuild re-syncs the scene. */

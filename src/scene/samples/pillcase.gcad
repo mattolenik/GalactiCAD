@@ -10,21 +10,21 @@ let hThreadHalf = 1.5
 let pitch = 1.5
 
 // caseBase: bottom y=0, top y=20
-let caseBaseB = cylinder.radius(rBase).height(hBaseHalf / 2).shift([0, hBaseHalf * 1.5, 0])
+let caseBaseB = cylinder.radius(rBase).height(hBaseHalf / 2).shift(0, hBaseHalf * 1.5, 0)
   .chamfer(TOP | BOTTOM, 0.3)
 
 let kp = cylinder.radius(0.3).height(caseBaseB.h - 1).fillet(0.15)
 let caseBase = knurl(caseBaseB).offset(0.1).pattern(kp, 72)
 // Top threaded rod: bottom flush with caseBase top (y=20) → center y = 20 + hThreadHalf
 let yMaleTop = hBaseHalf + hBaseHalf + hThreadHalf
-let maleTop = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift([0,
-  yMaleTop - 0.5, 0]).fillet(0.8, TOP)
+let maleTop = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift(0,
+  yMaleTop - 0.5, 0).fillet(0.8, TOP)
 
 // Same thread, shifted down by (half base height + 1 mm) vs maleTop center — cut female into caseBase only
 let wallShift = hBaseHalf - 1
 let yMaleBottom = yMaleTop - wallShift
-let maleBottom = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift([0,
-  yMaleBottom - 0.8, 0]).female()
+let maleBottom = threaded_rod.radius(rThread).height(hThreadHalf + 0.5).pitch(pitch).shift(0,
+  yMaleBottom - 0.8, 0).female()
 
 let caseBaseThreaded = subtract(caseBase, maleBottom)
 let withMaleTop = union(caseBaseThreaded, maleTop)
@@ -34,23 +34,23 @@ let hPillHalf = 8.6
 let pillVoid = cylinder.
                 radius(rBase - 3).
                 height(hPillHalf).
-                shift([0, yMaleTop-hThreadHalf*1.5, 0]).
+                shift(0, yMaleTop-hThreadHalf*1.5, 0).
                 fillet(1, BOTTOM)
 
 let bumpR = 1
 let indent = cylinder.
               radius(bumpR).
               height(0.8).
-              rotate([90, 90, 0]).
-              shift([rBase - 0.9, hBaseHalf - 0.2, 0]).
-              rotate([0, 162, 0])
+              rotate(90, 90, 0).
+              shift(rBase - 0.9, hBaseHalf - 0.2, 0).
+              rotate(0, 162, 0)
 
 let bump = cylinder.
             radius(bumpR * 1.1).
             height(0.4).
-            rotate([90, 90, 0]).
-            shift([rBase - 0.5, hBaseHalf * 2 - 0.2, 0]).
-            rotate([0, 5, 0])
+            rotate(90, 90, 0).
+            shift(rBase - 0.5, hBaseHalf * 2 - 0.2, 0).
+            rotate(0, 5, 0)
 
 return union(
   subtract(

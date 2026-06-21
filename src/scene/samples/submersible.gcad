@@ -3,130 +3,130 @@
 
 // ═══ PRESSURE HULL ═══
 // Main titanium crew sphere — this is the sub
-let pressureHull = sphere.radius(16).shift([0, 0, 0])
+let pressureHull = sphere.radius(16).shift(0, 0, 0)
 
 // ═══ OUTER FAIRING ═══
 // Lightweight fiberglass shell streamlining the sphere
-let fairingCore = box([22, 14, 10]).shift([0, 0, -2])
-let fairingNose = sphere.radius(12).shift([16, 0, -2])
-let fairingTail = sphere.radius(11).shift([-14, 0, -2])
-let fairingBelly = sphere.radius(11).shift([0, 0, -8])
+let fairingCore = box(22, 14, 10).shift(0, 0, -2)
+let fairingNose = sphere.radius(12).shift(16, 0, -2)
+let fairingTail = sphere.radius(11).shift(-14, 0, -2)
+let fairingBelly = sphere.radius(11).shift(0, 0, -8)
 let fairing = union(fairingCore, fairingNose, fairingTail, fairingBelly).round(6)
 
 // Hull dome protrudes above the fairing
 let body = union(fairing, pressureHull).round(4)
 
 // ═══ SAIL (CONNING TOWER) ═══
-let sailBox = box([5, 4, 6]).shift([2, 0, 14])
-let sailCap = sphere.radius(4).shift([2, 0, 18])
+let sailBox = box(5, 4, 6).shift(2, 0, 14)
+let sailCap = sphere.radius(4).shift(2, 0, 18)
 let sail = union(sailBox, sailCap).round(3)
 let bodySail = union(body, sail).round(3)
 
 // === VIEWPORTS ===
 // Three forward observation windows
-let vpCenter = sphere.radius(4).shift([18, 0, 2])
-let vpStbd = sphere.radius(3).shift([16, 8, -1])
-let vpPort = sphere.radius(3).shift([16, -8, -1])
+let vpCenter = sphere.radius(4).shift(18, 0, 2)
+let vpStbd = sphere.radius(3).shift(16, 8, -1)
+let vpPort = sphere.radius(3).shift(16, -8, -1)
 // Downward viewport for seafloor observation
-let vpBelly = sphere.radius(3).shift([6, 0, -12])
+let vpBelly = sphere.radius(3).shift(6, 0, -12)
 
 // ═══ PROPULSION ═══
 // Main aft thruster with cowl
-let thrusterBody = box([6, 7, 7]).shift([-22, 0, -2])
-let thrusterCowl = sphere.radius(6).shift([-26, 0, -2])
-let thrusterTip = sphere.radius(4.5).shift([-30, 0, -2])
+let thrusterBody = box(6, 7, 7).shift(-22, 0, -2)
+let thrusterCowl = sphere.radius(6).shift(-26, 0, -2)
+let thrusterTip = sphere.radius(4.5).shift(-30, 0, -2)
 let thrusterAsm = union(thrusterBody, thrusterCowl, thrusterTip).round(3)
 
 // Hollow duct
-let thrusterBore = sphere.radius(3).shift([-28, 0, -2])
+let thrusterBore = sphere.radius(3).shift(-28, 0, -2)
 let thruster = subtract(thrusterAsm, thrusterBore).round(0.5)
 
 // Lateral manoeuvring thrusters (tunnel pods)
-let latPodR = box([3, 3, 3]).shift([4, 14, 2])
-let latBulgeR = sphere.radius(3).shift([4, 16, 2])
+let latPodR = box(3, 3, 3).shift(4, 14, 2)
+let latBulgeR = sphere.radius(3).shift(4, 16, 2)
 let latR = union(latPodR, latBulgeR).round(1.5)
 
-let latPodL = box([3, 3, 3]).shift([4, -14, 2])
-let latBulgeL = sphere.radius(3).shift([4, -16, 2])
+let latPodL = box(3, 3, 3).shift(4, -14, 2)
+let latBulgeL = sphere.radius(3).shift(4, -16, 2)
 let latL = union(latPodL, latBulgeL).round(1.5)
 
 // Vertical thruster atop the sail
-let vertPod = box([3, 2, 2]).shift([2, 0, 20])
-let vertBulge = sphere.radius(2).shift([2, 0, 22])
+let vertPod = box(3, 2, 2).shift(2, 0, 20)
+let vertBulge = sphere.radius(2).shift(2, 0, 22)
 let vertT = union(vertPod, vertBulge).round(1)
 
 // ═══ MANIPULATOR ARMS ═══
 // Starboard arm — seven linked spheres
-let sR0 = sphere.radius(3).shift([10, 10, -8])
-let sR1 = sphere.radius(2.5).shift([14, 13, -10])
-let sR2 = sphere.radius(2.2).shift([18, 15, -11])
-let sR3 = sphere.radius(2).shift([22, 17, -11])
-let sR4 = sphere.radius(1.8).shift([25, 18, -11])
-let sR5 = sphere.radius(1.5).shift([28, 19, -11])
+let sR0 = sphere.radius(3).shift(10, 10, -8)
+let sR1 = sphere.radius(2.5).shift(14, 13, -10)
+let sR2 = sphere.radius(2.2).shift(18, 15, -11)
+let sR3 = sphere.radius(2).shift(22, 17, -11)
+let sR4 = sphere.radius(1.8).shift(25, 18, -11)
+let sR5 = sphere.radius(1.5).shift(28, 19, -11)
 // Claw jaws
-let sR6 = sphere.radius(1.2).shift([30, 20, -10])
-let sR7 = sphere.radius(1.2).shift([30, 20, -12])
+let sR6 = sphere.radius(1.2).shift(30, 20, -10)
+let sR7 = sphere.radius(1.2).shift(30, 20, -12)
 let armR = union(sR0, sR1, sR2, sR3, sR4, sR5, sR6, sR7).round(1.5)
 
 // Port arm — mirror
-let sL0 = sphere.radius(3).shift([10, -10, -8])
-let sL1 = sphere.radius(2.5).shift([14, -13, -10])
-let sL2 = sphere.radius(2.2).shift([18, -15, -11])
-let sL3 = sphere.radius(2).shift([22, -17, -11])
-let sL4 = sphere.radius(1.8).shift([25, -18, -11])
-let sL5 = sphere.radius(1.5).shift([28, -19, -11])
-let sL6 = sphere.radius(1.2).shift([30, -20, -10])
-let sL7 = sphere.radius(1.2).shift([30, -20, -12])
+let sL0 = sphere.radius(3).shift(10, -10, -8)
+let sL1 = sphere.radius(2.5).shift(14, -13, -10)
+let sL2 = sphere.radius(2.2).shift(18, -15, -11)
+let sL3 = sphere.radius(2).shift(22, -17, -11)
+let sL4 = sphere.radius(1.8).shift(25, -18, -11)
+let sL5 = sphere.radius(1.5).shift(28, -19, -11)
+let sL6 = sphere.radius(1.2).shift(30, -20, -10)
+let sL7 = sphere.radius(1.2).shift(30, -20, -12)
 let armL = union(sL0, sL1, sL2, sL3, sL4, sL5, sL6, sL7).round(1.5)
 
 // ═══ SAMPLE BASKET ═══
 // Open-top wire basket for collecting specimens
-let basketOuter = box([7, 8, 4]).shift([16, 0, -13])
-let basketInner = box([6, 7, 3.5]).shift([16, 0, -12])
+let basketOuter = box(7, 8, 4).shift(16, 0, -13)
+let basketInner = box(6, 7, 3.5).shift(16, 0, -12)
 let basket = subtract(basketOuter, basketInner)
 
 // ═══ BALLAST ═══
 // Syntactic foam buoyancy blocks along the spine
-let foamR = box([10, 3, 3]).shift([-4, 8, 10])
-let foamL = box([10, 3, 3]).shift([-4, -8, 10])
-let foamCap1 = sphere.radius(3).shift([4, 8, 10])
-let foamCap2 = sphere.radius(3).shift([4, -8, 10])
+let foamR = box(10, 3, 3).shift(-4, 8, 10)
+let foamL = box(10, 3, 3).shift(-4, -8, 10)
+let foamCap1 = sphere.radius(3).shift(4, 8, 10)
+let foamCap2 = sphere.radius(3).shift(4, -8, 10)
 let foam = union(foamR, foamL, foamCap1, foamCap2).round(1)
 
 // Releasable steel drop-weights
-let weightR = sphere.radius(3.5).shift([0, 8, -15])
-let weightL = sphere.radius(3.5).shift([0, -8, -15])
+let weightR = sphere.radius(3.5).shift(0, 8, -15)
+let weightL = sphere.radius(3.5).shift(0, -8, -15)
 
 // ═══ LANDING SKIDS ═══
-let skidR = box([14, 1, 1]).shift([0, 10, -18])
-let skidL = box([14, 1, 1]).shift([0, -10, -18])
-let xbarF = box([1, 11, 1]).shift([12, 0, -18])
-let xbarM = box([1, 11, 1]).shift([0, 0, -18])
-let xbarA = box([1, 11, 1]).shift([-12, 0, -18])
+let skidR = box(14, 1, 1).shift(0, 10, -18)
+let skidL = box(14, 1, 1).shift(0, -10, -18)
+let xbarF = box(1, 11, 1).shift(12, 0, -18)
+let xbarM = box(1, 11, 1).shift(0, 0, -18)
+let xbarA = box(1, 11, 1).shift(-12, 0, -18)
 let skids = union(skidR, skidL, xbarF, xbarM, xbarA)
 
 // ═══ LIGHTS ═══
 // Forward high-intensity spots
-let spotR = sphere.radius(2).shift([18, 7, 6])
-let spotL = sphere.radius(2).shift([18, -7, 6])
+let spotR = sphere.radius(2).shift(18, 7, 6)
+let spotL = sphere.radius(2).shift(18, -7, 6)
 // Work lights above the arms
-let wkR = sphere.radius(1.5).shift([14, 12, -6])
-let wkL = sphere.radius(1.5).shift([14, -12, -6])
+let wkR = sphere.radius(1.5).shift(14, 12, -6)
+let wkL = sphere.radius(1.5).shift(14, -12, -6)
 
 // ═══ EXTERNAL INSTRUMENTS ═══
 // Sonar transponder on the sail
-let sonar = sphere.radius(3).shift([-6, 0, 18])
-let sonarStalk = box([2, 2, 4]).shift([-6, 0, 16])
+let sonar = sphere.radius(3).shift(-6, 0, 18)
+let sonarStalk = box(2, 2, 4).shift(-6, 0, 16)
 let sonarUnit = union(sonar, sonarStalk).round(1)
 
 // CTD (conductivity-temperature-depth) sensor pod
-let ctdBody = box([3, 2, 4]).shift([-10, 12, -4])
-let ctdProbe = sphere.radius(2).shift([-10, 12, -8])
+let ctdBody = box(3, 2, 4).shift(-10, 12, -4)
+let ctdProbe = sphere.radius(2).shift(-10, 12, -8)
 let ctd = union(ctdBody, ctdProbe).round(1)
 
 // Emergency locator beacon on the stern
-let beacon = sphere.radius(2).shift([-16, 0, 10])
-let beaconMast = box([1, 1, 4]).shift([-16, 0, 8])
+let beacon = sphere.radius(2).shift(-16, 0, 10)
+let beaconMast = box(1, 1, 4).shift(-16, 0, 8)
 let beaconUnit = union(beacon, beaconMast).round(0.5)
 
 // ═══ ASSEMBLY ═══

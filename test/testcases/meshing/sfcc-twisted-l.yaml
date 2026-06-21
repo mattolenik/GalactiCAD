@@ -1,6 +1,6 @@
 schemaVersion: 1
 source: |-
-  let lShape = polygon2d([[-2, -2], [2, -2], [2, 0], [0, 0], [0, 2], [-2, 2]])
+  let lShape = polygon2d([-2, -2], [2, -2], [2, 0], [0, 0], [0, 2], [-2, 2])
 
   return extrude.profile(lShape).height(2).twist(90)
 camera:

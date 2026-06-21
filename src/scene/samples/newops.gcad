@@ -3,70 +3,70 @@
 
 // === INTERSECTION ===
 // Sphere intersected with a box produces a rounded cube shape
-let s1 = sphere.radius(8).shift([0, 0, 12])
-let b1 = box([6, 6, 6]).shift([0, 0, 12])
+let s1 = sphere.radius(8).shift(0, 0, 12)
+let b1 = box(6, 6, 6).shift(0, 0, 12)
 let roundedCube = intersect(s1, b1)
 
 // Smooth intersection with radius
-let s2 = sphere.radius(8).shift([20, 0, 12])
-let b2 = box([6, 6, 6]).shift([20, 0, 12])
+let s2 = sphere.radius(8).shift(20, 0, 12)
+let b2 = box(6, 6, 6).shift(20, 0, 12)
 let smoothIntersect = intersect(s2, b2).round(1.5)
 
 // === BLEND MODES ON UNION ===
 // Columns blend
-let colA = sphere.radius(5).shift([-20, 0, 6])
-let colB = sphere.radius(5).shift([-20, 0, 14])
+let colA = sphere.radius(5).shift(-20, 0, 6)
+let colB = sphere.radius(5).shift(-20, 0, 14)
 let columnsUnion = union(colA, colB).columns(2, 6)
 
 // Stairs blend
-let stA = sphere.radius(5).shift([-40, 0, 6])
-let stB = sphere.radius(5).shift([-40, 0, 14])
+let stA = sphere.radius(5).shift(-40, 0, 6)
+let stB = sphere.radius(5).shift(-40, 0, 14)
 let stairsUnion = union(stA, stB).stairs(2, 2)
 
 // Chamfer blend
-let chA = box([4, 4, 4]).shift([40, 0, 6])
-let chB = sphere.radius(5).shift([40, 0, 14])
+let chA = box(4, 4, 4).shift(40, 0, 6)
+let chB = sphere.radius(5).shift(40, 0, 14)
 let chamferUnion = union(chA, chB).chamfer(1.5)
 
 // === BLEND MODES ON SUBTRACT ===
 // Columns subtract
-let csA = box([6, 6, 6]).shift([-20, 20, 10])
-let csB = sphere.radius(5).shift([-20, 22, 10])
+let csA = box(6, 6, 6).shift(-20, 20, 10)
+let csB = sphere.radius(5).shift(-20, 22, 10)
 let columnsSub = subtract(csA, csB).columns(1.5, 4)
 
 // Stairs subtract
-let ssA = box([6, 6, 6]).shift([0, 20, 6])
-let ssB = sphere.radius(6).shift([0, 20, 10])
+let ssA = box(6, 6, 6).shift(0, 20, 6)
+let ssB = sphere.radius(6).shift(0, 20, 10)
 let stairsSub = subtract(ssA, ssB).stairs(1.5, 4)
 
 // === PIPE ===
 // Creates a tube-like surface at the intersection of two shapes
-let pA = sphere.radius(6).shift([20, 20, 10])
-let pB = box([5, 5, 5]).shift([20, 15, 10])
+let pA = sphere.radius(6).shift(20, 20, 10)
+let pB = box(5, 5, 5).shift(20, 15, 10)
 let pipeOp = pipe(pA, pB).radius(0.5)
 
 // === ENGRAVE ===
 // Engraves one shape into the surface of another
-let eBase = box([6, 6, 6]).shift([40, 20, 10])
-let ePattern = sphere.radius(4).shift([40, 20, 14])
+let eBase = box(6, 6, 6).shift(40, 20, 10)
+let ePattern = sphere.radius(4).shift(40, 20, 14)
 let engraveOp = engrave(eBase).pattern(ePattern).radius(1.5)
 
 // === GROOVE ===
 // Carves a groove at the intersection of two shapes
-let gBase = box([6, 6, 6]).shift([-40, 20, 10])
-let gPattern = sphere.radius(5).shift([-40, 20, 10])
+let gBase = box(6, 6, 6).shift(-40, 20, 10)
+let gPattern = sphere.radius(5).shift(-40, 20, 10)
 let grooveOp = groove(gBase).pattern(gPattern).radii(1.0, 0.5)
 
 // === TONGUE ===
 // Creates a raised ridge at the intersection of two shapes
-let tBase = box([6, 6, 6]).shift([0, -20, 10])
-let tPattern = sphere.radius(5).shift([0, -20, 10])
+let tBase = box(6, 6, 6).shift(0, -20, 10)
+let tPattern = sphere.radius(5).shift(0, -20, 10)
 let tongueOp = tongue(tBase).pattern(tPattern).radii(1.0, 0.5)
 
 // === INTERSECT BLEND MODES ===
 // Columns intersect
-let icA = sphere.radius(6).shift([20, -20, 6])
-let icB = box([5, 5, 5]).shift([20, -20, 10])
+let icA = sphere.radius(6).shift(20, -20, 6)
+let icB = box(5, 5, 5).shift(20, -20, 10)
 let columnsIntersect = intersect(icB, icA).columns(3, 4)
 
 // === ASSEMBLY ===

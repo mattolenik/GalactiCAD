@@ -4,7 +4,7 @@
 
 // ══ ═ CORE ═══
 // Chamfer-intersect a cube and sphere to produce a faceted gem shape
-let coreBox = box([7, 7, 7])
+let coreBox = box(7, 7, 7)
 let coreSphere = sphere.radius(9.5)
 let core = intersect(coreBox, coreSphere).chamfer(2)
 
@@ -14,11 +14,11 @@ let coolantRing = torus.smallRadius(0.8).largeRadius(8)
 let grooved = groove(core).pattern(coolantRing).radii(0.6, 0.25)
 
 // Tongue: raised sealing ridge along one meridian
-let sealLine = box([10, 0.2, 10])
+let sealLine = box(10, 0.2, 10)
 let ridged = tongue(grooved).pattern(sealLine).radii(0.35, 0.15)
 
 // Engrave: shallow inspection port depression on the top face
-let port = sphere.radius(4).shift([0, 0, 8.5])
+let port = sphere.radius(4).shift(0, 0, 8.5)
 let detailed = engrave(ridged).pattern(port).radius(0.4)
 
 // ═══ CONTAINMENT RING ═══
@@ -28,8 +28,8 @@ let contained = union(detailed, halo).columns(1, 8)
 
 // ═══ STABILISER FINS ═══
 // Cross-shaped fins with a terraced stairs-blend transition
-let finA = box([0.3, 13, 3])
-let finB = rotate([0, 0, 90], box([0.3, 13, 3]))
+let finA = box(0.3, 13, 3)
+let finB = rotate(0, 0, 90, box(0.3, 13, 3))
 let finned = union(contained, union(finA, finB)).stairs(1.2, 4)
 
 // ═══ STRUCTURAL RIBS ═══

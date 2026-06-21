@@ -4,88 +4,88 @@
 
 // === MAIN BODY ===
 // Central body tub - narrow and elegant
-let bodyTub = box([44, 14, 6]).shift([0, 0, 8])
+let bodyTub = box(44, 14, 6).shift(0, 0, 8)
 
 // Rounded front cowl
-let cowl = sphere.radius(10).shift([10, 0, 9])
+let cowl = sphere.radius(10).shift(10, 0, 9)
 
 // Rounded rear deck
-let rearDeck = sphere.radius(9).shift([-16, 0, 8])
+let rearDeck = sphere.radius(9).shift(-16, 0, 8)
 
 // Smooth the main body
 let mainBody = union(bodyTub, cowl, rearDeck).round(4)
 
 // === LONG HOOD ===
 // Classic long hood with power bulge
-let hoodBase = box([24, 10, 5]).shift([20, 0, 7])
-let hoodTop = sphere.radius(7).shift([22, 0, 9])
+let hoodBase = box(24, 10, 5).shift(20, 0, 7)
+let hoodTop = sphere.radius(7).shift(22, 0, 9)
 let hood = union(hoodBase, hoodTop).round(3)
 
 // Radiator grille at front
-let grille = box([4, 8, 7]).shift([34, 0, 7])
-let grilleTop = sphere.radius(5).shift([35, 0, 10])
+let grille = box(4, 8, 7).shift(34, 0, 7)
+let grilleTop = sphere.radius(5).shift(35, 0, 10)
 let frontEnd = union(grille, grilleTop).round(2)
 
 // === SEPARATE FENDERS ===
 // Front fenders - swooping pontoon style
-let fenderFR = sphere.radius(7).shift([22, 10, 5])
-let fenderFRext = sphere.radius(5).shift([30, 10, 6])
+let fenderFR = sphere.radius(7).shift(22, 10, 5)
+let fenderFRext = sphere.radius(5).shift(30, 10, 6)
 let frontFenderR = union(fenderFR, fenderFRext).round(3)
 
-let fenderFL = sphere.radius(7).shift([22, -10, 5])
-let fenderFLext = sphere.radius(5).shift([30, -10, 6])
+let fenderFL = sphere.radius(7).shift(22, -10, 5)
+let fenderFLext = sphere.radius(5).shift(30, -10, 6)
 let frontFenderL = union(fenderFL, fenderFLext).round(3)
 
 // Rear fenders - rounded pontoons
-let fenderRR = sphere.radius(7).shift([-18, 10, 5])
-let fenderRRext = sphere.radius(5).shift([-24, 10, 6])
+let fenderRR = sphere.radius(7).shift(-18, 10, 5)
+let fenderRRext = sphere.radius(5).shift(-24, 10, 6)
 let rearFenderR = union(fenderRR, fenderRRext).round(3)
 
-let fenderRL = sphere.radius(7).shift([-18, -10, 5])
-let fenderRLext = sphere.radius(5).shift([-24, -10, 6])
+let fenderRL = sphere.radius(7).shift(-18, -10, 5)
+let fenderRLext = sphere.radius(5).shift(-24, -10, 6)
 let rearFenderL = union(fenderRL, fenderRLext).round(3)
 
 // === RUNNING BOARDS ===
 // Connect front and rear fenders
-let runningBoardR = box([30, 3, 2]).shift([2, 10, 3])
-let runningBoardL = box([30, 3, 2]).shift([2, -10, 3])
+let runningBoardR = box(30, 3, 2).shift(2, 10, 3)
+let runningBoardL = box(30, 3, 2).shift(2, -10, 3)
 
 // === CABIN ===
 // Open cockpit with windshield frame
-let cockpit = box([16, 12, 5]).shift([-2, 0, 12])
-let windshieldFrame = box([2, 11, 4]).shift([8, 0, 15])
+let cockpit = box(16, 12, 5).shift(-2, 0, 12)
+let windshieldFrame = box(2, 11, 4).shift(8, 0, 15)
 let cabinArea = union(cockpit, windshieldFrame).round(2)
 
 // Carve out interior
-let interior = box([14, 10, 6]).shift([-2, 0, 13])
+let interior = box(14, 10, 6).shift(-2, 0, 13)
 let openCockpit = subtract(cabinArea, interior).round(1).round(1)
 
 // === SPARE TIRE ===
 // Mounted on rear
-let spareTire = sphere.radius(5).shift([-28, 0, 8])
+let spareTire = sphere.radius(5).shift(-28, 0, 8)
 
 // === HEADLIGHTS ===
 // Classic round headlights on stalks
-let headlightR = sphere.radius(3).shift([32, 9, 9])
-let headlightL = sphere.radius(3).shift([32, -9, 9])
+let headlightR = sphere.radius(3).shift(32, 9, 9)
+let headlightL = sphere.radius(3).shift(32, -9, 9)
 let headlights = union(headlightR, headlightL)
 
 // === WHEELS ===
 // Wire wheels with whitewall look
-let wheelFR = sphere.radius(5).shift([22, 12, 3])
-let wheelFL = sphere.radius(5).shift([22, -12, 3])
-let wheelRR = sphere.radius(5).shift([-18, 12, 3])
-let wheelRL = sphere.radius(5).shift([-18, -12, 3])
+let wheelFR = sphere.radius(5).shift(22, 12, 3)
+let wheelFL = sphere.radius(5).shift(22, -12, 3)
+let wheelRR = sphere.radius(5).shift(-18, 12, 3)
+let wheelRL = sphere.radius(5).shift(-18, -12, 3)
 let wheels = union(wheelFR, wheelFL, wheelRR, wheelRL)
 
 // === TAILLIGHTS ===
-let taillightR = sphere.radius(1.5).shift([-28, 6, 10])
-let taillightL = sphere.radius(1.5).shift([-28, -6, 10])
+let taillightR = sphere.radius(1.5).shift(-28, 6, 10)
+let taillightL = sphere.radius(1.5).shift(-28, -6, 10)
 let taillights = union(taillightR, taillightL)
 
 // === DOOR HANDLES ===
-let handleR = sphere.radius(1).shift([0, 8, 10])
-let handleL = sphere.radius(1).shift([0, -8, 10])
+let handleR = sphere.radius(1).shift(0, 8, 10)
+let handleL = sphere.radius(1).shift(0, -8, 10)
 let handles = union(handleR, handleL)
 
 // === ASSEMBLY ===

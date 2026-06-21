@@ -1,7 +1,7 @@
 schemaVersion: 1
 source: |-
   let block = box(2, 2, 2)
-  let bump = sphere.radius(1.5).shift([2, 2, 2])
+  let bump = sphere.radius(1.5).shift(2, 2, 2)
 
   return union(block, bump)
 camera:

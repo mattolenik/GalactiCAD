@@ -5,12 +5,12 @@ let cylR = 2.2
 let cylHHalf = 3
 let cylCy = cylHHalf
 
-let cyl = cylinder.radius(cylR).height(cylHHalf).shift([0, cylCy, 0])
+let cyl = cylinder.radius(cylR).height(cylHHalf).shift(0, cylCy, 0)
 
 let biteX = 0.14
 let biteY = cylHHalf * 0.92
 let biteZ = 0.11
-let tooth = box([biteX, biteY, biteZ])
+let tooth = box(biteX, biteY, biteZ)
 
 // ~ biteX − 0.11 from the old groove recipe (radial clearance)
-return knurl(cyl).pattern(tooth, 32).offset(0.03)
+return knurl(cyl).offset(0.03).pattern(tooth, 32)

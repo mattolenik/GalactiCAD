@@ -1,6 +1,6 @@
 schemaVersion: 1
 source: |
-  let star = polygon2d([
+  let star = polygon2d(
     [0, 4],
     [4.66, 4.94],
     [4, 1.2],
@@ -11,8 +11,8 @@ source: |
     [-1.52, -1.73],
     [0.23, -0.04],
     [-0.69, 2.27],
-  ])
-  let twistedStar = extrude.profile(star).height(6.256).twist(90).shift([40, -1.744, 0])
+  )
+  let twistedStar = extrude.profile(star).height(6.256).twist(90).shift(40, -1.744, 0)
 
   return twistedStar
 camera:

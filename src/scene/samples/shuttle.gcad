@@ -8,37 +8,37 @@
 // ═══ FUSELAGE ═══
 // Long slender cylindrical body — much higher fineness ratio
 // than the final shuttle. More like a conventional aircraft.
-let fuseFwd = box([16, 5.5, 5.5]).shift([20, 0, 0])
-let fuseMid = box([22, 6, 6]).shift([0, 0, 0])
-let fuseAft = box([14, 7, 7]).shift([-18, 0, 0])
+let fuseFwd = box(16, 5.5, 5.5).shift(20, 0, 0)
+let fuseMid = box(22, 6, 6).shift(0, 0, 0)
+let fuseAft = box(14, 7, 7).shift(-18, 0, 0)
 let fuseRaw = union(fuseFwd, fuseMid, fuseAft).round(5)
 
 // Nose cone — pointed, more like a fighter than the blunt
 // profile that was eventually chosen for re-entry heating
 // (cone base at x≈30, apex at x≈42, pointing forward along +X)
-let noseCone = rotate([0, 0, -90], cone.radius(6).height(12).shift([0, 30, 0.5]))
+let noseCone = rotate(0, 0, -90, cone.radius(6).height(12).shift(0, 30, 0.5))
 let noseFair = union(fuseRaw, noseCone).round(4)
 
 // Flatten the belly for the heat shield
-let bellyPlane = plane.normal([0, 0, 1]).shift([0, 0, -4])
+let bellyPlane = plane.normal(0, 0, 1).shift(0, 0, -4)
 let fuselage = subtract(noseFair, bellyPlane).round(0.3)
 
 // ═══ CREW CABIN / FLIGHT DECK ═══
 // Raised cockpit area with conventional airliner windshield angle
-let cockpitBulge = sphere.radius(4).shift([30, 0, 3])
-let windshieldR = sphere.radius(2).shift([32, 2, 3])
-let windshieldL = sphere.radius(2).shift([32, -2, 3])
+let cockpitBulge = sphere.radius(4).shift(30, 0, 3)
+let windshieldR = sphere.radius(2).shift(32, 2, 3)
+let windshieldL = sphere.radius(2).shift(32, -2, 3)
 
 // ═══ FORWARD RCS ═══
 // Reaction control thrusters housed in a conical nose cap
 // (cone tip forward, wide end blending into fuselage)
-let rcsCone = rotate([0, 0, -90], cone.radius(3).height(6).shift([0, 36, 2]))
+let rcsCone = rotate(0, 0, -90, cone.radius(3).height(6).shift(0, 36, 2))
 
 // ═══ PAYLOAD BAY ═══
 // Long cargo bay with clamshell doors on the dorsal surface
-let bayDoorR = box([18, 0.4, 1]).shift([2, 3.5, 5.5])
-let bayDoorL = box([18, 0.4, 1]).shift([2, -3.5, 5.5])
-let bayRidge = box([18, 4, 0.3]).shift([2, 0, 6.5])
+let bayDoorR = box(18, 0.4, 1).shift(2, 3.5, 5.5)
+let bayDoorL = box(18, 0.4, 1).shift(2, -3.5, 5.5)
+let bayRidge = box(18, 4, 0.3).shift(2, 0, 6.5)
 
 // ═══ WINGS ═══
 // The defining feature: STRAIGHT wings, not delta
@@ -46,79 +46,79 @@ let bayRidge = box([18, 4, 0.3]).shift([2, 0, 6.5])
 // lighter, and gave better low-speed handling for landing.
 
 // Wing root sections (thicker, blended into fuselage)
-let wingRootR = box([8, 6, 1.5]).shift([-10, 10, -1.5])
-let wingRootL = box([8, 6, 1.5]).shift([-10, -10, -1.5])
+let wingRootR = box(8, 6, 1.5).shift(-10, 10, -1.5)
+let wingRootL = box(8, 6, 1.5).shift(-10, -10, -1.5)
 
 // Wing outer panels (thinner toward tips)
-let wingOuterR = box([7, 8, 0.8]).shift([-10, 22, -1.5])
-let wingOuterL = box([7, 8, 0.8]).shift([-10, -22, -1.5])
+let wingOuterR = box(7, 8, 0.8).shift(-10, 22, -1.5)
+let wingOuterL = box(7, 8, 0.8).shift(-10, -22, -1.5)
 
 // Wingtip fairings
-let tipR = sphere.radius(2).shift([-10, 28, -1.5])
-let tipL = sphere.radius(2).shift([-10, -28, -1.5])
+let tipR = sphere.radius(2).shift(-10, 28, -1.5)
+let tipL = sphere.radius(2).shift(-10, -28, -1.5)
 
 // Blend wing sections smoothly
 let wingR = union(wingRootR, wingOuterR, tipR).round(2)
 let wingL = union(wingRootL, wingOuterL, tipL).round(2)
 
 // Wing-body fairing
-let fairR = sphere.radius(4).shift([-10, 6, -1])
-let fairL = sphere.radius(4).shift([-10, -6, -1])
+let fairR = sphere.radius(4).shift(-10, 6, -1)
+let fairL = sphere.radius(4).shift(-10, -6, -1)
 
 // ═══ VERTICAL TAIL ═══
 // Tall single fin — tapers to a conical tip
 // (cone base at z≈8, apex at z≈20, pointing up along +Z)
-let vertStabSlab = box([8, 0.5, 6]).shift([-24, 0, 8])
-let vertStabCone = rotate([90, 0, 0], cone.radius(4).height(12).shift([-24, 8, 0]))
+let vertStabSlab = box(8, 0.5, 6).shift(-24, 0, 8)
+let vertStabCone = rotate(90, 0, 0, cone.radius(4).height(12).shift(-24, 8, 0))
 let vertStab = union(vertStabSlab, vertStabCone).round(3)
 
 // Dorsal spine fairing connecting fuselage to fin
-let dorsalSpine = box([10, 1.5, 4]).shift([-20, 0, 5])
-let dorsalFair = sphere.radius(3).shift([-16, 0, 5])
+let dorsalSpine = box(10, 1.5, 4).shift(-20, 0, 5)
+let dorsalFair = sphere.radius(3).shift(-16, 0, 5)
 let dorsal = union(dorsalSpine, dorsalFair).round(2)
 
 // ═══ HORIZONTAL TAIL ═══
 // T-tail: horizontal stabilisers at the top of the fin
-let hStabR = box([4, 6, 0.5]).shift([-26, 8, 15])
-let hStabL = box([4, 6, 0.5]).shift([-26, -8, 15])
-let hStabTipR = sphere.radius(1.5).shift([-26, 13, 15])
-let hStabTipL = sphere.radius(1.5).shift([-26, -13, 15])
+let hStabR = box(4, 6, 0.5).shift(-26, 8, 15)
+let hStabL = box(4, 6, 0.5).shift(-26, -8, 15)
+let hStabTipR = sphere.radius(1.5).shift(-26, 13, 15)
+let hStabTipL = sphere.radius(1.5).shift(-26, -13, 15)
 
 // ═══ OMS / RCS PODS ═══
 // Orbital manoeuvring system pods flanking the aft fuselage
 // Pod bodies with conical thruster nozzles pointing aft
-let omsPodR = sphere.radius(3.5).shift([-20, 6, 2])
-let omsFairR = box([4, 2, 2.5]).shift([-18, 6, 2])
+let omsPodR = sphere.radius(3.5).shift(-20, 6, 2)
+let omsFairR = box(4, 2, 2.5).shift(-18, 6, 2)
 // OMS nozzle cone (wide bell opening at rear, throat forward)
-let omsNozzleR = rotate([0, 0, -90], cone.radius(2).height(3).shift([0, -24, 2]))
+let omsNozzleR = rotate(0, 0, -90, cone.radius(2).height(3).shift(0, -24, 2))
 let omsR = union(omsPodR, omsFairR, omsNozzleR).round(2)
 
-let omsPodL = sphere.radius(3.5).shift([-20, -6, 2])
-let omsFairL = box([4, 2, 2.5]).shift([-18, -6, 2])
-let omsNozzleL = rotate([0, 0, -90], cone.radius(2).height(3).shift([0, -24, 2]))
+let omsPodL = sphere.radius(3.5).shift(-20, -6, 2)
+let omsFairL = box(4, 2, 2.5).shift(-18, -6, 2)
+let omsNozzleL = rotate(0, 0, -90, cone.radius(2).height(3).shift(0, -24, 2))
 let omsL = union(omsPodL, omsFairL, omsNozzleL).round(2)
 
 // ═══ MAIN ENGINES ═══
 // Three SSMEs in a triangular cluster
 // Conical nozzle bells flaring out at the tail
 // (wide opening at rear x≈-30, throat at x≈-26)
-let engineBellTop = rotate([0, 0, -90], cone.radius(2.8).height(4).shift([0, -26, 1]))
-let engineBellBR = rotate([0, 0, -90], cone.radius(2.8).height(4).shift([3, -26, -2]))
-let engineBellBL = rotate([0, 0, -90], cone.radius(2.8).height(4).shift([-3, -26, -2]))
-let engineShroud = box([3, 5, 4]).shift([-26, 0, -0.5])
+let engineBellTop = rotate(0, 0, -90, cone.radius(2.8).height(4).shift(0, -26, 1))
+let engineBellBR = rotate(0, 0, -90, cone.radius(2.8).height(4).shift(3, -26, -2))
+let engineBellBL = rotate(0, 0, -90, cone.radius(2.8).height(4).shift(-3, -26, -2))
+let engineShroud = box(3, 5, 4).shift(-26, 0, -0.5)
 let engines = union(engineBellTop, engineBellBR, engineBellBL, engineShroud).round(1)
 
 // ═══ BODY FLAP ═══
-let bodyFlap = box([4, 6, 0.6]).shift([-28, 0, -4.5])
+let bodyFlap = box(4, 6, 0.6).shift(-28, 0, -4.5)
 
 // ═══ HEAT SHIELD PANEL LINE ═══
-let tpsBoundaryR = box([30, 0.3, 0.3]).shift([0, 5, -3.5])
-let tpsBoundaryL = box([30, 0.3, 0.3]).shift([0, -5, -3.5])
+let tpsBoundaryR = box(30, 0.3, 0.3).shift(0, 5, -3.5)
+let tpsBoundaryL = box(30, 0.3, 0.3).shift(0, -5, -3.5)
 
 // ═══ EXTERNAL TANK ATTACH POINTS ═══
 // Fittings where the external propellant drop tanks connected
-let attachFwd = sphere.radius(1.5).shift([10, 0, -4.5])
-let attachAft = sphere.radius(1.5).shift([-14, 0, -4.5])
+let attachFwd = sphere.radius(1.5).shift(10, 0, -4.5)
+let attachAft = sphere.radius(1.5).shift(-14, 0, -4.5)
 
 // ═══ ASSEMBLY ═══
 let body = union(fuselage, cockpitBulge, windshieldR, windshieldL, rcsCone).round(2.5)

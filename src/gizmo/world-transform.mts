@@ -68,18 +68,35 @@ function contains(node: Node, id: number): boolean {
  * the ancestor transforms. Returns the target node + its accumulated frame, or
  * null if the node is not found.
  */
-function nodeAccumulated(root: Node, targetId: number): { node: Node; acc: Float32Array } | null {
+function nodeAccumulated(root: Node, targetId: number): { node: Node; acc: Float32Array; path: Node[] } | null {
     let node = root
     let acc = identity()
     let guard = 0
+    const path: Node[] = [root]
     while (node.id !== targetId) {
         const m = localMatrix(node)
         if (m) acc = mul(acc, m)
         const next = children(node).find(c => contains(c, targetId))
         if (!next || ++guard > 4096) return null
         node = next
+        path.push(node)
     }
-    return { node, acc }
+    return { node, acc, path }
+}
+
+/**
+ * Nearest pre-shift `Rotate` ancestor of the target: scanning outward from the
+ * target, the first `Rotate` reached before any `Translate`. This is the node
+ * the gizmo's local rotation maps to (a `.rotate` before any `.shift`). Returns
+ * null when a `Translate` is hit first or no rotate exists.
+ */
+function preShiftRotate(path: Node[]): Rotate | null {
+    for (let i = path.length - 2; i >= 0; i--) {
+        const n = path[i]!
+        if (n instanceof Rotate) return n
+        if (n instanceof Translate) return null
+    }
+    return null
 }
 
 /**
@@ -104,7 +121,15 @@ export function worldCenterForNode(root: Node, targetId: number): [number, numbe
 export function nodePlacement(
     root: Node,
     targetId: number,
-): { center: [number, number, number]; invLinear: number[]; orient: number[] } | null {
+): {
+    center: [number, number, number]
+    invLinear: number[]
+    orient: number[]
+    /** Node id of the pre-shift Rotate to live-mutate, or 0 if none. */
+    rotateNodeId: number
+    /** That rotate's current Euler (deg), for composition. */
+    rotateEuler: [number, number, number]
+} | null {
     const found = nodeAccumulated(root, targetId)
     if (!found) return null
     const b = found.node.computeBounds()
@@ -115,7 +140,14 @@ export function nodePlacement(
     const linear = [a[0]!, a[4]!, a[8]!, a[1]!, a[5]!, a[9]!, a[2]!, a[6]!, a[10]!]
     // Object's world orientation (column-major 3×3) for local-aligned rings.
     const orient = [a[0]!, a[1]!, a[2]!, a[4]!, a[5]!, a[6]!, a[8]!, a[9]!, a[10]!]
-    return { center: [center.x, center.y, center.z], invLinear: invert3x3(linear) ?? IDENTITY_3X3, orient }
+    const rot = preShiftRotate(found.path)
+    return {
+        center: [center.x, center.y, center.z],
+        invLinear: invert3x3(linear) ?? IDENTITY_3X3,
+        orient,
+        rotateNodeId: rot ? rot.id : 0,
+        rotateEuler: rot ? [rot.rx, rot.ry, rot.rz] : [0, 0, 0],
+    }
 }
 
 const IDENTITY_3X3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]
@@ -161,6 +193,17 @@ export function getNodeTranslation(node: Node): [number, number, number] | null 
     const pos = (node as PosBearing).pos
     if (pos && typeof pos.x === "number") return [pos.x, pos.y, pos.z]
     return null
+}
+
+/** Set a `Rotate` node's Euler (deg) in place. Returns false if it isn't a Rotate. */
+export function setNodeRotation(node: Node, euler: readonly [number, number, number]): boolean {
+    if (node instanceof Rotate) {
+        node.rx = euler[0]
+        node.ry = euler[1]
+        node.rz = euler[2]
+        return true
+    }
+    return false
 }
 
 /** Set a node's translation value in place. Returns false if the node can't carry one. */

@@ -80,7 +80,14 @@ const DEFAULT_TARGET_FPS = 120
 /** Lightweight node stub for main-thread selection logic. Reconstructed from SerializedNode. */
 /** Reply payload for `getNodeBounds` — world-space center, local half-extents,
  *  and the row-major 3×3 mapping a world delta into the node's local frame. */
-export type NodeBoundsResult = { center: [number, number, number]; half: [number, number, number]; invLinear: number[]; orient: number[] }
+export type NodeBoundsResult = {
+    center: [number, number, number]
+    half: [number, number, number]
+    invLinear: number[]
+    orient: number[]
+    rotateNodeId: number
+    rotateEuler: [number, number, number]
+}
 
 export interface NodeStub {
     id: number
@@ -487,7 +494,7 @@ export class SDFRenderer {
                 this.#preview.canvas.style.cursor = ""
                 return
             }
-            gc.show(bounds.center, bounds.invLinear, bounds.orient, single)
+            gc.show(bounds.center, bounds.invLinear, bounds.orient, single, bounds.rotateNodeId, bounds.rotateEuler)
         })
     }
 
@@ -1435,11 +1442,11 @@ export class SDFRenderer {
             postGizmo(state) {
                 self.#worker.postMessage({ type: "setGizmo", ...state })
             },
-            gizmoBegin(nodeId) {
-                self.#worker.postMessage({ type: "gizmoBegin", nodeId, kind: "translate" })
+            gizmoBegin(nodeId, kind) {
+                self.#worker.postMessage({ type: "gizmoBegin", nodeId, kind })
             },
-            gizmoPreview(translate) {
-                self.#worker.postMessage({ type: "gizmoPreview", translate })
+            gizmoPreview(p) {
+                self.#worker.postMessage({ type: "gizmoPreview", ...p })
             },
             gizmoEnd() {
                 self.#worker.postMessage({ type: "gizmoEnd" })

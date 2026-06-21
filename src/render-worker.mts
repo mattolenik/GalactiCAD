@@ -257,10 +257,10 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
             if (core) core.setGizmo(msg)
             break
         case "gizmoBegin":
-            if (core) core.gizmoBegin(msg.nodeId)
+            if (core) core.gizmoBegin(msg.nodeId, msg.kind)
             break
         case "gizmoPreview":
-            if (core) core.gizmoPreview(msg.translate)
+            if (core) core.gizmoPreview(msg)
             break
         case "gizmoEnd":
             if (core) core.gizmoEnd()

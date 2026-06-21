@@ -17,7 +17,7 @@
 import { Mat4x4f } from "../vecmat/matrix.mjs"
 import { type Vec2f, type Vec3f, vec3 } from "../vecmat/vector.mjs"
 import { applyMat3 } from "./world-transform.mjs"
-import { matColumn } from "./rotation.mjs"
+import { matColumn, eulerToFwd, fwdToEuler, matMul3 } from "./rotation.mjs"
 import {
     GIZMO_AXES,
     GIZMO_CENTER_GAP,
@@ -39,9 +39,10 @@ export interface GizmoHost {
         activeHandle?: number
         orient?: number[]
     }): void
-    /** Gizmo translate-drag lifecycle messages to the worker (live preview). */
-    gizmoBegin(nodeId: number): void
-    gizmoPreview(translate: [number, number, number]): void
+    /** Gizmo drag lifecycle messages to the worker (live preview). For rotate,
+     * `nodeId` is the Rotate node and `rotate` sets its Euler absolutely. */
+    gizmoBegin(nodeId: number, kind: "translate" | "rotate"): void
+    gizmoPreview(p: { translate?: [number, number, number]; rotate?: [number, number, number] }): void
     gizmoEnd(): void
     /** A node's current local translation (primitive `pos` / `Translate` delta), or null. */
     getNodeTranslation(nodeId: number): [number, number, number] | null
@@ -90,6 +91,10 @@ interface RotateDrag {
     v: Vec3
     lastAngle: number
     accumAngle: number
+    /** Pre-shift Rotate node to live-mutate (0 = none → commit on release only). */
+    rotateNodeId: number
+    /** That rotate's Euler at drag start, for body-frame composition. */
+    baseEuler: Vec3
 }
 
 export class GizmoController {
@@ -100,6 +105,9 @@ export class GizmoController {
     /** Column-major 3×3 world orientation of the object's local frame (rings). */
     #orient: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
     #nodeId = 0
+    /** Pre-shift Rotate node id (0 = none) + its Euler, from the last placement query. */
+    #rotateNodeId = 0
+    #rotateBaseEuler: Vec3 = [0, 0, 0]
     #sizePx = GIZMO_DEFAULT_SIZE_PX
     #hoverHandle = -1
     #shown = false
@@ -117,11 +125,13 @@ export class GizmoController {
     }
 
     /** Show the gizmo anchored at a world center (re-call to re-anchor). */
-    show(center: Vec3, invLinear: number[], orient: number[], nodeId: number): void {
+    show(center: Vec3, invLinear: number[], orient: number[], nodeId: number, rotateNodeId = 0, rotateEuler: Vec3 = [0, 0, 0]): void {
         this.#center = center
         this.#invLinear = invLinear
         this.#orient = orient
         this.#nodeId = nodeId
+        this.#rotateNodeId = rotateNodeId
+        this.#rotateBaseEuler = rotateEuler
         this.#shown = true
         this.#hoverHandle = -1
         this.#host.postGizmo({ visible: true, center, orient })
@@ -175,12 +185,17 @@ export class GizmoController {
             const u = norm(matColumn(this.#orient, (axis + 1) % 3))
             const v = norm(matColumn(this.#orient, (axis + 2) % 3))
             const a = this.#ringAngle(cssX, cssY, this.#center, normal, u, v)
-            this.#drag = { kind: "rotate", handle, axis, normal, u, v, lastAngle: a ?? 0, accumAngle: 0 }
+            this.#drag = {
+                kind: "rotate", handle, axis, normal, u, v, lastAngle: a ?? 0, accumAngle: 0,
+                rotateNodeId: this.#rotateNodeId, baseEuler: this.#rotateBaseEuler,
+            }
+            // Live spin only when a pre-shift rotate node already exists.
+            if (this.#rotateNodeId > 0) this.#host.gizmoBegin(this.#rotateNodeId, "rotate")
         } else {
             const base = this.#host.getNodeTranslation(this.#nodeId)
             if (!base) return false
             this.#drag = { kind: "translate", handle, axis, startX: clientX, startY: clientY, baseCenter: [...this.#center], base }
-            this.#host.gizmoBegin(this.#nodeId)
+            this.#host.gizmoBegin(this.#nodeId, "translate")
         }
         this.#hoverHandle = handle
         this.#host.postGizmo({ visible: true, hoverHandle: handle, activeHandle: handle })
@@ -196,7 +211,7 @@ export class GizmoController {
         if (drag.kind === "translate") {
             const worldDelta = this.#axisWorldDelta(drag.axis, clientX - drag.startX, clientY - drag.startY)
             const localDelta = applyMat3(this.#invLinear, worldDelta)
-            this.#host.gizmoPreview(localDelta)
+            this.#host.gizmoPreview({ translate: localDelta })
             this.#center = [drag.baseCenter[0] + worldDelta[0], drag.baseCenter[1] + worldDelta[1], drag.baseCenter[2] + worldDelta[2]]
             this.#host.postGizmo({ visible: true, center: this.#center, hoverHandle: drag.handle, activeHandle: drag.handle })
             this.#host.requestRender()
@@ -211,7 +226,20 @@ export class GizmoController {
             drag.accumAngle += d
             drag.lastAngle = a
         }
+        // Live spin: set the rotate node's Euler = base ∘ delta (body-frame).
+        if (drag.rotateNodeId > 0) {
+            this.#host.gizmoPreview({ rotate: this.#composedEuler(drag) })
+            this.#host.requestRender()
+        }
         return true
+    }
+
+    /** Body-frame composition of a rotate drag's delta onto its base Euler. */
+    #composedEuler(drag: RotateDrag): Vec3 {
+        const deg = (drag.accumAngle * 180) / Math.PI
+        const delta: Vec3 = [drag.axis === 0 ? deg : 0, drag.axis === 1 ? deg : 0, drag.axis === 2 ? deg : 0]
+        const fwd = matMul3(eulerToFwd(drag.baseEuler[0], drag.baseEuler[1], drag.baseEuler[2]), eulerToFwd(delta[0], delta[1], delta[2]))
+        return fwdToEuler(fwd)
     }
 
     /** Finish an active drag, reporting the committed transform. */
@@ -229,6 +257,7 @@ export class GizmoController {
                 this.#host.onTranslateComplete(this.#nodeId, final, delta)
             }
         } else {
+            if (drag.rotateNodeId > 0) this.#host.gizmoEnd()
             this.#host.postGizmo({ visible: true, hoverHandle: -1, activeHandle: -1 })
             const deg = (drag.accumAngle * 180) / Math.PI
             if (Math.abs(deg) > 1e-4) this.#host.onRotateComplete(this.#nodeId, drag.axis, deg)
@@ -243,11 +272,15 @@ export class GizmoController {
         if (!drag) return
         this.#drag = null
         if (drag.kind === "translate") {
-            this.#host.gizmoPreview([0, 0, 0]) // revert preview to base
+            this.#host.gizmoPreview({ translate: [0, 0, 0] }) // revert preview to base
             this.#host.gizmoEnd()
             this.#center = drag.baseCenter
             this.#host.postGizmo({ visible: true, center: drag.baseCenter, hoverHandle: -1, activeHandle: -1 })
         } else {
+            if (drag.rotateNodeId > 0) {
+                this.#host.gizmoPreview({ rotate: drag.baseEuler }) // revert preview to base
+                this.#host.gizmoEnd()
+            }
             this.#host.postGizmo({ visible: true, hoverHandle: -1, activeHandle: -1 })
         }
         this.#host.requestRender()

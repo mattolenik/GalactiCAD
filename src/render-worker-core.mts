@@ -38,7 +38,7 @@ import {
     type FeatureGraphOcclusionMode,
 } from "./feature-graph/feature-graph-overlay.mjs"
 import { GizmoOverlay } from "./gizmo/gizmo-overlay.mjs"
-import { nodePlacement, getNodeTranslation, setNodeTranslation } from "./gizmo/world-transform.mjs"
+import { nodePlacement, getNodeTranslation, setNodeTranslation, setNodeRotation } from "./gizmo/world-transform.mjs"
 import { GIZMO_DEFAULT_SIZE_PX } from "./gizmo/gizmo-geometry.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
@@ -752,7 +752,9 @@ export class RenderWorkerCore {
      * The center pushes the node's local bbox center back out through ancestor
      * transforms so it lines up with the rendered surface. */
     handleGetNodeBounds(nodeId: number, requestId: number): void {
-        let bounds: { center: [number, number, number]; half: [number, number, number]; invLinear: number[]; orient: number[] } | null = null
+        let bounds:
+            | { center: [number, number, number]; half: [number, number, number]; invLinear: number[]; orient: number[]; rotateNodeId: number; rotateEuler: [number, number, number] }
+            | null = null
         const scene = this.#scene
         const node = scene?.get(nodeId)
         const b = node?.computeBounds()
@@ -763,25 +765,35 @@ export class RenderWorkerCore {
                 half: [b.hx, b.hy, b.hz],
                 invLinear: placed?.invLinear ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
                 orient: placed?.orient ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
+                rotateNodeId: placed?.rotateNodeId ?? 0,
+                rotateEuler: placed?.rotateEuler ?? [0, 0, 0],
             }
         }
         self.postMessage({ type: "nodeBoundsResult", bounds, requestId })
     }
 
-    /** Begin a gizmo drag: capture the node's base translation for live preview. */
-    gizmoBegin(nodeId: number): void {
+    /** Begin a gizmo drag: capture the node's base translation (translate) for
+     * live preview. For rotate, `nodeId` is the Rotate node (set absolutely). */
+    gizmoBegin(nodeId: number, kind: "translate" | "rotate"): void {
         const node = this.#scene?.get(nodeId)
-        const base = node ? getNodeTranslation(node) : null
+        if (!node) { this.#gizmoDrag = null; return }
+        const base = kind === "translate" ? getNodeTranslation(node) : ([0, 0, 0] as [number, number, number])
         this.#gizmoDrag = base ? { nodeId, base } : null
     }
 
-    /** Live-preview a gizmo translate: set the dragged node's translation to
-     * base + localDelta and re-upload the preview param banks (no recompile). */
-    gizmoPreview(translate: [number, number, number]): void {
+    /** Live-preview a gizmo drag: translate sets node translation = base + local
+     * delta; rotate sets the Rotate node's Euler absolutely. Re-uploads the
+     * preview param banks (no recompile). */
+    gizmoPreview(msg: Extract<MainToWorkerMessage, { type: "gizmoPreview" }>): void {
         const drag = this.#gizmoDrag
         const node = drag ? this.#scene?.get(drag.nodeId) : null
         if (!drag || !node) return
-        setNodeTranslation(node, [drag.base[0] + translate[0], drag.base[1] + translate[1], drag.base[2] + translate[2]])
+        if (msg.translate) {
+            const t = msg.translate
+            setNodeTranslation(node, [drag.base[0] + t[0], drag.base[1] + t[1], drag.base[2] + t[2]])
+        } else if (msg.rotate) {
+            setNodeRotation(node, msg.rotate)
+        }
         this.#repackAndUploadParams()
     }
 

@@ -260,8 +260,8 @@ export type MainToWorkerMessage =
     // captures the node's base translation; preview mutates it (local-frame
     // delta) and re-uploads the preview param banks; end clears drag state (the
     // pointer-up source edit + rebuild re-syncs).
-    | { type: "gizmoBegin"; nodeId: number; kind: "translate" }
-    | { type: "gizmoPreview"; translate: [number, number, number] }
+    | { type: "gizmoBegin"; nodeId: number; kind: "translate" | "rotate" }
+    | { type: "gizmoPreview"; translate?: [number, number, number]; rotate?: [number, number, number] }
     | { type: "gizmoEnd" }
     // Transform-gizmo overlay state: world-space anchor + size, visibility, and
     // the hovered/active handle (-1 = none). Worker stores it and draws the
@@ -472,6 +472,10 @@ export type WorkerToMainMessage =
               invLinear: number[]
               /** Column-major 3×3 world orientation of the node's local frame (for local-aligned rings). */
               orient: number[]
+              /** Node id of the pre-shift Rotate to live-mutate during a rotate drag, or 0. */
+              rotateNodeId: number
+              /** That rotate's current Euler (deg), for composition. */
+              rotateEuler: [number, number, number]
           } | null
           requestId: number
       }

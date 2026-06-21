@@ -15,16 +15,3 @@ wasm-bindgen = "0.2"
 js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# M6 (rayon) threading — OPT-IN via `--features threads`. The default build stays
-# single-threaded + stable (so `make gcad-wasm` / M5 are unaffected); the threaded
-# build needs nightly + `-Zbuild-std` + `+atomics,+bulk-memory` + COOP/COEP.
-wasm-bindgen-rayon = { version = "1", optional = true }
-rayon = { version = "1", optional = true }
-
-[features]
-# M6d: the wasm `threads` feature ALSO enables the kernel's `threads` feature, so
-# the SFCC refine frontier (classifyCellFeatures) runs on rayon par_iter, not just
-# the par_smoke probe. wasm-bindgen-rayon supplies `initThreadPool` (the JS-awaited
-# pool spawn); rayon is the par_iter engine for both the kernel and par_smoke.
-threads = ["dep:wasm-bindgen-rayon", "dep:rayon", "gcad-kernel/threads"]

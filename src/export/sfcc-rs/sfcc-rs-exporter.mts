@@ -31,41 +31,6 @@ export const SFCC_RS_DISPLAY_NAME = "SFCC (Rust/WASM)"
 const SFCC_RS_PHASE_COUNT = 5
 
 /**
- * M6d: the `sfccThreads` flag (forwarded onto the render-worker URL by
- * `src/sdf.mts`) routes the Rust SFCC export through the THREADED `pkg-threads/`
- * artifact, whose `export_sfcc` runs the rayon-parallelized refine frontier
- * (classifyCellFeatures). The mesh is byte-identical to the single-thread path
- * (M6d determinism gate) — only the wall-clock changes. Default (flag off):
- * single-thread `pkg/`, untouched. crossOriginIsolated must hold for the pool to
- * spawn; if anything in the threaded path throws we fall back to single-thread.
- */
-function threadsRequested(): boolean {
-    try {
-        return new URL(self.location.href).searchParams.has("sfccThreads")
-    } catch {
-        return false
-    }
-}
-
-/** Resolve the export entry: threaded (parallel refine) when the flag is on and
- * cross-origin isolation is available, else the single-thread path. */
-async function resolveExportFn(): Promise<{ fn: typeof export_sfcc; threaded: boolean }> {
-    if (threadsRequested() && typeof crossOriginIsolated !== "undefined" && crossOriginIsolated) {
-        try {
-            const m = await import("./wasm-loader-threads.mjs")
-            await m.ensureThreadedWasmReady()
-            return { fn: m.export_sfcc as typeof export_sfcc, threaded: true }
-        } catch (e) {
-            log("MeshExport").warn("sfcc-rs threaded path unavailable; falling back to single-thread", {
-                error: e instanceof Error ? e.message : String(e),
-            })
-        }
-    }
-    await ensureWasmReady()
-    return { fn: export_sfcc, threaded: false }
-}
-
-/**
  * Slice 5: the `sfccPartitions=N` flag (forwarded onto the render-worker URL by
  * `src/sdf.mts`) routes the Rust SFCC export through a pool of N separate (non-atomics)
  * `pkg/` wasm instances in module workers. Main runs `sfcc_worker_prepare` once (the
@@ -116,7 +81,6 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
 
     let result: ReturnType<typeof export_sfcc>
     let elapsedMs: number
-    let threaded = false
     let partitionsUsed = 1
 
     if (partitions > 1) {
@@ -137,9 +101,9 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
         elapsedMs = performance.now() - t0
         partitionsUsed = partitions
     } else {
-        // Serial path (flag off): byte-identical to the original export_sfcc flow.
-        const { fn: exportFn, threaded: t } = await resolveExportFn()
-        threaded = t
+        // Serial path (flag off): the single-thread export_sfcc flow.
+        await ensureWasmReady()
+        const exportFn = export_sfcc
         // Live phase-progress: the kernel calls this synchronously at each phase boundary
         // (feature → octree → contour → cellmesh → assemble → done); we relay it to the
         // worker host via ctx.onProgress. Undefined when nobody is listening → no overhead,
@@ -183,8 +147,6 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
     log("MeshExport").info("sfcc-rs stats", {
         ...stats,
         exportMs: Math.round(elapsedMs),
-        threaded,
-        threads: threaded && typeof navigator !== "undefined" ? navigator.hardwareConcurrency : 1,
         partitions: partitionsUsed,
     })
 

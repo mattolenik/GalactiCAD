@@ -21,17 +21,14 @@ cargo test -p gcad-kernel
 Toolchain is pinned in `rust-toolchain.toml` (stable 1.96.0); the native kernel
 needs no extra setup.
 
-### WASM build (later)
+### WASM build
 
-Needs the wasm target, and — for the rayon parallel path — a nightly toolchain
-with `rust-src` + `-Zbuild-std` and `-Ctarget-feature=+atomics,+bulk-memory`, plus
-COOP/COEP headers on the host (`src/_headers` for prod, Vite `server.headers` for
-dev). See the design doc §1/§4. Sketch:
+Needs the wasm target plus `wasm-pack`; the pinned stable toolchain is enough.
+Build via `make gcad-wasm`, or directly:
 
 ```sh
 rustup target add wasm32-unknown-unknown
-# scalar (stable) build:
-cargo build -p gcad-wasm --target wasm32-unknown-unknown --release
-# then wasm-bindgen-cli emits the JS glue + .d.ts; the threaded build switches
-# to the pinned nightly with build-std.
+RUSTFLAGS='-C target-feature=+simd128' wasm-pack build gcad-wasm/wasm --target web
 ```
+
+This emits the JS glue + `.d.ts` into `gcad-wasm/wasm/pkg/` (consumed by esbuild + tsc).

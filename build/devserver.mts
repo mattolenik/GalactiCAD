@@ -884,8 +884,8 @@ export class DevServer {
 
         if (AGENT_MODE && options) {
             // Optional query string appended to the headless tab URL so page-load
-            // flags (e.g. `?sfccThreads=1` for the M6d rayon export path) can be
-            // exercised headlessly. Inert unless GCAD_AGENT_PAGE_QUERY is set.
+            // flags (e.g. `?sfccPartitions=2` for the partitioned SFCC export path) can
+            // be exercised headlessly. Inert unless GCAD_AGENT_PAGE_QUERY is set.
             const pageQuery = process.env.GCAD_AGENT_PAGE_QUERY?.trim()
             const url = `http://127.0.0.1:${actualPort}/${pageQuery ? `?${pageQuery.replace(/^\?/, "")}` : ""}`
             try {
@@ -1348,7 +1348,7 @@ function createHttpServer(
             res.writeHead(200, {
                 "content-type": contentType[path.extname(file)] || defaultContentType,
                 // Cross-origin isolation → crossOriginIsolated === true →
-                // SharedArrayBuffer + wasm atomics (rayon thread pool, M6b).
+                // SharedArrayBuffer (the per-frame render buffer).
                 "Cross-Origin-Opener-Policy": "same-origin",
                 "Cross-Origin-Embedder-Policy": "require-corp",
                 // Same-origin assets are exempt; this lets any cross-origin

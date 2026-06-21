@@ -19,9 +19,8 @@ const TAU: f64 = 2.0 * PI;
 /// Per-thread memo for [`FeatureCurve::axis_plane_crossings`], keyed
 /// `(curve_id, axis, coord.to_bits())` and scoped to one feature-set `run_id`:
 /// the map is cleared the instant a new `run_id` is seen, bounding memory to a
-/// single export. Thread-local so it is correct (and a win) under BOTH the serial
-/// shipping build and the rayon `threads` build — each thread memoizes
-/// independently and the returned `Rc` never crosses a thread boundary.
+/// single export. Thread-local, and the returned `Rc` never crosses a thread
+/// boundary.
 struct XpcCache {
     run_id: u64,
     map: HashMap<(usize, usize, u64), Rc<Vec<CurveFaceCrossing>>>,

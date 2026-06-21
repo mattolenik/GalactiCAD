@@ -1,18 +1,18 @@
-MAKEFLAGS    += --no-print-directory
-SHELL        := bash
+MAKEFLAGS      += --no-print-directory
+SHELL          := bash
 # All generated output lives under ./dist:
 #   dist/site     — web build (esbuild output, also what's deployed)
 #   dist/build    — electron-builder buildResources (generated icons)
 #   dist/release  — electron-builder packaged installers/archives
-DIST_ROOT    ?= dist
-DIST         ?= $(DIST_ROOT)/site
-SED          := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
-export TSX   ?= node_modules/.bin/tsx
-export TSC   ?= node_modules/.bin/tsc
-BUILD        := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
-BROWSERS_CLI := npx @puppeteer/browsers
-BROWSERS_DIR := .browsers
-VERSION       = $(shell scripts/version)
+DIST_ROOT      ?= dist
+DIST           ?= $(DIST_ROOT)/site
+SED            := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
+export TSX     ?= node_modules/.bin/tsx
+export TSC     ?= node_modules/.bin/tsc
+BUILD          := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
+BROWSERS_CLI   := npx @puppeteer/browsers
+BROWSERS_DIR   := .browsers
+export VERSION  = $(shell scripts/version)
 
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
@@ -261,7 +261,19 @@ gcad-test:
 # or when missing (fresh checkout / CI). Requires wasm-pack + the
 # wasm32-unknown-unknown target.
 GCAD_WASM_SRC := $(shell find gcad-wasm/kernel/src gcad-wasm/wasm/src -name '*.rs' 2>/dev/null) \
-	gcad-wasm/kernel/Cargo.toml gcad-wasm/wasm/Cargo.toml gcad-wasm/Cargo.toml gcad-wasm/Cargo.lock
+	gcad-wasm/kernel/build.rs \
+	gcad-wasm/kernel/Cargo.toml gcad-wasm/wasm/Cargo.toml gcad-wasm/Cargo.toml gcad-wasm/Cargo.lock \
+	gcad-wasm/.version
+
+# Guard file recording the VERSION the wasm artifacts were stamped with. The
+# Makefile exports VERSION, which the kernel's build.rs bakes into the binary
+# (gcad_kernel::version()); rewriting this file only when VERSION actually
+# changes (cmp -s, via the always-stale FORCE prereq) makes the wasm/threads
+# stamps go stale and rebuild on a new commit even when no .rs source changed.
+gcad-wasm/.version: FORCE
+	@printf '%s\n' '$(VERSION)' | cmp -s - $@ 2>/dev/null || printf '%s\n' '$(VERSION)' > $@
+.PHONY: FORCE
+FORCE:
 
 # `+simd128` enables the f64x2 SoA gradient evaluator (sfcc/sdf_simd.rs) in the iii-d
 # blend cone — measured ~23% faster octree-decide / ~12% faster export on blend-heavy

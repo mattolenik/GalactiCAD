@@ -1,4 +1,6 @@
 /target
+# VERSION build-stamp guard file (see Makefile gcad-wasm/.version)
+.version
 # wasm-pack / wasm-bindgen JS output
 pkg/
 # M6 threaded build (--features threads, -Zbuild-std); separate from the default pkg/

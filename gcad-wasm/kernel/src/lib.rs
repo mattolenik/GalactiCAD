@@ -18,9 +18,12 @@ pub mod strata;
 pub mod tolerances;
 pub mod tuning;
 
-/// Crate version, surfaced across the WASM boundary as a build smoke test.
+/// Repo version, surfaced across the WASM boundary as a build smoke test. Baked
+/// in by `build.rs` from the Makefile-exported VERSION (git-derived,
+/// `scripts/version`), so it matches the rest of the build; falls back to the
+/// Cargo package version for bare `cargo` builds outside the Makefile.
 pub fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    env!("GCAD_VERSION")
 }
 
 #[cfg(test)]

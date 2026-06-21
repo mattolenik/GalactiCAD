@@ -1,19 +1,17 @@
 /**
- * World-space placement for the transform gizmo.
+ * World-space placement + transform helpers for the gizmo.
  *
  * `Node.computeBounds()` returns a node's bounds in its OWN local space (the
  * space its subtree is evaluated in, after ancestor transforms inverse-transform
- * the sample point). To anchor the gizmo at a selected node's on-screen center
- * we must push that local center back out through the accumulated ancestor
- * transforms. This walks root→target composing each Translate / Rotate / Scale
- * exactly as `FeatureGraphBuilder` does (`accumulated = parent · local`,
- * world = accumulated · localPoint), so the anchor lines up with the rendered
- * surface on transformed / CSG scenes.
+ * the sample point). To anchor the gizmo at a selected node's on-screen center,
+ * and to convert a world-space drag into the node's local frame, we walk
+ * root→target composing each Translate / Rotate / Scale exactly as
+ * `FeatureGraphBuilder` does (`accumulated = parent · local`, world =
+ * accumulated · localPoint).
  *
  * Non-affine ancestors (warps: twist/bend/taper/…) contribute identity here —
- * their center is ill-defined and the affine gizmo can't represent them anyway,
- * so the anchor is approximate under a warp. Operators (union/subtract/…) and
- * modifiers contribute identity (they don't move space).
+ * their center/frame is ill-defined and the affine gizmo can't represent them.
+ * Operators (union/subtract/…) and modifiers contribute identity (no space move).
  */
 
 import { type Node, UnaryOperator, BinaryOperator } from "../scene/base.mjs"
@@ -22,7 +20,7 @@ import { Rotate } from "../scene/operators/rotate.mjs"
 import { Scale } from "../scene/operators/scale.mjs"
 import { mat4FromTranslation, mat4FromRotationFwd, mat4FromScale } from "../scene/feature-graph-buffer.mjs"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
-import { vec3 } from "../vecmat/vector.mjs"
+import { type Vec3f, vec3 } from "../vecmat/vector.mjs"
 
 function identity(): Float32Array {
     const m = new Float32Array(16)
@@ -66,10 +64,11 @@ function contains(node: Node, id: number): boolean {
 }
 
 /**
- * World-space center of `targetId`'s bounding box within the scene rooted at
- * `root`. Returns null when the node is unbounded or not found.
+ * Walk root→target, accumulating the object→world affine (4×4 column-major) of
+ * the ancestor transforms. Returns the target node + its accumulated frame, or
+ * null if the node is not found.
  */
-export function worldCenterForNode(root: Node, targetId: number): [number, number, number] | null {
+function nodeAccumulated(root: Node, targetId: number): { node: Node; acc: Float32Array } | null {
     let node = root
     let acc = identity()
     let guard = 0
@@ -80,8 +79,100 @@ export function worldCenterForNode(root: Node, targetId: number): [number, numbe
         if (!next || ++guard > 4096) return null
         node = next
     }
-    const b = node.computeBounds()
+    return { node, acc }
+}
+
+/**
+ * World-space center of `targetId`'s bounding box within the scene rooted at
+ * `root`. Returns null when the node is unbounded or not found.
+ */
+export function worldCenterForNode(root: Node, targetId: number): [number, number, number] | null {
+    const found = nodeAccumulated(root, targetId)
+    if (!found) return null
+    const b = found.node.computeBounds()
     if (!b) return null
-    const w = new Mat4x4f(acc).transformPoint(vec3(b.cx, b.cy, b.cz))
+    const w = new Mat4x4f(found.acc).transformPoint(vec3(b.cx, b.cy, b.cz))
     return [w.x, w.y, w.z]
+}
+
+/**
+ * Gizmo placement for a node: its world-space center plus the row-major 3×3
+ * that maps a WORLD-space delta into the node's LOCAL frame (the inverse of the
+ * accumulated ancestor linear part). For a node with no transform ancestors
+ * this is the identity, so a world drag equals a local delta.
+ */
+export function nodePlacement(
+    root: Node,
+    targetId: number,
+): { center: [number, number, number]; invLinear: number[] } | null {
+    const found = nodeAccumulated(root, targetId)
+    if (!found) return null
+    const b = found.node.computeBounds()
+    if (!b) return null
+    const center = new Mat4x4f(found.acc).transformPoint(vec3(b.cx, b.cy, b.cz))
+    // Upper-left 3×3 of the column-major acc, read row-major.
+    const a = found.acc
+    const linear = [a[0]!, a[4]!, a[8]!, a[1]!, a[5]!, a[9]!, a[2]!, a[6]!, a[10]!]
+    return { center: [center.x, center.y, center.z], invLinear: invert3x3(linear) ?? IDENTITY_3X3 }
+}
+
+const IDENTITY_3X3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+/** Invert a row-major 3×3; returns null if singular. */
+function invert3x3(m: number[]): number[] | null {
+    const [a, b, c, d, e, f, g, h, i] = m as [number, number, number, number, number, number, number, number, number]
+    const A = e * i - f * h
+    const B = -(d * i - f * g)
+    const C = d * h - e * g
+    const det = a * A + b * B + c * C
+    if (Math.abs(det) < 1e-12) return null
+    const inv = 1 / det
+    return [
+        A * inv,
+        (c * h - b * i) * inv,
+        (b * f - c * e) * inv,
+        B * inv,
+        (a * i - c * g) * inv,
+        (c * d - a * f) * inv,
+        C * inv,
+        (b * g - a * h) * inv,
+        (a * e - b * d) * inv,
+    ]
+}
+
+/** Apply a row-major 3×3 to a vector. */
+export function applyMat3(m: number[], v: readonly [number, number, number]): [number, number, number] {
+    return [
+        m[0]! * v[0] + m[1]! * v[1] + m[2]! * v[2],
+        m[3]! * v[0] + m[4]! * v[1] + m[5]! * v[2],
+        m[6]! * v[0] + m[7]! * v[1] + m[8]! * v[2],
+    ]
+}
+
+interface PosBearing {
+    pos?: Vec3f
+}
+
+/** Read a node's translation value (`Translate` delta, or a primitive's `pos`), or null. */
+export function getNodeTranslation(node: Node): [number, number, number] | null {
+    if (node instanceof Translate) return [node.dx, node.dy, node.dz]
+    const pos = (node as PosBearing).pos
+    if (pos && typeof pos.x === "number") return [pos.x, pos.y, pos.z]
+    return null
+}
+
+/** Set a node's translation value in place. Returns false if the node can't carry one. */
+export function setNodeTranslation(node: Node, v: readonly [number, number, number]): boolean {
+    if (node instanceof Translate) {
+        node.dx = v[0]
+        node.dy = v[1]
+        node.dz = v[2]
+        return true
+    }
+    const bearer = node as PosBearing
+    if (bearer.pos && typeof bearer.pos.x === "number") {
+        bearer.pos = vec3(v[0], v[1], v[2])
+        return true
+    }
+    return false
 }

@@ -56,6 +56,7 @@ import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
+import { applyGizmoTranslate } from "./editor/gizmo-source-updates.mjs"
 import {
     canvasPreviewUvRect,
     editorSelectionInfoOffset,
@@ -530,6 +531,29 @@ class App {
                 this.#sourceLocationMap.set(nodeId, location)
             }
         }
+    }
+
+    /**
+     * Handle a gizmo translate completion: write the `.shift(...)` for the moved
+     * node into source (edit literal in place / wrap non-literal / append), then
+     * re-parse + re-match so subsequent drags use fresh offsets.
+     */
+    #handleGizmoTranslateComplete(nodeId: number, final: [number, number, number], delta: [number, number, number]) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location) return
+
+        const src = this.editor.getValue()
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const target = this.#sourceParser.findTransformTargetAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
+        if (!target) return
+
+        applyGizmoTranslate(this.editor.view, target, final, delta)
+
+        // Re-parse source locations so subsequent drags find correct offsets.
+        const parsedCalls = this.#sourceParser.parseShapeCalls(this.editor.getValue())
+        this.#parsedCalls = parsedCalls
+        this.#parsedCallsWithRanges = parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }])
+        this.#sourceLocationMap = matchNodesToSource(Array.from(this.#sceneNodeMap.values()), parsedCalls)
     }
 
     /**
@@ -1231,6 +1255,10 @@ class App {
 
         this.renderer.capPullComplete$.subscribe(({ nodeId, newH, newPosY }) => {
             this.#handleCapPullComplete(nodeId, newH, newPosY)
+        })
+
+        this.renderer.gizmoTranslateComplete$.subscribe(({ nodeId, final, delta }) => {
+            this.#handleGizmoTranslateComplete(nodeId, final, delta)
         })
 
         this.renderer.pushPullExit$.subscribe(() => {

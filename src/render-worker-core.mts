@@ -38,7 +38,7 @@ import {
     type FeatureGraphOcclusionMode,
 } from "./feature-graph/feature-graph-overlay.mjs"
 import { GizmoOverlay } from "./gizmo/gizmo-overlay.mjs"
-import { worldCenterForNode } from "./gizmo/world-transform.mjs"
+import { nodePlacement, getNodeTranslation, setNodeTranslation } from "./gizmo/world-transform.mjs"
 import { GIZMO_DEFAULT_SIZE_PX } from "./gizmo/gizmo-geometry.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
@@ -273,6 +273,8 @@ export class RenderWorkerCore {
     #gizmoSizePx = GIZMO_DEFAULT_SIZE_PX
     #gizmoHoverHandle = -1
     #gizmoActiveHandle = -1
+    /** Active gizmo drag: the node + its base translation captured at drag start. */
+    #gizmoDrag: { nodeId: number; base: [number, number, number] } | null = null
     // ----- Interactive FeatureGraph feature selection (edge/corner/auto) -----
     // Retained from the latest build so CPU hit-testing can run on click/hover.
     #fgCpu: FeatureGraphCpu | null = null
@@ -743,19 +745,66 @@ export class RenderWorkerCore {
         this.#forceNextRender = true
     }
 
-    /** Reply with the world-space center (+ local half-extents) of a scene node,
-     * for gizmo placement. The center pushes the node's local bbox center back
-     * out through ancestor transforms so it lines up with the rendered surface. */
+    /** Reply with the world-space center (+ local half-extents + world→local
+     * linear inverse) of a scene node, for gizmo placement and drag conversion.
+     * The center pushes the node's local bbox center back out through ancestor
+     * transforms so it lines up with the rendered surface. */
     handleGetNodeBounds(nodeId: number, requestId: number): void {
-        let bounds: { center: [number, number, number]; half: [number, number, number] } | null = null
+        let bounds: { center: [number, number, number]; half: [number, number, number]; invLinear: number[] } | null = null
         const scene = this.#scene
         const node = scene?.get(nodeId)
         const b = node?.computeBounds()
         if (scene && b) {
-            const center = worldCenterForNode(scene.root, nodeId) ?? [b.cx, b.cy, b.cz]
-            bounds = { center, half: [b.hx, b.hy, b.hz] }
+            const placed = nodePlacement(scene.root, nodeId)
+            bounds = {
+                center: placed?.center ?? [b.cx, b.cy, b.cz],
+                half: [b.hx, b.hy, b.hz],
+                invLinear: placed?.invLinear ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
+            }
         }
         self.postMessage({ type: "nodeBoundsResult", bounds, requestId })
+    }
+
+    /** Begin a gizmo drag: capture the node's base translation for live preview. */
+    gizmoBegin(nodeId: number): void {
+        const node = this.#scene?.get(nodeId)
+        const base = node ? getNodeTranslation(node) : null
+        this.#gizmoDrag = base ? { nodeId, base } : null
+    }
+
+    /** Live-preview a gizmo translate: set the dragged node's translation to
+     * base + localDelta and re-upload the preview param banks (no recompile). */
+    gizmoPreview(translate: [number, number, number]): void {
+        const drag = this.#gizmoDrag
+        const node = drag ? this.#scene?.get(drag.nodeId) : null
+        if (!drag || !node) return
+        setNodeTranslation(node, [drag.base[0] + translate[0], drag.base[1] + translate[1], drag.base[2] + translate[2]])
+        this.#repackAndUploadParams()
+    }
+
+    /** End a gizmo drag; the pointer-up source edit + rebuild re-syncs the scene. */
+    gizmoEnd(): void {
+        this.#gizmoDrag = null
+    }
+
+    /** Re-pack scene + preview param banks from the (mutated) in-memory scene and
+     * re-upload them — the param-only build path minus the DSL re-eval. No shader
+     * recompile; just new buffer contents. */
+    #repackAndUploadParams(): void {
+        const scene = this.#scene
+        if (!scene) return
+        const sceneParamLen = scene.packSceneParamsInto(this.#sceneParamPackScratch)
+        const sceneParamUpload = sceneParamLen > 0 ? this.#sceneParamPackScratch.subarray(0, sceneParamLen) : EMPTY_F32_SINGLE
+        const previewLens = scene.packPreviewParamsInto(this.#previewPackTarget)
+        const previewPacked: PreviewParamsOut = {
+            f32: this.#previewF32Shadow.subarray(0, previewLens.f32),
+            vec2: this.#previewVec2Shadow.subarray(0, previewLens.vec2),
+            vec3: this.#previewVec3Shadow.subarray(0, previewLens.vec3),
+            mat3: this.#previewMat3Shadow.subarray(0, previewLens.mat3),
+        }
+        const polygonVertexData = scene.totalPolygonVertices > 0 ? scene.getPolygonVertexData() : null
+        this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
+        this.#forceNextRender = true
     }
 
     /** Update the transform-gizmo overlay state. The gizmo is drawn each frame

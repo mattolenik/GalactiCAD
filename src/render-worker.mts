@@ -256,6 +256,15 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "setGizmo":
             if (core) core.setGizmo(msg)
             break
+        case "gizmoBegin":
+            if (core) core.gizmoBegin(msg.nodeId)
+            break
+        case "gizmoPreview":
+            if (core) core.gizmoPreview(msg.translate)
+            break
+        case "gizmoEnd":
+            if (core) core.gizmoEnd()
+            break
         default:
             log("RenderWorker").info("unknown message", (msg as { type: string }).type)
     }

@@ -31,6 +31,24 @@ export interface SourceLocation {
 }
 
 /**
+ * Write-back target for the transform gizmo: the source spans needed to edit or
+ * append a `.shift(...)` on the shape call at a given position.
+ */
+export interface GizmoTransformTarget {
+    location: SourceLocation
+    /** Start offset of the fluent chain (user coords) — for wrapping in `translate(...)`. */
+    chainStart: number
+    /** End offset of the chain (user coords) — where to append a new `.shift(...)`. */
+    insertOffset: number
+    /** Whether a `.shift(...)` exists anywhere in the chain (literal or not). */
+    hasShift: boolean
+    /** Whether the existing shift's args are numeric literals (editable in place). */
+    shiftIsLiteral: boolean
+    /** Source range of the last shift's position args, when literal. */
+    shiftRange: { start: number; end: number } | null
+}
+
+/**
  * Parsed shape call with source location and extracted arguments
  */
 export interface ParsedShapeCall {
@@ -1335,6 +1353,69 @@ export class SourceParser {
                 endColumn: endLoc.column,
                 functionName: "polygon2d"
             }
+        }
+    }
+
+    /**
+     * Find the shape call at a position and report its `.shift(...)` write-back
+     * target (range to edit in place, or chain spans to append/wrap). Used by the
+     * transform gizmo to translate the selected object in source.
+     */
+    findTransformTargetAtPosition(src: string, line: number, column: number, sourceFile?: ts.SourceFile): GizmoTransformTarget | null {
+        const sf = sourceFile && sourceFile.getFullText() === wrapSource(src) ? sourceFile : parseSource(src)
+        const candidates: GizmoTransformTarget[] = []
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node)) {
+                const fluent = this.#getFluentChainInfo(node)
+                if (fluent) {
+                    const t = this.#extractTransformTarget(node, sf, fluent)
+                    if (t) candidates.push(t)
+                }
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sf)
+
+        // Prefer an exact start match; among ties (same chain root) take the
+        // outermost call (largest end = full chain with all fluent methods).
+        let best: GizmoTransformTarget | null = null
+        for (const c of candidates) {
+            if (c.location.startLine === line && c.location.startColumn === column) {
+                if (!best || c.insertOffset > best.insertOffset) best = c
+            }
+        }
+        if (best) return best
+        // Fallback: innermost call whose range contains the position.
+        const contains = (loc: SourceLocation) =>
+            !(line < loc.startLine || line > loc.endLine || (line === loc.startLine && column < loc.startColumn) || (line === loc.endLine && column > loc.endColumn))
+        for (const c of candidates) {
+            if (!contains(c.location)) continue
+            if (!best || c.insertOffset < best.insertOffset) best = c
+        }
+        return best
+    }
+
+    #extractTransformTarget(callNode: ts.CallExpression, sf: ts.SourceFile, fluent: { operator: string; rootIdentifier: ts.Identifier }): GizmoTransformTarget | null {
+        const chain = this.#collectFluentChain(callNode)
+        let shiftArgs: ts.Expression[] | null = null
+        let hasShift = false
+        for (const { method, args } of chain) {
+            if (method === "shift") {
+                hasShift = true
+                shiftArgs = args // last shift wins (primitive `.shift` overwrites)
+            }
+        }
+        const shiftRange = shiftArgs ? this.shiftPosRange(shiftArgs) : null
+        const startPos = fluent.rootIdentifier.getStart()
+        const loc = tsPosToUser(sf, startPos)
+        const endLoc = tsPosToUser(sf, callNode.getEnd())
+        return {
+            location: { startLine: loc.line, startColumn: loc.column, endLine: endLoc.line, endColumn: endLoc.column, functionName: fluent.operator },
+            chainStart: startPos - WRAP_PREFIX_CHARS,
+            insertOffset: callNode.getEnd() - WRAP_PREFIX_CHARS,
+            hasShift,
+            shiftIsLiteral: shiftRange !== null,
+            shiftRange,
         }
     }
 

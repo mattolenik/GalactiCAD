@@ -256,6 +256,13 @@ export type MainToWorkerMessage =
     | { type: "clearFgSelection" }
     // Query the world-space AABB of a scene node (for gizmo placement). Replies `nodeBoundsResult`.
     | { type: "getNodeBounds"; nodeId: number; requestId: number }
+    // Gizmo drag lifecycle (live preview WITHOUT a shader recompile): begin
+    // captures the node's base translation; preview mutates it (local-frame
+    // delta) and re-uploads the preview param banks; end clears drag state (the
+    // pointer-up source edit + rebuild re-syncs).
+    | { type: "gizmoBegin"; nodeId: number; kind: "translate" }
+    | { type: "gizmoPreview"; translate: [number, number, number] }
+    | { type: "gizmoEnd" }
     // Transform-gizmo overlay state: world-space anchor + size, visibility, and
     // the hovered/active handle (-1 = none). Worker stores it and draws the
     // gizmo each frame; pass `visible: false` to hide.
@@ -456,7 +463,12 @@ export type WorkerToMainMessage =
     | { type: "pickObjectResult"; objectId: number; requestId: number }
     | {
           type: "nodeBoundsResult"
-          bounds: { center: [number, number, number]; half: [number, number, number] } | null
+          bounds: {
+              center: [number, number, number]
+              half: [number, number, number]
+              /** Row-major 3×3 mapping a world delta into the node's local frame. */
+              invLinear: number[]
+          } | null
           requestId: number
       }
     | { type: "fps"; fps: number }

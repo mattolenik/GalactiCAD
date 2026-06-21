@@ -78,6 +78,10 @@ function roundScenePerfMs(x: number): number {
 const DEFAULT_TARGET_FPS = 120
 
 /** Lightweight node stub for main-thread selection logic. Reconstructed from SerializedNode. */
+/** Reply payload for `getNodeBounds` — world-space center, local half-extents,
+ *  and the row-major 3×3 mapping a world delta into the node's local frame. */
+export type NodeBoundsResult = { center: [number, number, number]; half: [number, number, number]; invLinear: number[] }
+
 export interface NodeStub {
     id: number
     shapeType: string
@@ -239,10 +243,7 @@ export class SDFRenderer {
         { resolve: (v: ImageData) => void; reject: (err: unknown) => void; skipDocumentGuard?: boolean }
     >()
     #pendingPickPos = new Map<number, { resolve: (v: [number, number, number] | null) => void }>()
-    #pendingNodeBounds = new Map<
-        number,
-        { resolve: (v: { center: [number, number, number]; half: [number, number, number] } | null) => void }
-    >()
+    #pendingNodeBounds = new Map<number, { resolve: (v: NodeBoundsResult | null) => void }>()
     /** Transform-gizmo controller (placement + hover hit-test). `#gizmoToken`
      * guards against stale async bounds replies racing a newer selection. */
     #gizmoController: GizmoController | null = null
@@ -295,6 +296,9 @@ export class SDFRenderer {
     readonly pushPullComplete$ = new Subject<{ nodeId: number; vertices: [number, number][] }>()
     readonly capPullComplete$ = new Subject<{ nodeId: number; newH: number; newPosY: number }>()
     readonly pushPullExit$ = new Subject<void>()
+    /** A gizmo translate drag committed: write `.shift` to source. `final` = new
+     *  absolute local translation, `delta` = local delta from drag start. */
+    readonly gizmoTranslateComplete$ = new Subject<{ nodeId: number; final: [number, number, number]; delta: [number, number, number] }>()
     readonly previewSettingsLoaded$ = new Subject<void>()
 
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
@@ -446,7 +450,7 @@ export class SDFRenderer {
     /** Query the world-space AABB of a scene node (for gizmo placement). */
     getNodeBounds(
         nodeId: number,
-    ): Promise<{ center: [number, number, number]; half: [number, number, number] } | null> {
+    ): Promise<NodeBoundsResult | null> {
         const requestId = ++this.#requestIdCounter
         return new Promise(resolve => {
             this.#pendingNodeBounds.set(requestId, { resolve })
@@ -481,7 +485,7 @@ export class SDFRenderer {
                 this.#preview.canvas.style.cursor = ""
                 return
             }
-            gc.show(bounds.center)
+            gc.show(bounds.center, bounds.invLinear, single)
         })
     }
 
@@ -1429,6 +1433,22 @@ export class SDFRenderer {
             postGizmo(state) {
                 self.#worker.postMessage({ type: "setGizmo", ...state })
             },
+            gizmoBegin(nodeId) {
+                self.#worker.postMessage({ type: "gizmoBegin", nodeId, kind: "translate" })
+            },
+            gizmoPreview(translate) {
+                self.#worker.postMessage({ type: "gizmoPreview", translate })
+            },
+            gizmoEnd() {
+                self.#worker.postMessage({ type: "gizmoEnd" })
+            },
+            getNodeTranslation(nodeId) {
+                const node = self.#sceneNodeCache.find(n => n.id === nodeId)
+                return node?.pos ? [node.pos.x, node.pos.y, node.pos.z] : null
+            },
+            onTranslateComplete(nodeId, final, delta) {
+                self.gizmoTranslateComplete$.next({ nodeId, final, delta })
+            },
             get canvas() {
                 return self.#preview.canvas
             },
@@ -1484,12 +1504,47 @@ export class SDFRenderer {
                 }
             }
         }, { capture: true })
-        // Gizmo hover: highlight the handle under the pointer (no drag yet).
+        // Gizmo: drag an axis arrow to translate, hover to highlight. Capture
+        // phase + stopPropagation so an active drag suppresses the camera orbit
+        // (mirrors the push/pull wiring above).
+        canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+            const gc = this.#gizmoController
+            if (!gc?.shown || e.button !== 0) return
+            if (gc.handlePointerDown(e.clientX, e.clientY)) {
+                canvas.setPointerCapture(e.pointerId)
+                canvas.style.cursor = "grabbing"
+                e.preventDefault()
+                e.stopPropagation()
+            }
+        }, { capture: true })
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
             const gc = this.#gizmoController
-            if (!gc?.shown || this.#controls.isActivelyMoving) return
+            if (!gc?.shown) return
+            if (gc.dragging) {
+                gc.handleDragMove(e.clientX, e.clientY)
+                e.preventDefault()
+                e.stopPropagation()
+                return
+            }
+            if (this.#controls.isActivelyMoving) return
             const over = gc.handlePointerMove(e.clientX, e.clientY)
             canvas.style.cursor = over ? "grab" : ""
+        }, { capture: true })
+        canvas.addEventListener("pointerup", (e: PointerEvent) => {
+            const gc = this.#gizmoController
+            if (!gc?.dragging) return
+            gc.handlePointerUp(e.clientX, e.clientY)
+            if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
+            canvas.style.cursor = "grab"
+            e.preventDefault()
+            e.stopPropagation()
+        }, { capture: true })
+        document.addEventListener("keydown", (e: KeyboardEvent) => {
+            if (e.key === "Escape" && this.#gizmoController?.dragging) {
+                this.#gizmoController.cancelDrag()
+                this.#preview.canvas.style.cursor = ""
+                e.preventDefault()
+            }
         })
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
             if (this.#pushPullController?.isDragging) {

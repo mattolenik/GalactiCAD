@@ -286,11 +286,15 @@ struct LoftCarrier {
     a_edge: usize,
     a_x: f64,
     a_z: f64,
+    a_x1: f64,
+    a_z1: f64,
     a_nx: f64,
     a_nz: f64,
     b_edge: usize,
     b_x: f64,
     b_z: f64,
+    b_x1: f64,
+    b_z1: f64,
     b_nx: f64,
     b_nz: f64,
     a_vertex: i64,
@@ -308,13 +312,15 @@ struct LoftCarrier {
 /// gates in the crease tracer (creases are only ever dropped, never wrong).
 fn loft_seg_carriers(a: &[f64], wa: f64, b: &[f64], wb: f64) -> Vec<LoftCarrier> {
     use std::f64::consts::TAU;
-    // Supporting line of edge `e` (n verts): start vertex + outward unit normal.
-    let edge_line = |v: &[f64], w: f64, n: usize, e: usize| -> (f64, f64, f64, f64) {
+    // Edge `e` (n verts) as a SEGMENT: start vertex, end vertex, outward unit normal.
+    let edge_line = |v: &[f64], w: f64, n: usize, e: usize| -> (f64, f64, f64, f64, f64, f64) {
         let v0x = v[e * 2];
         let v0z = v[e * 2 + 1];
         let e1 = (e + 1) % n;
-        let [nx, nz] = outward_edge_normal_2d(v[e1 * 2] - v0x, v[e1 * 2 + 1] - v0z, w);
-        (v0x, v0z, nx, nz)
+        let v1x = v[e1 * 2];
+        let v1z = v[e1 * 2 + 1];
+        let [nx, nz] = outward_edge_normal_2d(v1x - v0x, v1z - v0z, w);
+        (v0x, v0z, v1x, v1z, nx, nz)
     };
     // Sorted-by-angle corner order, those angles, and each angular sector's active
     // edge (sector i spans corners ord[i]..ord[i+1]; its edge connects them).
@@ -422,17 +428,21 @@ fn loft_seg_carriers(a: &[f64], wa: f64, b: &[f64], wb: f64) -> Vec<LoftCarrier>
             }
             i += 1; // consume the matched partner
         }
-        let (ax, az, anx, anz) = edge_line(a, wa, na, ea);
-        let (bx, bz, bnx, bnz) = edge_line(b, wb, nb, eb);
+        let (ax, az, ax1, az1, anx, anz) = edge_line(a, wa, na, ea);
+        let (bx, bz, bx1, bz1, bnx, bnz) = edge_line(b, wb, nb, eb);
         out.push(LoftCarrier {
             a_edge: ea,
             a_x: ax,
             a_z: az,
+            a_x1: ax1,
+            a_z1: az1,
             a_nx: anx,
             a_nz: anz,
             b_edge: eb,
             b_x: bx,
             b_z: bz,
+            b_x1: bx1,
+            b_z1: bz1,
             b_nx: bnx,
             b_nz: bnz,
             a_vertex,
@@ -486,10 +496,14 @@ fn build_loft_strata_general(
                         seg_h,
                         a_x: car.a_x,
                         a_z: car.a_z,
+                        a_x1: car.a_x1,
+                        a_z1: car.a_z1,
                         a_nx: car.a_nx,
                         a_nz: car.a_nz,
                         b_x: car.b_x,
                         b_z: car.b_z,
+                        b_x1: car.b_x1,
+                        b_z1: car.b_z1,
                         b_nx: car.b_nx,
                         b_nz: car.b_nz,
                     },
@@ -530,17 +544,19 @@ fn build_loft_strata(
     let mut out: Vec<Stratum> = Vec::new();
     // Edge supporting line (point + outward unit 2D normal) of profile `verts`,
     // edge j: returns (v0x, v0z, nx, nz).
-    let edge = |verts: &[f64], wind: f64, j: usize| -> (f64, f64, f64, f64) {
+    let edge = |verts: &[f64], wind: f64, j: usize| -> (f64, f64, f64, f64, f64, f64) {
         let j1 = (j + 1) % n;
         let v0x = verts[j * 2];
         let v0z = verts[j * 2 + 1];
-        let [nx, nz] = outward_edge_normal_2d(verts[j1 * 2] - v0x, verts[j1 * 2 + 1] - v0z, wind);
-        (v0x, v0z, nx, nz)
+        let v1x = verts[j1 * 2];
+        let v1z = verts[j1 * 2 + 1];
+        let [nx, nz] = outward_edge_normal_2d(v1x - v0x, v1z - v0z, wind);
+        (v0x, v0z, v1x, v1z, nx, nz)
     };
     for seg in 0..(m - 1) {
         for j in 0..n {
-            let (a_x, a_z, a_nx, a_nz) = edge(&profs[seg], winds[seg], j);
-            let (b_x, b_z, b_nx, b_nz) = edge(&profs[seg + 1], winds[seg + 1], j);
+            let (a_x, a_z, a_x1, a_z1, a_nx, a_nz) = edge(&profs[seg], winds[seg], j);
+            let (b_x, b_z, b_x1, b_z1, b_nx, b_nz) = edge(&profs[seg + 1], winds[seg + 1], j);
             let li = seg * n + j;
             let ident = sid(first_id + li, leaf_index, li, leaf.sign);
             if a_nx == b_nx && a_nz == b_nz && a_x == b_x && a_z == b_z {
@@ -557,10 +573,14 @@ fn build_loft_strata(
                         seg_h,
                         a_x,
                         a_z,
+                        a_x1,
+                        a_z1,
                         a_nx,
                         a_nz,
                         b_x,
                         b_z,
+                        b_x1,
+                        b_z1,
                         b_nx,
                         b_nz,
                     },

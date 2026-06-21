@@ -14,7 +14,7 @@
  * Operators (union/subtract/…) and modifiers contribute identity (no space move).
  */
 
-import { type Node, UnaryOperator, BinaryOperator } from "../scene/base.mjs"
+import { Node } from "../scene/base.mjs"
 import { Translate } from "../scene/operators/translate.mjs"
 import { Rotate } from "../scene/operators/rotate.mjs"
 import { Scale } from "../scene/operators/scale.mjs"
@@ -50,10 +50,23 @@ function localMatrix(node: Node): Float32Array | null {
     return null
 }
 
+/**
+ * Child nodes of any node, generically. Unary uses `.arg`, Binary `.lh`/`.rh`,
+ * but Union is N-ary (`.children`), Extrude/Lathe use `.child`, Loft `.profiles`,
+ * etc. — so rather than enumerate every type, collect every own field that is a
+ * `Node` or an array of `Node`s. Excludes the `root` back-reference (every node
+ * holds one), which would otherwise cycle.
+ */
 function children(node: Node): Node[] {
-    if (node instanceof UnaryOperator) return [node.arg]
-    if (node instanceof BinaryOperator) return [node.lh, node.rh]
-    return []
+    const out: Node[] = []
+    for (const [key, v] of Object.entries(node)) {
+        if (key === "root") continue
+        if (v instanceof Node) out.push(v)
+        else if (Array.isArray(v)) {
+            for (const e of v) if (e instanceof Node) out.push(e)
+        }
+    }
+    return out
 }
 
 function contains(node: Node, id: number): boolean {

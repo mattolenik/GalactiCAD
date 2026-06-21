@@ -273,6 +273,8 @@ export class RenderWorkerCore {
     #gizmoSizePx = GIZMO_DEFAULT_SIZE_PX
     #gizmoHoverHandle = -1
     #gizmoActiveHandle = -1
+    /** Object world orientation (column-major 3×3) for the rotation rings. */
+    #gizmoOrient: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
     /** Active gizmo drag: the node + its base translation captured at drag start. */
     #gizmoDrag: { nodeId: number; base: [number, number, number] } | null = null
     // ----- Interactive FeatureGraph feature selection (edge/corner/auto) -----
@@ -750,7 +752,7 @@ export class RenderWorkerCore {
      * The center pushes the node's local bbox center back out through ancestor
      * transforms so it lines up with the rendered surface. */
     handleGetNodeBounds(nodeId: number, requestId: number): void {
-        let bounds: { center: [number, number, number]; half: [number, number, number]; invLinear: number[] } | null = null
+        let bounds: { center: [number, number, number]; half: [number, number, number]; invLinear: number[]; orient: number[] } | null = null
         const scene = this.#scene
         const node = scene?.get(nodeId)
         const b = node?.computeBounds()
@@ -760,6 +762,7 @@ export class RenderWorkerCore {
                 center: placed?.center ?? [b.cx, b.cy, b.cz],
                 half: [b.hx, b.hy, b.hz],
                 invLinear: placed?.invLinear ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
+                orient: placed?.orient ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
             }
         }
         self.postMessage({ type: "nodeBoundsResult", bounds, requestId })
@@ -819,6 +822,7 @@ export class RenderWorkerCore {
         }
         if (msg.center) this.#gizmoCenter = msg.center
         if (msg.sizePx !== undefined) this.#gizmoSizePx = msg.sizePx
+        if (msg.orient) this.#gizmoOrient = msg.orient
         this.#gizmoHoverHandle = msg.hoverHandle ?? -1
         this.#gizmoActiveHandle = msg.activeHandle ?? -1
         this.#forceNextRender = true
@@ -1264,7 +1268,7 @@ export class RenderWorkerCore {
         const overlay = this.#gizmoOverlay
         if (!this.#gizmoVisible || !overlay) return
         overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
-        overlay.setState(this.#gizmoCenter, this.#gizmoSizePx, true, this.#gizmoHoverHandle, this.#gizmoActiveHandle)
+        overlay.setState(this.#gizmoCenter, this.#gizmoSizePx, true, this.#gizmoOrient, this.#gizmoHoverHandle, this.#gizmoActiveHandle)
         const pass = commandEncoder.beginRenderPass({
             label: "Gizmo Overlay",
             colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],

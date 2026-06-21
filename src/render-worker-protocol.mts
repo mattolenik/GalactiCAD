@@ -273,6 +273,8 @@ export type MainToWorkerMessage =
           sizePx?: number
           hoverHandle?: number
           activeHandle?: number
+          /** Column-major 3×3 world orientation for the rotation rings. */
+          orient?: number[]
       }
 
 export interface RenderSelectionState {
@@ -468,6 +470,8 @@ export type WorkerToMainMessage =
               half: [number, number, number]
               /** Row-major 3×3 mapping a world delta into the node's local frame. */
               invLinear: number[]
+              /** Column-major 3×3 world orientation of the node's local frame (for local-aligned rings). */
+              orient: number[]
           } | null
           requestId: number
       }

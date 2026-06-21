@@ -49,8 +49,9 @@ const HEAD_STRIDE = 32
 
 /** Camera uniform size (bytes). Layout mirrors `OverlayCamera` in the shader. */
 const CAMERA_UNIFORM_BYTES = 112
-/** Gizmo uniform size (bytes). Layout mirrors `Gizmo` in the shader. */
-const GIZMO_UNIFORM_BYTES = 32
+/** Gizmo uniform size (bytes). Layout mirrors `Gizmo` in the shader:
+ * orient mat3x3f (48) + center vec3f + sizePx (16) + handles/lineWidth/visible (16) = 80. */
+const GIZMO_UNIFORM_BYTES = 80
 
 /** Default shaft/ring line width in framebuffer pixels. */
 const DEFAULT_LINE_WIDTH_PX = 2.5
@@ -279,26 +280,30 @@ export class GizmoOverlay {
     }
 
     /**
-     * Set the gizmo's anchor + interaction state. `hoverHandle`/`activeHandle`
-     * are -1 when none (handle id = axisId + kind*3, 0..5).
+     * Set the gizmo's anchor + interaction state. `orient` is the object's
+     * world orientation (column-major 3×3) for the rotation rings; identity for
+     * an unrotated object. `hoverHandle`/`activeHandle` are -1 when none.
      */
     setState(
         center: readonly [number, number, number],
         sizePx: number,
         visible: boolean,
+        orient: readonly number[],
         hoverHandle = -1,
         activeHandle = -1,
         lineWidthPx = DEFAULT_LINE_WIDTH_PX,
     ): void {
         this.#visible = visible
-        this.#gizmoF32[0] = center[0]
-        this.#gizmoF32[1] = center[1]
-        this.#gizmoF32[2] = center[2]
-        this.#gizmoF32[3] = sizePx
-        this.#gizmoI32[4] = hoverHandle
-        this.#gizmoI32[5] = activeHandle
-        this.#gizmoF32[6] = lineWidthPx
-        this.#gizmoU32[7] = visible ? 1 : 0
+        const f = this.#gizmoF32
+        // orient mat3x3f: 3 columns, each padded to vec4.
+        f[0] = orient[0]!; f[1] = orient[1]!; f[2] = orient[2]!; f[3] = 0
+        f[4] = orient[3]!; f[5] = orient[4]!; f[6] = orient[5]!; f[7] = 0
+        f[8] = orient[6]!; f[9] = orient[7]!; f[10] = orient[8]!; f[11] = 0
+        f[12] = center[0]; f[13] = center[1]; f[14] = center[2]; f[15] = sizePx
+        this.#gizmoI32[16] = hoverHandle
+        this.#gizmoI32[17] = activeHandle
+        f[18] = lineWidthPx
+        this.#gizmoU32[19] = visible ? 1 : 0
         this.#device.queue.writeBuffer(this.#gizmoBuffer, 0, this.#gizmoStaging)
     }
 

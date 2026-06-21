@@ -15,6 +15,7 @@
 
 import type { EditorView } from "@codemirror/view"
 import type { GizmoTransformTarget } from "../parser/source-parser.mjs"
+import { eulerToFwd, fwdToEuler, matMul3 } from "../gizmo/rotation.mjs"
 
 /** Format a number for source: round to 4 decimals, drop trailing zeros. */
 function fmt(n: number): string {
@@ -51,4 +52,29 @@ export function applyGizmoTranslate(
     }
     // No shift yet — append one at the chain end (sets the absolute position).
     view.dispatch({ changes: { from: target.insertOffset, insert: `.shift(${vecLiteral(final)})` } })
+}
+
+/**
+ * Apply a gizmo rotation (local, body-frame) about local `axis` by `angleDeg`
+ * to the source. Composes onto the existing pre-shift rotation (body-frame
+ * post-multiply) and writes a pre-shift `.rotate(...)`:
+ *  - existing literal pre-shift rotate → replace with the composed Euler.
+ *  - existing non-literal pre-shift rotate → insert a delta `.rotate` before the shift.
+ *  - none → insert `.rotate([euler])` before the first `.shift` (or at chain end).
+ */
+export function applyGizmoRotate(view: EditorView, target: GizmoTransformTarget, axis: number, angleDeg: number): void {
+    const base = target.rotateBaseEuler ?? [0, 0, 0]
+    const deltaEuler: [number, number, number] = [axis === 0 ? angleDeg : 0, axis === 1 ? angleDeg : 0, axis === 2 ? angleDeg : 0]
+    const newEuler = fwdToEuler(matMul3(eulerToFwd(base[0]!, base[1]!, base[2]!), eulerToFwd(deltaEuler[0], deltaEuler[1], deltaEuler[2])))
+
+    if (target.rotateIsLiteral && target.rotateRange) {
+        view.dispatch({ changes: { from: target.rotateRange.start, to: target.rotateRange.end, insert: vecLiteral(newEuler) } })
+        return
+    }
+    if (target.hasPreShiftRotate) {
+        // Non-literal existing rotate: stack a delta rotate before the shift.
+        view.dispatch({ changes: { from: target.rotateInsertOffset, insert: `.rotate(${vecLiteral(deltaEuler)})` } })
+        return
+    }
+    view.dispatch({ changes: { from: target.rotateInsertOffset, insert: `.rotate(${vecLiteral(newEuler)})` } })
 }

@@ -80,7 +80,7 @@ const DEFAULT_TARGET_FPS = 120
 /** Lightweight node stub for main-thread selection logic. Reconstructed from SerializedNode. */
 /** Reply payload for `getNodeBounds` — world-space center, local half-extents,
  *  and the row-major 3×3 mapping a world delta into the node's local frame. */
-export type NodeBoundsResult = { center: [number, number, number]; half: [number, number, number]; invLinear: number[] }
+export type NodeBoundsResult = { center: [number, number, number]; half: [number, number, number]; invLinear: number[]; orient: number[] }
 
 export interface NodeStub {
     id: number
@@ -299,6 +299,8 @@ export class SDFRenderer {
     /** A gizmo translate drag committed: write `.shift` to source. `final` = new
      *  absolute local translation, `delta` = local delta from drag start. */
     readonly gizmoTranslateComplete$ = new Subject<{ nodeId: number; final: [number, number, number]; delta: [number, number, number] }>()
+    /** A gizmo rotate drag committed: a local rotation of `angleDeg` about local `axis` (0/1/2). */
+    readonly gizmoRotateComplete$ = new Subject<{ nodeId: number; axis: number; angleDeg: number }>()
     readonly previewSettingsLoaded$ = new Subject<void>()
 
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
@@ -485,7 +487,7 @@ export class SDFRenderer {
                 this.#preview.canvas.style.cursor = ""
                 return
             }
-            gc.show(bounds.center, bounds.invLinear, single)
+            gc.show(bounds.center, bounds.invLinear, bounds.orient, single)
         })
     }
 
@@ -1448,6 +1450,9 @@ export class SDFRenderer {
             },
             onTranslateComplete(nodeId, final, delta) {
                 self.gizmoTranslateComplete$.next({ nodeId, final, delta })
+            },
+            onRotateComplete(nodeId, axis, angleDeg) {
+                self.gizmoRotateComplete$.next({ nodeId, axis, angleDeg })
             },
             get canvas() {
                 return self.#preview.canvas

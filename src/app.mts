@@ -56,7 +56,7 @@ import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
-import { applyGizmoTranslate } from "./editor/gizmo-source-updates.mjs"
+import { applyGizmoTranslate, applyGizmoRotate } from "./editor/gizmo-source-updates.mjs"
 import {
     canvasPreviewUvRect,
     editorSelectionInfoOffset,
@@ -548,8 +548,26 @@ class App {
         if (!target) return
 
         applyGizmoTranslate(this.editor.view, target, final, delta)
+        this.#reparseAfterGizmoEdit()
+    }
 
-        // Re-parse source locations so subsequent drags find correct offsets.
+    /**
+     * Handle a gizmo rotate completion: write a pre-shift `.rotate(...)` for the
+     * local rotation, then re-parse + re-match.
+     */
+    #handleGizmoRotateComplete(nodeId: number, axis: number, angleDeg: number) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location) return
+        const src = this.editor.getValue()
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const target = this.#sourceParser.findTransformTargetAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
+        if (!target) return
+        applyGizmoRotate(this.editor.view, target, axis, angleDeg)
+        this.#reparseAfterGizmoEdit()
+    }
+
+    /** Re-parse + re-match after a gizmo source edit so subsequent drags use fresh offsets. */
+    #reparseAfterGizmoEdit() {
         const parsedCalls = this.#sourceParser.parseShapeCalls(this.editor.getValue())
         this.#parsedCalls = parsedCalls
         this.#parsedCallsWithRanges = parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }])
@@ -1259,6 +1277,10 @@ class App {
 
         this.renderer.gizmoTranslateComplete$.subscribe(({ nodeId, final, delta }) => {
             this.#handleGizmoTranslateComplete(nodeId, final, delta)
+        })
+
+        this.renderer.gizmoRotateComplete$.subscribe(({ nodeId, axis, angleDeg }) => {
+            this.#handleGizmoRotateComplete(nodeId, axis, angleDeg)
         })
 
         this.renderer.pushPullExit$.subscribe(() => {

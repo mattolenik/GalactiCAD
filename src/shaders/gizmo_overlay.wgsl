@@ -39,6 +39,10 @@ struct OverlayCamera {
 }
 
 struct Gizmo {
+    // World orientation of the object's local frame — applied to ROTATION RING
+    // vertices so the rings align to the object's local axes (translate arrows
+    // stay world-aligned). Identity for an unrotated object.
+    orient: mat3x3f,
     // World-space center the gizmo is anchored to (object bbox center).
     center: vec3f,
     // Gizmo radius in framebuffer pixels (local unit 1.0 == sizePx pixels).
@@ -129,6 +133,15 @@ fn metaAxis(flags: u32) -> u32 { return flags & 3u; }
 fn metaKind(flags: u32) -> u32 { return (flags >> 2u) & 1u; }
 fn metaHandle(flags: u32) -> i32 { return i32(metaAxis(flags) + metaKind(flags) * 3u); }
 
+// Rotation-ring vertices (kind 1) are oriented into the object's local frame;
+// arrow vertices (kind 0) stay world-aligned.
+fn orientedLocalToWorld(local: vec3f, flags: u32) -> vec3f {
+    if (metaKind(flags) == 1u) {
+        return gizmo.center + (gizmo.orient * local) * gizmoScale();
+    }
+    return gizmo.center + local * gizmoScale();
+}
+
 struct LineVOut {
     @builtin(position) position: vec4f,
     @location(0) @interpolate(flat) axisId: u32,
@@ -144,8 +157,8 @@ fn lineVertexMain(
     @location(2) flags: u32,
     @builtin(vertex_index) vid: u32,
 ) -> LineVOut {
-    let a = project(localToWorld(localA));
-    let b = project(localToWorld(localB));
+    let a = project(orientedLocalToWorld(localA, flags));
+    let b = project(orientedLocalToWorld(localB, flags));
 
     let pixA = clipToPixels(a.clip);
     let pixB = clipToPixels(b.clip);

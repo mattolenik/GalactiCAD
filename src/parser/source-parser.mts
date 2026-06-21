@@ -46,6 +46,16 @@ export interface GizmoTransformTarget {
     shiftIsLiteral: boolean
     /** Source range of the last shift's position args, when literal. */
     shiftRange: { start: number; end: number } | null
+    /** Whether a `.rotate(...)` appears BEFORE any `.shift` (maps to the object's local rotation). */
+    hasPreShiftRotate: boolean
+    /** Whether that pre-shift rotate's args are numeric literals (editable in place). */
+    rotateIsLiteral: boolean
+    /** Source range of the last pre-shift rotate's args, when literal. */
+    rotateRange: { start: number; end: number } | null
+    /** Parsed Euler of the last pre-shift literal rotate, for composition. */
+    rotateBaseEuler: [number, number, number] | null
+    /** Offset to insert a new pre-shift `.rotate(...)`: before the first `.shift`, else chain end. */
+    rotateInsertOffset: number
 }
 
 /**
@@ -1396,16 +1406,54 @@ export class SourceParser {
     }
 
     #extractTransformTarget(callNode: ts.CallExpression, sf: ts.SourceFile, fluent: { operator: string; rootIdentifier: ts.Identifier }): GizmoTransformTarget | null {
-        const chain = this.#collectFluentChain(callNode)
+        // Walk the chain in order, tracking each method's call node so we can find
+        // the insertion point just before the first `.shift`.
+        const chain: Array<{ method: string; args: ts.Expression[]; call: ts.CallExpression }> = []
+        let expr: ts.Node = callNode
+        while (true) {
+            if (ts.isCallExpression(expr)) {
+                if (ts.isPropertyAccessExpression(expr.expression)) {
+                    chain.unshift({ method: expr.expression.name.getText(), args: [...expr.arguments], call: expr })
+                }
+                expr = expr.expression
+            } else if (ts.isPropertyAccessExpression(expr)) {
+                expr = expr.expression
+            } else break
+        }
+
         let shiftArgs: ts.Expression[] | null = null
         let hasShift = false
-        for (const { method, args } of chain) {
+        let firstShiftCall: ts.CallExpression | null = null
+        let preShiftRotateArgs: ts.Expression[] | null = null
+        let hasPreShiftRotate = false
+        let seenShift = false
+        for (const { method, args, call } of chain) {
             if (method === "shift") {
                 hasShift = true
-                shiftArgs = args // last shift wins (primitive `.shift` overwrites)
+                shiftArgs = args
+                if (!firstShiftCall) firstShiftCall = call
+                seenShift = true
+            } else if (method === "rotate" && !seenShift) {
+                hasPreShiftRotate = true
+                preShiftRotateArgs = args // last pre-shift rotate wins
             }
         }
+
         const shiftRange = shiftArgs ? this.shiftPosRange(shiftArgs) : null
+        const rotateRange = preShiftRotateArgs ? this.shiftPosRange(preShiftRotateArgs) : null
+        const rotateBaseRaw = preShiftRotateArgs ? this.extractVec3Args(preShiftRotateArgs) : undefined
+        let rotateBaseEuler: [number, number, number] | null = null
+        if (rotateBaseRaw !== undefined) {
+            const v = vec3(rotateBaseRaw)
+            rotateBaseEuler = [v.x, v.y, v.z]
+        }
+        // Insert a new pre-shift rotate just before the first `.shift` (its
+        // receiver's end), else at the chain end.
+        const rotateInsertOffset =
+            firstShiftCall && ts.isPropertyAccessExpression(firstShiftCall.expression)
+                ? firstShiftCall.expression.expression.getEnd() - WRAP_PREFIX_CHARS
+                : callNode.getEnd() - WRAP_PREFIX_CHARS
+
         const startPos = fluent.rootIdentifier.getStart()
         const loc = tsPosToUser(sf, startPos)
         const endLoc = tsPosToUser(sf, callNode.getEnd())
@@ -1416,6 +1464,11 @@ export class SourceParser {
             hasShift,
             shiftIsLiteral: shiftRange !== null,
             shiftRange,
+            hasPreShiftRotate,
+            rotateIsLiteral: rotateRange !== null,
+            rotateRange,
+            rotateBaseEuler,
+            rotateInsertOffset,
         }
     }
 

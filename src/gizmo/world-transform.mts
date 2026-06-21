@@ -104,7 +104,7 @@ export function worldCenterForNode(root: Node, targetId: number): [number, numbe
 export function nodePlacement(
     root: Node,
     targetId: number,
-): { center: [number, number, number]; invLinear: number[] } | null {
+): { center: [number, number, number]; invLinear: number[]; orient: number[] } | null {
     const found = nodeAccumulated(root, targetId)
     if (!found) return null
     const b = found.node.computeBounds()
@@ -113,7 +113,9 @@ export function nodePlacement(
     // Upper-left 3×3 of the column-major acc, read row-major.
     const a = found.acc
     const linear = [a[0]!, a[4]!, a[8]!, a[1]!, a[5]!, a[9]!, a[2]!, a[6]!, a[10]!]
-    return { center: [center.x, center.y, center.z], invLinear: invert3x3(linear) ?? IDENTITY_3X3 }
+    // Object's world orientation (column-major 3×3) for local-aligned rings.
+    const orient = [a[0]!, a[1]!, a[2]!, a[4]!, a[5]!, a[6]!, a[8]!, a[9]!, a[10]!]
+    return { center: [center.x, center.y, center.z], invLinear: invert3x3(linear) ?? IDENTITY_3X3, orient }
 }
 
 const IDENTITY_3X3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]

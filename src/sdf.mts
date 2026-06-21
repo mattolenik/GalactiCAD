@@ -15,6 +15,7 @@ import type { Vec2f, Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
+import { GizmoController } from "./gizmo/gizmo-controller.mjs"
 import type { MeshData } from "./export/export.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
@@ -242,8 +243,9 @@ export class SDFRenderer {
         number,
         { resolve: (v: { center: [number, number, number]; half: [number, number, number] } | null) => void }
     >()
-    /** Transform-gizmo state. `#gizmoToken` guards against stale async bounds replies. */
-    #gizmoShown = false
+    /** Transform-gizmo controller (placement + hover hit-test). `#gizmoToken`
+     * guards against stale async bounds replies racing a newer selection. */
+    #gizmoController: GizmoController | null = null
     #gizmoNodeId = 0
     #gizmoToken = 0
     #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
@@ -460,32 +462,26 @@ export class SDFRenderer {
      * gizmo tracks camera moves without further messages.
      */
     #updateGizmoForSelection(): void {
+        const gc = this.#gizmoController
+        if (!gc) return
         const ids = this.#getCompactSelectedIds()
         const single = this.#selectionMode === "object" && ids.length === 1 ? ids[0]! : 0
         const token = ++this.#gizmoToken
         if (single <= 0) {
             this.#gizmoNodeId = 0
-            if (this.#gizmoShown) {
-                this.#gizmoShown = false
-                this.#worker.postMessage({ type: "setGizmo", visible: false })
-                this.requestRender()
-            }
+            gc.hide()
+            this.#preview.canvas.style.cursor = ""
             return
         }
         this.#gizmoNodeId = single
         void this.getNodeBounds(single).then(bounds => {
             if (token !== this.#gizmoToken) return // superseded by a newer selection
             if (!bounds) {
-                if (this.#gizmoShown) {
-                    this.#gizmoShown = false
-                    this.#worker.postMessage({ type: "setGizmo", visible: false })
-                    this.requestRender()
-                }
+                gc.hide()
+                this.#preview.canvas.style.cursor = ""
                 return
             }
-            this.#gizmoShown = true
-            this.#worker.postMessage({ type: "setGizmo", visible: true, center: bounds.center })
-            this.requestRender()
+            gc.show(bounds.center)
         })
     }
 
@@ -1426,6 +1422,26 @@ export class SDFRenderer {
             self.#needsRender = true
             self.pushPullExit$.next()
         }
+        this.#gizmoController = new GizmoController({
+            requestRender() {
+                self.requestRender()
+            },
+            postGizmo(state) {
+                self.#worker.postMessage({ type: "setGizmo", ...state })
+            },
+            get canvas() {
+                return self.#preview.canvas
+            },
+            get controls() {
+                return self.#controls
+            },
+            get viewCenter() {
+                return self.#viewCenter
+            },
+            get fullHeight() {
+                return self.#fullHeight
+            },
+        })
         const canvas = this.#preview.canvas
         canvas.addEventListener("click", (e: MouseEvent) => {
             // Swallow the click during an active push/pull drag, or a shift+click
@@ -1468,6 +1484,13 @@ export class SDFRenderer {
                 }
             }
         }, { capture: true })
+        // Gizmo hover: highlight the handle under the pointer (no drag yet).
+        canvas.addEventListener("pointermove", (e: PointerEvent) => {
+            const gc = this.#gizmoController
+            if (!gc?.shown || this.#controls.isActivelyMoving) return
+            const over = gc.handlePointerMove(e.clientX, e.clientY)
+            canvas.style.cursor = over ? "grab" : ""
+        })
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
             if (this.#pushPullController?.isDragging) {
                 if (this.#pushPullController.handlePointerUp(e)) {

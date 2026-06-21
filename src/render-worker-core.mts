@@ -39,6 +39,7 @@ import {
 } from "./feature-graph/feature-graph-overlay.mjs"
 import { GizmoOverlay } from "./gizmo/gizmo-overlay.mjs"
 import { worldCenterForNode } from "./gizmo/world-transform.mjs"
+import { GIZMO_DEFAULT_SIZE_PX } from "./gizmo/gizmo-geometry.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import type { Node } from "./scene/base.mjs"
@@ -269,7 +270,7 @@ export class RenderWorkerCore {
     #gizmoVisible = false
     #gizmoCenter: [number, number, number] = [0, 0, 0]
     /** Gizmo radius in framebuffer pixels (constant on-screen size). */
-    #gizmoSizePx = 90
+    #gizmoSizePx = GIZMO_DEFAULT_SIZE_PX
     #gizmoHoverHandle = -1
     #gizmoActiveHandle = -1
     // ----- Interactive FeatureGraph feature selection (edge/corner/auto) -----

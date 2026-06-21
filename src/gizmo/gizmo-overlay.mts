@@ -34,6 +34,13 @@ import type { GPUHelper } from "../gpu/helper.mjs"
 import { scheduleShaderModuleCompilationLogging } from "../shaders/shader.mjs"
 import overlayShaderSource from "../shaders/gizmo_overlay.wgsl"
 import { Mat4x4f } from "../vecmat/matrix.mjs"
+import {
+    GIZMO_AXES as AXES,
+    GIZMO_CENTER_GAP as CENTER_GAP,
+    GIZMO_RING_RADIUS as RING_RADIUS,
+    GIZMO_SHAFT_END as SHAFT_END,
+    GIZMO_TIP as TIP,
+} from "./gizmo-geometry.mjs"
 
 /** localA (vec3f,12) + localB (vec3f,12) + meta (u32,4) + pad (4) = 32. */
 const LINE_STRIDE = 32
@@ -48,14 +55,9 @@ const GIZMO_UNIFORM_BYTES = 32
 /** Default shaft/ring line width in framebuffer pixels. */
 const DEFAULT_LINE_WIDTH_PX = 2.5
 
-/** Segments per rotation ring (smooth circle → ellipse when projected). */
+/** Segments per rotation ring (smooth circle → ellipse when projected). Visual
+ * only — the hit-tester samples rings independently. */
 const RING_SEGMENTS = 48
-
-/** Gizmo-local geometry constants (1.0 == sizePx framebuffer pixels). */
-const CENTER_GAP = 0.12 // shaft starts this far from center
-const SHAFT_END = 0.82 // shaft end / arrowhead base
-const TIP = 1.0 // arrowhead tip
-const RING_RADIUS = 0.8
 
 /**
  * Same ray-origin push the preview ray-marcher uses (matches
@@ -68,12 +70,6 @@ const OVERLAY_BLEND: GPUBlendState = {
     color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
     alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
 }
-
-const AXES: ReadonlyArray<readonly [number, number, number]> = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-]
 
 export class GizmoOverlay {
     #device: GPUDevice

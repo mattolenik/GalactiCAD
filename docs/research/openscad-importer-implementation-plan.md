@@ -264,7 +264,7 @@ primitive/operator sources):**
 | cylinder | `cylinder.radius(r).height(h).shift([x,y,z])` (gcad height is full, centered) |
 | cone | `cone.radius(r).height(h).shift([x,y,z])` |
 | torus | `torus.smallRadius(sr).largeRadius(lr).shift([…])` |
-| polygon2d | `polygon2d([[x,y],…])` |
+| polygon2d | `polygon2d([x,y], …)` (one [x,y] pair per argument) |
 | extrude | `extrude.profile(<poly>).height(h).twist(deg)` (**height is half**, ±h; twist in degrees) |
 | lathe | `lathe.profile(<poly>)` (profile pts are (r,y); revolves around Y) |
 | loft | `loft.sections([<poly>,…]).height(h)` |

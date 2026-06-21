@@ -101,17 +101,19 @@ export class Translate extends UnaryOperator {
     }
 }
 
-export const translate = fluent(function translate(offset: Vec3, node: Node): Translate {
-    return new Translate(offset, node)
+export const translate = fluent(function translate(a: Vec3 | number, b: Node | number, c?: number, d?: Node): Translate {
+    return typeof a === "number" ? new Translate([a, b as number, c as number], d as Node) : new Translate(a, b as Node)
 })
 
 /**
- * Default `Node.prototype.shift` — `node.shift(v)` is `translate(v, node)` (rigid move).
+ * Default `Node.prototype.shift` — `node.shift(v)` (or `node.shift(x, y, z)`) is `translate(v, node)` (rigid move).
  * Primitives (sphere, box, …) install their own `shift` on the subclass to update `pos` in place.
  */
-;(Node.prototype as { shift?: (this: Node, v: Vec3) => Translate }).shift = function (
+;(Node.prototype as { shift?: (this: Node, v: Vec3 | number, y?: number, z?: number) => Translate }).shift = function (
     this: Node,
-    v: Vec3,
+    v: Vec3 | number,
+    y?: number,
+    z?: number,
 ): Translate {
-    return translate(v, this)
+    return typeof v === "number" ? translate(v, y!, z!, this) : translate(v, this)
 }

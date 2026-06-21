@@ -74,6 +74,6 @@ export class Scale extends UnaryOperator {
     }
 }
 
-export const scale = fluent(function scale(factors: Vec3, node: Node): Scale {
-    return new Scale(factors, node)
+export const scale = fluent(function scale(a: Vec3 | number, b: Node | number, c?: number, d?: Node): Scale {
+    return typeof a === "number" ? new Scale([a, b as number, c as number], d as Node) : new Scale(a, b as Node)
 })

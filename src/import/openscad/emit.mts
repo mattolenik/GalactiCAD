@@ -38,7 +38,7 @@ function fmtHalfVec3(v: Vec3): string {
 }
 
 function fmtPoly(points: Vec2[]): string {
-    return `polygon2d([${points.map(([x, y]) => `[${fmtNum(x)}, ${fmtNum(y)}]`).join(", ")}])`
+    return `polygon2d(${points.map(([x, y]) => `[${fmtNum(x)}, ${fmtNum(y)}]`).join(", ")})`
 }
 
 function shiftSuffix(shift: Vec3): string {

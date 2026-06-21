@@ -46,22 +46,28 @@ declare class Node {
     clone(): Node;
     /** Shift the base primitive's position. Works through modifier chains (twist, taper, etc.). */
     shift(v: Vec3): Node;
+    shift(x: number, y: number, z: number): Node;
     /** Euler rotation in degrees [rx, ry, rz] — same as the standalone rotate(rot, node). */
     rotate(rot: Vec3): Rotate;
+    rotate(rx: number, ry: number, rz: number): Rotate;
 }
 
-/** Rotate a node. rotate(rot, node) */
+/** Rotate a node. rotate([rx,ry,rz], node) or rotate(rx, ry, rz, node) */
 declare function rotate(rot: Vec3, node: Node): Rotate;
-/** Translate a node (rigid shift). translate([dx,dy,dz], node) */
+declare function rotate(rx: number, ry: number, rz: number, node: Node): Rotate;
+/** Translate a node (rigid shift). translate([dx,dy,dz], node) or translate(dx, dy, dz, node) */
 declare function translate(offset: Vec3, node: Node): Translate;
-/** Uniform or non-uniform scale about the origin. scale([sx,sy,sz], node) */
+declare function translate(dx: number, dy: number, dz: number, node: Node): Translate;
+/** Uniform or non-uniform scale about the origin. scale([sx,sy,sz], node) or scale(sx, sy, sz, node) */
 declare function scale(factors: Vec3, node: Node): Scale;
+declare function scale(sx: number, sy: number, sz: number, node: Node): Scale;
 /** Hollow shell of a shape. shell(t, node) */
 declare function shell(t: number, node: Node): Shell;
 /** Uniform offset. offset(amount, node) */
 declare function offset(amount: number, node: Node): Offset;
-/** Elongate a shape. elongate(h, node) */
+/** Elongate a shape. elongate([hx,hy,hz], node) or elongate(hx, hy, hz, node) */
 declare function elongate(h: Vec3, node: Node): Elongate;
+declare function elongate(hx: number, hy: number, hz: number, node: Node): Elongate;
 /** Twist a shape. twist(rate, node) */
 declare function twist(rate: number, node: Node): Twist;
 /** Bend a shape. bend(amount, node) */
@@ -80,6 +86,7 @@ declare class Sphere extends Node {
     pos: Vec3f;
     r: number;
     shift(v: Vec3): Sphere;
+    shift(x: number, y: number, z: number): Sphere;
 }
 
 /** An axis-aligned box. box(size).shift(v) or box(l, w, h).shift(v) */
@@ -89,6 +96,7 @@ declare class Box extends Node {
     /** Size as [length, width, height]. */
     size: Vec3f;
     shift(v: Vec3): Box;
+    shift(x: number, y: number, z: number): Box;
 }
 
 /** Create a box. box(size: Vec3) or box(l: number, w: number, h: number). Chain with .shift(v). */
@@ -106,6 +114,7 @@ declare class Cylinder extends Node {
     /** Round fillet on the outer rim where the side meets the cap(s). Default TOP | BOTTOM. */
     fillet(radius: number, side?: DirectionIndicator): Cylinder;
     shift(v: Vec3): Cylinder;
+    shift(x: number, y: number, z: number): Cylinder;
 }
 
 /** A cone. cone.radius(r).height(h).shift(v) */
@@ -115,6 +124,7 @@ declare class Cone extends Node {
     h: number;
     height(h: number): Cone;
     shift(v: Vec3): Cone;
+    shift(x: number, y: number, z: number): Cone;
 }
 
 /** A torus. torus.smallRadius(sr).largeRadius(lr).shift(v) */
@@ -125,6 +135,7 @@ declare class Torus extends Node {
     smallRadius(sr: number): Torus;
     largeRadius(lr: number): Torus;
     shift(v: Vec3): Torus;
+    shift(x: number, y: number, z: number): Torus;
 }
 
 /**
@@ -161,6 +172,7 @@ declare class ThreadedRod extends Node {
      */
     female(play?: number): ThreadedRod;
     shift(v: Vec3): ThreadedRod;
+    shift(x: number, y: number, z: number): ThreadedRod;
 }
 
 /** A capsule. capsule.radius(r).cylinderLength(c).shift(v) */
@@ -171,6 +183,7 @@ declare class Capsule extends Node {
     radius(r: number): Capsule;
     cylinderLength(c: number): Capsule;
     shift(v: Vec3): Capsule;
+    shift(x: number, y: number, z: number): Capsule;
 }
 
 /** An infinite plane. plane.normal(n).shift(v) or plane.dist(d).shift(v) */
@@ -179,8 +192,10 @@ declare class PlaneNode extends Node {
     normal: Vec3f;
     dist: number;
     withNormal(n: Vec3): PlaneNode;
+    withNormal(nx: number, ny: number, nz: number): PlaneNode;
     withDist(d: number): PlaneNode;
     shift(v: Vec3): PlaneNode;
+    shift(x: number, y: number, z: number): PlaneNode;
 }
 
 /** A hexagonal prism. hexprism.radius(r).height(h).shift(v) */
@@ -191,6 +206,7 @@ declare class HexPrism extends Node {
     radius(r: number): HexPrism;
     height(h: number): HexPrism;
     shift(v: Vec3): HexPrism;
+    shift(x: number, y: number, z: number): HexPrism;
 }
 
 /** A flat disc. disc.radius(r).shift(v) */
@@ -198,12 +214,14 @@ declare class Disc extends Node {
     pos: Vec3f;
     r: number;
     shift(v: Vec3): Disc;
+    shift(x: number, y: number, z: number): Disc;
 }
 
 /** A blobby / metaball primitive. blob().shift(v) */
 declare class Blob extends Node {
     pos: Vec3f;
     shift(v: Vec3): Blob;
+    shift(x: number, y: number, z: number): Blob;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,17 +362,20 @@ declare class Extrude extends Node {
     height(n: number): Extrude;
     twist(degrees: number): Extrude;
     shift(v: Vec3): Extrude;
+    shift(x: number, y: number, z: number): Extrude;
 }
 
 /** Loft between two or more Polygon2D profiles. */
 declare class Loft extends Node {
     height(n: number): Loft;
     shift(v: Vec3): Loft;
+    shift(x: number, y: number, z: number): Loft;
 }
 
 /** Revolve a Polygon2D around the Y-axis (lathe). */
 declare class Lathe extends Node {
     shift(v: Vec3): Lathe;
+    shift(x: number, y: number, z: number): Lathe;
 }
 
 // ---------------------------------------------------------------------------
@@ -475,7 +496,7 @@ declare const capsule: { radius(r: number): Capsule; cylinderLength(c: number): 
 /**
  * Infinite plane. plane.normal(n).shift(v) or plane.dist(d).shift(v)
  */
-declare const plane: { normal(n: Vec3): PlaneNode; dist(d?: number): PlaneNode };
+declare const plane: { normal(n: Vec3): PlaneNode; normal(nx: number, ny: number, nz: number): PlaneNode; dist(d?: number): PlaneNode };
 
 /**
  * Hexagonal prism. hexprism.radius(r).height(h).shift(v)
@@ -493,11 +514,11 @@ declare const disc: { radius(r: number): Disc };
 declare function blob(): Blob;
 
 /**
- * 2-D polygon defined by a list of [x, y] vertices.
- * @param vertices Array of [x, y] coordinate pairs.
- * @example polygon2d([[0,0],[1,0],[0.5,1]])
+ * 2-D polygon defined by [x, y] vertices, passed as individual arguments.
+ * @param vertices One [x, y] coordinate pair per argument.
+ * @example polygon2d([0,0], [1,0], [0.5,1])
  */
-declare function polygon2d(vertices: [number, number][]): Polygon2D;
+declare function polygon2d(...vertices: [number, number][]): Polygon2D;
 
 /**
  * Extrude a Polygon2D profile. extrude.profile(p).height(n).twist(deg).shift(v)
@@ -505,9 +526,9 @@ declare function polygon2d(vertices: [number, number][]): Polygon2D;
 declare const extrude: { profile(p: Polygon2D): Extrude };
 
 /**
- * Loft between two or more Polygon2D profiles. loft.sections([...]).height(n).shift(v)
+ * Loft between two or more Polygon2D profiles. loft.sections(a, b, ...).height(n).shift(v)
  */
-declare const loft: { sections(s: Polygon2D[]): Loft };
+declare const loft: { sections(...s: Polygon2D[]): Loft };
 
 /**
  * Revolve a Polygon2D profile around the Y-axis. lathe.profile(p).shift(v)

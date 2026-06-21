@@ -25,11 +25,11 @@ test("Node.clone deep-copies CSG and primitives", () => {
 })
 
 test("Node.clone deep-copies extrude caps and profile", () => {
-    const poly = polygon2d([
+    const poly = polygon2d(
         [0, 0],
         [1, 0],
         [0.5, 1],
-    ])
+    )
     const root = extrude.profile(poly).height(0.5) as Extrude
     const copy = root.clone() as Extrude
     assert.notEqual(root, copy)

@@ -202,6 +202,6 @@ fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec4f {
     }
 }
 
-export function polygon2d(vertices: [number, number][]): Polygon2D {
+export function polygon2d(...vertices: [number, number][]): Polygon2D {
     return new Polygon2D(vertices)
 }

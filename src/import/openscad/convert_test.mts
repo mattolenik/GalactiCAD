@@ -259,7 +259,7 @@ test("linear_extrude square → box (idiom)", () => {
 test("linear_extrude polygon → extrude.profile", () => {
     assert.match(
         dslOf("linear_extrude(5) polygon([[0,0],[10,0],[5,8]]);"),
-        /extrude\.profile\(polygon2d\(\[\[0, 0\], \[10, 0\], \[5, 8\]\]\)\)\.height\(2\.5\)\.shift\(\[0, 0, 2\.5\]\)/,
+        /extrude\.profile\(polygon2d\(\[0, 0\], \[10, 0\], \[5, 8\]\)\)\.height\(2\.5\)\.shift\(\[0, 0, 2\.5\]\)/,
     )
 })
 
@@ -276,7 +276,7 @@ test("linear_extrude pushes through a 2D translate", () => {
 })
 
 test("rotate_extrude polygon → lathe.profile", () => {
-    assert.match(dslOf("rotate_extrude() polygon([[2,0],[4,0],[3,5]]);"), /lathe\.profile\(polygon2d\(\[\[2, 0\], \[4, 0\], \[3, 5\]\]\)\)/)
+    assert.match(dslOf("rotate_extrude() polygon([[2,0],[4,0],[3,5]]);"), /lathe\.profile\(polygon2d\(\[2, 0\], \[4, 0\], \[3, 5\]\)\)/)
 })
 
 test("bare 2D geometry (no extrude) is flagged", () => {

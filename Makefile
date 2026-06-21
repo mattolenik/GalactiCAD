@@ -229,6 +229,8 @@ $(DIST_ROOT)/build/icon.ico: $(ICON_SVG)
 .PHONY: clean
 clean: stop kill-agent-browsers
 	rm -rf $(DIST)
+	cd gcad-wasm && cargo clean
+	rm -rf gcad-wasm/wasm/pkg
 
 .PHONY: scrub
 scrub: clean

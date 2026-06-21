@@ -73,6 +73,14 @@ fn loft_scene() -> CsgNode {
     prepared_tree(sdf::leaf_at(Shape::Loft { profs, winds, h: LOFT_H }, [0.0, 0.0, 0.0]))
 }
 
+/// A 2-profile loft from arbitrary (possibly differing-vertex-count) profiles.
+fn loft_scene_2(bottom: &[[f64; 2]], top: &[[f64; 2]]) -> CsgNode {
+    let flatten = |p: &[[f64; 2]]| -> Vec<f64> { p.iter().flat_map(|v| [v[0], v[1]]).collect() };
+    let profs = vec![flatten(bottom), flatten(top)];
+    let winds = vec![winding_sign(bottom), winding_sign(top)];
+    prepared_tree(sdf::leaf_at(Shape::Loft { profs, winds, h: LOFT_H }, [0.0, 0.0, 0.0]))
+}
+
 fn assert_invariants(name: &str, tree: &CsgNode, r: &SfccPipelineResult) {
     assert!(!r.tris.is_empty(), "{name}: produced triangles");
     assert_eq!(r.stats.failed_cells, 0, "{name}: no failed cells");
@@ -185,4 +193,30 @@ fn mesh_loft_matches_ts() {
     assert_invariants("mesh-loft", &tree, &r);
     assert_deterministic("mesh-loft", &tree, &c, &r);
     assert_ts_parity("mesh-loft", "mesh-loft.bin", &r);
+}
+
+/// Stage 1a: differing-vertex-count profiles. The SDF is a distance-field blend
+/// that is independent of per-profile vertex counts, so these must mesh without
+/// panicking. The feature path degrades to cap-only (smooth morph sides); the
+/// invariants here assert the mesh is still a watertight χ=2 manifold — in
+/// particular that the un-pinned cap rim stays watertight at coarse octree depth.
+#[test]
+fn mesh_loft_differing_topology() {
+    let c = cube();
+
+    // Equilateral-ish triangle (3) -> square (4).
+    let tri: [[f64; 2]; 3] = [[0.0, 2.0], [-1.732, -1.0], [1.732, -1.0]];
+    let sq: [[f64; 2]; 4] = [[1.4, 1.4], [-1.4, 1.4], [-1.4, -1.4], [1.4, -1.4]];
+    let t1 = loft_scene_2(&tri, &sq);
+    let r1 = run_sfcc_pipeline(&t1, &c, &tuning());
+    assert_invariants("loft-tri-square", &t1, &r1);
+    assert_deterministic("loft-tri-square", &t1, &c, &r1);
+
+    // Square (4) -> regular pentagon (5).
+    let pent: [[f64; 2]; 5] =
+        [[0.0, 2.0], [-1.902, 0.618], [-1.176, -1.618], [1.176, -1.618], [1.902, 0.618]];
+    let t2 = loft_scene_2(&sq, &pent);
+    let r2 = run_sfcc_pipeline(&t2, &c, &tuning());
+    assert_invariants("loft-square-pent", &t2, &r2);
+    assert_deterministic("loft-square-pent", &t2, &c, &r2);
 }

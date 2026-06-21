@@ -275,6 +275,249 @@ fn build_extrude_strata(
     out
 }
 
+/// One side carrier of a loft segment: blends lower-profile edge `a_edge` with
+/// upper-profile edge `b_edge` (supporting lines: point `*_x,*_z`, outward unit
+/// normal `*_nx,*_nz`). `a_vertex`/`b_vertex` are the bottom/top profile corner
+/// indices crossed by the transition INTO this carrier, or -1 when that profile's
+/// edge did not advance there. A matched-corner transition advances BOTH, so its
+/// crease anchors bottom→`a_vertex` and top→`b_vertex` — one crease per edge.
+#[derive(Clone, Copy)]
+struct LoftCarrier {
+    a_edge: usize,
+    a_x: f64,
+    a_z: f64,
+    a_x1: f64,
+    a_z1: f64,
+    a_nx: f64,
+    a_nz: f64,
+    b_edge: usize,
+    b_x: f64,
+    b_z: f64,
+    b_x1: f64,
+    b_z1: f64,
+    b_nx: f64,
+    b_nz: f64,
+    a_vertex: i64,
+    b_vertex: i64,
+}
+
+/// Side carriers of one loft segment between lower profile `a` and upper profile
+/// `b`, as an angular cyclic merge of the two profiles' corners — a monotone
+/// `(a_edge, b_edge)` staircase of length ≤ `na + nb` (corresponding corners are
+/// matched into one diagonal step, see below). Pure and deterministic, so
+/// the strata builder ([`build_loft_strata_general`]) and the feature emitter
+/// ([`emit_loft_features_general`]) agree on carrier ids. Each profile is assumed
+/// star-shaped about its centroid (corners in angular order); other shapes still
+/// yield a well-formed staircase, with any mispairing filtered by the SDF/label
+/// gates in the crease tracer (creases are only ever dropped, never wrong).
+fn loft_seg_carriers(a: &[f64], wa: f64, b: &[f64], wb: f64) -> Vec<LoftCarrier> {
+    use std::f64::consts::TAU;
+    // Edge `e` (n verts) as a SEGMENT: start vertex, end vertex, outward unit normal.
+    let edge_line = |v: &[f64], w: f64, n: usize, e: usize| -> (f64, f64, f64, f64, f64, f64) {
+        let v0x = v[e * 2];
+        let v0z = v[e * 2 + 1];
+        let e1 = (e + 1) % n;
+        let v1x = v[e1 * 2];
+        let v1z = v[e1 * 2 + 1];
+        let [nx, nz] = outward_edge_normal_2d(v1x - v0x, v1z - v0z, w);
+        (v0x, v0z, v1x, v1z, nx, nz)
+    };
+    // Sorted-by-angle corner order, those angles, and each angular sector's active
+    // edge (sector i spans corners ord[i]..ord[i+1]; its edge connects them).
+    let sectors = |v: &[f64], n: usize| -> (Vec<usize>, Vec<f64>, Vec<usize>) {
+        let (mut cx, mut cz) = (0.0, 0.0);
+        for j in 0..n {
+            cx += v[j * 2];
+            cz += v[j * 2 + 1];
+        }
+        cx /= n as f64;
+        cz /= n as f64;
+        let ang: Vec<f64> = (0..n)
+            .map(|j| {
+                let t = (v[j * 2 + 1] - cz).atan2(v[j * 2] - cx);
+                if t < 0.0 { t + TAU } else { t }
+            })
+            .collect();
+        let mut ord: Vec<usize> = (0..n).collect();
+        ord.sort_by(|&i, &j| ang[i].partial_cmp(&ang[j]).unwrap().then(i.cmp(&j)));
+        let sorted_ang: Vec<f64> = ord.iter().map(|&i| ang[i]).collect();
+        let sector_edge: Vec<usize> = (0..n)
+            .map(|i| {
+                let j = ord[i];
+                let jn = ord[(i + 1) % n];
+                if (j + 1) % n == jn { j } else { jn }
+            })
+            .collect();
+        (ord, sorted_ang, sector_edge)
+    };
+    let na = a.len() / 2;
+    let nb = b.len() / 2;
+    let (a_ord, a_ang, a_se) = sectors(a, na);
+    let (b_ord, b_ang, b_se) = sectors(b, nb);
+    struct Ev {
+        ang: f64,
+        lower: bool,
+        vertex: usize,
+        edge: usize,
+    }
+    let mut evs: Vec<Ev> = Vec::with_capacity(na + nb);
+    for i in 0..na {
+        evs.push(Ev { ang: a_ang[i], lower: true, vertex: a_ord[i], edge: a_se[i] });
+    }
+    for k in 0..nb {
+        evs.push(Ev { ang: b_ang[k], lower: false, vertex: b_ord[k], edge: b_se[k] });
+    }
+    evs.sort_by(|x, y| {
+        x.ang
+            .partial_cmp(&y.ang)
+            .unwrap()
+            .then(y.lower.cmp(&x.lower)) // tie: lower (A) event before upper (B)
+            .then(x.vertex.cmp(&y.vertex))
+    });
+    // Corner matching: a bottom corner and a top corner that are the SAME physical
+    // corner of the lofted solid land at slightly different angles (the profiles have
+    // different centroids), so the raw merge interleaves them with a spurious thin
+    // "sliver" carrier between — emitting that edge as TWO creases. Detect such a pair
+    // as a cross-profile adjacency whose angular gap is a sharp local minimum and
+    // merge it into ONE transition that advances both edges (a diagonal staircase
+    // step) → one crease spanning bottom corner → top corner. The wrap pair is left
+    // unmerged to keep the wrap-sector seed simple.
+    let m = evs.len();
+    let gap_at = |i: usize| -> f64 {
+        let g = evs[(i + 1) % m].ang - evs[i].ang;
+        if g < 0.0 { g + TAU } else { g }
+    };
+    let mut merge_next = vec![false; m];
+    for i in 0..(m - 1) {
+        if evs[i].lower == evs[i + 1].lower {
+            continue; // same profile → not a corner pair
+        }
+        if gap_at(i) < 0.5 * gap_at((i + m - 1) % m).min(gap_at(i + 1)) {
+            merge_next[i] = true;
+        }
+    }
+    for i in 1..(m - 1) {
+        if merge_next[i] && merge_next[i - 1] {
+            merge_next[i] = false; // each event matches at most once
+        }
+    }
+
+    // Active edges of the sector containing angle 0 (the wrap sector n-1).
+    let mut ea = a_se[na - 1];
+    let mut eb = b_se[nb - 1];
+    let mut out: Vec<LoftCarrier> = Vec::with_capacity(na + nb);
+    let mut i = 0usize;
+    while i < m {
+        let mut a_vertex: i64 = -1;
+        let mut b_vertex: i64 = -1;
+        if evs[i].lower {
+            ea = evs[i].edge;
+            a_vertex = evs[i].vertex as i64;
+        } else {
+            eb = evs[i].edge;
+            b_vertex = evs[i].vertex as i64;
+        }
+        if merge_next[i] {
+            let ev2 = &evs[i + 1];
+            if ev2.lower {
+                ea = ev2.edge;
+                a_vertex = ev2.vertex as i64;
+            } else {
+                eb = ev2.edge;
+                b_vertex = ev2.vertex as i64;
+            }
+            i += 1; // consume the matched partner
+        }
+        let (ax, az, ax1, az1, anx, anz) = edge_line(a, wa, na, ea);
+        let (bx, bz, bx1, bz1, bnx, bnz) = edge_line(b, wb, nb, eb);
+        out.push(LoftCarrier {
+            a_edge: ea,
+            a_x: ax,
+            a_z: az,
+            a_x1: ax1,
+            a_z1: az1,
+            a_nx: anx,
+            a_nz: anz,
+            b_edge: eb,
+            b_x: bx,
+            b_z: bz,
+            b_x1: bx1,
+            b_z1: bz1,
+            b_nx: bnx,
+            b_nz: bnz,
+            a_vertex,
+            b_vertex,
+        });
+        i += 1;
+    }
+    out
+}
+
+/// Loft strata for differing-vertex-count profiles: per-segment correspondence
+/// carriers from [`loft_seg_carriers`] (plane when the two edges share a
+/// supporting line, loft-side ruled carrier otherwise), laid out by prefix-sum
+/// offset per segment, then cap +y, cap −y.
+fn build_loft_strata_general(
+    leaf: &Leaf,
+    leaf_index: usize,
+    first_id: usize,
+    profs: &[Vec<f64>],
+    winds: &[f64],
+    h: f64,
+) -> Vec<Stratum> {
+    let [px, py, pz] = leaf.pos;
+    let m = profs.len();
+    let seg_h = (2.0 * h) / (m as f64 - 1.0);
+    let mut out: Vec<Stratum> = Vec::new();
+    let mut local = 0usize;
+    for seg in 0..(m - 1) {
+        let seg_y0 = -h + seg as f64 * seg_h;
+        let carriers = loft_seg_carriers(&profs[seg], winds[seg], &profs[seg + 1], winds[seg + 1]);
+        for car in &carriers {
+            let ident = sid(first_id + local, leaf_index, local, leaf.sign);
+            if car.a_nx == car.b_nx && car.a_nz == car.b_nz && car.a_x == car.b_x && car.a_z == car.b_z {
+                out.push(world_plane(
+                    ident,
+                    &leaf.sim,
+                    car.a_nx,
+                    0.0,
+                    car.a_nz,
+                    -(car.a_nx * (px + car.a_x) + car.a_nz * (pz + car.a_z)),
+                ));
+            } else {
+                out.push(Stratum::loft_side(
+                    ident,
+                    crate::strata::LoftSideParams {
+                        sim: leaf.sim,
+                        pos_x: px,
+                        pos_y: py,
+                        pos_z: pz,
+                        seg_y0,
+                        seg_h,
+                        a_x: car.a_x,
+                        a_z: car.a_z,
+                        a_x1: car.a_x1,
+                        a_z1: car.a_z1,
+                        a_nx: car.a_nx,
+                        a_nz: car.a_nz,
+                        b_x: car.b_x,
+                        b_z: car.b_z,
+                        b_x1: car.b_x1,
+                        b_z1: car.b_z1,
+                        b_nx: car.b_nx,
+                        b_nz: car.b_nz,
+                    },
+                ));
+            }
+            local += 1;
+        }
+    }
+    out.push(world_plane(sid(first_id + local, leaf_index, local, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)));
+    local += 1;
+    out.push(world_plane(sid(first_id + local, leaf_index, local, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py - h));
+    out
+}
+
 /// Loft strata: per-segment per-edge side carriers (plane when both profiles
 /// share the supporting line, loft-side ruled carrier otherwise), laid out
 /// `side(seg,j) = seg·N + j`, then cap +y, cap −y. Port of the Loft `buildStrata`.
@@ -287,23 +530,33 @@ fn build_loft_strata(
     h: f64,
 ) -> Vec<Stratum> {
     let [px, py, pz] = leaf.pos;
+    // Differing-vertex-count profiles have no 1:1 edge correspondence, so the
+    // per-edge ruled-carrier model below (indexed by a single shared n) doesn't
+    // apply and would in fact panic out-of-bounds. Route them through the
+    // correspondence-based general builder (Stage 1b). Uniform lofts keep the
+    // original bit-identical path.
+    if !profs.iter().all(|p| p.len() == profs[0].len()) {
+        return build_loft_strata_general(leaf, leaf_index, first_id, profs, winds, h);
+    }
     let m = profs.len();
     let n = profs[0].len() / 2;
     let seg_h = (2.0 * h) / (m as f64 - 1.0);
     let mut out: Vec<Stratum> = Vec::new();
     // Edge supporting line (point + outward unit 2D normal) of profile `verts`,
     // edge j: returns (v0x, v0z, nx, nz).
-    let edge = |verts: &[f64], wind: f64, j: usize| -> (f64, f64, f64, f64) {
+    let edge = |verts: &[f64], wind: f64, j: usize| -> (f64, f64, f64, f64, f64, f64) {
         let j1 = (j + 1) % n;
         let v0x = verts[j * 2];
         let v0z = verts[j * 2 + 1];
-        let [nx, nz] = outward_edge_normal_2d(verts[j1 * 2] - v0x, verts[j1 * 2 + 1] - v0z, wind);
-        (v0x, v0z, nx, nz)
+        let v1x = verts[j1 * 2];
+        let v1z = verts[j1 * 2 + 1];
+        let [nx, nz] = outward_edge_normal_2d(v1x - v0x, v1z - v0z, wind);
+        (v0x, v0z, v1x, v1z, nx, nz)
     };
     for seg in 0..(m - 1) {
         for j in 0..n {
-            let (a_x, a_z, a_nx, a_nz) = edge(&profs[seg], winds[seg], j);
-            let (b_x, b_z, b_nx, b_nz) = edge(&profs[seg + 1], winds[seg + 1], j);
+            let (a_x, a_z, a_x1, a_z1, a_nx, a_nz) = edge(&profs[seg], winds[seg], j);
+            let (b_x, b_z, b_x1, b_z1, b_nx, b_nz) = edge(&profs[seg + 1], winds[seg + 1], j);
             let li = seg * n + j;
             let ident = sid(first_id + li, leaf_index, li, leaf.sign);
             if a_nx == b_nx && a_nz == b_nz && a_x == b_x && a_z == b_z {
@@ -320,10 +573,14 @@ fn build_loft_strata(
                         seg_h,
                         a_x,
                         a_z,
+                        a_x1,
+                        a_z1,
                         a_nx,
                         a_nz,
                         b_x,
                         b_z,
+                        b_x1,
+                        b_z1,
                         b_nx,
                         b_nz,
                     },
@@ -391,6 +648,12 @@ fn emit_loft_features(
     curves: &mut Vec<FeatureCurve>,
     corners: &mut Vec<SfccCorner>,
 ) {
+    // Differing-vertex-count profiles use the correspondence-based emitter (the
+    // per-edge emission below indexes profs[pi][j*2] with a single shared n, which
+    // would panic out-of-bounds). Uniform lofts keep the original path.
+    if !profs.iter().all(|p| p.len() == profs[0].len()) {
+        return emit_loft_features_general(leaf, first_id, profs, winds, h, strata, curves, corners);
+    }
     let [px, py, pz] = leaf.pos;
     let m = profs.len();
     let n = profs[0].len() / 2;
@@ -593,6 +856,312 @@ fn emit_loft_features(
             rim.native = true;
             rim.corner_start = corner_idx[pi][j] as i64;
             rim.corner_end = corner_idx[pi][j2] as i64;
+            corners[rim.corner_start as usize].curve_ends.push((curve_id, 0));
+            corners[rim.corner_end as usize].curve_ends.push((curve_id, 1));
+            curves.push(rim);
+        }
+    }
+}
+
+/// Native features of a differing-vertex-count Loft leaf (Stage 1b): corners at
+/// every profile vertex, vertical morph creases traced over their valid
+/// sub-interval (born at a profile corner, free-ended where the crease flattens),
+/// junction creases at interior profiles, and cap rims. Strata ids agree with
+/// [`build_loft_strata_general`] because both enumerate carriers via
+/// [`loft_seg_carriers`].
+#[allow(clippy::too_many_arguments)]
+fn emit_loft_features_general(
+    leaf: &Leaf,
+    first_id: usize,
+    profs: &[Vec<f64>],
+    winds: &[f64],
+    h: f64,
+    strata: &[Stratum],
+    curves: &mut Vec<FeatureCurve>,
+    corners: &mut Vec<SfccCorner>,
+) {
+    let [px, py, pz] = leaf.pos;
+    let m = profs.len();
+    let seg_h = (2.0 * h) / (m as f64 - 1.0);
+    let y_of = |pi: usize| -h + pi as f64 * seg_h;
+    let vert_scale = {
+        let mut v = 1.0f64;
+        for pr in profs {
+            for c in 0..(pr.len() / 2) {
+                v = v.max(pr[c * 2].abs().max(pr[c * 2 + 1].abs()));
+            }
+        }
+        v
+    };
+    let carriers: Vec<Vec<LoftCarrier>> = (0..m - 1)
+        .map(|seg| loft_seg_carriers(&profs[seg], winds[seg], &profs[seg + 1], winds[seg + 1]))
+        .collect();
+    let mut offset = vec![0usize; m - 1];
+    for seg in 1..(m - 1) {
+        offset[seg] = offset[seg - 1] + carriers[seg - 1].len();
+    }
+    let total_side: usize = carriers.iter().map(|c| c.len()).sum();
+    let cap_top = first_id + total_side;
+    let cap_bottom = first_id + total_side + 1;
+    let side_id = |seg: usize, c: usize| -> usize { first_id + offset[seg] + c };
+
+    // Corners at every profile vertex, wired to incident side carriers + caps.
+    let mut corner_idx: Vec<Vec<usize>> = Vec::with_capacity(m);
+    for pi in 0..m {
+        let np = profs[pi].len() / 2;
+        let mut row = Vec::with_capacity(np);
+        for v in 0..np {
+            let vx = profs[pi][v * 2];
+            let vz = profs[pi][v * 2 + 1];
+            let p = leaf.sim.apply_point(px + vx, py + y_of(pi), pz + vz);
+            let v_prev = (v + np - 1) % np;
+            let mut st: Vec<usize> = Vec::new();
+            if pi < m - 1 {
+                for (c, car) in carriers[pi].iter().enumerate() {
+                    if car.a_edge == v || car.a_edge == v_prev {
+                        st.push(side_id(pi, c));
+                    }
+                }
+            }
+            if pi > 0 {
+                for (c, car) in carriers[pi - 1].iter().enumerate() {
+                    if car.b_edge == v || car.b_edge == v_prev {
+                        st.push(side_id(pi - 1, c));
+                    }
+                }
+            }
+            if pi == 0 {
+                st.push(cap_bottom);
+            }
+            if pi == m - 1 {
+                st.push(cap_top);
+            }
+            let id = corners.len();
+            corners.push(SfccCorner { id, x: p[0], y: p[1], z: p[2], strata: st, curve_ends: Vec::new() });
+            row.push(id);
+        }
+        corner_idx.push(row);
+    }
+
+    // Vertical morph creases: each carrier boundary, traced over its valid
+    // sub-interval. Gate 1 = the crossing lies on the true blend zero set; Gate 2
+    // = the crossing's nearest A/B edges are the carrier-boundary's edges (so the
+    // crease can never be placed off its patch — non-convex medial-axis kinks are
+    // dropped, never mis-emitted).
+    const SAMPLES: usize = 64;
+    for seg in 0..(m - 1) {
+        let cars = &carriers[seg];
+        let lc = cars.len();
+        let seg_y0 = y_of(seg);
+        for c in 0..lc {
+            let cprev = &cars[(c + lc - 1) % lc];
+            let ccur = &cars[c];
+            if cprev.a_edge == ccur.a_edge && cprev.b_edge == ccur.b_edge {
+                continue; // degenerate zero-width boundary (exact angle tie)
+            }
+            let s_l = side_id(seg, (c + lc - 1) % lc);
+            let s_r = side_id(seg, c);
+            let (n_alx, n_alz, c_al) = (cprev.a_nx, cprev.a_nz, cprev.a_nx * cprev.a_x + cprev.a_nz * cprev.a_z);
+            let (n_arx, n_arz, c_ar) = (ccur.a_nx, ccur.a_nz, ccur.a_nx * ccur.a_x + ccur.a_nz * ccur.a_z);
+            let (n_blx, n_blz, c_bl) = (cprev.b_nx, cprev.b_nz, cprev.b_nx * cprev.b_x + cprev.b_nz * cprev.b_z);
+            let (n_brx, n_brz, c_br) = (ccur.b_nx, ccur.b_nz, ccur.b_nx * ccur.b_x + ccur.b_nz * ccur.b_z);
+            let q2_at = |t: f64| -> Option<[f64; 2]> {
+                let m1x = (1.0 - t) * n_alx + t * n_blx;
+                let m1z = (1.0 - t) * n_alz + t * n_blz;
+                let m2x = (1.0 - t) * n_arx + t * n_brx;
+                let m2z = (1.0 - t) * n_arz + t * n_brz;
+                let c1 = (1.0 - t) * c_al + t * c_bl;
+                let c2 = (1.0 - t) * c_ar + t * c_br;
+                let det = m1x * m2z - m1z * m2x;
+                if det.abs() < 1e-3 * m1x.hypot(m1z) * m2x.hypot(m2z) {
+                    return None;
+                }
+                Some([(c1 * m2z - c2 * m1z) / det, (m1x * c2 - m2x * c1) / det])
+            };
+            let a_set = [cprev.a_edge, ccur.a_edge];
+            let b_set = [cprev.b_edge, ccur.b_edge];
+            // The carrier crossing is the intersection of two blended edge-LINES; the
+            // true side surface is the blended polygon SDF (segment + vertex distance),
+            // so the raw crossing bows OUTWARD off the surface (worst on differing-
+            // topology blends, where it can exceed the Gate-1 tolerance and get trimmed
+            // mid-crease). Newton-project each sample back onto the blended zero set
+            // `(1-t)·sdf(a) + t·sdf(b) = 0` along its gradient (polygon_dist_2d is
+            // unit-gradient). Mirrors the FeatureGraph `projectToBlend`.
+            let project_to_blend = |qx: f64, qz: f64, t: f64| -> [f64; 2] {
+                let (mut x, mut z) = (qx, qz);
+                for _ in 0..6 {
+                    let a = polygon_dist_2d(&profs[seg], winds[seg], x, z);
+                    let b = polygon_dist_2d(&profs[seg + 1], winds[seg + 1], x, z);
+                    let d = (1.0 - t) * a.d + t * b.d;
+                    let gx = (1.0 - t) * a.gx + t * b.gx;
+                    let gz = (1.0 - t) * a.gz + t * b.gz;
+                    let g2 = gx * gx + gz * gz;
+                    if g2 < 1e-12 {
+                        break;
+                    }
+                    x -= d * gx / g2;
+                    z -= d * gz / g2;
+                    if d.abs() < 1e-7 {
+                        break;
+                    }
+                }
+                [x, z]
+            };
+            let mut pts = vec![[0.0f64; 3]; SAMPLES + 1];
+            let mut valid = vec![false; SAMPLES + 1];
+            for i in 0..=SAMPLES {
+                let t = i as f64 / SAMPLES as f64;
+                if let Some(raw) = q2_at(t) {
+                    let pt = project_to_blend(raw[0], raw[1], t);
+                    let ra = polygon_dist_2d(&profs[seg], winds[seg], pt[0], pt[1]);
+                    let rb = polygon_dist_2d(&profs[seg + 1], winds[seg + 1], pt[0], pt[1]);
+                    let gate1 = ((1.0 - t) * ra.d + t * rb.d).abs() <= 1e-6 * vert_scale;
+                    let gate2 = a_set.contains(&ra.edge) && b_set.contains(&rb.edge);
+                    if gate1 && gate2 {
+                        let wp = leaf.sim.apply_point(px + pt[0], py + seg_y0 + t * seg_h, pz + pt[1]);
+                        pts[i] = [wp[0], wp[1], wp[2]];
+                        valid[i] = true;
+                    }
+                }
+            }
+            // One curve per maximal contiguous valid run (≥ 2 samples).
+            let mut i = 0usize;
+            while i <= SAMPLES {
+                if !valid[i] {
+                    i += 1;
+                    continue;
+                }
+                let i0 = i;
+                while i + 1 <= SAMPLES && valid[i + 1] {
+                    i += 1;
+                }
+                let i1 = i;
+                i += 1;
+                if i1 == i0 {
+                    continue;
+                }
+                let cnt = i1 - i0 + 1;
+                let mut samples = Vec::with_capacity(cnt * 3);
+                for k in i0..=i1 {
+                    samples.extend_from_slice(&pts[k]);
+                }
+                let ax = samples[0];
+                let ay = samples[1];
+                let az = samples[2];
+                let bx = samples[(cnt - 1) * 3];
+                let by = samples[(cnt - 1) * 3 + 1];
+                let bz = samples[(cnt - 1) * 3 + 2];
+                let chord = (bx - ax).hypot(by - ay).hypot(bz - az);
+                let mut max_dev = 0.0f64;
+                for k in 1..(cnt - 1) {
+                    let tt = k as f64 / (cnt - 1) as f64;
+                    let dev = (samples[k * 3] - (ax + (bx - ax) * tt))
+                        .hypot(samples[k * 3 + 1] - (ay + (by - ay) * tt))
+                        .hypot(samples[k * 3 + 2] - (az + (bz - az) * tt));
+                    max_dev = max_dev.max(dev);
+                }
+                let curve_id = curves.len();
+                let mut curve = if max_dev < 1e-9 * chord.max(1.0) {
+                    make_segment_curve(curve_id, -1, [s_l, s_r], ax, ay, az, bx, by, bz)
+                } else {
+                    make_traced_curve(
+                        curve_id,
+                        [s_l, s_r],
+                        samples,
+                        false,
+                        strata[s_l - first_id],
+                        strata[s_r - first_id],
+                        traced_native_refine(),
+                        -1,
+                    )
+                };
+                curve.native = true;
+                // A run reaching t=0 lands on the bottom-profile corner the carrier
+                // crossed; reaching t=1 lands on the top-profile corner. A matched
+                // corner sets both → one corner-to-corner crease.
+                let cs: i64 = if i0 == 0 && ccur.a_vertex >= 0 {
+                    corner_idx[seg][ccur.a_vertex as usize] as i64
+                } else {
+                    -1
+                };
+                let ce: i64 = if i1 == SAMPLES && ccur.b_vertex >= 0 {
+                    corner_idx[seg + 1][ccur.b_vertex as usize] as i64
+                } else {
+                    -1
+                };
+                curve.corner_start = cs;
+                curve.corner_end = ce;
+                if cs >= 0 {
+                    corners[cs as usize].curve_ends.push((curve_id, 0));
+                }
+                if ce >= 0 {
+                    corners[ce as usize].curve_ends.push((curve_id, 1));
+                }
+                curves.push(curve);
+            }
+        }
+    }
+
+    // Junction creases at interior profiles (M ≥ 3): where the carrier below and
+    // above a shared-profile edge kink.
+    for pi in 1..(m - 1) {
+        let np = profs[pi].len() / 2;
+        for e in 0..np {
+            let e2 = (e + 1) % np;
+            let below = carriers[pi - 1].iter().position(|car| car.b_edge == e);
+            let above = carriers[pi].iter().position(|car| car.a_edge == e);
+            let (Some(cb), Some(ca)) = (below, above) else { continue };
+            let s_below = side_id(pi - 1, cb);
+            let s_above = side_id(pi, ca);
+            let v0x = profs[pi][e * 2];
+            let v0z = profs[pi][e * 2 + 1];
+            let v1x = profs[pi][e2 * 2];
+            let v1z = profs[pi][e2 * 2 + 1];
+            let mid = leaf.sim.apply_point(px + (v0x + v1x) / 2.0, py + y_of(pi), pz + (v0z + v1z) / 2.0);
+            let nbelow = strata[s_below - first_id].normal(mid[0], mid[1], mid[2]);
+            let nabove = strata[s_above - first_id].normal(mid[0], mid[1], mid[2]);
+            let dot = nbelow[0] * nabove[0] + nbelow[1] * nabove[1] + nbelow[2] * nabove[2];
+            if dot > 1.0 - 1e-9 {
+                continue;
+            }
+            let curve_id = curves.len();
+            let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
+            let bpt = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
+            let mut crease =
+                make_segment_curve(curve_id, -1, [s_below, s_above], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
+            crease.native = true;
+            crease.corner_start = corner_idx[pi][e] as i64;
+            crease.corner_end = corner_idx[pi][e2] as i64;
+            corners[crease.corner_start as usize].curve_ends.push((curve_id, 0));
+            corners[crease.corner_end as usize].curve_ends.push((curve_id, 1));
+            curves.push(crease);
+        }
+    }
+
+    // Cap rim segments (caps are planar; rims are the end profiles' edges).
+    for (cap, pi, seg, use_b) in [(cap_bottom, 0usize, 0usize, false), (cap_top, m - 1, m - 2, true)] {
+        let np = profs[pi].len() / 2;
+        for e in 0..np {
+            let e2 = (e + 1) % np;
+            let pos = if use_b {
+                carriers[seg].iter().position(|car| car.b_edge == e)
+            } else {
+                carriers[seg].iter().position(|car| car.a_edge == e)
+            };
+            let Some(cc) = pos else { continue };
+            let s_side = side_id(seg, cc);
+            let v0x = profs[pi][e * 2];
+            let v0z = profs[pi][e * 2 + 1];
+            let v1x = profs[pi][e2 * 2];
+            let v1z = profs[pi][e2 * 2 + 1];
+            let curve_id = curves.len();
+            let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
+            let bpt = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
+            let mut rim =
+                make_segment_curve(curve_id, -1, [s_side, cap], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
+            rim.native = true;
+            rim.corner_start = corner_idx[pi][e] as i64;
+            rim.corner_end = corner_idx[pi][e2] as i64;
             corners[rim.corner_start as usize].curve_ends.push((curve_id, 0));
             corners[rim.corner_end as usize].curve_ends.push((curve_id, 1));
             curves.push(rim);

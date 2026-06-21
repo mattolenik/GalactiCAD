@@ -11,6 +11,72 @@ export function polygon2dWindingSign(vertices: [number, number][]): 1 | -1 {
     return area < 0 ? -1 : 1
 }
 
+/** Index of the polygon edge (start-vertex index) closest to profile-space point (px, pz). */
+export function closestPolygonEdge(verts: ReadonlyArray<readonly [number, number]>, px: number, pz: number): number {
+    const N = verts.length
+    let minDist = Infinity
+    let closestEdge = 0
+    for (let j = N - 1, i = 0; i < N; j = i, i++) {
+        const ex = verts[i]![0] - verts[j]![0]
+        const ey = verts[i]![1] - verts[j]![1]
+        const wx = px - verts[j]![0]
+        const wy = pz - verts[j]![1]
+        const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey)))
+        const bx = wx - ex * t
+        const by = wy - ey * t
+        const dd = bx * bx + by * by
+        if (dd < minDist) {
+            minDist = dd
+            closestEdge = j
+        }
+    }
+    return closestEdge
+}
+
+/**
+ * Signed distance to the polygon (true segment distance, even-odd inside test)
+ * and the unit gradient (outward, i.e. the direction of increasing signed
+ * distance) at profile-space point (px, pz). Negative inside. This is the
+ * CPU mirror of the polygon SDF the loft field blends; used to Newton-project
+ * analytic crease samples back onto the true blended surface.
+ */
+export function polygon2dSignedDistance(
+    verts: ReadonlyArray<readonly [number, number]>,
+    px: number,
+    pz: number,
+): { d: number; gx: number; gz: number } {
+    const n = verts.length
+    let bestD2 = Infinity
+    let fx = px
+    let fz = pz
+    let inside = false
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+        const vix = verts[i]![0]
+        const viz = verts[i]![1]
+        const vjx = verts[j]![0]
+        const vjz = verts[j]![1]
+        if (viz > pz !== vjz > pz && px < ((vjx - vix) * (pz - viz)) / (vjz - viz) + vix) inside = !inside
+        const ex = vix - vjx
+        const ez = viz - vjz
+        const t = Math.max(0, Math.min(1, ((px - vjx) * ex + (pz - vjz) * ez) / (ex * ex + ez * ez || 1)))
+        const cx = vjx + ex * t
+        const cz = vjz + ez * t
+        const dd = (px - cx) * (px - cx) + (pz - cz) * (pz - cz)
+        if (dd < bestD2) {
+            bestD2 = dd
+            fx = cx
+            fz = cz
+        }
+    }
+    const d = Math.sqrt(bestD2)
+    let gx = px - fx
+    let gz = pz - fz
+    const gl = Math.hypot(gx, gz) || 1
+    gx /= gl
+    gz /= gl
+    return inside ? { d: -d, gx: -gx, gz: -gz } : { d, gx, gz }
+}
+
 function sameVertex(a: [number, number], b: [number, number]): boolean {
     return Math.abs(a[0] - b[0]) <= 1e-9 && Math.abs(a[1] - b[1]) <= 1e-9
 }

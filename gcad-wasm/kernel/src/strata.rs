@@ -88,12 +88,21 @@ pub struct LoftSideParams {
     pub pos_z: f64,
     pub seg_y0: f64,
     pub seg_h: f64,
+    /// Edge A as a SEGMENT: start `(a_x,a_z)` → end `(a_x1,a_z1)`, outward unit
+    /// normal `(a_nx,a_nz)`. The field blends the per-edge *segment* signed
+    /// distances (not the infinite supporting lines) so it tracks the true
+    /// blended-polygon SDF through profile-vertex regions instead of bowing off
+    /// along the line.
     pub a_x: f64,
     pub a_z: f64,
+    pub a_x1: f64,
+    pub a_z1: f64,
     pub a_nx: f64,
     pub a_nz: f64,
     pub b_x: f64,
     pub b_z: f64,
+    pub b_x1: f64,
+    pub b_z1: f64,
     pub b_nx: f64,
     pub b_nz: f64,
 }
@@ -121,21 +130,51 @@ fn twisted_eval_local(prm: &TwistedSideParams, lx: f64, ly: f64, lz: f64) -> (f6
     (g, grad)
 }
 
+/// Signed distance (+ xz-gradient) of `(qx,qz)` to a 2D edge SEGMENT
+/// `(x0,z0)→(x1,z1)` with outward unit normal `(nx,nz)`. Equals the signed
+/// supporting-line distance when the foot lies on the segment interior, and the
+/// signed distance to the nearer endpoint past an end — i.e. the per-edge term of
+/// the true polygon SDF inside this edge's Voronoi region. Sign = side of the
+/// supporting line (outward positive), correct through a convex corner.
+#[inline]
+fn seg_signed_dist(qx: f64, qz: f64, x0: f64, z0: f64, x1: f64, z1: f64, nx: f64, nz: f64) -> (f64, f64, f64) {
+    let line = (qx - x0) * nx + (qz - z0) * nz; // signed line distance (n is unit outward)
+    let ex = x1 - x0;
+    let ez = z1 - z0;
+    let len2 = ex * ex + ez * ez;
+    if len2 < 1e-18 {
+        return (line, nx, nz); // degenerate edge → fall back to the line
+    }
+    let tt = ((qx - x0) * ex + (qz - z0) * ez) / len2;
+    if tt > 0.0 && tt < 1.0 {
+        return (line, nx, nz); // foot on the segment interior → exact line distance
+    }
+    // Past an endpoint: distance to that vertex, signed by the supporting-line side.
+    let (vx, vz) = if tt <= 0.0 { (x0, z0) } else { (x1, z1) };
+    let dx = qx - vx;
+    let dz = qz - vz;
+    let d = (dx * dx + dz * dz).sqrt();
+    if d < 1e-12 {
+        return (0.0, nx, nz); // exactly at the vertex
+    }
+    let sgn = if line >= 0.0 { 1.0 } else { -1.0 };
+    (sgn * d, sgn * dx / d, sgn * dz / d)
+}
+
 /// Evaluate the loft-side raw field g and its LOCAL gradient. Returns
-/// `(g, grad_local)`. Port of `evalLocal` in `makeLoftSideStratum`.
+/// `(g, grad_local)`. The field blends the two adjacent edges' SEGMENT signed
+/// distances (vertex-aware), so it equals the true blended-polygon SDF surface
+/// within the carrier's patch + adjacent vertex regions, instead of the bowing
+/// edge-LINE blend of the original port.
 fn loft_eval_local(prm: &LoftSideParams, lx: f64, ly: f64, lz: f64) -> (f64, [f64; 3]) {
     let qx = lx - prm.pos_x;
     let qy = ly - prm.pos_y;
     let qz = lz - prm.pos_z;
     let t = (qy - prm.seg_y0) / prm.seg_h;
-    let l_a = (qx - prm.a_x) * prm.a_nx + (qz - prm.a_z) * prm.a_nz;
-    let l_b = (qx - prm.b_x) * prm.b_nx + (qz - prm.b_z) * prm.b_nz;
-    let grad = [
-        (1.0 - t) * prm.a_nx + t * prm.b_nx,
-        (l_b - l_a) / prm.seg_h,
-        (1.0 - t) * prm.a_nz + t * prm.b_nz,
-    ];
-    ((1.0 - t) * l_a + t * l_b, grad)
+    let (d_a, dax, daz) = seg_signed_dist(qx, qz, prm.a_x, prm.a_z, prm.a_x1, prm.a_z1, prm.a_nx, prm.a_nz);
+    let (d_b, dbx, dbz) = seg_signed_dist(qx, qz, prm.b_x, prm.b_z, prm.b_x1, prm.b_z1, prm.b_nx, prm.b_nz);
+    let grad = [(1.0 - t) * dax + t * dbx, (d_b - d_a) / prm.seg_h, (1.0 - t) * daz + t * dbz];
+    ((1.0 - t) * d_a + t * d_b, grad)
 }
 
 /// Shared identity for stratum construction (the TS `StratumIdentity`).

@@ -66,7 +66,11 @@ function projectCentered(cam: FgCameraParams, x: number, y: number, z: number, o
     const ndcX = px / (cam.zoom * aspect)
     const ndcY = py / cam.zoom
     const clipX = ndcX + 2 * (cam.viewCenter[0] - 0.5)
-    const clipY = ndcY - 2 * (cam.viewCenter[1] - 0.5)
+    // Same sign on both axes — must mirror the overlay shader's `project`
+    // (feature_graph_overlay.wgsl), which matches the SDF raymarcher's symmetric
+    // `uv - viewCenter`. A negative Y here drifted picking off drawn markers by
+    // the editor height when the editor docks to the top (portrait).
+    const clipY = ndcY + 2 * (cam.viewCenter[1] - 0.5)
     out[0] = clipX * cam.resX * 0.5
     out[1] = clipY * cam.resY * 0.5
 }

@@ -8,11 +8,12 @@
 // y∈[-zoom,+zoom] to NDC [-1,+1], with `viewCenter` shifting the scene rect.
 //
 // Gizmo geometry is authored in a unit-scale "gizmo-local" space where 1.0
-// equals `gizmo.sizePx` framebuffer pixels. The vertex shaders convert local →
-// world via `world = gizmo.center + local * scale`, with
-// `scale = sizePx * worldPerPixel` and `worldPerPixel = 2*zoom/res.y`, so the
-// gizmo stays a constant pixel size regardless of zoom and rotation rings
-// project to correct ellipses when viewed at an angle.
+// equals `gizmo.sizeWorld` WORLD units. The vertex shaders convert local →
+// world via `world = gizmo.center + local * gizmo.sizeWorld`, so the gizmo is a
+// fixed WORLD size anchored to the object: it scales with zoom (grows on screen
+// as you zoom in) and rotation rings project to correct ellipses when viewed at
+// an angle. Arrowheads + line widths are sized in pixel space below (after
+// projection), so they stay a constant on-screen size regardless of zoom.
 //
 // Two draw paths share this module + bind group:
 //   - `lineVertexMain`/`lineFragmentMain`: axis shafts + tessellated rotation
@@ -45,8 +46,8 @@ struct Gizmo {
     orient: mat3x3f,
     // World-space center the gizmo is anchored to (object bbox center).
     center: vec3f,
-    // Gizmo radius in framebuffer pixels (local unit 1.0 == sizePx pixels).
-    sizePx: f32,
+    // Gizmo radius in WORLD units (local unit 1.0 == sizeWorld world units).
+    sizeWorld: f32,
     // Handle currently hovered / active, or -1. Handle id = axisId + kind*3,
     // where kind 0 = translate arrow, 1 = rotation ring (so 0..5).
     hoverHandle: i32,
@@ -79,7 +80,14 @@ fn project(world: vec3f) -> Proj {
     let ndcX = p.x / (camera.zoom * aspect);
     let ndcY = p.y / camera.zoom;
     let vcOffsetX = 2.0 * (camera.viewCenter.x - 0.5);
-    let vcOffsetY = -2.0 * (camera.viewCenter.y - 0.5);
+    // Both axes use the SAME sign. The SDF raymarcher (and the gizmo's own CPU
+    // hit-test in `gizmo-controller.mts#project`, plus `sdf.mts#updatePivotCursor`)
+    // apply viewCenter symmetrically as `uv - viewCenter` in x and y, so the
+    // overlay must too. The negated-Y this was copied from (mesh-viewer's opposite
+    // uv convention) drifted the drawn gizmo vertically by the editor height
+    // whenever viewCenter.y != 0.5 — i.e. when the editor docks to the top in
+    // portrait — while the hit regions stayed put. (See featuregraph fix e13def5c.)
+    let vcOffsetY = 2.0 * (camera.viewCenter.y - 0.5);
     var o: Proj;
     o.clip = vec2f(ndcX + vcOffsetX, ndcY + vcOffsetY);
     o.viewZ = p.z;
@@ -94,13 +102,11 @@ fn pixelsToClip(pix: vec2f) -> vec2f {
     return pix / (camera.res * 0.5);
 }
 
-// World units per framebuffer pixel for the orthographic preview camera.
-fn worldPerPixel() -> f32 {
-    return 2.0 * camera.zoom / camera.res.y;
-}
-
+// Local-unit → world scale. The gizmo is a fixed WORLD size, so this is just
+// `sizeWorld` (no zoom/resolution term) — the gizmo therefore scales with zoom
+// on screen and stays anchored to the object at the same world footprint.
 fn gizmoScale() -> f32 {
-    return gizmo.sizePx * worldPerPixel();
+    return gizmo.sizeWorld;
 }
 
 fn localToWorld(local: vec3f) -> vec3f {

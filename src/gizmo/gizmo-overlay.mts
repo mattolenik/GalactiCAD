@@ -8,11 +8,11 @@
  * camera struct has a much larger layout we don't need here).
  *
  * Geometry is authored once in unit-scale "gizmo-local" space (1.0 ==
- * `sizePx` framebuffer pixels) and transformed to world in the vertex shader
- * via `world = center + local * (sizePx * worldPerPixel)`, so the gizmo stays a
- * constant pixel size and the rings project to correct ellipses. See
- * `gizmo_overlay.wgsl` for the projection convention (shared with the
- * FeatureGraph overlay).
+ * `sizeWorld` world units) and transformed to world in the vertex shader
+ * via `world = center + local * sizeWorld`, so the gizmo is a fixed WORLD size
+ * (scales with zoom, anchored to the object) and the rings project to correct
+ * ellipses. See `gizmo_overlay.wgsl` for the projection convention (shared with
+ * the FeatureGraph overlay).
  *
  * Buffer layout
  * -------------
@@ -24,7 +24,7 @@
  *    localTip (vec3f) + localBack (vec3f) + meta (u32) + 4-byte pad. Drawn as a
  *    3-vertex billboarded arrowhead triangle per instance.
  *  - **Camera uniform**: 112 bytes (see {@link CAMERA_UNIFORM_BYTES}).
- *  - **Gizmo uniform**: 32 bytes (center + sizePx + hover/active handle +
+ *  - **Gizmo uniform**: 32 bytes (center + sizeWorld + hover/active handle +
  *    lineWidthPx + visible).
  *
  * No depth attachment: the gizmo always draws on top so handles stay grabbable.
@@ -50,7 +50,7 @@ const HEAD_STRIDE = 32
 /** Camera uniform size (bytes). Layout mirrors `OverlayCamera` in the shader. */
 const CAMERA_UNIFORM_BYTES = 112
 /** Gizmo uniform size (bytes). Layout mirrors `Gizmo` in the shader:
- * orient mat3x3f (48) + center vec3f + sizePx (16) + handles/lineWidth/visible (16) = 80. */
+ * orient mat3x3f (48) + center vec3f + sizeWorld (16) + handles/lineWidth/visible (16) = 80. */
 const GIZMO_UNIFORM_BYTES = 80
 
 /** Default shaft/ring line width in framebuffer pixels. */
@@ -286,7 +286,7 @@ export class GizmoOverlay {
      */
     setState(
         center: readonly [number, number, number],
-        sizePx: number,
+        sizeWorld: number,
         visible: boolean,
         orient: readonly number[],
         hoverHandle = -1,
@@ -299,7 +299,7 @@ export class GizmoOverlay {
         f[0] = orient[0]!; f[1] = orient[1]!; f[2] = orient[2]!; f[3] = 0
         f[4] = orient[3]!; f[5] = orient[4]!; f[6] = orient[5]!; f[7] = 0
         f[8] = orient[6]!; f[9] = orient[7]!; f[10] = orient[8]!; f[11] = 0
-        f[12] = center[0]; f[13] = center[1]; f[14] = center[2]; f[15] = sizePx
+        f[12] = center[0]; f[13] = center[1]; f[14] = center[2]; f[15] = sizeWorld
         this.#gizmoI32[16] = hoverHandle
         this.#gizmoI32[17] = activeHandle
         f[18] = lineWidthPx

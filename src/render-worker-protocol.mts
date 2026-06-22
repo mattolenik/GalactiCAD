@@ -270,7 +270,7 @@ export type MainToWorkerMessage =
           type: "setGizmo"
           visible: boolean
           center?: [number, number, number]
-          sizePx?: number
+          sizeWorld?: number
           hoverHandle?: number
           activeHandle?: number
           /** Column-major 3×3 world orientation for the rotation rings. */

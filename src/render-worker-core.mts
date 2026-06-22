@@ -39,7 +39,7 @@ import {
 } from "./feature-graph/feature-graph-overlay.mjs"
 import { GizmoOverlay } from "./gizmo/gizmo-overlay.mjs"
 import { nodePlacement, getNodeTranslation, setNodeTranslation, setNodeRotation } from "./gizmo/world-transform.mjs"
-import { GIZMO_DEFAULT_SIZE_PX } from "./gizmo/gizmo-geometry.mjs"
+import { GIZMO_DEFAULT_SIZE_WORLD } from "./gizmo/gizmo-geometry.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import type { Node } from "./scene/base.mjs"
@@ -272,8 +272,8 @@ export class RenderWorkerCore {
     #gizmoOverlay: GizmoOverlay | null = null
     #gizmoVisible = false
     #gizmoCenter: [number, number, number] = [0, 0, 0]
-    /** Gizmo radius in framebuffer pixels (constant on-screen size). */
-    #gizmoSizePx = GIZMO_DEFAULT_SIZE_PX
+    /** Gizmo radius in world units (fixed world size; scales with zoom). */
+    #gizmoWorldSize = GIZMO_DEFAULT_SIZE_WORLD
     #gizmoHoverHandle = -1
     #gizmoActiveHandle = -1
     /** Object world orientation (column-major 3×3) for the rotation rings. */
@@ -872,7 +872,7 @@ export class RenderWorkerCore {
             this.#gizmoOverlay = new GizmoOverlay(this.#helper, this.#format)
         }
         if (msg.center) this.#gizmoCenter = msg.center
-        if (msg.sizePx !== undefined) this.#gizmoSizePx = msg.sizePx
+        if (msg.sizeWorld !== undefined) this.#gizmoWorldSize = msg.sizeWorld
         if (msg.orient) this.#gizmoOrient = msg.orient
         this.#gizmoHoverHandle = msg.hoverHandle ?? -1
         this.#gizmoActiveHandle = msg.activeHandle ?? -1
@@ -1319,7 +1319,7 @@ export class RenderWorkerCore {
         const overlay = this.#gizmoOverlay
         if (!this.#gizmoVisible || !overlay) return
         overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
-        overlay.setState(this.#gizmoCenter, this.#gizmoSizePx, true, this.#gizmoOrient, this.#gizmoHoverHandle, this.#gizmoActiveHandle)
+        overlay.setState(this.#gizmoCenter, this.#gizmoWorldSize, true, this.#gizmoOrient, this.#gizmoHoverHandle, this.#gizmoActiveHandle)
         const pass = commandEncoder.beginRenderPass({
             label: "Gizmo Overlay",
             colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],

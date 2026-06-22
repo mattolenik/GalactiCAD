@@ -21,7 +21,7 @@ import { matColumn, eulerToFwd, fwdToEuler, matMul3 } from "./rotation.mjs"
 import {
     GIZMO_AXES,
     GIZMO_CENTER_GAP,
-    GIZMO_DEFAULT_SIZE_PX,
+    GIZMO_DEFAULT_SIZE_WORLD,
     GIZMO_RING_RADIUS,
     GIZMO_TIP,
     gizmoArrowHandle,
@@ -58,8 +58,6 @@ export interface GizmoHost {
         readonly isActivelyMoving: boolean
     }
     readonly viewCenter: Vec2f
-    /** Framebuffer height (device px) the overlay draws at — matches the shader's `res.y`. */
-    readonly fullHeight: number
 }
 
 /** Pointer-proximity thresholds (canvas CSS pixels). */
@@ -108,7 +106,7 @@ export class GizmoController {
     /** Pre-shift Rotate node id (0 = none) + its Euler, from the last placement query. */
     #rotateNodeId = 0
     #rotateBaseEuler: Vec3 = [0, 0, 0]
-    #sizePx = GIZMO_DEFAULT_SIZE_PX
+    #sizeWorld = GIZMO_DEFAULT_SIZE_WORLD
     #hoverHandle = -1
     #shown = false
     #drag: TranslateDrag | RotateDrag | null = null
@@ -346,11 +344,12 @@ export class GizmoController {
         const cssW = canvas.clientWidth
         const cssH = canvas.clientHeight
         const zoom = this.#host.controls.zoom
-        const fullH = this.#host.fullHeight
-        if (cssW <= 0 || cssH <= 0 || zoom <= 0 || fullH <= 0) return -1
+        if (cssW <= 0 || cssH <= 0 || zoom <= 0) return -1
 
         const invCam = new Mat4x4f(new Float32Array(this.#host.controls.viewTransform.data)).inverse()
-        const scale = (this.#sizePx * 2 * zoom) / fullH
+        // Fixed WORLD size — matches the shader's `gizmoScale()` (`gizmo.sizeWorld`),
+        // so the grabbable regions track the drawn gizmo at every zoom.
+        const scale = this.#sizeWorld
         const project = (p: Vec3): ScreenPt | null => this.#project(invCam, p, cssW, cssH, zoom)
 
         let best = -1

@@ -1470,9 +1470,6 @@ export class SDFRenderer {
             get viewCenter() {
                 return self.#viewCenter
             },
-            get fullHeight() {
-                return self.#fullHeight
-            },
         })
         const canvas = this.#preview.canvas
         canvas.addEventListener("click", (e: MouseEvent) => {

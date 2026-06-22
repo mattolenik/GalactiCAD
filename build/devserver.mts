@@ -596,7 +596,7 @@ const INJECTED_BRIDGE_SCRIPT = `
             var buildOverlayKeyBlocker = null;
             function buildOverlaySubText(gcadWasm) {
                 return gcadWasm
-                    ? "[App+Rust] The page will reload when the build is done.";
+                    ? "[App+Rust] The page will reload when the build is done."
                     : "[App] The page will reload when the build is done.";
             }
             function showBuildOverlay(gcadWasm) {

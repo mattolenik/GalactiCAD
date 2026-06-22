@@ -140,7 +140,13 @@ fn project(world: vec3f) -> Proj {
     let ndcX = p.x / (camera.zoom * aspect);
     let ndcY = p.y / camera.zoom;
     let vcOffsetX = 2.0 * (camera.viewCenter.x - 0.5);
-    let vcOffsetY = -2.0 * (camera.viewCenter.y - 0.5);
+    // Both axes use the SAME sign: the SDF raymarcher applies viewCenter as
+    // `uv - viewCenter` symmetrically in x and y (preview.wgsl `uvAspect`), so
+    // the overlay must too. (The mesh-viewer overlay this module was copied from
+    // negates Y for the mesh render's opposite uv convention — that sign is
+    // wrong here and shifted features vertically by the editor height whenever
+    // viewCenter.y != 0.5, i.e. when the editor docks to the top in portrait.)
+    let vcOffsetY = 2.0 * (camera.viewCenter.y - 0.5);
     var o: Proj;
     o.clip = vec2f(ndcX + vcOffsetX, ndcY + vcOffsetY);
     o.viewZ = p.z;

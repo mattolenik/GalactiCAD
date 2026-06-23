@@ -284,8 +284,18 @@ FORCE:
 # blend cone — measured ~23% faster octree-decide / ~12% faster export on blend-heavy
 # CAD (mechwarrior d4-9), mesh-identical. simd128 is baseline in all current browsers;
 # the kernel keeps a scalar fallback so non-simd targets (native tests) still build.
+#
+# wasm-pack regenerates pkg/package.json from the crate's Cargo version (0.1.0) on every
+# build, and build.rs can't rewrite package metadata, so the generated component manifest is
+# stamped with the git-derived VERSION (scripts/version — the same string baked into
+# gcad_kernel::version()) right after the build. The leading `v` is stripped so the manifest
+# version is valid semver (e.g. 0.0.0-<hash>). Re-runs on every VERSION change via the
+# .stamp <- .version (FORCE) guard.
 gcad-wasm/wasm/pkg/.stamp: $(GCAD_WASM_SRC)
 	RUSTFLAGS='-C target-feature=+simd128' wasm-pack build gcad-wasm/wasm --target web
+	ver='$(VERSION)'; ver="$${ver#v}"
+	jq --arg v "$$ver" '.version = $$v' gcad-wasm/wasm/pkg/package.json > gcad-wasm/wasm/pkg/package.json.tmp && mv gcad-wasm/wasm/pkg/package.json.tmp gcad-wasm/wasm/pkg/package.json
+	printf '\xf0\x9f\xa6\x80 stamped gcad-wasm component version: %s\n' "$$ver"
 	touch $@
 
 .PHONY: gcad-wasm

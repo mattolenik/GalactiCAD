@@ -125,7 +125,15 @@ export interface MeshViewerFeatureGlyphsSettings {
 }
 
 export interface GlobalSettings {
-    preview: { movementScale: number; selectionMode: SelectionMode; cameraRotationMethod: CameraRotationMethod }
+    preview: {
+        movementScale: number
+        selectionMode: SelectionMode
+        cameraRotationMethod: CameraRotationMethod
+        /** Auto-pivot: orbit center tracks the surface under the cursor (default true). Off = classic locked 3D cursor. */
+        cameraAutoPivot: boolean
+        /** HoverCam inspect mode: re-pick the surface under the cursor while orbiting (default false). */
+        cameraHoverInspect: boolean
+    }
     meshViewer: {
         translucentFaces: boolean
         wireframe: boolean
@@ -230,7 +238,13 @@ function defaultDocSettings(): DocumentSettings {
 
 function defaultGlobalSettings(): GlobalSettings {
     return {
-        preview: { movementScale: 0.5, selectionMode: "object", cameraRotationMethod: "rounded_arcball" },
+        preview: {
+            movementScale: 0.5,
+            selectionMode: "object",
+            cameraRotationMethod: "rounded_arcball",
+            cameraAutoPivot: true,
+            cameraHoverInspect: false,
+        },
         meshViewer: {
             translucentFaces: false,
             wireframe: false,

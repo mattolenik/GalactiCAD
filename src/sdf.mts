@@ -132,6 +132,15 @@ export class SDFRenderer {
     /** Last hover screen position and altKey, cached for replay when camera movement stops. */
     #lastHoverScreenPos: { x: number; y: number } | null = null
     #lastHoverAltKey = false
+    /** Rec 5: HoverCam inspect mode — re-pick the surface under the cursor while orbiting (opt-in). */
+    #cameraHoverInspect = false
+    /**
+     * Rec 1: world-space surface point under the cursor, captured from the hover
+     * readback (`info.hover.hitPos`). Lets rotate-start re-anchor the pivot
+     * SYNCHRONOUSLY — the async pick round-trip lands too late (mid/after the drag),
+     * leaving the orbit on the stale far pivot. Invalidated on any camera motion.
+     */
+    #hoverWorldHit: { sx: number; sy: number; world: [number, number, number] } | null = null
     /** Tracks previous frame's isActivelyMoving for motion transition detection. */
     #wasActivelyMoving = false
     /** Defer hover replay until after the settled frame is published (avoids stale first-hover). */
@@ -355,6 +364,43 @@ export class SDFRenderer {
             this.#controls.change$.subscribe(() => {
                 this.#needsRender = true
                 this.#updatePivotCursor()
+                // Any camera motion invalidates the cached screen→world hover hit
+                // (the mapping is camera-dependent). Refreshed by the next hover.
+                this.#hoverWorldHit = null
+            }),
+            // Rec 1: on rotate-start, re-anchor the orbit pivot to the surface under
+            // the cursor. Silent — no focus jump. setOrbitPivot no-ops if the pivot is
+            // locked, so the explicit 3D-cursor override wins. We re-anchor from the
+            // cached hover hit SYNCHRONOUSLY (the async pick lands too late to catch the
+            // start of the drag); only fall back to an async pick when there is no fresh
+            // hover hit under the cursor (e.g. you press without hovering first).
+            this.#controls.orbitStart$.subscribe(({ screenPos }) => {
+                if (this.#controls.pivotMode !== "auto") return
+                const cached = this.#hoverWorldHit
+                if (cached && Math.hypot(cached.sx - screenPos.x, cached.sy - screenPos.y) <= 16) {
+                    this.#controls.setOrbitPivot(vec3(cached.world[0], cached.world[1], cached.world[2]))
+                    return
+                }
+                this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
+                    this.#controls.setOrbitPivot(pos ? vec3(pos[0], pos[1], pos[2]) : null)
+                })
+            }),
+            // Rec 5 (HoverCam inspect mode, opt-in): while orbiting, keep the pivot on
+            // the surface under the moving cursor so the orbit hugs it for close-up
+            // inspection. Off by default; throttled to bound the per-drag pick cost.
+            this.#controls.orbitMove$.pipe(throttleTime(100)).subscribe(({ screenPos }) => {
+                if (!this.#cameraHoverInspect || this.#controls.pivotMode !== "auto") return
+                this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
+                    if (pos) this.#controls.setOrbitPivot(vec3(pos[0], pos[1], pos[2]))
+                })
+            }),
+            // Rec 4: explicit "frame here" (F) — frame the surface under the cursor.
+            this.#controls.frameRequest$.subscribe(() => {
+                const p = this.#lastHoverScreenPos
+                if (!p) return
+                this.pickPosAtScreen(p.x, p.y).then(pos => {
+                    if (pos) this.#controls.frameOnWorldPoint(vec3(pos[0], pos[1], pos[2]))
+                })
             })
         )
 
@@ -436,6 +482,10 @@ export class SDFRenderer {
         this.#featureGraphLineWidth = prev.featureGraphLineWidth
         this.#featureGraphDifferentiateSegments = prev.featureGraphDifferentiateSegments
         this.#selectionMode = global.preview.selectionMode
+        // Pivot policy: auto-pivot on (default) lets the orbit center track the
+        // surface under the cursor; off forces classic locked 3D-cursor behavior.
+        this.#controls.setAutoPivotEnabled(global.preview.cameraAutoPivot)
+        this.#cameraHoverInspect = global.preview.cameraHoverInspect
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
     }
@@ -561,6 +611,13 @@ export class SDFRenderer {
                 })) ?? []
                 this.#preview.updateSelectionInfo(msg.info)
                 this.#updateFaceHover(msg.info.hover ?? null)
+                // Rec 1: cache the world-space surface point under the cursor so a
+                // rotate-start can re-anchor the pivot synchronously (see orbitStart$).
+                const hoverHit = msg.info.hover?.hitPos
+                this.#hoverWorldHit =
+                    hoverHit && this.#lastHoverScreenPos
+                        ? { sx: this.#lastHoverScreenPos.x, sy: this.#lastHoverScreenPos.y, world: hoverHit }
+                        : null
                 if (this.#lastHoverScreenPos) {
                     this.hoverInfo$.next({ objectId: this.#hoveredObjectId, screenPos: this.#lastHoverScreenPos })
                 }
@@ -1601,6 +1658,11 @@ export class SDFRenderer {
         // up to 32 px outside still need a sliver visible.
         const visible = cssX >= -32 && cssX <= cssW + 32 && cssY >= -32 && cssY <= cssH + 32
         this.#preview.setPivotCursor(cssX, cssY, visible)
+    }
+
+    /** Rec 5: toggle HoverCam inspect mode at runtime (from Settings). Persisted globally by the caller. */
+    setCameraHoverInspect(enabled: boolean): void {
+        this.#cameraHoverInspect = enabled
     }
 
     set xrayMode(enabled: boolean) {

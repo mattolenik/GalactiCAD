@@ -14,10 +14,14 @@ export class SettingsModal extends BaseDialog<void> {
     #initialTheme: ThemeMode
     #initialDevToolsEnabled: boolean
     #initialEditorSettings: EditorSettings
+    #initialAutoPivot: boolean
+    #initialHoverInspect: boolean
     #onCameraModeChange: (method: CameraRotationMethod) => void
     #onThemeChange: (theme: ThemeMode) => void
     #onDevToolsChange: (enabled: boolean) => void
     #onEditorChange: (settings: EditorSettings) => void
+    #onAutoPivotChange: (enabled: boolean) => void
+    #onHoverInspectChange: (enabled: boolean) => void
 
     constructor(
         initialMode: CameraRotationMethod,
@@ -27,17 +31,25 @@ export class SettingsModal extends BaseDialog<void> {
         onCameraModeChange: (method: CameraRotationMethod) => void,
         onThemeChange: (theme: ThemeMode) => void,
         onDevToolsChange: (enabled: boolean) => void,
-        onEditorChange: (settings: EditorSettings) => void
+        onEditorChange: (settings: EditorSettings) => void,
+        initialAutoPivot: boolean,
+        initialHoverInspect: boolean,
+        onAutoPivotChange: (enabled: boolean) => void,
+        onHoverInspectChange: (enabled: boolean) => void
     ) {
         super()
         this.#initialMode = initialMode
         this.#initialTheme = initialTheme
         this.#initialDevToolsEnabled = initialDevToolsEnabled
         this.#initialEditorSettings = initialEditorSettings
+        this.#initialAutoPivot = initialAutoPivot
+        this.#initialHoverInspect = initialHoverInspect
         this.#onCameraModeChange = onCameraModeChange
         this.#onThemeChange = onThemeChange
         this.#onDevToolsChange = onDevToolsChange
         this.#onEditorChange = onEditorChange
+        this.#onAutoPivotChange = onAutoPivotChange
+        this.#onHoverInspectChange = onHoverInspectChange
         this.renderContent()
     }
 
@@ -153,6 +165,14 @@ export class SettingsModal extends BaseDialog<void> {
                     </select>
                 </div>
                 <div class="setting-row">
+                    <label for="auto-pivot" title="Orbit around the surface under the cursor instead of a fixed 3D cursor. Cmd/Ctrl+double-click still locks an explicit pivot.">Auto-pivot</label>
+                    <input type="checkbox" id="auto-pivot" />
+                </div>
+                <div class="setting-row">
+                    <label for="hover-inspect" title="HoverCam: while orbiting, keep the pivot on the surface under the moving cursor for close-up inspection.">Hover inspect</label>
+                    <input type="checkbox" id="hover-inspect" />
+                </div>
+                <div class="setting-row">
                     <label for="devtools">Developer tools</label>
                     <input type="checkbox" id="devtools" />
                 </div>
@@ -215,6 +235,10 @@ export class SettingsModal extends BaseDialog<void> {
         cameraSelect.value = this.#initialMode
         const devToolsCheckbox = this.dialog.querySelector("#devtools") as HTMLInputElement
         devToolsCheckbox.checked = this.#initialDevToolsEnabled
+        const autoPivotCheckbox = this.dialog.querySelector("#auto-pivot") as HTMLInputElement
+        autoPivotCheckbox.checked = this.#initialAutoPivot
+        const hoverInspectCheckbox = this.dialog.querySelector("#hover-inspect") as HTMLInputElement
+        hoverInspectCheckbox.checked = this.#initialHoverInspect
 
         const lineNumbersSelect = this.dialog.querySelector("#line-numbers") as HTMLSelectElement
         lineNumbersSelect.value = e.lineNumbers
@@ -306,6 +330,12 @@ export class SettingsModal extends BaseDialog<void> {
             () => this.#onDevToolsChange(devToolsCheckbox.checked),
             { signal }
         )
+
+        const autoPivotCheckbox = this.dialog.querySelector("#auto-pivot") as HTMLInputElement
+        autoPivotCheckbox.addEventListener("change", () => this.#onAutoPivotChange(autoPivotCheckbox.checked), { signal })
+
+        const hoverInspectCheckbox = this.dialog.querySelector("#hover-inspect") as HTMLInputElement
+        hoverInspectCheckbox.addEventListener("change", () => this.#onHoverInspectChange(hoverInspectCheckbox.checked), { signal })
 
         const editorInputs = [
             "#line-numbers",

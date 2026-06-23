@@ -125,6 +125,20 @@ export class CameraController {
     /** Optical center in [0,1] UV space (matches preview.wgsl viewCenter). Updated by host when editor overlaps view. */
     #viewCenter: Vec2f = vec2(0.5, 0.5)
 
+    /**
+     * Pivot policy. "auto" silently tracks the surface under the cursor (on
+     * rotate-start) and follows the view during pan/zoom — the orbit center is
+     * always near what you are looking at. "locked" keeps a fixed, explicitly
+     * placed anchor (the classic Blender-style 3D cursor), never auto-moving.
+     */
+    #pivotMode: "auto" | "locked" = "auto"
+    /**
+     * Whether auto-pivot is enabled at all. Off by default so a host that never
+     * opts in (e.g. the mesh viewer) keeps classic fixed-pivot behavior; the SDF
+     * preview turns it on from `preview.cameraAutoPivot` via {@link setAutoPivotEnabled}.
+     */
+    #autoPivotEnabled = false
+
     /** Emitted when camera state changes (rotate, pan, zoom). */
     readonly change$ = new Subject<CameraState>()
     /** Emitted on single click (screen position, shift, alt). */
@@ -133,6 +147,12 @@ export class CameraController {
     readonly doubleClick$ = new Subject<{ screenPos: Vec2f; metaKey: boolean; ctrlKey: boolean }>()
     /** Emitted on hover when not dragging (screen position, alt). */
     readonly hover$ = new Subject<{ screenPos: Vec2f; altKey: boolean }>()
+    /** Emitted when a rotate (orbit) drag begins — host re-anchors the pivot under the cursor. */
+    readonly orbitStart$ = new Subject<{ screenPos: Vec2f }>()
+    /** Emitted on pointer move during a rotate drag — host may re-anchor (HoverCam inspect mode). */
+    readonly orbitMove$ = new Subject<{ screenPos: Vec2f }>()
+    /** Emitted on the "frame here" key (F) — host picks the surface under the cursor and frames it. */
+    readonly frameRequest$ = new Subject<void>()
 
     /** Orthographic half-height for WGSL (`camera.zoom`), mesh rasterization, push-pull. */
     get zoom(): number {
@@ -165,6 +185,9 @@ export class CameraController {
                 this.#applyOrthoDeltaToCursor(dOrtho, cursor.x, cursor.y)
             }
             this.#updateTransforms()
+            // Rec 2: keep the pivot at the view center as you zoom, so it stays on
+            // screen and a later rotate doesn't swing around an off-screen point.
+            this.#reanchorPivotToView()
             this.#saveCameraState()
         }
         this.#zoomController.onRotate = angleDelta => {
@@ -282,6 +305,10 @@ export class CameraController {
             this.setViewBottom()
         } else if (e.code === "Backquote") {
             this.resetView()
+        } else if (e.code === "KeyF") {
+            // Rec 4: explicit "frame here" — host picks the surface under the
+            // cursor and frames it. Never automatic.
+            this.frameRequest$.next()
         } else {
             return
         }
@@ -360,6 +387,9 @@ export class CameraController {
                 this.isDragging = true
                 this.#hasDragged = false
                 this.#last = vec2(e.clientX, e.clientY)
+                // Rec 1: re-anchor the orbit pivot to the surface under the
+                // cursor at the moment rotation begins (host runs the pick).
+                this.orbitStart$.next({ screenPos: vec2(e.clientX, e.clientY) })
             }
             this.#host.canvas.setPointerCapture(e.pointerId)
         } else if (e.button === 2) {
@@ -399,7 +429,10 @@ export class CameraController {
         this.#last.set(pvec)
 
         if (this.#dragMode === "rotate") {
-            // Rotation is handled by Trackball (rounded arcball) via its onDraw callback
+            // Rotation is handled by Trackball (rounded arcball) via its onDraw callback.
+            // Rec 5 (HoverCam inspect mode): host may re-pick the surface under the
+            // moving cursor so the orbit hugs it. Throttled + gated host-side.
+            if (this.#hasDragged) this.orbitMove$.next({ screenPos: vec2(e.clientX, e.clientY) })
         } else if (this.#dragMode === "pan") {
             // Orthographic-style preview: visible height = 2 * zoom (see preview.wgsl pixelSizeY).
             // Base scale matches on-screen geometry (push-pull.mts worldPerPixel); below PAN_ZOOM_REF
@@ -421,6 +454,9 @@ export class CameraController {
 
         if (this.#dragMode !== "rotate") {
             this.#updateTransforms()
+            // Rec 2: keep the pivot at the view center while panning (silent — the
+            // scene does not move, only the orbit anchor follows). No-op if locked.
+            this.#reanchorPivotToView()
         }
     }
 
@@ -445,6 +481,8 @@ export class CameraController {
     resetView(): void {
         this.#lastFocusWorld = null
         this.#pivot = new Vec3f()
+        // Returning to the default view also clears any explicit pivot lock.
+        if (this.#autoPivotEnabled) this.#pivotMode = "auto"
         const targetRotation = Quaternion.fromEuler(Math.PI / 4, 0, 0, "YXZ")
         const targetTrans = new Vec3f()
         const startRotation = this.#rotation.clone()
@@ -469,22 +507,94 @@ export class CameraController {
     }
 
     /**
-     * Orbit center in scene space: set to the pick hit `xyz`.
-     * After updating pivot, snap the hit onto the central view ray so it appears centered.
+     * Explicit "lock the orbit here" (Cmd/Ctrl+double-click): set the pivot to the
+     * pick hit and LOCK it so auto-tracking no longer moves it. The Blender-style
+     * 3D-cursor anchor, demoted to an opt-in override. The move is silent (no view
+     * jump) — the clicked surface point simply becomes the orbit center in place.
      */
     setPivotToWorldHit(hitWorld: Vec3f): void {
-        this.#pivot = hitWorld.clone()
+        this.#focusPivot(hitWorld, /* lock */ true)
+    }
+
+    /**
+     * Explicit "frame here" (F key): move the orbit pivot to the pick hit (silent, no
+     * jump) and keep auto-tracking active so subsequent rotates still anchor to the cursor.
+     */
+    frameOnWorldPoint(hitWorld: Vec3f): void {
+        this.#focusPivot(hitWorld, /* lock */ false)
+    }
+
+    /** Shared body for the explicit focus gestures: silently move the orbit pivot to `hitWorld`, set mode. */
+    #focusPivot(hitWorld: Vec3f, lock: boolean): void {
         this.#lastFocusWorld = null
-        this.#syncTrackball()
-        this.#updateTransforms()
-        const d = this.#translationDeltaSnapWorldPointToCentralRay(hitWorld)
-        if (d.length() > 1e-20) {
-            this.#cameraTranslation.x += d.x
-            this.#cameraTranslation.y += d.y
-            this.#cameraTranslation.z += d.z
-            this.#updateTransforms()
-        }
+        this.#setPivotSilently(hitWorld)
+        this.#pivotMode = lock || !this.#autoPivotEnabled ? "locked" : "auto"
         this.#saveCameraState()
+    }
+
+    /** True when the pivot should auto-track: the global setting is on AND no explicit lock is set. */
+    get #autoPivotActive(): boolean {
+        return this.#autoPivotEnabled && this.#pivotMode === "auto"
+    }
+
+    /** Current pivot policy (host checks this to skip the under-cursor pick when locked). */
+    get pivotMode(): "auto" | "locked" {
+        return this.#pivotMode
+    }
+
+    /**
+     * Apply the persisted auto-pivot preference. Disabling forces classic locked
+     * behavior; enabling restores auto-tracking. Guarded on an actual change so the
+     * repeated calls from `#loadPreviewSettings` (construct + every tab switch) don't
+     * clear an explicit Cmd/Ctrl+double-click lock the user set.
+     */
+    setAutoPivotEnabled(enabled: boolean): void {
+        if (enabled === this.#autoPivotEnabled) return
+        this.#autoPivotEnabled = enabled
+        this.#pivotMode = enabled ? "auto" : "locked"
+    }
+
+    /**
+     * Re-anchor the orbit pivot to a world-space surface point (the depth-buffer hit
+     * under the cursor at rotate-start, or during HoverCam inspect). Silent — the
+     * rendered image does not move. No-op unless auto-pivot is active (respects an
+     * explicit lock / the disabled setting); `null` (no surface) leaves the pivot.
+     */
+    setOrbitPivot(world: Vec3f | null): void {
+        if (!world || !this.#autoPivotActive) return
+        this.#setPivotSilently(world)
+        this.#saveCameraState()
+    }
+
+    /**
+     * Re-anchor the orbit pivot to `world`. The rendered image does NOT depend on the
+     * pivot — in `screen(W) = (V⁻¹·W − cameraPosition).xy/zoom` the pivot's effect on
+     * `cameraPosition (= pivot+ẑ)` and on `V⁻¹` cancels, leaving `(R⁻¹·(W −
+     * camTranslation)).xy/zoom`. So moving the pivot changes only the orbit center;
+     * no camTranslation compensation is needed and the view never jumps.
+     */
+    #setPivotSilently(world: Vec3f): void {
+        this.#pivot = world.clone()
+        this.#updateTransforms()
+    }
+
+    /**
+     * Rec 2: keep the orbit pivot in front of the camera. Move it onto the optical
+     * axis at its current view depth, so after a pan/zoom the pivot stays on screen
+     * instead of drifting off (which makes a later rotate swing around an off-screen
+     * point — worst when zoomed in close). Pivot-only move → no view change. Auto mode
+     * only; assumes {@link #cameraTranslation}/{@link #rotation} are current.
+     *
+     * Screen-center ⟺ `(R⁻¹·(W − camTranslation)).xy = 0` ⟺ `W` on the camera-forward
+     * axis. Preserve the current depth `s = (R⁻¹·(pivot − camTranslation)).z`, so
+     * `W = camTranslation + s·(R·ẑ)`.
+     */
+    #reanchorPivotToView(): void {
+        if (!this.#autoPivotActive) return
+        const R = this.#quaternionToMatrix(this.#rotation)
+        const depth = R.inverse().transformVector(this.#pivot.subtract(this.#cameraTranslation)).z
+        const forward = R.transformVector(vec3(0, 0, 1))
+        this.#setPivotSilently(this.#cameraTranslation.add(forward.scale(depth)))
     }
 
     /**
@@ -594,9 +704,14 @@ export class CameraController {
     }
 
     /**
-     * Orbit compensation: adjust #cameraTranslation so the scene-space pivot stays fixed on screen
-     * when rotation changes. The visible camera transform is effectively T(translation) * R, so
-     * keep the pivot's old camera-space vector and solve for the translation needed after R changes.
+     * Orbit compensation: adjust #cameraTranslation so the world point at the pivot
+     * stays fixed on screen when the rotation changes (the scene rotates around it).
+     *
+     * The render projection is `screen(W) = (R⁻¹·(W − camTranslation)).xy / zoom`
+     * (the pivot cancels — see {@link #setPivotSilently}). Holding `screen(pivot)`
+     * fixed across `R₀→R₁` keeps `R⁻¹·(pivot − camTranslation)` constant, giving
+     * `camTranslation_new = pivot − R₁·R₀⁻¹·(pivot − camTranslation_old)`. EXACT for
+     * any pivot location — including the off-center points the auto-pivot re-anchors to.
      */
     #applyOrbitCompensation(oldQ: Quaternion, newQ: Quaternion): void {
         const oldMat = this.#quaternionToMatrix(oldQ)
@@ -714,6 +829,9 @@ export class CameraController {
         this.select$.complete()
         this.doubleClick$.complete()
         this.hover$.complete()
+        this.orbitStart$.complete()
+        this.orbitMove$.complete()
+        this.frameRequest$.complete()
     }
 
 }

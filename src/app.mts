@@ -1643,6 +1643,8 @@ class App {
         const initialTheme = g.app.theme ?? "dark"
         const initialDevToolsEnabled = g.app.devToolsEnabled ?? false
         const initialEditorSettings = g.app.editor
+        const initialAutoPivot = g.preview.cameraAutoPivot ?? true
+        const initialHoverInspect = g.preview.cameraHoverInspect ?? false
         const modal = new SettingsModal(
             initialMode,
             initialTheme,
@@ -1672,6 +1674,16 @@ class App {
                 const narrow = window.matchMedia("(max-width: 600px)").matches
                 this.editor.setOptions(settings)
                 this.editor.setLineNumbersForcedOff(narrow)
+            },
+            initialAutoPivot,
+            initialHoverInspect,
+            enabled => {
+                this.#settings.updateGlobal({ preview: { cameraAutoPivot: enabled } })
+                this.renderer?.controls.setAutoPivotEnabled(enabled)
+            },
+            enabled => {
+                this.#settings.updateGlobal({ preview: { cameraHoverInspect: enabled } })
+                this.renderer?.setCameraHoverInspect(enabled)
             }
         )
         await modal.show()

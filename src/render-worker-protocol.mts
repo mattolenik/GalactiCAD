@@ -445,7 +445,13 @@ export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
     fresnelIntensity: 0.27,
     aoStrength: 0.2,
     aoRadius: 1,
-    aoSteps: 2,
+    // Static-frame AO sample count. AO is baked in the deferred geometry pass
+    // that static frames reuse, so a high static count is effectively free
+    // per-frame — and it must be high: at only 2 samples the AO value quantizes
+    // coarsely across a smooth-shaded extrude side and reads as large discrete
+    // "segments" (bands) on what should be one continuous gradient. Motion drops
+    // to `aoStepsMoving`.
+    aoSteps: 8,
     aoStepsMoving: 2, // keep AO (at reduced sample count) during motion; <=0 would disable it while moving
     aoBias: 0.5,
 }

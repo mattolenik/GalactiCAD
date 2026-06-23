@@ -111,18 +111,24 @@ const POLYGON_SMOOTH_NORMAL_DOT = 0.95
 
 /**
  * Per-vertex outward unit normal for smooth (Phong) side-wall shading of an
- * extruded profile — parallel to {@link Polygon2D.vertices}. A vertex whose two
- * adjacent edges turn by more than ~18° is a genuine corner and stores the zero
- * sentinel `[0, 0]`; the extrude preview shader falls back to the flat per-edge
- * normal there so corners stay sharp. Every other vertex stores the unit normal
- * of the averaged adjacent-edge tangent, oriented **outward via the polygon SDF
- * sign** (the same outward convention the GPU gradient `combined.zw` uses). This
- * precomputes the per-vertex normal once, with full CPU precision and a robust
- * orientation probe, instead of the old per-pixel in-shader blend whose single
- * winding-derived sign distorted the shading even at fine tessellation.
+ * extruded profile — parallel to {@link Polygon2D.vertices}. A genuine **corner**
+ * stores the zero sentinel `[0, 0]` (the extrude preview shader falls back to the
+ * flat per-edge normal there so the crease stays sharp); every other vertex stores
+ * the unit normal of the averaged adjacent-edge tangent, oriented **outward via the
+ * polygon SDF sign** (the same outward convention the GPU gradient `combined.zw`
+ * uses).
+ *
+ * A vertex is a corner only when it is an **authored node** (`isAnchor[i]`) whose
+ * adjacent edges turn by more than ~18°. Interior bezier-tessellation samples
+ * (`isAnchor[i] === false`) are smooth by construction and are NEVER corners — a
+ * tightly-curved span where a single chord turns past the threshold is still a
+ * smooth curve, not a crease, and flagging it produced false shading bands across
+ * the curve. `isAnchor` omitted/null (a hand-specified polygon with no curve
+ * provenance) treats every vertex as authored, i.e. the pure turn test.
  */
 export function computePolygonVertexNormals(
     verts: ReadonlyArray<readonly [number, number]>,
+    isAnchor?: ReadonlyArray<boolean> | null,
 ): [number, number][] {
     const n = verts.length
     const out: [number, number][] = new Array(n)
@@ -146,8 +152,9 @@ export function computePolygonVertexNormals(
         const lp = Math.hypot(tpx, tpy) || 1
         const ln = Math.hypot(tnx, tny) || 1
         tpx /= lp; tpy /= lp; tnx /= ln; tny /= ln
-        if (tpx * tnx + tpy * tny < POLYGON_SMOOTH_NORMAL_DOT) {
-            out[i] = [0, 0] // corner sentinel
+        const authored = isAnchor ? (isAnchor[i] ?? false) : true
+        if (authored && tpx * tnx + tpy * tny < POLYGON_SMOOTH_NORMAL_DOT) {
+            out[i] = [0, 0] // corner sentinel (authored node with a real turn)
             continue
         }
         let ax = tpx + tnx, ay = tpy + tny
@@ -293,7 +300,7 @@ export class Polygon2D extends Node {
      *  after construction). Uploaded into the appended normal region of the shared
      *  polygon buffer for the extrude preview's smooth side shading. */
     getVertexNormals(): [number, number][] {
-        if (!this.#vertexNormals) this.#vertexNormals = computePolygonVertexNormals(this.vertices)
+        if (!this.#vertexNormals) this.#vertexNormals = computePolygonVertexNormals(this.vertices, this.vertexIsAnchor)
         return this.#vertexNormals
     }
 

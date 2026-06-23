@@ -532,8 +532,12 @@ export class CameraController {
         this.#saveCameraState()
     }
 
-    /** True when the pivot should auto-track: the global setting is on AND no explicit lock is set. */
-    get #autoPivotActive(): boolean {
+    /**
+     * True when the pivot should auto-track: the global setting is on AND no explicit
+     * lock is set. The host also uses this to hide the pivot cursor while auto-tracking
+     * (the orbit anchor moves every gesture, so the marker is just noise).
+     */
+    get autoPivotActive(): boolean {
         return this.#autoPivotEnabled && this.#pivotMode === "auto"
     }
 
@@ -552,6 +556,9 @@ export class CameraController {
         if (enabled === this.#autoPivotEnabled) return
         this.#autoPivotEnabled = enabled
         this.#pivotMode = enabled ? "auto" : "locked"
+        // Re-emit so the host refreshes the pivot-cursor visibility immediately
+        // (transforms are unchanged — the mode doesn't affect them).
+        this.#updateTransforms()
     }
 
     /**
@@ -561,7 +568,7 @@ export class CameraController {
      * explicit lock / the disabled setting); `null` (no surface) leaves the pivot.
      */
     setOrbitPivot(world: Vec3f | null): void {
-        if (!world || !this.#autoPivotActive) return
+        if (!world || !this.autoPivotActive) return
         this.#setPivotSilently(world)
         this.#saveCameraState()
     }
@@ -590,7 +597,7 @@ export class CameraController {
      * `W = camTranslation + s·(R·ẑ)`.
      */
     #reanchorPivotToView(): void {
-        if (!this.#autoPivotActive) return
+        if (!this.autoPivotActive) return
         const R = this.#quaternionToMatrix(this.#rotation)
         const depth = R.inverse().transformVector(this.#pivot.subtract(this.#cameraTranslation)).z
         const forward = R.transformVector(vec3(0, 0, 1))

@@ -1624,6 +1624,12 @@ export class SDFRenderer {
      * when the camera is idle.
      */
     #updatePivotCursor(): void {
+        // Auto-pivot re-anchors the orbit center every gesture, so the 3D-cursor
+        // marker is just noise — only show it for an explicit (locked) pivot.
+        if (this.#controls.autoPivotActive) {
+            this.#preview.setPivotCursor(0, 0, false)
+            return
+        }
         const canvas = this.#preview.canvas
         const cssW = canvas.clientWidth
         const cssH = canvas.clientHeight

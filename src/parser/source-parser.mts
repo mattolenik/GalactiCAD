@@ -31,6 +31,39 @@ export interface SourceLocation {
 }
 
 /**
+ * Write-back target for the transform gizmo: the source spans needed to edit or
+ * append a `.shift(...)` on the shape call at a given position.
+ */
+export interface GizmoTransformTarget {
+    location: SourceLocation
+    /** Start offset of the fluent chain (user coords) — for wrapping in `translate(...)`. */
+    chainStart: number
+    /** End offset of the chain (user coords) — where to append a new `.shift(...)`. */
+    insertOffset: number
+    /** Whether a `.shift(...)` exists anywhere in the chain (literal or not). */
+    hasShift: boolean
+    /** Whether the existing shift's args are numeric literals (editable in place). */
+    shiftIsLiteral: boolean
+    /** Source range of the last shift's position args, when literal. */
+    shiftRange: { start: number; end: number } | null
+    /** Parsed value of the last shift's literal args (absolute pos; last `.shift` wins), or null. */
+    shiftValue: [number, number, number] | null
+    /** Whether a `.rotate(...)` appears BEFORE any `.shift` (maps to the object's local rotation). */
+    hasPreShiftRotate: boolean
+    /** Count of pre-shift `.rotate(...)` calls in the chain. Incremental rot edits are only
+     * sound when this is 1 (a single literal rotate == the absolute rot; multiple compose). */
+    preShiftRotateCount: number
+    /** Whether that pre-shift rotate's args are numeric literals (editable in place). */
+    rotateIsLiteral: boolean
+    /** Source range of the last pre-shift rotate's args, when literal. */
+    rotateRange: { start: number; end: number } | null
+    /** Parsed Euler of the last pre-shift literal rotate, for composition. */
+    rotateBaseEuler: [number, number, number] | null
+    /** Offset to insert a new pre-shift `.rotate(...)`: before the first `.shift`, else chain end. */
+    rotateInsertOffset: number
+}
+
+/**
  * Parsed shape call with source location and extracted arguments
  */
 export interface ParsedShapeCall {
@@ -1335,6 +1368,122 @@ export class SourceParser {
                 endColumn: endLoc.column,
                 functionName: "polygon2d"
             }
+        }
+    }
+
+    /**
+     * Find the shape call at a position and report its `.shift(...)` write-back
+     * target (range to edit in place, or chain spans to append/wrap). Used by the
+     * transform gizmo to translate the selected object in source.
+     */
+    findTransformTargetAtPosition(src: string, line: number, column: number, sourceFile?: ts.SourceFile): GizmoTransformTarget | null {
+        const sf = sourceFile && sourceFile.getFullText() === wrapSource(src) ? sourceFile : parseSource(src)
+        const candidates: GizmoTransformTarget[] = []
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node)) {
+                const fluent = this.#getFluentChainInfo(node)
+                if (fluent) {
+                    const t = this.#extractTransformTarget(node, sf, fluent)
+                    if (t) candidates.push(t)
+                }
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sf)
+
+        // Prefer an exact start match; among ties (same chain root) take the
+        // outermost call (largest end = full chain with all fluent methods).
+        let best: GizmoTransformTarget | null = null
+        for (const c of candidates) {
+            if (c.location.startLine === line && c.location.startColumn === column) {
+                if (!best || c.insertOffset > best.insertOffset) best = c
+            }
+        }
+        if (best) return best
+        // Fallback: innermost call whose range contains the position.
+        const contains = (loc: SourceLocation) =>
+            !(line < loc.startLine || line > loc.endLine || (line === loc.startLine && column < loc.startColumn) || (line === loc.endLine && column > loc.endColumn))
+        for (const c of candidates) {
+            if (!contains(c.location)) continue
+            if (!best || c.insertOffset < best.insertOffset) best = c
+        }
+        return best
+    }
+
+    #extractTransformTarget(callNode: ts.CallExpression, sf: ts.SourceFile, fluent: { operator: string; rootIdentifier: ts.Identifier }): GizmoTransformTarget | null {
+        // Walk the chain in order, tracking each method's call node so we can find
+        // the insertion point just before the first `.shift`.
+        const chain: Array<{ method: string; args: ts.Expression[]; call: ts.CallExpression }> = []
+        let expr: ts.Node = callNode
+        while (true) {
+            if (ts.isCallExpression(expr)) {
+                if (ts.isPropertyAccessExpression(expr.expression)) {
+                    chain.unshift({ method: expr.expression.name.getText(), args: [...expr.arguments], call: expr })
+                }
+                expr = expr.expression
+            } else if (ts.isPropertyAccessExpression(expr)) {
+                expr = expr.expression
+            } else break
+        }
+
+        let shiftArgs: ts.Expression[] | null = null
+        let hasShift = false
+        let firstShiftCall: ts.CallExpression | null = null
+        let preShiftRotateArgs: ts.Expression[] | null = null
+        let hasPreShiftRotate = false
+        let preShiftRotateCount = 0
+        let seenShift = false
+        for (const { method, args, call } of chain) {
+            if (method === "shift") {
+                hasShift = true
+                shiftArgs = args
+                if (!firstShiftCall) firstShiftCall = call
+                seenShift = true
+            } else if (method === "rotate" && !seenShift) {
+                hasPreShiftRotate = true
+                preShiftRotateCount++
+                preShiftRotateArgs = args // last pre-shift rotate wins
+            }
+        }
+
+        const shiftRange = shiftArgs ? this.shiftPosRange(shiftArgs) : null
+        const shiftValueRaw = shiftArgs ? this.extractVec3Args(shiftArgs) : undefined
+        let shiftValue: [number, number, number] | null = null
+        if (shiftValueRaw !== undefined) {
+            const v = vec3(shiftValueRaw)
+            shiftValue = [v.x, v.y, v.z]
+        }
+        const rotateRange = preShiftRotateArgs ? this.shiftPosRange(preShiftRotateArgs) : null
+        const rotateBaseRaw = preShiftRotateArgs ? this.extractVec3Args(preShiftRotateArgs) : undefined
+        let rotateBaseEuler: [number, number, number] | null = null
+        if (rotateBaseRaw !== undefined) {
+            const v = vec3(rotateBaseRaw)
+            rotateBaseEuler = [v.x, v.y, v.z]
+        }
+        // Insert a new pre-shift rotate just before the first `.shift` (its
+        // receiver's end), else at the chain end.
+        const rotateInsertOffset =
+            firstShiftCall && ts.isPropertyAccessExpression(firstShiftCall.expression)
+                ? firstShiftCall.expression.expression.getEnd() - WRAP_PREFIX_CHARS
+                : callNode.getEnd() - WRAP_PREFIX_CHARS
+
+        const startPos = fluent.rootIdentifier.getStart()
+        const loc = tsPosToUser(sf, startPos)
+        const endLoc = tsPosToUser(sf, callNode.getEnd())
+        return {
+            location: { startLine: loc.line, startColumn: loc.column, endLine: endLoc.line, endColumn: endLoc.column, functionName: fluent.operator },
+            chainStart: startPos - WRAP_PREFIX_CHARS,
+            insertOffset: callNode.getEnd() - WRAP_PREFIX_CHARS,
+            hasShift,
+            shiftIsLiteral: shiftRange !== null,
+            shiftRange,
+            shiftValue,
+            hasPreShiftRotate,
+            preShiftRotateCount,
+            rotateIsLiteral: rotateRange !== null,
+            rotateRange,
+            rotateBaseEuler,
+            rotateInsertOffset,
         }
     }
 

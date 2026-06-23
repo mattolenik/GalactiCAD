@@ -1,7 +1,9 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 import { BOTTOM, LEFT, RIGHT, TOP, type DirectionIndicator } from "../direction-indicator.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
@@ -138,10 +140,12 @@ export class ThreadedRod extends Node {
         out.f32[f + 7] = this.chamferTop
         out.f32[f + 8] = this.chamferBottom
         out.f32[f + 9] = this.femalePlay
+        this.writeRotPreview(out)
     }
 
     #paramSlice(): Float32Array {
-        const buf = new Float32Array(13)
+        // pos (3) + r,pitch,amp,h,_,fillets,chamfers,femalePlay (10) + rot inverse (9, via reservePrimitiveRot).
+        const buf = new Float32Array(22)
         buf.set(this.pos.data, 0)
         buf[3] = this.r
         buf[4] = this.turnPitch
@@ -153,6 +157,7 @@ export class ThreadedRod extends Node {
         buf[10] = this.chamferTop
         buf[11] = this.chamferBottom
         buf[12] = this.femalePlay
+        this.writeRotScene(buf, 13)
         return buf
     }
 
@@ -162,6 +167,7 @@ export class ThreadedRod extends Node {
         this.previewF32Slot = this.scene.allocPreviewF32(10)
         this.paramOffset = this.scene.allocSceneParamFloats(13)
         this.paramCount = 13
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
         this.capTop.root = this.root
         this.capTop.build()
         this.capBottom.root = this.root
@@ -376,7 +382,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`,
+            text: this.warpRot(`${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`, pos),
         }
     }
     override compileFast(indentLevel = 0): CompileResult {
@@ -386,7 +392,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `${this.wgslFastFuncName}(p - ${pos})`,
+            text: this.warpRot(`${this.wgslFastFuncName}(p - ${pos})`, pos),
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
@@ -396,13 +402,16 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `sdfMidSetOwner(${this.wgslMidFuncName}(p - ${pos}), ${this.id}u)`,
+            text: this.warpRot(`sdfMidSetOwner(${this.wgslMidFuncName}(p - ${pos}), ${this.id}u)`, pos),
         }
     }
 
     protected override computeBoundsCore(): AABB {
         const outerR = this.r + Math.abs(this.threadAmp)
-        return aabb(this.pos.x, this.pos.y, this.pos.z, outerR, this.h, outerR)
+        // Expand the upright AABB for the local `rot` about the rod's center.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, 0, 0, outerR, this.h, outerR), fwd)
+        return aabb(this.pos.x, this.pos.y, this.pos.z, r.hx, r.hy, r.hz)
     }
 
     @fluent height(h: number): this {
@@ -502,7 +511,20 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
 
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the threaded rod about its own center, param-only/live). AFTER a `.shift` it
+     * falls back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 }
 

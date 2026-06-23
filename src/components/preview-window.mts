@@ -48,6 +48,12 @@ const THEME_LABELS: Record<ThemeMode, string> = { light: "☀", dark: "☽", aut
 
 export class PreviewWindow extends HTMLElement {
     readonly canvas: HTMLCanvasElement
+    /** Transparent 2D overlay layered above the (worker-owned, offscreen-
+     * transferred) WebGPU canvas. Used for main-thread UI — currently the
+     * transform gizmo — so hover/drag redraw a few paths instead of forcing a
+     * full scene raymarch in the worker. `pointer-events:none` so events still
+     * reach the WebGPU canvas underneath. */
+    readonly gizmoCanvas: HTMLCanvasElement
 
     #counter: HTMLSpanElement
     #selInfo: HTMLDivElement
@@ -86,6 +92,13 @@ export class PreviewWindow extends HTMLElement {
             width: 100%;
         }
         :host { display: inline-block; position: relative; }
+        .gizmo-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
         .overlay {
             position: absolute;
             bottom: 10px;
@@ -153,6 +166,12 @@ export class PreviewWindow extends HTMLElement {
         this.canvas.style.height = "100%"
         this.canvas.style.display = "inline-block"
         shadow.append(style, this.canvas)
+
+        // Transparent gizmo overlay, layered on top of the WebGPU canvas. Its
+        // backing store is sized to device pixels by the renderer on resize.
+        this.gizmoCanvas = document.createElement("canvas")
+        this.gizmoCanvas.classList.add("gizmo-layer")
+        shadow.appendChild(this.gizmoCanvas)
 
         const overlay = document.createElement("div")
         overlay.classList.add("overlay")

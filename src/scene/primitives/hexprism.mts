@@ -1,7 +1,9 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec2Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class HexPrism extends Node {
@@ -35,13 +37,16 @@ export class HexPrism extends Node {
         const b2 = this.previewVec2Slot * 2
         out.vec2[b2] = this.r
         out.vec2[b2 + 1] = this.h
+        this.writeRotPreview(out)
     }
 
     #paramSlice(): Float32Array {
-        const buf = new Float32Array(5)
+        // pos (3) + r,h (2) + rot inverse (9, contiguous via reservePrimitiveRot).
+        const buf = new Float32Array(14)
         buf.set(this.pos.data, 0)
         buf[3] = this.r
         buf[4] = this.h
+        this.writeRotScene(buf, 5)
         return buf
     }
 
@@ -51,6 +56,7 @@ export class HexPrism extends Node {
         this.previewVec2Slot = this.scene.allocPreviewVec2(1)
         this.paramOffset = this.scene.allocSceneParamFloats(5)
         this.paramCount = 5
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
     }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
@@ -58,7 +64,7 @@ export class HexPrism extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const rh = vec2Wgsl(o + 3, this.previewVec2Slot)
-        return { funcName, varName, text: `fHexagonCircumcircleEx(p - ${pos}, ${rh}, ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`fHexagonCircumcircleEx(p - ${pos}, ${rh}, ${this.id}u)`, pos) }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
@@ -66,7 +72,7 @@ export class HexPrism extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const rh = vec2Wgsl(o + 3, this.previewVec2Slot)
-        return { funcName, varName, text: `fHexagonCircumcircleFast(p - ${pos}, ${rh})` }
+        return { funcName, varName, text: this.warpRot(`fHexagonCircumcircleFast(p - ${pos}, ${rh})`, pos) }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `HexPrism${this.id}`
@@ -74,11 +80,14 @@ export class HexPrism extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const rh = vec2Wgsl(o + 3, this.previewVec2Slot)
-        return { funcName, varName, text: `sdfMidSetOwner(fHexagonCircumcircleMid(p - ${pos}, ${rh}), ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`sdfMidSetOwner(fHexagonCircumcircleMid(p - ${pos}, ${rh}), ${this.id}u)`, pos) }
     }
 
     protected override computeBoundsCore(): AABB {
-        return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.h, this.r)
+        // Expand the upright AABB for the local `rot` about the hex prism's center.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, 0, 0, this.r, this.h, this.r), fwd)
+        return aabb(this.pos.x, this.pos.y, this.pos.z, r.hx, r.hy, r.hz)
     }
 
     @fluent radius(r: number): this {
@@ -91,7 +100,20 @@ export class HexPrism extends Node {
     }
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the hex prism about its own center, param-only/live). AFTER a `.shift` it
+     * falls back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 }
 

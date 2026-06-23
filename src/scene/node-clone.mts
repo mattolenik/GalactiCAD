@@ -202,7 +202,9 @@ function cloneNodeTreeCore(node: Node): Node {
         return new Sphere(pos3(node), { r: node.r })
     }
     if (node instanceof Box) {
-        return new Box(pos3(node), [node.size.x, node.size.y, node.size.z])
+        const b = new Box(pos3(node), [node.size.x, node.size.y, node.size.z])
+        b.rot = vec3([node.rot.x, node.rot.y, node.rot.z])
+        return b
     }
     if (node instanceof Cylinder) {
         const c = new Cylinder(pos3(node), { r: node.r, h: node.h })

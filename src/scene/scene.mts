@@ -177,6 +177,17 @@ export class SceneInfo {
     }
 
     /**
+     * Drop the per-build `computeBounds()` memo. Called after an incremental param
+     * edit mutates a node's transform in place (no rebuild), so the next bounds
+     * query — notably the gizmo re-anchor via `getNodeBounds` — reflects the new
+     * value instead of the cached pre-edit center. Bounds queries are infrequent
+     * (gizmo placement / build-time), so the lazy recompute is cheap.
+     */
+    invalidateBoundsCache(): void {
+        this.#boundsCache.clear()
+    }
+
+    /**
      * Pack scene params into a caller-supplied buffer (must be sized for at
      * least `sceneParamFloatCount`). Returns the used prefix length so the
      * caller can `.subarray(0, n)` for the GPU upload. Avoids the per-build

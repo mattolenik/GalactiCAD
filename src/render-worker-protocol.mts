@@ -254,6 +254,34 @@ export type MainToWorkerMessage =
     | { type: "setDeferredShading"; enabled: boolean }
     | { type: "setDebugLogModules"; modules: Record<string, boolean> }
     | { type: "clearFgSelection" }
+    // Query the world-space AABB of a scene node (for gizmo placement). Replies `nodeBoundsResult`.
+    | { type: "getNodeBounds"; nodeId: number; requestId: number }
+    // Gizmo drag lifecycle (live preview WITHOUT a shader recompile): begin
+    // captures the node's base translation; preview mutates it (local-frame
+    // delta) and re-uploads the preview param banks; end clears drag state (the
+    // pointer-up source edit + rebuild re-syncs).
+    | { type: "gizmoBegin"; nodeId: number; kind: "translate" | "rotate" }
+    | { type: "gizmoPreview"; translate?: [number, number, number]; rotate?: [number, number, number] }
+    | { type: "gizmoEnd" }
+    // Incremental param edit: a structure-preserving literal change (gizmo
+    // commit, manual number edit, or undo/redo of either) sets one node's
+    // transform absolutely, patching its stable slot in place — no DSL re-eval,
+    // re-pack, or shader recompile. `value` is the absolute local translation /
+    // Euler (deg). See docs/plans/gizmo-incremental-param-edit.md.
+    | { type: "paramPatch"; nodeId: number; kind: "translate" | "rotate"; value: [number, number, number] }
+    // Transform-gizmo overlay state: world-space anchor + size, visibility, and
+    // the hovered/active handle (-1 = none). Worker stores it and draws the
+    // gizmo each frame; pass `visible: false` to hide.
+    | {
+          type: "setGizmo"
+          visible: boolean
+          center?: [number, number, number]
+          sizeWorld?: number
+          hoverHandle?: number
+          activeHandle?: number
+          /** Column-major 3×3 world orientation for the rotation rings. */
+          orient?: number[]
+      }
 
 export interface RenderSelectionState {
     selectedObjectIds: number[]
@@ -443,4 +471,20 @@ export type WorkerToMainMessage =
     | { type: "thumbnailResult"; imageData?: ImageData; error?: string; requestId?: number; documentName?: string }
     | { type: "pickPosResult"; hitPos: [number, number, number] | null; requestId: number }
     | { type: "pickObjectResult"; objectId: number; requestId: number }
+    | {
+          type: "nodeBoundsResult"
+          bounds: {
+              center: [number, number, number]
+              half: [number, number, number]
+              /** Row-major 3×3 mapping a world delta into the node's local frame. */
+              invLinear: number[]
+              /** Column-major 3×3 world orientation of the node's local frame (for local-aligned rings). */
+              orient: number[]
+              /** Node id of the pre-shift Rotate to live-mutate during a rotate drag, or 0. */
+              rotateNodeId: number
+              /** That rotate's current Euler (deg), for composition. */
+              rotateEuler: [number, number, number]
+          } | null
+          requestId: number
+      }
     | { type: "fps"; fps: number }

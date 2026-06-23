@@ -37,6 +37,9 @@ import {
     occlusionModeToInt,
     type FeatureGraphOcclusionMode,
 } from "./feature-graph/feature-graph-overlay.mjs"
+import { GizmoOverlay } from "./gizmo/gizmo-overlay.mjs"
+import { nodePlacement, getNodeTranslation, setNodeTranslation, setNodeRotation } from "./gizmo/world-transform.mjs"
+import { GIZMO_DEFAULT_SIZE_WORLD } from "./gizmo/gizmo-geometry.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
 import type { Node } from "./scene/base.mjs"
@@ -52,8 +55,11 @@ import {
     PREVIEW_UNIFORM_VEC2_COUNT,
     PREVIEW_UNIFORM_VEC3_COUNT,
     PREVIEW_MAT3_PACK_FLOATS,
+    packMat3ColumnMajorToPreviewOut,
     type PreviewParamsOut,
 } from "./scene/scene-params.mjs"
+import { eulerMatrices } from "./scene/transform-math.mjs"
+import { Rotate } from "./scene/operators/rotate.mjs"
 import { serializeSceneNodes } from "./scene-serializer.mjs"
 import { vec3, Vec3f } from "./vecmat/vector.mjs"
 import { lookAt, Mat4x4f } from "./vecmat/matrix.mjs"
@@ -261,6 +267,19 @@ export class RenderWorkerCore {
     #featureGraphIsoBatch: IsoSampleBatch | null = null
     /** Lazy-constructed debug overlay pipeline; created on first frame. */
     #featureGraphOverlay: FeatureGraphOverlay | null = null
+    // ----- Transform gizmo overlay (translate arrows + rotate rings) -----
+    /** Lazy-constructed gizmo overlay pipeline; created when first shown. */
+    #gizmoOverlay: GizmoOverlay | null = null
+    #gizmoVisible = false
+    #gizmoCenter: [number, number, number] = [0, 0, 0]
+    /** Gizmo radius in world units (fixed world size; scales with zoom). */
+    #gizmoWorldSize = GIZMO_DEFAULT_SIZE_WORLD
+    #gizmoHoverHandle = -1
+    #gizmoActiveHandle = -1
+    /** Object world orientation (column-major 3×3) for the rotation rings. */
+    #gizmoOrient: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    /** Active gizmo drag: the node + its base translation captured at drag start. */
+    #gizmoDrag: { nodeId: number; base: [number, number, number] } | null = null
     // ----- Interactive FeatureGraph feature selection (edge/corner/auto) -----
     // Retained from the latest build so CPU hit-testing can run on click/hover.
     #fgCpu: FeatureGraphCpu | null = null
@@ -732,6 +751,174 @@ export class RenderWorkerCore {
         this.#forceNextRender = true
     }
 
+    /** Reply with the world-space center (+ local half-extents + world→local
+     * linear inverse) of a scene node, for gizmo placement and drag conversion.
+     * The center pushes the node's local bbox center back out through ancestor
+     * transforms so it lines up with the rendered surface. */
+    handleGetNodeBounds(nodeId: number, requestId: number): void {
+        let bounds:
+            | { center: [number, number, number]; half: [number, number, number]; invLinear: number[]; orient: number[]; rotateNodeId: number; rotateEuler: [number, number, number] }
+            | null = null
+        const scene = this.#scene
+        const node = scene?.get(nodeId)
+        const b = node?.computeBounds()
+        if (scene && b) {
+            const placed = nodePlacement(scene.root, nodeId)
+            bounds = {
+                center: placed?.center ?? [b.cx, b.cy, b.cz],
+                half: [b.hx, b.hy, b.hz],
+                invLinear: placed?.invLinear ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
+                orient: placed?.orient ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
+                rotateNodeId: placed?.rotateNodeId ?? 0,
+                rotateEuler: placed?.rotateEuler ?? [0, 0, 0],
+            }
+        }
+        self.postMessage({ type: "nodeBoundsResult", bounds, requestId })
+    }
+
+    /** Begin a gizmo drag: capture the node's base translation (translate) for
+     * live preview. For rotate, `nodeId` is the Rotate node (set absolutely). */
+    gizmoBegin(nodeId: number, kind: "translate" | "rotate"): void {
+        const node = this.#scene?.get(nodeId)
+        if (!node) { this.#gizmoDrag = null; return }
+        const base = kind === "translate" ? getNodeTranslation(node) : ([0, 0, 0] as [number, number, number])
+        this.#gizmoDrag = base ? { nodeId, base } : null
+    }
+
+    /** Live-preview a gizmo drag with a TARGETED slot patch (one tiny
+     * `writeBuffer`, no full repack/recompile) so it stays interactive on big
+     * scenes. Falls back to a full param re-pack for nodes whose slots we don't
+     * recognise. */
+    gizmoPreview(msg: Extract<MainToWorkerMessage, { type: "gizmoPreview" }>): void {
+        const drag = this.#gizmoDrag
+        const node = drag ? this.#scene?.get(drag.nodeId) : null
+        if (!drag || !node) return
+        let patched = false
+        if (msg.translate) {
+            const t = msg.translate
+            const p: [number, number, number] = [drag.base[0] + t[0], drag.base[1] + t[1], drag.base[2] + t[2]]
+            setNodeTranslation(node, p)
+            if (node.previewVec3Slot >= 0) {
+                this.#patchPreviewVec3(node.previewVec3Slot, p)
+                patched = true
+            }
+        } else if (msg.rotate) {
+            setNodeRotation(node, msg.rotate)
+            if (node.rotPreviewMat3Slot >= 0) {
+                // Primitive rot field: only the inverse matrix is read by warpRot.
+                this.#patchPreviewMat3(node.rotPreviewMat3Slot, eulerMatrices(node.rot.x, node.rot.y, node.rot.z).inv)
+                patched = true
+            } else if (node instanceof Rotate && node.previewMat3Slot >= 0) {
+                const { inv, fwd } = node.getWgslMatrices()
+                this.#patchPreviewMat3(node.previewMat3Slot, inv)
+                this.#patchPreviewMat3(node.previewMat3Slot + 1, fwd)
+                patched = true
+            }
+        }
+        if (!patched) this.#repackAndUploadParams()
+        this.#forceNextRender = true
+    }
+
+    /** Write one vec3 (vec4-packed) slot of `previewParamsVec3` from the shadow. */
+    #patchPreviewVec3(slot: number, v: readonly [number, number, number]): void {
+        const f = this.#previewVec3Shadow
+        const b = slot * 4
+        f[b] = v[0]; f[b + 1] = v[1]; f[b + 2] = v[2]; f[b + 3] = 0
+        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsVec3, slot * 16, f.buffer, f.byteOffset + slot * 16, 16)
+        this.#lastPreviewVec3Len = -1 // patched out-of-band; force full re-upload on next build
+    }
+
+    /** Write one mat3 slot of `previewParamsMat3` (column-major flat 9) from the shadow. */
+    #patchPreviewMat3(slot: number, colMajor9: number[]): void {
+        const f = this.#previewMat3Shadow
+        packMat3ColumnMajorToPreviewOut(f, slot, colMajor9)
+        const stride = PREVIEW_MAT3_PACK_FLOATS * 4
+        this.#device.queue.writeBuffer(this.#uniformBuffers.previewParamsMat3, slot * stride, f.buffer, f.byteOffset + slot * stride, stride)
+        this.#lastPreviewMat3Len = -1
+    }
+
+    /** End a gizmo drag; the pointer-up source edit + rebuild re-syncs the scene. */
+    gizmoEnd(): void {
+        this.#gizmoDrag = null
+    }
+
+    /**
+     * Apply a structure-preserving incremental param edit: set one node's
+     * transform absolutely and patch its (stable) preview slot in place — no DSL
+     * re-eval, full re-pack, or shader recompile. Used by the gizmo commit, a
+     * manual numeric-literal edit, and undo/redo of either (the main thread gates
+     * eligibility; see docs/plans/gizmo-incremental-param-edit.md). A missing node
+     * means the structure changed under us — the caller falls back to a full build.
+     */
+    paramPatch(msg: Extract<MainToWorkerMessage, { type: "paramPatch" }>): void {
+        const scene = this.#scene
+        const node = scene?.get(msg.nodeId)
+        if (!scene || !node) return
+        let patched = false
+        if (msg.kind === "translate") {
+            setNodeTranslation(node, msg.value)
+            if (node.previewVec3Slot >= 0) {
+                this.#patchPreviewVec3(node.previewVec3Slot, msg.value)
+                patched = true
+            }
+        } else {
+            setNodeRotation(node, msg.value)
+            if (node.rotPreviewMat3Slot >= 0) {
+                this.#patchPreviewMat3(node.rotPreviewMat3Slot, eulerMatrices(node.rot.x, node.rot.y, node.rot.z).inv)
+                patched = true
+            } else if (node instanceof Rotate && node.previewMat3Slot >= 0) {
+                const { inv, fwd } = node.getWgslMatrices()
+                this.#patchPreviewMat3(node.previewMat3Slot, inv)
+                this.#patchPreviewMat3(node.previewMat3Slot + 1, fwd)
+                patched = true
+            }
+        }
+        if (!patched) this.#repackAndUploadParams()
+        // The node's transform changed in place; its memoized bounds (used by the
+        // gizmo re-anchor's getNodeBounds) are now stale. Drop the memo so the gizmo
+        // follows the moved/rotated object instead of snapping to the old center.
+        scene.invalidateBoundsCache()
+        this.#forceNextRender = true
+    }
+
+    /** Re-pack scene + preview param banks from the (mutated) in-memory scene and
+     * re-upload them — the param-only build path minus the DSL re-eval. No shader
+     * recompile; just new buffer contents. */
+    #repackAndUploadParams(): void {
+        const scene = this.#scene
+        if (!scene) return
+        const sceneParamLen = scene.packSceneParamsInto(this.#sceneParamPackScratch)
+        const sceneParamUpload = sceneParamLen > 0 ? this.#sceneParamPackScratch.subarray(0, sceneParamLen) : EMPTY_F32_SINGLE
+        const previewLens = scene.packPreviewParamsInto(this.#previewPackTarget)
+        const previewPacked: PreviewParamsOut = {
+            f32: this.#previewF32Shadow.subarray(0, previewLens.f32),
+            vec2: this.#previewVec2Shadow.subarray(0, previewLens.vec2),
+            vec3: this.#previewVec3Shadow.subarray(0, previewLens.vec3),
+            mat3: this.#previewMat3Shadow.subarray(0, previewLens.mat3),
+        }
+        const polygonVertexData = scene.totalPolygonVertices > 0 ? scene.getPolygonVertexData() : null
+        this.#uploadBuildBuffers(scene, polygonVertexData, sceneParamUpload, previewPacked, true)
+        this.#forceNextRender = true
+    }
+
+    /** Update the transform-gizmo overlay state. The gizmo is drawn each frame
+     * (re-projected from its stored world anchor) so it tracks camera moves with
+     * no further messages; this just sets visibility / anchor / handle state. */
+    setGizmo(msg: Extract<MainToWorkerMessage, { type: "setGizmo" }>): void {
+        this.#gizmoVisible = msg.visible
+        // Construct the overlay (compiles its shader + pipelines) here, outside
+        // the frame encode, the first time the gizmo is shown.
+        if (msg.visible && !this.#gizmoOverlay) {
+            this.#gizmoOverlay = new GizmoOverlay(this.#helper, this.#format)
+        }
+        if (msg.center) this.#gizmoCenter = msg.center
+        if (msg.sizeWorld !== undefined) this.#gizmoWorldSize = msg.sizeWorld
+        if (msg.orient) this.#gizmoOrient = msg.orient
+        this.#gizmoHoverHandle = msg.hoverHandle ?? -1
+        this.#gizmoActiveHandle = msg.activeHandle ?? -1
+        this.#forceNextRender = true
+    }
+
     cancelBuilds(): void {
         this.#buildGeneration++
         // Supersede any in-flight background FG build too — its upload is
@@ -1150,6 +1337,34 @@ export class RenderWorkerCore {
             label: "FeatureGraph Overlay",
             colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
             timestampWrites: this.#timestampWritesFor("overlay"),
+        })
+        overlay.render(pass)
+        pass.end()
+    }
+
+    /**
+     * Open a render pass on the canvas target with `loadOp: "load"` and draw the
+     * transform gizmo (translate arrows + rotate rings) for the selected object.
+     * No-op when hidden. Lazily constructs the overlay on first show. Always
+     * draws on top (no depth attachment) so handles stay grabbable.
+     */
+    #renderGizmoOverlay(
+        commandEncoder: GPUCommandEncoder,
+        target: GPUTextureView,
+        viewTransform: Float32Array | ArrayBuffer,
+        cameraPosition: readonly [number, number, number],
+        width: number,
+        height: number,
+        zoom: number,
+        viewCenter: readonly [number, number],
+    ): void {
+        const overlay = this.#gizmoOverlay
+        if (!this.#gizmoVisible || !overlay) return
+        overlay.uploadCamera(viewTransform, cameraPosition, width, height, zoom, viewCenter)
+        overlay.setState(this.#gizmoCenter, this.#gizmoWorldSize, true, this.#gizmoOrient, this.#gizmoHoverHandle, this.#gizmoActiveHandle)
+        const pass = commandEncoder.beginRenderPass({
+            label: "Gizmo Overlay",
+            colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
         })
         overlay.render(pass)
         pass.end()
@@ -1818,6 +2033,16 @@ export class RenderWorkerCore {
             sceneHeight,
             deferred,
         )
+        this.#renderGizmoOverlay(
+            commandEncoder,
+            finalTarget,
+            viewTransform,
+            cameraPosition,
+            overlayW,
+            overlayH,
+            orthoHalfFromDolly(msg.cameraState.dollyDistance),
+            viewCenter,
+        )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)
         this.#device.queue.submit([commandEncoder.finish()])
@@ -2155,6 +2380,16 @@ export class RenderWorkerCore {
             sceneWidth,
             sceneHeight,
             deferred,
+        )
+        this.#renderGizmoOverlay(
+            commandEncoder,
+            canvasView,
+            viewTransform,
+            cameraPosition,
+            overlayW,
+            overlayH,
+            f32[b4 + L.O_ZOOM / 4]!,
+            viewCenter,
         )
 
         const filledSnap = this.#endFrameProfiling(commandEncoder)

@@ -226,7 +226,9 @@ export function writeRenderPayloadSlot(
         (vs.selectionMode << 2) |
         (vs.outlineMode << 5) |
         (vs.previewNormalShading ? 128 : 0) |
-        (vs.ghostMode ? 256 : 0)
+        (vs.ghostMode ? 256 : 0) |
+        (vs.flatShading ? 512 : 0) |
+        (vs.debugTessEdges ? 1024 : 0)
     u32[b4 + S_O_VIEW_SETTINGS / 4] = packed
     u32[b4 + S_O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
     f32.set(vs.outlineColor, base / 4 + S_O_OUTLINE_COLOR / 4)
@@ -370,6 +372,8 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
             aoBias: f32[psB + 13],
         },
         previewNormalShading: (packed & 128) !== 0,
+        flatShading: (packed & 256) !== 0,
+        debugTessEdges: (packed & 512) !== 0,
         // SAB carries only the *effective* values for this frame — the main
         // thread substitutes the *Moving variants when motion is active.
         // The Moving fields are zeroed here purely to satisfy the

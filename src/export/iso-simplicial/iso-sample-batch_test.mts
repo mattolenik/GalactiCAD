@@ -95,10 +95,10 @@ test("IsoSampleBatch vs GridSampler (1×1×1) parity on sphere scene", async (t)
 
     const faceSelectionBuffer = helper.device.createBuffer({
         label: "test.faceSel",
-        size: 20,
+        size: 32,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
-    helper.device.queue.writeBuffer(faceSelectionBuffer, 0, new ArrayBuffer(20))
+    helper.device.queue.writeBuffer(faceSelectionBuffer, 0, new ArrayBuffer(32))
 
     const packed = scene.packSceneParams()
     const mdcSceneParamsBuffer = helper.device.createBuffer({

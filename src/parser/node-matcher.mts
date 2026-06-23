@@ -14,6 +14,7 @@ import { RIGHT } from "../scene/direction-indicator.mjs"
 import { Node, Sphere, Box, Union, Subtract, Intersect, Pipe, Engrave, Groove, Tongue, Shell, Offset, Elongate, Twist, Bend, Taper, Morph, Seam, Cylinder, Cone, Torus, Capsule, PlaneNode, HexPrism, Disc, Blob, Rotate, Polygon2D, Extrude, Loft, Lathe } from "../scene/scene.mjs"
 import { vec3 } from "../vecmat/vector.mjs"
 import type { ParsedShapeCall, SourceLocation } from "./source-parser.mjs"
+import { tessellatePathNormalized } from "../scene/primitives/path2d.mjs"
 
 /** Composite shape types that are matched by name only */
 const COMPOSITE_TYPES = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar", "morph", "seam", "rotate", "translate", "scale", "extrude", "loft", "lathe"])
@@ -236,6 +237,19 @@ function matchNodeToCall(node: NodeLikeMatch, call: ParsedShapeCall): boolean {
         for (let i = 0; i < verts.length; i++) {
             if (!approxEqual(verts[i][0], call.vertices[i][0])) return false
             if (!approxEqual(verts[i][1], call.vertices[i][1])) return false
+        }
+        return true
+    }
+
+    if (shapeType === "path2d") {
+        // Compare against the node's (normalized) tessellation of the authored elements.
+        const verts = node.vertices
+        if (!verts || !call.pathElements) return false
+        const tess = tessellatePathNormalized(call.pathElements)
+        if (verts.length !== tess.length) return false
+        for (let i = 0; i < verts.length; i++) {
+            if (!approxEqual(verts[i]![0], tess[i]![0])) return false
+            if (!approxEqual(verts[i]![1], tess[i]![1])) return false
         }
         return true
     }

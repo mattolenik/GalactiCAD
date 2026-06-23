@@ -25,7 +25,7 @@ import { CadHighlighter, SHAPE_ICON_CLASS, type HighlightRange, type ShapeIndica
 import { CodeEditor } from "./editor/codemirror-editor.mjs"
 import { createCadTsLanguageExtension } from "./editor/ts-language.mjs"
 import { forceLinting } from "@codemirror/lint"
-import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
+import { SourceParser, findReturnStatementLine, type SourceLocation, type Polygon2DCallInfo, type Path2DCallInfo, type ParsedShapeCall } from "./parser/source-parser.mjs"
 import { matchNodesToSource, PURE_CSG_TYPES } from "./parser/node-matcher.mjs"
 import { DevToolsPanel } from "./components/dev-tools-panel.mjs"
 import type { BenchmarkCase } from "./benchmark/benchmark.mjs"
@@ -49,13 +49,16 @@ import toolbarGhostIcon from "./assets/toolbar-ghost.svg"
 import toolbarPreviewNormalIcon from "./assets/toolbar-preview-normal.svg"
 import toolbarIsolateIcon from "./assets/toolbar-isolate.svg"
 import toolbarOcclusionIcon from "./assets/toolbar-occlusion.svg"
+import toolbarFlatShadingIcon from "./assets/toolbar-flat-shading.svg"
 import toolbarFullscreenEnterIcon from "./assets/toolbar-fullscreen-enter.svg"
 import toolbarFullscreenExitIcon from "./assets/toolbar-fullscreen-exit.svg"
 import { PolygonEditor } from "./components/polygon-editor.mjs"
+import { Path2DEditor } from "./components/path2d-editor.mjs"
 import { ContextMenu, type ContextMenuItem } from "./components/context-menu.mjs"
 import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
+import { applyPathUpdates } from "./editor/path2d-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
 import { applyGizmoTranslate, applyGizmoRotate, type GizmoReselect } from "./editor/gizmo-source-updates.mjs"
 import { classifyParamEdit } from "./editor/param-edit-classifier.mjs"
@@ -161,7 +164,7 @@ class App {
     #isUpdatingFromPreview = false  // Prevent selection feedback loops
     #pushPullBuildPending = false
     #pushPullUndoOpen = false
-    #polygonEditor: PolygonEditor | null = null
+    #polygonEditor: PolygonEditor | Path2DEditor | null = null
     #contextMenu: ContextMenu | null = null
     #contextMenuHoverSub: Subscription | null = null
     #contextMenuShowTimer: number | null = null
@@ -182,6 +185,7 @@ class App {
         isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>
         occlusionToggle: import("./components/toolbar.mjs").ToolbarToggleButton
+        flatShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton
         exportBtn: import("./components/toolbar.mjs").ToolbarButton
         devTools: DevToolsPanel
     }
@@ -769,13 +773,13 @@ class App {
         await this.#restoreOrShowWelcome()
         this.renderer?.dispose()
         this.renderer = new SDFRenderer(preview, this.#tabs, this.#getVisiblePreviewRect, () => this.#tabs.active)
-        const { xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools } = this.#toolbarRefs
+        const { xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, flatShadingToggle, exportBtn, devTools } = this.#toolbarRefs
         try {
             await this.renderer
                 .ready()
             this.renderer.setSelectionStyles(getSelectionStylesForTheme(this.#effectiveTheme))
             this.renderer.setShapePalette(getShapePalette(this.#effectiveTheme))
-            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle)
+            this.#wirePreviewAndRenderer(preview, devTools, xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, flatShadingToggle)
             this.#updateViewCenter?.()
             if (isInitial) {
                 this.#wireEditorAndTabs()
@@ -865,6 +869,8 @@ class App {
         const parsedCall = this.#findParsedCallAtPosition(line, column)
         if (parsedCall?.functionName === "polygon2d") {
             items.push({ label: "Edit polygon", action: () => this.#tryOpenPolygonEditor(line, column) })
+        } else if (parsedCall?.functionName === "path2d") {
+            items.push({ label: "Edit path", action: () => this.#tryOpenPathEditor(line, column) })
         }
 
         const isolatableId = this.#findIsolatableNodeIdAtPosition(line, column)
@@ -1090,6 +1096,13 @@ class App {
             "Occlusion: dim features behind the surface (off = hide them, the default)",
             this.#settings.getPreview().featureGraphOcclusion === "dim",
         )
+        // Flat shading: faceted extrude side normals (on) vs the default smooth
+        // (Phong) side normals (off). Agent renders always force flat for mesh parity.
+        const flatShadingToggle = toolbar.addToggleButton(
+            toolbarFlatShadingIcon,
+            "Flat shading: faceted extrude sides (off = smooth, the default)",
+            this.#settings.getPreview().flatShading,
+        )
         toolbar.addSeparator()
         const exportBtn = toolbar.addButton("STL", "Export STL")
         const fullscreenBtn = toolbar.addButton("", "Toggle fullscreen")
@@ -1111,7 +1124,7 @@ class App {
         const devTools = new DevToolsPanel(this.#settings, this.#tabs)
         this.#viewports.appendChild(devTools)
 
-        return { xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, exportBtn, devTools }
+        return { xrayCheckbox, ghostToggle, previewNormalShadingToggle, isolateToggle, selectionModeRadio, occlusionToggle, flatShadingToggle, exportBtn, devTools }
     }
 
     #setupLayoutObservers(editorContainer: HTMLDivElement) {
@@ -1180,6 +1193,7 @@ class App {
         isolateToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
         selectionModeRadio: import("./components/toolbar.mjs").ToolbarRadioGroup<import("./sdf.mjs").SelectionMode>,
         occlusionToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
+        flatShadingToggle: import("./components/toolbar.mjs").ToolbarToggleButton,
     ) {
         preview.setThemeMode(this.#settings.getGlobal().app.theme)
         preview.onThemeCycle = () => this.#cycleTheme()
@@ -1220,7 +1234,9 @@ class App {
             // so they read correctly in both light and dark themes.
             this.#contextMenu.setButton(
                 "Edit",
-                () => this.#tryOpenPolygonEditor(loc.startLine, loc.startColumn),
+                () => loc.functionName === "path2d"
+                    ? this.#tryOpenPathEditor(loc.startLine, loc.startColumn)
+                    : this.#tryOpenPolygonEditor(loc.startLine, loc.startColumn),
                 { background: this.#shapeColorCss(nodeId), color: `var(${__editor_panel_bg})` },
                 this.#polygonPreviewSvg(nodeId),
             )
@@ -1267,7 +1283,7 @@ class App {
             const loc = polyId != null ? this.#sourceLocationMap.get(polyId) : null
             const relatedIds = this.renderer.getPolygonContextMenuSelectionIds(objectId)
             const isSelected = relatedIds.some(id => this.renderer.selectedObjectIds.includes(id))
-            if (loc?.functionName === "polygon2d" && isSelected && polyId != null) {
+            if ((loc?.functionName === "polygon2d" || loc?.functionName === "path2d") && isSelected && polyId != null) {
                 showPolygonMenu(loc, polyId, clientX, clientY)
             }
         })
@@ -1327,7 +1343,7 @@ class App {
             }
             const nodeId = Number(iconEl.dataset.nodeId)
             const loc = Number.isFinite(nodeId) ? this.#sourceLocationMap.get(nodeId) : undefined
-            if (loc?.functionName === "polygon2d") {
+            if (loc?.functionName === "polygon2d" || loc?.functionName === "path2d") {
                 scheduleOrShowEditorMenu(`editor-${loc.startLine}-${loc.startColumn}`, loc, iconEl, nodeId)
             } else {
                 cancelEditorHover()
@@ -1408,6 +1424,13 @@ class App {
             previewNormalShadingToggle.checked = enabled
         }
 
+        // Flat-shading toggle: faceted extrude sides (true) vs the default smooth
+        // crease-gated Phong (false). Single source of truth = renderer.flatShading.
+        flatShadingToggle.checked = this.renderer.flatShading
+        flatShadingToggle.onChange = (enabled) => {
+            this.renderer.flatShading = enabled
+        }
+
         // Isolation is render-time state on a fresh renderer; reset the toggle each (re)wire.
         isolateToggle.checked = false
         this.renderer.isolatedIds = []
@@ -1443,6 +1466,7 @@ class App {
         devTools.featureGraphDifferentiateSegments = this.renderer.featureGraphDifferentiateSegments
         devTools.stepHeatmap = this.renderer.stepHeatmapEnabled
         devTools.deferredShading = this.renderer.deferredShadingEnabled
+        devTools.debugTessEdges = this.renderer.debugTessEdges
         devTools.onCameraOptimizationChange = (enabled) => {
             this.renderer.cameraOptimization = enabled
         }
@@ -1464,6 +1488,12 @@ class App {
         }
         devTools.onDeferredShadingChange = (enabled) => {
             this.renderer.deferredShadingEnabled = enabled
+        }
+        devTools.onDebugTessEdgesChange = (enabled) => {
+            this.renderer.debugTessEdges = enabled
+        }
+        devTools.onTessDetailChange = (factor) => {
+            this.renderer.setTessDetailFactor(factor)
         }
         devTools.onRayMarchParamsChange = (params) => {
             this.renderer.setRayMarchParams(params)
@@ -1489,6 +1519,7 @@ class App {
             if (this.#mesh) this.#mesh.renderNormals = this.renderer.previewNormalShading
             selectionModeRadio.value = this.renderer.selectionMode
             occlusionToggle.checked = this.renderer.featureGraphOcclusion === "dim"
+            flatShadingToggle.checked = this.renderer.flatShading
             devTools.cameraOptimization = this.renderer.cameraOptimization
             devTools.beamOptimization = this.renderer.beamEnabled
             devTools.bvhOptimization = this.renderer.bvhEnabled
@@ -1552,6 +1583,8 @@ class App {
                 preview: {
                     xrayMode: this.renderer.xrayMode,
                     previewNormalShading: this.renderer.previewNormalShading,
+                    flatShading: this.renderer.flatShading,
+                    deferredShading: this.renderer.deferredShadingEnabled,
                     cameraOptimization: this.renderer.cameraOptimization,
                     beamOptimization: this.renderer.beamEnabled,
                     bvhOptimization: this.renderer.bvhEnabled,
@@ -1923,6 +1956,55 @@ class App {
         }
 
         this.#polygonEditor = polyEditor
+    }
+
+    /**
+     * Try to open the curve-aware path editor at the given source position.
+     * Returns true if opened (path2d call found and editor opened).
+     */
+    #tryOpenPathEditor(line: number, column: number): boolean {
+        const src = this.editor.getValue()
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const info = this.#sourceParser.findPath2DAtPosition(src, line, column, cached ?? undefined)
+        if (!info) return false
+        this.#openPathEditor(info)
+        return true
+    }
+
+    #openPathEditor(info: Path2DCallInfo) {
+        if (this.#polygonEditor) {
+            this.#polygonEditor.remove()
+            this.#polygonEditor = null
+        }
+
+        const pathEditor = new Path2DEditor(info.elements, info.nodeTypes)
+        const argsStart = info.argsStartOffset
+
+        pathEditor.onChange = (elements, nodeTypes) => {
+            const view = this.editor.view
+            const doc = view.state.doc
+            const src = doc.toString()
+            // argsStart (the first argument's start) stays valid across edits, which
+            // only touch the elements; convert it to a 1-based line/col to re-find the call.
+            const off = Math.min(argsStart, doc.length)
+            const l = doc.lineAt(off)
+            const cached = this.#sourceParser.getCachedSourceFile(src)
+            const freshInfo = this.#sourceParser.findPath2DAtPosition(src, l.number, off - l.from + 1, cached ?? undefined)
+            if (!freshInfo) return
+            applyPathUpdates(view, freshInfo, elements, nodeTypes)
+        }
+
+        // Hide the editor and insert the path editor in its place
+        this.#editorContainer.style.display = "none"
+        this.#editorContainer.parentElement!.insertBefore(pathEditor, this.#editorContainer)
+
+        pathEditor.onClose = () => {
+            this.#editorContainer.style.display = ""
+            this.editor.layout()
+            this.#polygonEditor = null
+        }
+
+        this.#polygonEditor = pathEditor
     }
 
     #meshRenderOptionsForExport(devTools: DevToolsPanel) {

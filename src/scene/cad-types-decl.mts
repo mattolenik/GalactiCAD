@@ -521,6 +521,15 @@ declare function blob(): Blob;
 declare function polygon2d(...vertices: [number, number][]): Polygon2D;
 
 /**
+ * 2-D profile authored as a bezier path. Varargs of vertices and/or control
+ * polygons; each element is a vertex [x,y] or a 2/3/4-point control polygon
+ * (linear/quadratic/cubic, including its own endpoints). Curves are tessellated
+ * to a polyline, so the result is usable anywhere a polygon2d is.
+ * @example path2d([-3,-4], [3,-4], [[3,-4],[5,0],[3,4],[0,5]])
+ */
+declare function path2d(...elements: Array<[number, number] | [number, number][]>): Polygon2D;
+
+/**
  * Extrude a Polygon2D profile. extrude.profile(p).height(n).twist(deg).shift(v)
  */
 declare const extrude: { profile(p: Polygon2D): Extrude };

@@ -42,6 +42,7 @@ import { nodePlacement, getNodeTranslation, setNodeTranslation, setNodeRotation 
 import { GIZMO_DEFAULT_SIZE_WORLD } from "./gizmo/gizmo-geometry.mjs"
 import { SceneInfo } from "./scene/scene.mjs"
 import { Extrude, Loft, ThreadedRod } from "./scene/scene.mjs"
+import { setPath2DChordTol } from "./scene/primitives/path2d.mjs"
 import type { Node } from "./scene/base.mjs"
 import {
     SCENE_PARAMS_BYTE_SIZE,
@@ -85,7 +86,11 @@ if (!isoSampleBatchShaderSource.includes("fn isoSampleBatch") || !isoSampleBatch
 }
 
 const MAX_POLYGON_VERTICES = 1024
-const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8
+// ×2: the buffer holds the vertex region [0, total) followed by a parallel
+// per-vertex outward-normal region [total, 2·total) for smooth extrude shading
+// (see SceneInfo.getPolygonVertexData). total ≤ MAX, so the normal region ends
+// at ≤ 2·MAX vec2f.
+const POLYGON_VERTEX_BUFFER_SIZE = MAX_POLYGON_VERTICES * 8 * 2
 const EDGE_HITS_SIZE = 320
 const SELECTED_EDGES_HEADER = 16
 const SELECTED_EDGE_SIZE = 80
@@ -403,8 +408,8 @@ export class RenderWorkerCore {
     #fpsFrameCount = 0
     #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
-    // [0..4]=xray,heatmap,beam,selMode,ghost (matches ViewSettings in preview.wgsl);
-    // padded to 8 (32 bytes) for uniform 16-byte size alignment.
+    // [0..6]=xray,heatmap,beam,selMode,ghost,flatShading,debugTessEdges (matches
+    // ViewSettings in preview.wgsl); padded to 8 (32 bytes) for uniform 16-byte alignment.
     #viewSettingsBuf = new Uint32Array(8)
     #selDataBuf = new Uint32Array(1024)
     // OutlineSettings CPU mirrors removed — selection rendering moved
@@ -638,7 +643,7 @@ export class RenderWorkerCore {
         // Init click/selection/face buffers
         this.#device.queue.writeBuffer(this.#uniformBuffers.clickState, 0, new ArrayBuffer(32))
         this.#device.queue.writeBuffer(this.#uniformBuffers.selectedObjectIds, 0, new Uint32Array(1024))
-        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new ArrayBuffer(20))
+        this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, new ArrayBuffer(32))
 
         // Init empty edges
         this.#writeEdgesToBuffer(
@@ -676,6 +681,7 @@ export class RenderWorkerCore {
     async build(
         body: string,
         _documentName?: string | null,
+        tessDetailFactor?: number,
     ): Promise<
         | {
               sceneNodes: import("./render-worker-protocol.mjs").SerializedNode[]
@@ -689,6 +695,14 @@ export class RenderWorkerCore {
         this.#buildLock = new Promise<void>(r => (release = r))
         await prev
         try {
+            // Build-time tessellation density. The size-adaptive default
+            // (absolute floor + world-extent term) is scaled by the dev-tools
+            // "Tess detail" factor (1 = default; higher = denser). This is a
+            // manual, zoom-independent control — the extrude preview shades
+            // smoothly at any zoom via precomputed per-vertex normals, so density
+            // only trades curve/silhouette fidelity against per-pixel SDF cost.
+            const f = tessDetailFactor && tessDetailFactor > 0 ? tessDetailFactor : 1
+            setPath2DChordTol(0.01 / f, 0.0015 / f)
             return await this.#doBuild(body)
         } finally {
             release()
@@ -1786,7 +1800,8 @@ export class RenderWorkerCore {
         // separate — that's the "what's currently on the GPU" mirror.
         if (p.f32.byteLength > 0) {
             const f32Len = p.f32.length
-            if (!dedup || this.#lastPreviewF32Len !== f32Len || !float32SubarrayEqual(this.#lastPreviewF32Upload, p.f32, f32Len)) {
+            const reupload = !dedup || this.#lastPreviewF32Len !== f32Len || !float32SubarrayEqual(this.#lastPreviewF32Upload, p.f32, f32Len)
+            if (reupload) {
                 q.writeBuffer(this.#uniformBuffers.previewParamsF32, 0, p.f32 as BufferSource)
                 q.writeBuffer(this.#uniformBuffers.previewCapParamDrag, 0, p.f32 as BufferSource)
                 if (dedup) {
@@ -1908,6 +1923,8 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[2] = viewSettings.beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = viewSettings.selectionMode
         this.#viewSettingsBuf[4] = viewSettings.ghostMode ? 1 : 0
+        this.#viewSettingsBuf[5] = viewSettings.flatShading ? 1 : 0 // matches `flatShading` in preview.wgsl ViewSettings
+        this.#viewSettingsBuf[6] = viewSettings.debugTessEdges ? 1 : 0 // matches `debugTessEdges` in preview.wgsl ViewSettings
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
@@ -2213,6 +2230,8 @@ export class RenderWorkerCore {
         this.#viewSettingsBuf[2] = beamEnabled ? 1 : 0
         this.#viewSettingsBuf[3] = this.#lastSelectionMode
         this.#viewSettingsBuf[4] = packed & 256 ? 1 : 0 // ghostMode (SAB bit 8)
+        this.#viewSettingsBuf[5] = packed & 512 ? 1 : 0 // flatShading (SAB bit 9); see preview.wgsl ViewSettings
+        this.#viewSettingsBuf[6] = packed & 1024 ? 1 : 0 // debugTessEdges (SAB bit 10); see preview.wgsl ViewSettings
         this.#writeBufferViewIfDirty(this.#uniformBuffers.viewSettings, this.#viewSettingsBuf, this.#viewSettingsCache)
 
         const rmBase = slotBase + L.O_RAY_MARCH_PARAMS
@@ -2987,6 +3006,9 @@ export class RenderWorkerCore {
                     },
                     previewShading: DEFAULT_PREVIEW_SHADING,
                     previewNormalShading: true,
+                    // Agent SDF captures always render flat so they match the faceted
+                    // mesh (path2d curves shade smooth in the live preview by default).
+                    flatShading: true,
                     rayMarchParams: { ...DEFAULT_RAY_MARCH_PARAMS, maxSteps: 600, hitRefineSteps: 24 },
                 },
                 viewCenter: [msg.viewCenter[0], msg.viewCenter[1]],
@@ -3680,7 +3702,7 @@ export class RenderWorkerCore {
         this.#device.queue.writeBuffer(ub.colorPalette, 0, alignedData)
 
         ub.viewSettings = this.#device.createBuffer({
-            size: 32, // u32: xrayMode, debugHeatmap, beamEnabled, selectionMode, ghostEnabled (+ pad)
+            size: 32, // 7 u32 (xray, heatmap, beam, selMode, ghost, flatShading, debugTessEdges) + pad to 16-byte align
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "viewSettings",
         })
@@ -3718,7 +3740,10 @@ export class RenderWorkerCore {
         })
 
         ub.faceSelection = this.#device.createBuffer({
-            size: 20,
+            // 7 scalars (nodeId, faceIndex, mode, extrudeOffset, pushPullActive,
+            // segStart, segEnd) = 28 bytes; rounded to 32. Shaders that read only
+            // the first 5 fields bind the same buffer with a smaller struct view.
+            size: 32,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "faceSelection",
         })
@@ -4510,6 +4535,11 @@ export class RenderWorkerCore {
             // repacks identical vertices would dedup-skip and leave the live side-face drag on
             // screen (preview doesn't revert on cmd-z).
             this.#lastPolygonVertexLen = -1
+            // The geometry changed out-of-band, but the deferred-shading geometry
+            // hash only reflects the SAB. Invalidate it so the next frame runs a
+            // full SDF march instead of a shade-only repaint (which would freeze
+            // the live push/pull on screen).
+            this.#lastGeometryHash = -1
         }
         if (msg.previewParamsF32Patch) {
             const patch = new Float32Array(msg.previewParamsF32Patch.data)
@@ -4531,6 +4561,11 @@ export class RenderWorkerCore {
             // otherwise an undo whose repacked params equal the cache would dedup-skip and
             // leave the dragged cap height/shift on screen (preview doesn't revert on cmd-z).
             this.#lastPreviewF32Len = -1
+            // Cap h/posY is geometry. The deferred-shading geometry hash only
+            // reflects the SAB, so a live cap drag (patched here, not in the SAB)
+            // would otherwise hit the shade-only fast path and freeze on screen
+            // until release. Force a full SDF march next frame.
+            this.#lastGeometryHash = -1
         }
         if (msg.selectedObjectIds) {
             if (msg.selectedObjectIds instanceof ArrayBuffer) {

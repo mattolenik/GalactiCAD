@@ -44,6 +44,7 @@ import { Lathe, compileLathePrimitiveEdgeHitCase, compileLathePrimitiveRingDista
 import { Loft, loft } from "./primitives/loft.mjs"
 import { PlaneNode, plane } from "./primitives/plane.mjs"
 import { Polygon2D, polygon2d } from "./primitives/polygon2d.mjs"
+import { Path2DNode, path2d } from "./primitives/path2d.mjs"
 import { Sphere, sphere } from "./primitives/sphere.mjs"
 import { VirtualCapNode } from "./primitives/virtual-cap.mjs"
 import { ThreadedRod, threaded_rod } from "./primitives/threaded-rod.mjs"
@@ -51,7 +52,7 @@ import { Torus, torus } from "./primitives/torus.mjs"
 import { BACK, BOTTOM, FRONT, LEFT, RIGHT, TOP } from "./direction-indicator.mjs"
 import "./node-clone.mjs"
 
-export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, knurl, KnurlBuilder, KnurlSubtract, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Polygon2D, RepeatPolar, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Translate, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, pipe, plane, polygon2d, repeatPolar, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, translate, twist, union }
+export { Bend, BinaryOperator, Blob, Box, Capsule, Cone, Cylinder, Disc, Elongate, Engrave, Extrude, Groove, HexPrism, Intersect, knurl, KnurlBuilder, KnurlSubtract, Lathe, Loft, Morph, Node, Offset, Pipe, PlaneNode, Path2DNode, Polygon2D, RepeatPolar, Rotate, Scale, Seam, Shell, Sphere, Subtract, Taper, ThreadedRod, Tongue, Torus, Translate, Twist, UnaryOperator, Union, VirtualCapNode, bend, blob, box, capsule, cone, cylinder, disc, elongate, engrave, extrude, fluent, groove, hexprism, intersect, lathe, loft, morph, offset, path2d, pipe, plane, polygon2d, repeatPolar, rotate, scale, seam, shell, sphere, subtract, styleInfo, taper, threaded_rod, tongue, torus, translate, twist, union }
 export type { BlendMode, CompileResult, IntersectionType, StyleInfo, UnionType }
 export { BACK, BOTTOM, FRONT, LEFT, RIGHT, TOP } from "./direction-indicator.mjs"
 export type { DirectionFlag, DirectionIndicator } from "./direction-indicator.mjs"
@@ -397,13 +398,23 @@ export class SceneInfo {
     }
 
     getPolygonVertexData(): Float32Array {
-        const data = new Float32Array(this.totalPolygonVertices * 2)
+        // Layout: vertices in [0, total) followed by a parallel per-vertex
+        // outward-normal region in [total, 2·total) — same per-polygon offsets,
+        // shifted by `normBase`. The extrude preview reads the normal region for
+        // smooth side shading; mesh/FG/bounds shaders only touch the vertex region.
+        const total = this.totalPolygonVertices
+        const normBase = total
+        const data = new Float32Array(total * 4)
         for (const node of this.#nodes.values()) {
             if (node instanceof Polygon2D && node.bufferOffset >= 0) {
+                const normals = node.getVertexNormals()
                 for (let i = 0; i < node.vertices.length; i++) {
                     const base = (node.bufferOffset + i) * 2
                     data[base] = node.vertices[i][0]
                     data[base + 1] = node.vertices[i][1]
+                    const nb = (normBase + node.bufferOffset + i) * 2
+                    data[nb] = normals[i][0]
+                    data[nb + 1] = normals[i][1]
                 }
             }
         }
@@ -448,6 +459,7 @@ export class SceneInfo {
             "groove",
             "tongue",
             "polygon2d",
+            "path2d",
             "extrude",
             "loft",
             "lathe",
@@ -491,6 +503,7 @@ export class SceneInfo {
             groove,
             tongue,
             polygon2d,
+            path2d,
             extrude,
             loft,
             lathe,

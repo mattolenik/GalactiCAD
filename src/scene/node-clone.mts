@@ -33,6 +33,7 @@ import { Lathe } from "./primitives/lathe.mjs"
 import { Loft } from "./primitives/loft.mjs"
 import { PlaneNode } from "./primitives/plane.mjs"
 import { Polygon2D } from "./primitives/polygon2d.mjs"
+import { Path2DNode } from "./primitives/path2d.mjs"
 import { Sphere } from "./primitives/sphere.mjs"
 import { ThreadedRod } from "./primitives/threaded-rod.mjs"
 import { Torus } from "./primitives/torus.mjs"
@@ -237,6 +238,11 @@ function cloneNodeTreeCore(node: Node): Node {
     }
     if (node instanceof Blob) {
         return new Blob(pos3(node))
+    }
+    if (node instanceof Path2DNode) {
+        // Must precede the Polygon2D branch (Path2DNode extends it); the constructor
+        // deep-copies the authored elements.
+        return new Path2DNode(node.elements)
     }
     if (node instanceof Polygon2D) {
         return new Polygon2D(node.vertices.map(v => [v[0], v[1]] as [number, number]))

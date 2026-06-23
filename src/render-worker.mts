@@ -20,7 +20,7 @@ let pendingResize: { fullWidth: number; fullHeight: number } | null = null
 /** Build serialization: only one build at a time; latest request wins. Isolate
  * recompiles share this lock so they never race `#doBuild` (both swap pipelines). */
 let buildInProgress = false
-let pendingBuild: { body: string; documentName?: string | null; requestId?: number } | null = null
+let pendingBuild: { body: string; documentName?: string | null; requestId?: number; tessDetailFactor?: number } | null = null
 /** Pending "View Isolated" recompile (the latest isolated-id set). */
 let pendingIsolate: number[] | null = null
 
@@ -91,7 +91,7 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
             scheduleRenderFromKick()
             break
         case "build":
-            if (core) enqueueBuild(msg.body, msg.documentName, msg.requestId)
+            if (core) enqueueBuild(msg.body, msg.documentName, msg.requestId, msg.tessDetailFactor)
             break
         case "cancelBuilds":
             cancelBuilds()
@@ -274,11 +274,11 @@ async function handleInit(canvas: OffscreenCanvas, buf?: SharedArrayBuffer): Pro
     }
 }
 
-function enqueueBuild(body: string, documentName?: string | null, requestId?: number): void {
+function enqueueBuild(body: string, documentName?: string | null, requestId?: number, tessDetailFactor?: number): void {
     if (pendingBuild?.requestId != null) {
         self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: pendingBuild.requestId, documentName: pendingBuild.documentName ?? undefined, superseded: true })
     }
-    pendingBuild = { body, documentName, requestId }
+    pendingBuild = { body, documentName, requestId, tessDetailFactor }
     runNextJob()
 }
 
@@ -301,7 +301,7 @@ async function runNextJob(): Promise<void> {
         pendingBuild = null
         buildInProgress = true
         try {
-            const result = await core.build(req.body, req.documentName)
+            const result = await core.build(req.body, req.documentName, req.tessDetailFactor)
             if ("superseded" in result) {
                 self.postMessage({ type: "buildComplete", sceneNodes: [], compiledPosY: [], requestId: req.requestId, documentName: req.documentName ?? undefined, superseded: true })
             } else {

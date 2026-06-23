@@ -121,6 +121,14 @@ export interface SerializedNode {
     normal?: [number, number, number]
     planeOffset?: number
     vertices?: [number, number][]
+    /**
+     * Polygon2D authored-anchor mask, parallel to {@link vertices}: `true` where
+     * the vertex is a real authored node (control point / vertex) vs. an interior
+     * curve-tessellation sample. Present only for path2d-sourced profiles; absent
+     * (treated as `null`) for hand-specified polygons. Lets the main thread group
+     * tessellated wall edges into independently-selectable surface segments.
+     */
+    vertexIsAnchor?: boolean[]
     twistDegrees?: number
     /** ThreadedRod: axial pitch, amplitude, meridional flank angle (deg), barrel profile. */
     turnPitch?: number
@@ -178,7 +186,7 @@ export interface EdgeHitData {
 export type MainToWorkerMessage =
     | { type: "init"; canvas: OffscreenCanvas; sharedBuffer?: SharedArrayBuffer }
     | { type: "renderKick"; version: number }
-    | { type: "build"; body: string; documentName?: string | null; requestId?: number }
+    | { type: "build"; body: string; documentName?: string | null; requestId?: number; tessDetailFactor?: number }
     | { type: "cancelBuilds" }
     | {
           type: "render"
@@ -455,6 +463,15 @@ export interface RenderViewSettings {
     previewShading: PreviewShadingParams
     /** When true, SDF preview shades hits with scene-space normal RGB (matches mesh viewer opaque). */
     previewNormalShading: boolean
+    /**
+     * When true, extrude side normals render flat (per-edge facets) instead of the
+     * default crease-gated Phong smoothing. Agent renders force this true so the
+     * SDF preview matches the faceted mesh; omitted/false = smooth (live default).
+     */
+    flatShading?: boolean
+    /** Debug: draw bright markers at every path2d tessellation vertex on extrude
+     *  sides, so the on-screen tessellation density is visible. Preview-only. */
+    debugTessEdges?: boolean
     rayMarchParams?: RayMarchParams
     /**
      * FSR1 spatial upscale tunables. The worker consumes `mode` here; the

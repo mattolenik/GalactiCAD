@@ -175,6 +175,13 @@ export class SDFRenderer {
     #rayMarchParams: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #upscaleParams: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
     #previewNormalShading = false
+    /** Extrude side normals: false = smooth (Phong) default, true = flat per-edge facets. */
+    #flatShading = false
+    /** Debug: draw markers at path2d tessellation vertices on extrude sides. */
+    #debugTessEdges = false
+    /** Dev-tools tessellation-density multiplier applied to the screen-space LOD
+     *  target (>1 = finer/denser, <1 = coarser). Session-only debug knob. */
+    #tessDetailFactor = 1
     #bvhEnabled = true
     #featureGraphOcclusion: FeatureGraphOcclusionMode = "hard"
     #featureGraphLineWidth = 2
@@ -200,6 +207,13 @@ export class SDFRenderer {
     #fullWidth = 0
     #fullHeight = 0
     #devicePixelRatio = 1
+    // Last build inputs, retained so the dev-tools "Tess detail" knob can
+    // re-tessellate the current scene at a new build-time density on demand.
+    // (There is no zoom-driven re-tessellation: the extrude preview shades
+    // smoothly at any zoom via precomputed per-vertex normals — purely visual,
+    // no rebuild, feature graph untouched.)
+    #lastBuiltSrc: string | null = null
+    #lastBuiltDocumentName: string | null = null
     #outlineMode: OutlineMode = DEFAULT_SELECTION_STYLES.outline.mode
     #outlineThickness: number = DEFAULT_SELECTION_STYLES.outline.thickness
     #outlineColor: [number, number, number] = [...DEFAULT_SELECTION_STYLES.outline.color]
@@ -598,6 +612,8 @@ export class SDFRenderer {
         const global = this.#settings.getGlobal()
         this.#xrayMode = prev.xrayMode
         this.#previewNormalShading = prev.previewNormalShading
+        this.#flatShading = prev.flatShading
+        this.#deferredShadingEnabled = prev.deferredShading
         this.#cameraOptimization = prev.cameraOptimization
         this.#beamEnabled = prev.beamOptimization
         this.#bvhEnabled = prev.bvhOptimization
@@ -632,6 +648,7 @@ export class SDFRenderer {
                     type: "setFeatureGraphDifferentiateSegments",
                     on: this.#featureGraphDifferentiateSegments,
                 })
+                this.#worker.postMessage({ type: "setDeferredShading", enabled: this.#deferredShadingEnabled })
                 this.syncDebugLogModulesToWorker()
                 this.#readyResolve()
                 break
@@ -885,7 +902,7 @@ export class SDFRenderer {
                 ch.transpileCpuMs = transpileMs ?? 0
                 ch.transpileEndWall = performance.now()
             }
-            this.#worker.postMessage({ type: "build", body, documentName: pending.documentName ?? undefined, requestId })
+            this.#worker.postMessage({ type: "build", body, documentName: pending.documentName ?? undefined, requestId, tessDetailFactor: this.#tessDetailFactor })
             const chPost = this.#buildChronicleByRequestId.get(requestId)
             if (chPost) chPost.workerPostWall = performance.now()
         } else if (pending.kind === "renderMesh") {
@@ -1335,15 +1352,21 @@ export class SDFRenderer {
         this.#pushPullNodes.clear()
         this.#childrenByParent.clear()
         this.#parentById.clear()
-        const polyById = new Map<number, { vertices: [number, number][]; bufferOffset: number }>()
+        const polyById = new Map<number, { vertices: [number, number][]; bufferOffset: number; vertexIsAnchor: boolean[] | null }>()
         const byId = new Map(serialized.map(s => [s.id, s]))
         for (const s of serialized) {
             this.#childrenByParent.set(s.id, s.children)
             for (const cid of s.children) this.#parentById.set(cid, s.id)
-            if (s.shapeType === "polygon2d" && s.vertices && s.bufferOffset !== undefined && s.bufferOffset >= 0) {
+            // path2d profiles are Polygon2D subclasses (shapeType "path2d") and
+            // are valid push/pull polygon hosts — register them the same way, or
+            // the parent extrude can't resolve (cap/side face selection silently
+            // fails, while raw-id object selection still works).
+            if ((s.shapeType === "polygon2d" || s.shapeType === "path2d") && s.vertices && s.bufferOffset !== undefined && s.bufferOffset >= 0) {
                 const poly = {
                     vertices: s.vertices.map(v => [v[0], v[1]] as [number, number]),
                     bufferOffset: s.bufferOffset,
+                    // path2d profiles carry an authored-anchor mask; plain polygons don't.
+                    vertexIsAnchor: s.vertexIsAnchor ?? null,
                 }
                 polyById.set(s.id, poly)
                 this.#pushPullNodes.set(s.id, { type: "polygon2d", id: s.id, vertices: poly.vertices, bufferOffset: poly.bufferOffset })
@@ -1382,7 +1405,7 @@ export class SDFRenderer {
                     })
                 }
             } else if (s.shapeType === "loft" && s.pos && s.children.length >= 2) {
-                const profiles = s.children.map(cid => polyById.get(cid)).filter((p): p is { vertices: [number, number][]; bufferOffset: number } => p != null)
+                const profiles = s.children.map(cid => polyById.get(cid)).filter((p): p is { vertices: [number, number][]; bufferOffset: number; vertexIsAnchor: boolean[] | null } => p != null)
                 if (profiles.length === s.children.length && s.sceneCapParamsByteOffset !== undefined) {
                     this.#pushPullNodes.set(s.id, {
                         type: "loft",
@@ -2007,6 +2030,36 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
+    get flatShading(): boolean {
+        return this.#flatShading
+    }
+
+    set flatShading(enabled: boolean) {
+        if (this.#flatShading === enabled) return
+        this.#flatShading = enabled
+        this.#settings.updatePreview("flatShading", enabled)
+        this.#needsRender = true
+    }
+
+    get debugTessEdges(): boolean {
+        return this.#debugTessEdges
+    }
+    set debugTessEdges(enabled: boolean) {
+        if (this.#debugTessEdges === enabled) return
+        this.#debugTessEdges = enabled
+        this.#needsRender = true
+    }
+
+    /** Build-time tessellation-density multiplier (1 = default, higher = denser).
+     *  Zoom-independent: re-tessellates the current scene once at the new density.
+     *  Shading stays smooth at any zoom regardless (precomputed per-vertex normals). */
+    setTessDetailFactor(factor: number): void {
+        const f = Math.min(8, Math.max(0.125, factor))
+        if (this.#tessDetailFactor === f) return
+        this.#tessDetailFactor = f
+        this.#rebuildFromLastSrc()
+    }
+
     set bvhEnabled(enabled: boolean) {
         if (this.#bvhEnabled === enabled) return
         this.#bvhEnabled = enabled
@@ -2070,12 +2123,14 @@ export class SDFRenderer {
     /**
      * Deferred selection shading: route the scene pass through geometryMain
      * (SDF → G-buffer) + shadeMain (G-buffer → frame) so selection/hover
-     * repaints reuse the retained G-buffer and skip the SDF march. Off by
-     * default; debug-only (not persisted).
+     * repaints reuse the retained G-buffer and skip the SDF march. On by
+     * default and persisted — without it, every feature hover/click re-marches
+     * the full SDF, which is ~1s per cursor move on heavy (e.g. path2d) extrudes.
      */
     set deferredShadingEnabled(enabled: boolean) {
         if (this.#deferredShadingEnabled === enabled) return
         this.#deferredShadingEnabled = enabled
+        this.#settings.updatePreview("deferredShading", enabled)
         this.#worker.postMessage({ type: "setDeferredShading", enabled })
         this.#needsRender = true
     }
@@ -2222,6 +2277,8 @@ export class SDFRenderer {
         p.viewSettings.selectionStyles = this.#selectionStyles
         p.viewSettings.previewShading = { ...this.#previewShading }
         p.viewSettings.previewNormalShading = this.#previewNormalShading
+        p.viewSettings.flatShading = this.#flatShading
+        p.viewSettings.debugTessEdges = this.#debugTessEdges
         p.viewSettings.rayMarchParams = { ...this.#rayMarchParams }
         p.viewSettings.upscaleParams = { ...this.#upscaleParams }
         p.viewCenter[0] = this.#viewCenter.x
@@ -2326,9 +2383,22 @@ export class SDFRenderer {
         }
     }
 
+    /**
+     * Re-run the last build at the current tessellation-density factor — used by
+     * the dev-tools "Tess detail" knob. Skips scenes with no path2d (the density
+     * only affects bezier tessellation) and no-ops until a scene has been built.
+     */
+    #rebuildFromLastSrc(): void {
+        const src = this.#lastBuiltSrc
+        if (src === null || !src.includes("path2d")) return
+        void this.build(src, this.#lastBuiltDocumentName ?? undefined)
+    }
+
     build(src: string, documentName?: string | null): Promise<boolean> {
         const requestId = ++this.#requestIdCounter
         this.#latestBuildRequestId = requestId
+        this.#lastBuiltSrc = src.trim()
+        this.#lastBuiltDocumentName = documentName ?? null
         this.#buildChronicleByRequestId.set(requestId, { startWall: performance.now() })
         this.#pendingTranspile.set(requestId, { kind: "build", documentName: documentName ?? undefined })
         return new Promise<boolean>((resolve, reject) => {

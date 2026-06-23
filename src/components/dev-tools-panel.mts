@@ -70,6 +70,8 @@ export class DevToolsPanel extends HTMLElement {
     onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onDeferredShadingChange?: (enabled: boolean) => void
+    onDebugTessEdgesChange?: (enabled: boolean) => void
+    onTessDetailChange?: (factor: number) => void
     onShowFpsChange?: (enabled: boolean) => void
     onMeshViewerChange?: (enabled: boolean) => void
     onMeshSimplifyChange?: (enabled: boolean) => void
@@ -170,6 +172,22 @@ export class DevToolsPanel extends HTMLElement {
 
     set deferredShading(enabled: boolean) {
         this.#appSection.deferredShading = enabled
+    }
+
+    get debugTessEdges(): boolean {
+        return this.#appSection.debugTessEdges
+    }
+
+    set debugTessEdges(enabled: boolean) {
+        this.#appSection.debugTessEdges = enabled
+    }
+
+    get tessDetail(): number {
+        return this.#appSection.tessDetail
+    }
+
+    set tessDetail(factor: number) {
+        this.#appSection.tessDetail = factor
     }
 
     get showFps(): boolean {
@@ -356,6 +374,8 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onFeatureGraphDifferentiateSegmentsChange = v => this.onFeatureGraphDifferentiateSegmentsChange?.(v)
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
         this.#appSection.onDeferredShadingChange = v => this.onDeferredShadingChange?.(v)
+        this.#appSection.onDebugTessEdgesChange = v => this.onDebugTessEdgesChange?.(v)
+        this.#appSection.onTessDetailChange = v => this.onTessDetailChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
         this.#appSection.onPreviewShadingChange = p => this.onPreviewShadingChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)

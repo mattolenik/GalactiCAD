@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <!-- Faceted polygon: outer hexagon + internal facet edges (flat shading) -->
+  <path d="M9 2 L15 5.5 L15 12.5 L9 16 L3 12.5 L3 5.5 Z"/>
+  <path d="M9 2 L9 16 M3 5.5 L9 9 L15 5.5 M3 12.5 L9 9 L15 12.5"/>
+</svg>

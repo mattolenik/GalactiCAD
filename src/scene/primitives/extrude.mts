@@ -128,6 +128,114 @@ export class Extrude extends Node {
     get wgslFastFuncName(): string { return `fExtrude_${this.id}_Fast` }
     get wgslMidFuncName(): string { return `fExtrude_${this.id}_Mid` }
 
+    /**
+     * WGSL that replaces the flat per-edge side normal (`combined.zw`) with a
+     * Phong blend across the closest edge — so a tessellated path2d profile shades
+     * round in the SDF preview while genuine corners stay sharp. The per-vertex
+     * outward normals are **precomputed at build time** (see
+     * {@link computePolygonVertexNormals}) and stored in the appended normal region
+     * of the shared polygon buffer (base `NORMBASE`); this just reads the two edge
+     * endpoints and interpolates. A zero-sentinel normal marks a corner endpoint —
+     * there it falls back to the flat per-edge normal (sign-aligned to the reliable
+     * SDF gradient `combined.zw`) so the corner stays sharp. Purely visual and
+     * density-independent: the build tessellation and feature graph are untouched,
+     * so the shading is smooth at every zoom with whatever fixed tessellation the
+     * scene was built at. Preview-only (`Ex`); never used by `Mid`/mesh extraction,
+     * so the exported mesh stays faithfully faceted. Gated by
+     * `viewSettings.flatShading` (the toolbar flat toggle and every agent render
+     * force flat → identical to the mesh).
+     * @param query 2D sample point in profile space (`"p.xz"` or `"twisted"`).
+     * @param outX/outZ gradient lvalues to overwrite (`"gx"`/`"gz"` or the twist pair).
+     * @param NORMBASE base index of the appended per-vertex normal region.
+     */
+    #sideNormalSmoothWgsl(query: string, outX: string, outZ: string, N: number, BASE: number, NORMBASE: number): string {
+        return `
+    if (sdfFlatShadingFlag() == 0u && onSide) {
+        let smEi = u32(combined.y);
+        let smI0 = ${BASE}u + smEi;
+        let smI1 = ${BASE}u + (smEi + 1u) % ${N}u;
+        let smV0 = polygonVertices[smI0];
+        let smV1 = polygonVertices[smI1];
+        let smSeg = smV1 - smV0;
+        // Precomputed (already-outward) per-vertex normals of the closest edge's
+        // two endpoints. A zero sentinel marks a corner endpoint.
+        let smNb = polygonVertices[${NORMBASE}u + smI0];
+        let smNc = polygonVertices[${NORMBASE}u + smI1];
+        let smT = clamp(dot((${query}) - smV0, smSeg) / max(dot(smSeg, smSeg), 1e-12), 0.0, 1.0);
+        let smBCorner = dot(smNb, smNb) <= 0.25;
+        let smCCorner = dot(smNc, smNc) <= 0.25;
+        var smNrm: vec2f;
+        if (smBCorner || smCCorner) {
+            // Facet touches a real corner: keep the crisp linear blend, with the
+            // corner endpoint falling back to this edge's flat normal (oriented
+            // outward via the reliable SDF gradient) so the crease stays sharp.
+            let smRef = vec2f(combined.z, combined.w);
+            let smFlatPerp = vec2f(smSeg.y, -smSeg.x);
+            let smFlat = normalize(smFlatPerp) * select(-1.0, 1.0, dot(smFlatPerp, smRef) >= 0.0);
+            let smB = select(smNb, smFlat, smBCorner);
+            let smC = select(smNc, smFlat, smCCorner);
+            smNrm = normalize(mix2f(smB, smC, smT));
+        } else {
+            // Chord-length (C1 in world arc-length) Catmull-Rom across the four
+            // surrounding vertex normals. Linear (C0) interpolation leaves a slope
+            // kink at every facet boundary, so a coarsely-tessellated curve shades
+            // as "a gradient per face"; a C1 spline makes the normal flow unbroken
+            // so the gradient stretches across the whole curve. Uniform parameter
+            // would still kink in world space because facets have unequal lengths
+            // (the steep specular amplifies that), so the spline is parameterized
+            // by chord length. Outer controls clamp to the facet endpoints at
+            // corners so smoothing never crosses a crease.
+            let smIa = ${BASE}u + (smEi + ${N}u - 1u) % ${N}u;
+            let smId = ${BASE}u + (smEi + 2u) % ${N}u;
+            var smNa = polygonVertices[${NORMBASE}u + smIa];
+            var smNd = polygonVertices[${NORMBASE}u + smId];
+            let smVa = polygonVertices[smIa];
+            let smVd = polygonVertices[smId];
+            let smD12 = max(length(smSeg), 1e-6);
+            var smD01 = length(smV0 - smVa);
+            var smD23 = length(smVd - smV1);
+            if (dot(smNa, smNa) <= 0.25) { smNa = smNb; smD01 = smD12; }
+            if (dot(smNd, smNd) <= 0.25) { smNd = smNc; smD23 = smD12; }
+            smD01 = max(smD01, 1e-6);
+            smD23 = max(smD23, 1e-6);
+            // Non-uniform Catmull-Rom endpoint tangents (knots = cumulative chord length).
+            let smM1 = (smNb - smNa) / smD01 - (smNc - smNa) / (smD01 + smD12) + (smNc - smNb) / smD12;
+            let smM2 = (smNc - smNb) / smD12 - (smNd - smNb) / (smD12 + smD23) + (smNd - smNc) / smD23;
+            let smU2 = smT * smT;
+            let smU3 = smU2 * smT;
+            let smH00 = 2.0 * smU3 - 3.0 * smU2 + 1.0;
+            let smH10 = smU3 - 2.0 * smU2 + smT;
+            let smH01 = -2.0 * smU3 + 3.0 * smU2;
+            let smH11 = smU3 - smU2;
+            let smHerm = smH00 * smNb + smH10 * smD12 * smM1 + smH01 * smNc + smH11 * smD12 * smM2;
+            smNrm = normalize(smHerm);
+        }
+        ${outX} = smNrm.x;
+        ${outZ} = smNrm.y;
+    }`
+    }
+
+    /**
+     * Debug-only WGSL (preview): paints a bright marker at each path2d
+     * tessellation vertex on the extrude side so the on-screen tessellation
+     * density is directly visible. Gated by `sdfDebugTessEdgesFlag()` — preview
+     * reads the live `viewSettings` flag; mesh/FG/bounds shaders define it as 0,
+     * so this is inert there. Overrides the side normal `n` (a `var` at the call
+     * site) within a small edge-fraction band of each closest-edge endpoint.
+     * @param query 2D profile-space sample point (`"p.xz"` or `"twisted"`).
+     */
+    #debugTessEdgesWgsl(query: string, N: number, BASE: number): string {
+        return `
+    if (sdfDebugTessEdgesFlag() == 1u && onSide) {
+        let dEi = u32(combined.y);
+        let dV0 = polygonVertices[${BASE}u + dEi];
+        let dV1 = polygonVertices[${BASE}u + (dEi + 1u) % ${N}u];
+        let dSeg = dV1 - dV0;
+        let dT = clamp(dot((${query}) - dV0, dSeg) / max(dot(dSeg, dSeg), 1e-12), 0.0, 1.0);
+        if (min(dT, 1.0 - dT) < 0.03) { n = vec3f(0.0, 1.0, 0.0); }
+    }`
+    }
+
     override compileAux(): string {
         const childFunc = this.child.wgslFuncName
         const combinedFunc = this.child.wgslCombinedFuncName
@@ -135,6 +243,10 @@ export class Extrude extends Node {
         const capBottomId = this.capBottom.id
         const N = this.child.vertices.length
         const BASE = this.child.bufferOffset
+        // Base of the appended per-vertex normal region in the shared polygon
+        // buffer (vertices in [0, total), normals in [total, 2·total)). Finalized
+        // after build(), which runs before codegen.
+        const NORMBASE = this.scene.totalPolygonVertices
         const hasTwist = this.twistDegrees !== 0
 
         const windSign = (() => {
@@ -187,6 +299,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let onSide = d2d > dCap;
     var gx = combined.z;
     var gz = combined.w;
+${this.#sideNormalSmoothWgsl("p.xz", "gx", "gz", N, BASE, NORMBASE)}
 
     if (faceSelection.mode == 1u && faceSelection.nodeId == id && faceSelection.extrudeOffset != 0.0) {
         let fi = faceSelection.faceIndex;
@@ -219,13 +332,23 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
 
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
-    let n = select(nCap, nSide, onSide);
+    var n = select(nCap, nSide, onSide);
+${this.#debugTessEdgesWgsl("p.xz", N, BASE)}
     let capId = select(${capBottomId}u, ${capTopId}u, capY > 0.0);
     var resultId = select(capId, id, onSide);
     if (faceSelection.nodeId == id) {
         if (onSide && faceSelection.mode == 0u) {
             let edge = u32(combined.y);
-            if (edge == faceSelection.faceIndex) {
+            // Highlight the whole wall-surface segment [segStart, segEnd) (one
+            // path2d element). The range wraps when segEnd <= segStart. Plain
+            // polygons pass a single-edge range, so this reduces to edge == faceIndex.
+            let segS = faceSelection.segStart;
+            let segE = faceSelection.segEnd;
+            var inSeg = edge >= segS && edge < segE;
+            if (segE <= segS) {
+                inSeg = edge >= segS || edge < segE;
+            }
+            if (inSeg) {
                 resultId = FACE_HIGHLIGHT_ID;
             }
         } else if (onSide && faceSelection.mode == 1u) {
@@ -275,13 +398,15 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let dCap = abs(capY) - h;
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
-    let gx_tw = combined.z;
-    let gz_tw = combined.w;
+    var gx_tw = combined.z;
+    var gz_tw = combined.w;
+${this.#sideNormalSmoothWgsl("twisted", "gx_tw", "gz_tw", N, BASE, NORMBASE)}
     let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
     let gySide = twistRate * (gx_tw * twisted.y - gz_tw * twisted.x);
     let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, gySide, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
-    let n = select(nCap, nSide, onSide);
+    var n = select(nCap, nSide, onSide);
+${this.#debugTessEdgesWgsl("twisted", N, BASE)}
     let capId = select(${capBottomId}u, ${capTopId}u, capY > 0.0);
     var resultId = select(capId, id, onSide);
     if (faceSelection.nodeId == id) {
@@ -296,7 +421,16 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             // the edited polygon through twist; the mode-1 extrude-bump preview
             // is not rendered under twist.)
             let edge = u32(combined.y);
-            if (edge == faceSelection.faceIndex) {
+            // Highlight the whole wall-surface segment [segStart, segEnd) (one
+            // path2d element). The range wraps when segEnd <= segStart. Plain
+            // polygons pass a single-edge range, so this reduces to edge == faceIndex.
+            let segS = faceSelection.segStart;
+            let segE = faceSelection.segEnd;
+            var inSeg = edge >= segS && edge < segE;
+            if (segE <= segS) {
+                inSeg = edge >= segS || edge < segE;
+            }
+            if (inSeg) {
                 resultId = FACE_HIGHLIGHT_ID;
             }
         } else if (!onSide && faceSelection.mode >= 2u) {
@@ -320,11 +454,47 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
         const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
+        // Conservative profile bounds (baked, in the same XZ frame as childFunc):
+        // a cheap lower bound on the polygon distance so empty-space ray-march
+        // steps skip the O(N) polygon SDF entirely — the dominant cost for a
+        // finely-tessellated bezier profile. AABB for the untwisted case; a
+        // twist-invariant bounding circle (the profile rotates about the XZ
+        // origin) for the twisted case.
+        const verts = this.child.vertices
+        let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity, maxR2 = 0
+        for (const [x, z] of verts) {
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+            if (z < minZ) minZ = z
+            if (z > maxZ) maxZ = z
+            const r2 = x * x + z * z
+            if (r2 > maxR2) maxR2 = r2
+        }
+        const f = (n: number): string => {
+            if (!isFinite(n)) return "0.0"
+            const s = n.toString()
+            return s.includes(".") || s.includes("e") || s.includes("E") ? s : s + ".0"
+        }
+        const cx = f((minX + maxX) / 2), cz = f((minZ + maxZ) / 2)
+        const hx = f((maxX - minX) / 2), hz = f((maxZ - minZ) / 2)
+        const maxR = f(Math.sqrt(maxR2))
+
         if (!hasTwist) {
             return `
 fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
-    let d2d = ${childFunc}(p.xz);
     let dCap = abs(p.y - ${capYOff}) - ${capH};
+    // Distance to the profile AABB underestimates the true polygon distance,
+    // so the sphere-trace step never overshoots when we take the cheap path.
+    let q = abs(p.xz - vec2f(${cx}, ${cz})) - vec2f(${hx}, ${hz});
+    let dAabb = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0);
+    let lo = max(dAabb, dCap);
+    // Only take the cheap path when the bound is safely above the marcher's
+    // surface hit threshold (SURF_DIST = 0.001). At the AABB/slab shell, lo
+    // drops toward 0; returning it there would read as a false surface (the
+    // box outline shading the empty space). The thin shell falls through to
+    // the exact polygon, which gives the true (large) distance — no false hit.
+    if (lo > 0.004) { return sdfFast(lo, 1.0, 1.0); }
+    let d2d = ${childFunc}(p.xz);
     return sdfFast(max(d2d, dCap), 1.0, 1.0);
 }
 `
@@ -351,6 +521,14 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
     let rho = length(p.xz);
     let stretch = sqrt(1.0 + twistRate * twistRate * rho * rho);
+    // length(p.xz) - maxR is a twist-invariant lower bound on the polygon
+    // distance: take the cheap path in empty space, keep the exact field func
+    // (untouched) for steps that land near the surface.
+    let dCapHint = abs(p.y - ${capYOff}) - h;
+    let lo = max(rho - ${maxR}, dCapHint);
+    // Margin above SURF_DIST (0.001): at the bounding shell lo -> 0 would read
+    // as a false surface. The thin shell falls through to the exact field func.
+    if (lo > 0.004) { return sdfFast(lo, 0.8, 1.0 / stretch); }
     // Match the operator-level sdfTwistFast for ray marching: the effective
     // step is d * safeStepMul = d / stretch. We keep d raw and g = 0.8 (the
     // historical placeholder) so MDC's voxel sampling, bisection trigger
@@ -635,6 +813,14 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         // defensive in case the field is mutated post-construction.
         if (N < 3) return
 
+        // Authored-node provenance (path2d): when present, a vertex casts a
+        // selectable vertical crease + 0D corner iff it's a real authored node
+        // (control point / vertex), NOT an interior curve-tessellation sample —
+        // so the dense rasterization of a smooth curve doesn't spam selectable
+        // edges. Plain hand-specified polygons carry no mask (`null`) and fall
+        // back to the geometric turn test below (unchanged behavior).
+        const anchorMask = this.child.vertexIsAnchor
+
         const windSign = polygon2dWindingSign(verts)
         const px = this.pos.x, py = this.pos.y, pz = this.pos.z
         const h = this.h
@@ -717,7 +903,11 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             ndx /= nLen; ndz /= nLen
             const turn = Math.abs(pdx * ndz - pdz * ndx)
             const hasTurn = turn >= EXTRUDE_MDC_VERTEX_TURN_MIN
-            sharpAt[k] = hasTurn
+            // Real authored node (path2d) takes precedence over the turn test:
+            // every anchor casts a crease/corner (even a smooth or collinear
+            // join — the user authored a node there), interior samples never do.
+            const isRealNode = anchorMask ? (anchorMask[k] ?? false) : hasTurn
+            sharpAt[k] = isRealNode
 
             // Bottom corner: untwisted (angle = 0).
             const lxBot = vx + px, lzBot = vz + pz
@@ -725,7 +915,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             const [twx, twz] = rotXZ(vx, vz, caTop, saTop)
             const lxTop = twx + px, lzTop = twz + pz
 
-            const baseFlags = FG_FLAG_CREASE_ORIGINAL | (hasTurn ? FG_FLAG_CORNER : 0)
+            const baseFlags = FG_FLAG_CREASE_ORIGINAL | (isRealNode ? FG_FLAG_CORNER : 0)
             const prevOutTop = rotNormalY(prevOutL, caTop, saTop)
             const nextOutTop = rotNormalY(nextOutL, caTop, saTop)
 

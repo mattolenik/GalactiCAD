@@ -7,6 +7,7 @@ import * as ts from "typescript"
 import { log } from "../logging/debug-log.mjs"
 import { BOTTOM, LEFT, RIGHT, TOP } from "../scene/direction-indicator.mjs"
 import { vec3, type Vec3, Vec3f } from "../vecmat/vector.mjs"
+import type { PathElement } from "../scene/primitives/path2d.mjs"
 
 /**
  * Source location information for a shape in the code
@@ -90,6 +91,7 @@ export interface ParsedShapeCall {
     normal?: Vec3f    // Normal vector for plane
     planeOffset?: number  // Distance from origin for plane
     vertices?: [number, number][]  // Vertex array for polygon2d
+    pathElements?: PathElement[]   // Authored vertices/control-polygons for path2d
     t?: number                     // Twist (degrees) for extrude
     /** Cylinder rim fillet radius (+y cap). */
     filletTop?: number
@@ -119,6 +121,25 @@ export interface Polygon2DCallInfo {
     vertices: [number, number][]
     /** User-space offset range [start, end) of each vertex [x,y] for surgical edits */
     vertexRanges: { start: number; end: number }[]
+    location: SourceLocation
+}
+
+/**
+ * Information about a path2d() call for the (curve-aware) polygon editor.
+ * Unlike polygon2d, path2d is varargs (each argument is one element), so there
+ * is no wrapping array — the args span runs from the first arg to the last.
+ */
+export interface Path2DCallInfo {
+    callStartOffset: number
+    callEndOffset: number
+    /** User-space offset range of the whole args list (first arg start .. last arg end). */
+    argsStartOffset: number
+    argsEndOffset: number
+    elements: PathElement[]
+    /** User-space offset range [start, end) of each element argument for surgical edits */
+    elementRanges: { start: number; end: number }[]
+    /** Optional persisted node-type tag per element (trailing string in a control polygon), else null. */
+    nodeTypes: (string | null)[]
     location: SourceLocation
 }
 
@@ -275,7 +296,7 @@ export function findReturnStatementLine(src: string): number | null {
 /**
  * Shape functions we care about for source location tracking
  */
-const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d"])
+const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d", "path2d"])
 const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe", "knurl"])
 const MODIFIER_NAMES = new Set(["rotate", "translate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar"])
 const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
@@ -661,6 +682,8 @@ export class SourceParser {
             this.parseBlobFluentArgs(callNode, parsedCall)
         } else if (funcName === "polygon2d") {
             this.parsePolygon2DArgs(callNode, parsedCall)
+        } else if (funcName === "path2d") {
+            this.parsePath2DArgs(callNode, parsedCall)
         } else if ((funcName === "extrude" || funcName === "loft") && isFluent) {
             this.parseExtrudeLoftFluentArgs(callNode, parsedCall)
         } else if (funcName === "lathe" && isFluent) {
@@ -1180,6 +1203,60 @@ export class SourceParser {
         }
     }
 
+    private parsePath2DArgs(callNode: ts.CallExpression, parsedCall: ParsedShapeCall): void {
+        try {
+            const elements: PathElement[] = []
+            for (const arg of callNode.arguments) {
+                if (!ts.isArrayLiteralExpression(arg)) return
+                const el = this.evaluatePathElement(arg)
+                if (!el) return
+                elements.push(el)
+            }
+            if (elements.length > 0) parsedCall.pathElements = elements
+        } catch (err) {
+            log("SourceParser").debug(`Could not parse path2d args:`, err)
+        }
+    }
+
+    /**
+     * Parse one path2d element: `[x,y]` (vertex) or `[[x,y],…]` (2/3/4-point
+     * control polygon). A control polygon may carry an optional trailing string
+     * node-type tag (`[[x,y],…,"smooth"]`) which is ignored for geometry — see
+     * {@link evaluatePathElementTag}.
+     */
+    private evaluatePathElement(node: ts.ArrayLiteralExpression): PathElement | null {
+        const first = node.elements[0]
+        if (!first) return null
+        if (!ts.isArrayLiteralExpression(first)) {
+            // Bare vertex [x, y].
+            if (node.elements.length !== 2) return null
+            const x = this.evaluateExpression(node.elements[0]!)
+            const y = this.evaluateExpression(node.elements[1]!)
+            if (typeof x !== "number" || typeof y !== "number") return null
+            return [x, y]
+        }
+        // Control polygon: 2/3/4 [x,y] points, with an optional trailing tag string.
+        let items = node.elements as readonly ts.Expression[]
+        const last = items[items.length - 1]
+        if (last && ts.isStringLiteral(last)) items = items.slice(0, -1)
+        const pts: [number, number][] = []
+        for (const e of items) {
+            if (!e || !ts.isArrayLiteralExpression(e) || e.elements.length !== 2) return null
+            const x = this.evaluateExpression(e.elements[0]!)
+            const y = this.evaluateExpression(e.elements[1]!)
+            if (typeof x !== "number" || typeof y !== "number") return null
+            pts.push([x, y])
+        }
+        if (pts.length < 2 || pts.length > 4) return null
+        return pts
+    }
+
+    /** The trailing node-type tag string of a control-polygon element, else null. */
+    private evaluatePathElementTag(node: ts.ArrayLiteralExpression): string | null {
+        const last = node.elements[node.elements.length - 1]
+        return last && ts.isStringLiteral(last) ? last.text : null
+    }
+
     private getPropertyKey(prop: ts.PropertyAssignment): string | undefined {
         const name = prop.name
         if (ts.isIdentifier(name) || ts.isStringLiteral(name)) return name.text
@@ -1484,6 +1561,71 @@ export class SourceParser {
             rotateRange,
             rotateBaseEuler,
             rotateInsertOffset,
+        }
+    }
+
+    findPath2DAtPosition(src: string, line: number, column: number, sourceFile?: ts.SourceFile): Path2DCallInfo | null {
+        const offset = this.positionToOffset(src, line, column)
+        const calls: Path2DCallInfo[] = []
+
+        const sf = sourceFile && sourceFile.getFullText() === wrapSource(src) ? sourceFile : parseSource(src)
+
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "path2d") {
+                const info = this.extractPath2DInfo(node, sf)
+                if (info) calls.push(info)
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sf)
+
+        for (const call of calls) {
+            if (offset >= call.callStartOffset && offset <= call.callEndOffset) {
+                return call
+            }
+        }
+        return null
+    }
+
+    private extractPath2DInfo(callNode: ts.CallExpression, sourceFile: ts.SourceFile): Path2DCallInfo | null {
+        if (callNode.arguments.length < 1) return null
+
+        const elements: PathElement[] = []
+        const elementRanges: { start: number; end: number }[] = []
+        const nodeTypes: (string | null)[] = []
+        for (const arg of callNode.arguments) {
+            if (!ts.isArrayLiteralExpression(arg)) return null
+            const el = this.evaluatePathElement(arg)
+            if (!el) return null
+            elements.push(el)
+            nodeTypes.push(this.evaluatePathElementTag(arg))
+            elementRanges.push({
+                start: arg.getStart() - WRAP_PREFIX_CHARS,
+                end: arg.getEnd() - WRAP_PREFIX_CHARS,
+            })
+        }
+
+        const firstArg = callNode.arguments[0]!
+        const lastArg = callNode.arguments[callNode.arguments.length - 1]!
+        const startPos = callNode.expression.getStart()
+        const loc = tsPosToUser(sourceFile, startPos)
+        const endLoc = tsPosToUser(sourceFile, callNode.expression.getEnd())
+
+        return {
+            callStartOffset: callNode.getStart() - WRAP_PREFIX_CHARS,
+            callEndOffset: callNode.getEnd() - WRAP_PREFIX_CHARS,
+            argsStartOffset: firstArg.getStart() - WRAP_PREFIX_CHARS,
+            argsEndOffset: lastArg.getEnd() - WRAP_PREFIX_CHARS,
+            elements,
+            elementRanges,
+            nodeTypes,
+            location: {
+                startLine: loc.line,
+                startColumn: loc.column,
+                endLine: endLoc.line,
+                endColumn: endLoc.column,
+                functionName: "path2d"
+            }
         }
     }
 

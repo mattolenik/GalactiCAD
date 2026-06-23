@@ -28,7 +28,7 @@ struct BoundsUniforms {
 @group(0) @binding(3) var<storage, read> polygonVertices: array<vec2f>;
 
 // Face selection (for Extrude face highlighting; not used in bounds, but must exist for compilation).
-struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f32, pushPullActive: u32, }
+struct FaceSelection { nodeId: u32, faceIndex: u32, mode: u32, extrudeOffset: f32, pushPullActive: u32, segStart: u32, segEnd: u32, }
 @group(0) @binding(4) var<uniform> faceSelection: FaceSelection;
 const FACE_HIGHLIGHT_ID: u32 = 1023u;
 const FACE_HIGHLIGHT_TOP: u32 = 1023u;
@@ -62,6 +62,10 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
 
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 //:) insert sceneAuxFast
+// Mesh/FG/bounds use true geometry; the extrude smooth-shading toggle is
+// preview-only (preview.wgsl reads viewSettings), so force flat here.
+fn sdfFlatShadingFlag() -> u32 { return 1u; }
+fn sdfDebugTessEdgesFlag() -> u32 { return 0u; }
 //:) insert sceneAux
 
 // Fast version for distance-only evaluations.

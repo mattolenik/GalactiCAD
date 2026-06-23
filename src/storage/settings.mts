@@ -60,6 +60,10 @@ export interface PreviewSettings {
     xrayMode: boolean
     /** When true, preview uses analytical normals for shading ("normal mode"). */
     previewNormalShading: boolean
+    /** When true, extrude side normals render flat (faceted) instead of the default Phong smoothing. */
+    flatShading: boolean
+    /** When true, route the scene pass through a retained G-buffer so selection/hover repaints skip the SDF march. Default on. */
+    deferredShading: boolean
     cameraOptimization: boolean
     beamOptimization: boolean
     bvhOptimization: boolean
@@ -196,6 +200,8 @@ function defaultPreview(): PreviewSettings {
     return {
         xrayMode: false,
         previewNormalShading: false,
+        flatShading: false,
+        deferredShading: true,
         cameraOptimization: true,
         beamOptimization: true,
         bvhOptimization: true,

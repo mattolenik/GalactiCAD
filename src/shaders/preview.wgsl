@@ -81,6 +81,8 @@ struct ViewSettings {
     beamEnabled: u32,    // 0 = disabled (start from t=0), 1 = use beam pre-pass t_start
     selectionMode: u32,  // 0=object, 1=seam, 2=edge, 3=face, 4=auto
     ghostEnabled: u32,   // 0 = off, 1 = show subtracted cutters as a translucent red ghost overlay
+    flatShading: u32,    // 0 = smooth (Phong) extrude side normals (default), 1 = flat per-edge facets
+    debugTessEdges: u32, // 1 = draw markers at path2d tessellation vertices on extrude sides (debug)
 }
 @group(0) @binding(6) var<uniform> viewSettings: ViewSettings;
 
@@ -106,6 +108,8 @@ struct FaceSelection {
     mode: u32,           // 0 = slide, 1 = extrude, 2 = top cap, 3 = bottom cap, 4 = box, 5 = cylinder, 6 = cone
     extrudeOffset: f32,  // world-space offset (extrude mode only)
     pushPullActive: u32, // 1 = push/pull active (dither); 0 = normal selection (no dither)
+    segStart: u32,       // mode-0 side highlight: wall-surface segment edge range
+    segEnd: u32,         //   [segStart, segEnd); wraps when segEnd <= segStart
 }
 @group(0) @binding(11) var<uniform> faceSelection: FaceSelection;
 
@@ -540,6 +544,11 @@ fn applySelectedEdgeHighlight(color: vec3f, hitWorld: vec3f, hit: HitData, wppu:
 
 // Auxiliary SDF functions (e.g., per-polygon evaluators) are injected here at runtime.
 //:) insert sceneAuxFast
+// Extrude smooth-shading toggle source. Preview reads the live flag; the
+// mesh/FG/bounds shaders define their own (always-flat) sdfFlatShadingFlag,
+// because the shared extrude Ex function calls it.
+fn sdfFlatShadingFlag() -> u32 { return viewSettings.flatShading; }
+fn sdfDebugTessEdgesFlag() -> u32 { return viewSettings.debugTessEdges; }
 //:) insert sceneAux
 
 // The contents of sceneSDF are replaced at runtime, do not modify this function.

@@ -50,6 +50,7 @@ function serializeNode(node: Node, parentId: number): SerializedNode {
     if (node instanceof Polygon2D) {
         s.vertices = node.vertices.map(v => [v[0], v[1]])
         s.bufferOffset = node.bufferOffset >= 0 ? node.bufferOffset : undefined
+        if (node.vertexIsAnchor) s.vertexIsAnchor = node.vertexIsAnchor.slice()
     }
 
     if (node instanceof Extrude) {

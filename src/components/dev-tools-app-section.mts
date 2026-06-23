@@ -61,6 +61,8 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #fgDifferentiate$: BehaviorSubject<boolean>
     #stepHeatmap$: BehaviorSubject<boolean>
     #deferredShading$: BehaviorSubject<boolean>
+    #debugTessEdges$: BehaviorSubject<boolean>
+    #tessDetail$: BehaviorSubject<string>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
     #previewShadingState: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
@@ -76,6 +78,8 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onFeatureGraphDifferentiateSegmentsChange?: (on: boolean) => void
     onStepHeatmapChange?: (enabled: boolean) => void
     onDeferredShadingChange?: (enabled: boolean) => void
+    onDebugTessEdgesChange?: (enabled: boolean) => void
+    onTessDetailChange?: (factor: number) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
     onPreviewShadingChange?: (params: PreviewShadingParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
@@ -191,6 +195,19 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#deferredShading$.next(enabled)
     }
 
+    get debugTessEdges(): boolean {
+        return this.#debugTessEdges$.value
+    }
+    set debugTessEdges(enabled: boolean) {
+        this.#debugTessEdges$.next(enabled)
+    }
+    get tessDetail(): number {
+        return parseFloat(this.#tessDetail$.value)
+    }
+    set tessDetail(factor: number) {
+        this.#tessDetail$.next(String(factor))
+    }
+
     get meshViewer(): boolean {
         return this.#meshViewer$.value
     }
@@ -247,6 +264,8 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         // of a full-res G-buffer (VRAM) and a tiny extra pass on camera-moving frames.
         // (app.mts:1321 re-syncs this from the renderer's value on init.)
         this.#deferredShading$ = new BehaviorSubject(true)
+        this.#debugTessEdges$ = new BehaviorSubject(false)
+        this.#tessDetail$ = new BehaviorSubject("1")
 
         const persist = () => {
             if (this.#applying) return
@@ -328,6 +347,34 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         this.#subscriptions.push(
             this.#fgDifferentiate$.pipe(skip(1)).subscribe(v => {
                 if (!this.#applying) this.onFeatureGraphDifferentiateSegmentsChange?.(v)
+            }),
+        )
+
+        // --- Tessellation (bezier path2d) density + edge debug ---
+        const tessDetailSel = this.#addSelect(
+            viewportBox,
+            "Tess detail",
+            [
+                { value: "0.25", label: "Coarse" },
+                { value: "0.5", label: "Low" },
+                { value: "1", label: "Normal" },
+                { value: "2", label: "Fine" },
+                { value: "4", label: "Ultra" },
+            ],
+            this.#tessDetail$.value,
+        )
+        tessDetailSel.addEventListener("change", () => this.#tessDetail$.next(tessDetailSel.value))
+        this.#subscriptions.push(
+            this.#tessDetail$.pipe(skip(1)).subscribe(v => {
+                if (!this.#applying) this.onTessDetailChange?.(parseFloat(v))
+            }),
+        )
+
+        const tessEdgesCb = this.#addCheckbox(viewportBox, "Tessellation edges", this.#debugTessEdges$.value)
+        this.#subscriptions.push(connectCheckbox(tessEdgesCb, this.#debugTessEdges$))
+        this.#subscriptions.push(
+            this.#debugTessEdges$.pipe(skip(1)).subscribe(v => {
+                if (!this.#applying) this.onDebugTessEdgesChange?.(v)
             }),
         )
 

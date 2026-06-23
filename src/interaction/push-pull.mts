@@ -1,6 +1,6 @@
 import { Vec2f, Vec3f, vec2, vec3 } from "../vecmat/vector.mjs"
 import { Box, Cone, Cylinder, Extrude, Loft, ThreadedRod } from "../scene/scene.mjs"
-import { closestPolygonEdge } from "../scene/primitives/polygon2d.mjs"
+import { closestPolygonEdge, surfaceSegmentEdgeRange } from "../scene/primitives/polygon2d.mjs"
 
 /** Extrude / loft / threaded rod stub from the worker graph; includes byte offset for cap `h` + posYDelta in the `previewCapParamDrag` uniform layout (vec4-packed like `previewParamsF32`). */
 export type PushPullCapNode = (Extrude | Loft | ThreadedRod) & { sceneCapParamsByteOffset: number }
@@ -102,11 +102,24 @@ export class PushPullController {
         const verts = extrude.child.vertices
         const closestEdge = closestPolygonEdge(verts, px, pz)
         this.#sideHighlightOnly = { extrude, faceIndex: closestEdge, angle }
-        this.#writeFaceSelection(extrude.id, closestEdge, 0, 0)
+        const range = this.#sideSegmentRange(extrude, closestEdge)
+        this.#writeFaceSelection(extrude.id, closestEdge, 0, 0, range.start, range.end)
         const selData = new Uint32Array(1024)
         selData[FACE_HIGHLIGHT_ID] = 1
         this.#host.writeBuffers({ selectedObjectIds: selData.buffer })
         this.#host.requestRender()
+    }
+
+    /**
+     * Edge-index range of the wall-surface segment under the cursor. For a
+     * path2d profile this spans the whole tessellated bezier element (so each
+     * element is one selectable surface); a plain polygon falls back to the
+     * single grabbed edge — preserving its per-edge selection.
+     */
+    #sideSegmentRange(extrude: Extrude, edge: number): { start: number; end: number } {
+        const mask = extrude.child.vertexIsAnchor
+        const n = extrude.child.vertices.length
+        return mask ? surfaceSegmentEdgeRange(mask, edge, n) : { start: edge, end: (edge + 1) % n }
     }
 
     get isDragging(): boolean {
@@ -167,8 +180,21 @@ export class PushPullController {
         this.#onDeselect = cb
     }
 
+    /**
+     * Side-wall push/pull EDITING is only supported when the profile is a plain
+     * `polygon2d()` — its completion handler rewrites the polygon's vertex list
+     * in source. A `path2d()` profile is a tessellated bezier path (identified by
+     * its authored-anchor mask): a drag would preview per-tessellation-edge and
+     * silently discard on release, since there's no path2d source round-trip.
+     * Face SELECTION (highlightSideFace) and CAP push/pull stay available.
+     */
+    #sideEditable(extrude: Extrude): boolean {
+        return extrude.child.vertexIsAnchor == null
+    }
+
     /** Identify and select the face of the given Extrude that was clicked at hitPos. */
     selectFace(extrude: Extrude, hitPos: Vec3f): void {
+        if (!this.#sideEditable(extrude)) return
         this.#sideHighlightOnly = null
         this.#primitiveHighlightOnly = null
         this.#selectionOnlyHighlight = false
@@ -192,7 +218,8 @@ export class PushPullController {
         }
 
         // Write face selection uniform to GPU (mode=0 for initial selection, no offset yet)
-        this.#writeFaceSelection(extrude.id, closestEdge, 0, 0)
+        const range = this.#sideSegmentRange(extrude, closestEdge)
+        this.#writeFaceSelection(extrude.id, closestEdge, 0, 0, range.start, range.end)
 
         // Mark FACE_HIGHLIGHT_ID as selected for side face, deselect everything else
         const selData = new Uint32Array(1024)
@@ -293,6 +320,9 @@ export class PushPullController {
         this.#selectionOnlyHighlight = false
         if (this.#sideHighlightOnly) {
             const { extrude, faceIndex, angle } = this.#sideHighlightOnly
+            // path2d walls aren't push/pull-editable (see selectFace); keep the
+            // selection highlight, just don't promote it to an active drag.
+            if (!this.#sideEditable(extrude)) return false
             this.#sideHighlightOnly = null
             const verts = extrude.child.vertices
             const { normal2D, normal3D } = faceFrame(verts, faceIndex, angle)
@@ -499,8 +529,15 @@ export class PushPullController {
         return false
     }
 
-    #writeFaceSelection(nodeId: number, faceIndex: number, mode: number = 0, extrudeOffset: number = 0): void {
-        const data = new ArrayBuffer(20)
+    #writeFaceSelection(
+        nodeId: number,
+        faceIndex: number,
+        mode: number = 0,
+        extrudeOffset: number = 0,
+        segStart: number = faceIndex,
+        segEnd: number = faceIndex + 1,
+    ): void {
+        const data = new ArrayBuffer(32)
         const u32 = new Uint32Array(data)
         const f32 = new Float32Array(data)
         u32[0] = nodeId
@@ -510,6 +547,11 @@ export class PushPullController {
         // pushPullActive drives the DOT dither; a pure selection (selectionOnly)
         // shows the CROSS-HATCH instead (pushPullActive = 0).
         u32[4] = this.getFaceSelection() !== null && !this.#selectionOnlyHighlight ? 1 : 0
+        // Mode-0 side highlight sweeps the whole wall-surface segment [segStart,
+        // segEnd) (one path2d element), not just the tessellation edge grabbed.
+        // Plain polygons default to the single edge → identical to before.
+        u32[5] = segStart
+        u32[6] = segEnd
         this.#host.writeBuffers({ faceSelection: data })
     }
 

@@ -115,6 +115,11 @@ export class FeatureGraphHitTester {
     readonly #aliveCorners: Uint32Array
     /** FG vertex index → corner instance index (position in alive-corner stream); -1 if not a corner. */
     readonly #cornerInstanceByVertex: Map<number, number>
+    /** Cached screen projection keyed by camera reference. pickAny projects via
+     *  BOTH pickCorner and pickEdgeChain with the same `cam`, so compute it once
+     *  per hover instead of twice. The FG world positions are immutable for this
+     *  instance (the tester is rebuilt whenever the FeatureGraph changes). */
+    #projCache: { cam: FgCameraParams; proj: Float32Array } | null = null
 
     constructor(cpu: FeatureGraphCpu, world: FeatureGraphWorldPositions, chains: FgChainGrouping) {
         this.#cpu = cpu
@@ -145,6 +150,7 @@ export class FeatureGraphHitTester {
     /** Project every world vertex once: centered pixels + view-space depth
      *  (stride 3: x, y, viewZ). viewZ feeds the surface-occlusion test. */
     #projectAll(cam: FgCameraParams): Float32Array {
+        if (this.#projCache !== null && this.#projCache.cam === cam) return this.#projCache.proj
         const w = this.#world.positions
         const n = this.#world.count
         const out = new Float32Array(n * 3)
@@ -158,6 +164,7 @@ export class FeatureGraphHitTester {
             out[i * 3 + 1] = tmp[1]
             out[i * 3 + 2] = viewZOf(cam, x, y, z)
         }
+        this.#projCache = { cam, proj: out }
         return out
     }
 

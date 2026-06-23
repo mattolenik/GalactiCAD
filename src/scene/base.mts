@@ -64,6 +64,11 @@ export interface ISceneInfo {
     /** Fingerprint fragment for preview bank sizes (param-only vs full rebuild). */
     readonly previewParamFingerprint: string
     allocPolygonVertices(count: number): number
+    /** Total polygon vertices reserved after `build()`. The shared polygon
+     *  storage buffer appends a parallel per-vertex normal region starting at
+     *  this index (see `SceneInfo.getPolygonVertexData`), so extrude codegen
+     *  uses it as the base offset for smooth-shading normal reads. */
+    readonly totalPolygonVertices: number
     /** Whether to emit BVH bounding checks during code generation. */
     bvhEnabled: boolean
     /**

@@ -256,6 +256,13 @@ export class SDFRenderer {
     #gizmoController: GizmoController | null = null
     #gizmoNodeId = 0
     #gizmoToken = 0
+    /** Swallow the synthesized `click` that fires after a gizmo drag release.
+     * The gizmo grabs the pointer in the capture phase (so the camera controller
+     * never sees the drag and its `hasDragged` stays false), but the browser still
+     * emits a `click` on release — which `CameraController.#onClick` would treat as
+     * a fresh selection, re-picking whatever is under the cursor (or deselecting).
+     * Set on gizmo drag release/cancel, consumed by the capture-phase click handler. */
+    #suppressGizmoReleaseClick = false
     #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
     #pickObjectRequestId = 0
     #sharedBuffer: SharedArrayBuffer | null = null
@@ -405,6 +412,11 @@ export class SDFRenderer {
                     this.#worker.postMessage({ type: "resize", fullWidth: w, fullHeight: h, devicePixelRatio })
                     this.#needsRender = true
                     this.#updatePivotCursor()
+                    // Keep the gizmo overlay's backing store in sync, then redraw it
+                    // at the new size (separate canvas — not part of the worker render).
+                    this.#preview.gizmoCanvas.width = w
+                    this.#preview.gizmoCanvas.height = h
+                    this.#gizmoController?.draw()
                 }
             })
         })
@@ -1362,6 +1374,9 @@ export class SDFRenderer {
             canvas.width = this.#fullWidth
             canvas.height = this.#fullHeight
         }
+        // Size the main-thread gizmo overlay's backing store to match (device px).
+        this.#preview.gizmoCanvas.width = this.#fullWidth
+        this.#preview.gizmoCanvas.height = this.#fullHeight
         const offscreen = canvas.transferControlToOffscreen()
         this.#useSharedMemory = isSharedMemoryAvailable()
         log("Sdf").info("useSharedMemory", this.#useSharedMemory)
@@ -1439,8 +1454,8 @@ export class SDFRenderer {
             requestRender() {
                 self.requestRender()
             },
-            postGizmo(state) {
-                self.#worker.postMessage({ type: "setGizmo", ...state })
+            get gizmoCanvas() {
+                return self.#preview.gizmoCanvas
             },
             gizmoBegin(nodeId, kind) {
                 self.#worker.postMessage({ type: "gizmoBegin", nodeId, kind })
@@ -1473,6 +1488,14 @@ export class SDFRenderer {
         })
         const canvas = this.#preview.canvas
         canvas.addEventListener("click", (e: MouseEvent) => {
+            // Swallow the one click synthesized after a gizmo drag release so the
+            // moved/rotated object stays selected instead of re-picking whatever is
+            // under the cursor (see #suppressGizmoReleaseClick).
+            if (this.#suppressGizmoReleaseClick) {
+                this.#suppressGizmoReleaseClick = false
+                e.stopImmediatePropagation()
+                return
+            }
             // Swallow the click during an active push/pull drag, or a shift+click
             // that promotes a selected face to push/pull — but let plain clicks
             // through so face/object selection works normally.
@@ -1548,6 +1571,9 @@ export class SDFRenderer {
             gc.handlePointerUp(e.clientX, e.clientY)
             if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
             canvas.style.cursor = "grab"
+            // Suppress the click this release will synthesize, so it doesn't change
+            // the selection to whatever is under the cursor (keep the dragged object).
+            this.#suppressGizmoReleaseClick = true
             // Back to full resolution; force a settle re-render.
             this.#controls.isDragging = false
             this.#needsRender = true
@@ -1560,6 +1586,9 @@ export class SDFRenderer {
                 this.#controls.isDragging = false
                 this.#needsRender = true
                 this.#preview.canvas.style.cursor = ""
+                // The button is still held; its eventual release would synthesize a
+                // selection-changing click — swallow it too.
+                this.#suppressGizmoReleaseClick = true
                 e.preventDefault()
             }
         })
@@ -2153,6 +2182,9 @@ export class SDFRenderer {
         } else {
             this.#worker.postMessage(payload, [payload.viewTransform.buffer])
         }
+        // Re-project the main-thread gizmo overlay so it tracks the camera being
+        // rendered this frame (cheap Canvas2D redraw; no worker round-trip).
+        if (this.#gizmoController?.shown) this.#gizmoController.draw()
         if (this.#shouldReplayHoverAfterRender) {
             this.#shouldReplayHoverAfterRender = false
             this.#replayHoverWhenSettled()

@@ -1,12 +1,18 @@
 /**
  * Transform-gizmo interaction controller (main thread).
  *
+ * Rendering: the gizmo is drawn on the MAIN THREAD into a transparent 2D canvas
+ * layered over the (worker-owned) WebGPU canvas — NOT in a worker render pass.
+ * Hover/active highlight and live drag therefore redraw a handful of Canvas2D
+ * paths (~1 ms) instead of forcing a full scene raymarch in the worker; the
+ * scene is only re-rendered when the dragged object actually moves. Rings are
+ * smooth analytic curves (projected + stroked) rather than tessellated quads.
+ *
  * Responsibilities:
  *  - Placement: store the gizmo's world anchor, the world→local linear inverse
- *    (for translate), and the object's world orientation (for the local rings),
- *    and push visibility/anchor/highlight to the render worker.
+ *    (for translate), and the object's world orientation (for the local rings).
  *  - Hover: project each handle's world geometry to canvas CSS pixels, find the
- *    nearest, and drive the shader's hover highlight.
+ *    nearest, and highlight it.
  *  - Translate drag (arrows): axis-locked, world-space; previewed live in the
  *    worker (no recompile); writes `.shift` on release.
  *  - Planar translate drag (corner squares): locked to a world plane (the two
@@ -37,14 +43,10 @@ import {
 
 export interface GizmoHost {
     requestRender(): void
-    /** Push gizmo visibility/anchor/highlight to the render worker (`setGizmo`). */
-    postGizmo(state: {
-        visible: boolean
-        center?: [number, number, number]
-        hoverHandle?: number
-        activeHandle?: number
-        orient?: number[]
-    }): void
+    /** Transparent 2D overlay canvas (device-pixel backing store, layered over
+     * the WebGPU canvas) the controller draws the gizmo into on the main thread.
+     * Sized by the host on resize. */
+    readonly gizmoCanvas: HTMLCanvasElement
     /** Gizmo drag lifecycle messages to the worker (live preview). For rotate,
      * `nodeId` is the Rotate node and `rotate` sets its Euler absolutely. */
     gizmoBegin(nodeId: number, kind: "translate" | "rotate"): void
@@ -71,6 +73,56 @@ const ARROW_HIT_PX = 9
 const RING_HIT_PX = 8
 /** Samples per ring for hit-testing (independent of the overlay's draw tessellation). */
 const RING_SAMPLES = 32
+
+/** Draw sizes in DEVICE pixels (match the old WGSL overlay so the on-screen look
+ * is unchanged): shaft/ring stroke width, arrowhead length + half-width. */
+const LINE_WIDTH_PX = 2.5
+const HEAD_LEN_PX = 14
+const HEAD_HALF_WIDTH_PX = 6
+/** Ring tessellation for DRAWING — high enough that the projected ellipse reads
+ * as a smooth curve (Canvas2D AA + round joins do the rest). */
+const RING_DRAW_SAMPLES = 96
+
+/** Highlight state of a handle, mirroring the old shader's `handleState`. */
+const HL = { None: 0, Hover: 1, Active: 2 } as const
+type Hl = (typeof HL)[keyof typeof HL]
+function handleHl(handleId: number, hover: number, active: number): Hl {
+    if (handleId === active) return HL.Active
+    if (handleId === hover) return HL.Hover
+    return HL.None
+}
+
+/** Per-axis base color (X red, Y green, Z blue) — matches `axisColor` in the shader. */
+const AXIS_RGB: ReadonlyArray<readonly [number, number, number]> = [
+    [0.92, 0.26, 0.30],
+    [0.40, 0.82, 0.36],
+    [0.30, 0.52, 0.95],
+]
+/** Plane color = clamped additive blend of its two component axes (YZ cyan, XZ magenta, XY yellow). */
+function planeRgb(axis: number): [number, number, number] {
+    const a = AXIS_RGB[(axis + 1) % 3]!
+    const b = AXIS_RGB[(axis + 2) % 3]!
+    return [Math.min(1, a[0] + b[0]), Math.min(1, a[1] + b[1]), Math.min(1, a[2] + b[2])]
+}
+function mixWhite(c: readonly [number, number, number], t: number): [number, number, number] {
+    return [c[0] + (1 - c[0]) * t, c[1] + (1 - c[1]) * t, c[2] + (1 - c[2]) * t]
+}
+function rgbCss(c: readonly [number, number, number], alpha = 1): string {
+    const r = Math.round(c[0] * 255), g = Math.round(c[1] * 255), b = Math.round(c[2] * 255)
+    return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+/** Line/arrowhead color for a highlight state: active → yellow, hover → toward white. */
+function lineCss(base: readonly [number, number, number], hl: Hl): string {
+    if (hl === HL.Active) return rgbCss([1.0, 0.85, 0.10])
+    return rgbCss(hl === HL.Hover ? mixWhite(base, 0.4) : base)
+}
+/** Translucent plane fill for a highlight state (matches `planeFragmentMain`). */
+function planeCss(axis: number, hl: Hl): string {
+    const base = planeRgb(axis)
+    if (hl === HL.Active) return rgbCss(mixWhite(base, 0.45), 0.85)
+    if (hl === HL.Hover) return rgbCss(mixWhite(base, 0.30), 0.7)
+    return rgbCss(base, 0.4)
+}
 
 type ScreenPt = { x: number; y: number }
 type Vec3 = [number, number, number]
@@ -129,6 +181,8 @@ export class GizmoController {
     #hoverHandle = -1
     #shown = false
     #drag: TranslateDrag | RotateDrag | PlaneDrag | null = null
+    /** Lazily-fetched 2D context of the overlay canvas. */
+    #ctx: CanvasRenderingContext2D | null = null
 
     constructor(host: GizmoHost) {
         this.#host = host
@@ -151,8 +205,7 @@ export class GizmoController {
         this.#rotateBaseEuler = rotateEuler
         this.#shown = true
         this.#hoverHandle = -1
-        this.#host.postGizmo({ visible: true, center, orient })
-        this.#host.requestRender()
+        this.#redraw()
     }
 
     /** Hide the gizmo. No-op when already hidden. */
@@ -162,8 +215,13 @@ export class GizmoController {
         this.#shown = false
         this.#center = null
         this.#hoverHandle = -1
-        this.#host.postGizmo({ visible: false })
-        this.#host.requestRender()
+        this.#redraw() // clears the overlay (now hidden) — no scene re-render needed
+    }
+
+    /** Redraw the overlay so it tracks the camera. Called from the host's render
+     * loop each frame the scene is (re)rendered; no-op when hidden. */
+    draw(): void {
+        this.#redraw()
     }
 
     /**
@@ -177,8 +235,7 @@ export class GizmoController {
         const handle = this.#hitTest(clientX - rect.left, clientY - rect.top)
         if (handle !== this.#hoverHandle) {
             this.#hoverHandle = handle
-            this.#host.postGizmo({ visible: true, hoverHandle: handle })
-            this.#host.requestRender()
+            this.#redraw() // overlay-only: recolor a few paths, NOT a scene raymarch
         }
         return handle >= 0
     }
@@ -226,8 +283,7 @@ export class GizmoController {
             this.#host.gizmoBegin(this.#nodeId, "translate")
         }
         this.#hoverHandle = handle
-        this.#host.postGizmo({ visible: true, hoverHandle: handle, activeHandle: handle })
-        this.#host.requestRender()
+        this.#redraw() // active-handle highlight; the object hasn't moved yet
         return true
     }
 
@@ -241,8 +297,8 @@ export class GizmoController {
             const localDelta = applyMat3(this.#invLinear, worldDelta)
             this.#host.gizmoPreview({ translate: localDelta })
             this.#center = [drag.baseCenter[0] + worldDelta[0], drag.baseCenter[1] + worldDelta[1], drag.baseCenter[2] + worldDelta[2]]
-            this.#host.postGizmo({ visible: true, center: this.#center, hoverHandle: drag.handle, activeHandle: drag.handle })
-            this.#host.requestRender()
+            this.#redraw()
+            this.#host.requestRender() // object moved → re-render the scene
             return true
         }
         if (drag.kind === "plane") {
@@ -252,8 +308,8 @@ export class GizmoController {
                 const worldDelta = sub(hit, drag.startHit)
                 this.#host.gizmoPreview({ translate: applyMat3(this.#invLinear, worldDelta) })
                 this.#center = [drag.baseCenter[0] + worldDelta[0], drag.baseCenter[1] + worldDelta[1], drag.baseCenter[2] + worldDelta[2]]
-                this.#host.postGizmo({ visible: true, center: this.#center, hoverHandle: drag.handle, activeHandle: drag.handle })
-                this.#host.requestRender()
+                this.#redraw()
+                this.#host.requestRender() // object moved → re-render the scene
             }
             return true
         }
@@ -273,8 +329,8 @@ export class GizmoController {
         // when the debounced source-edit rebuild finally re-anchors the gizmo.
         if (drag.rotateNodeId > 0) {
             this.#host.gizmoPreview({ rotate: this.#composedEuler(drag) })
-            this.#host.postGizmo({ visible: true, orient: this.#followOrient(drag), hoverHandle: drag.handle, activeHandle: drag.handle })
-            this.#host.requestRender()
+            this.#redraw() // rings track the spin (uses #followOrient while dragging)
+            this.#host.requestRender() // object spun → re-render the scene
         }
         return true
     }
@@ -318,7 +374,6 @@ export class GizmoController {
             const delta = applyMat3(this.#invLinear, worldDelta)
             const final: Vec3 = [drag.base[0] + delta[0], drag.base[1] + delta[1], drag.base[2] + delta[2]]
             this.#host.gizmoEnd()
-            this.#host.postGizmo({ visible: true, center: this.#center ?? drag.baseCenter, hoverHandle: -1, activeHandle: -1 })
             if (Math.abs(delta[0]) + Math.abs(delta[1]) + Math.abs(delta[2]) > 1e-9) {
                 this.#host.onTranslateComplete(this.#nodeId, final, delta)
             }
@@ -330,13 +385,11 @@ export class GizmoController {
                 // into place when the rebuild re-anchors it.
                 this.#orient = this.#followOrient(drag)
                 this.#host.gizmoEnd()
-                this.#host.postGizmo({ visible: true, orient: this.#orient, hoverHandle: -1, activeHandle: -1 })
-            } else {
-                this.#host.postGizmo({ visible: true, hoverHandle: -1, activeHandle: -1 })
             }
             const deg = (drag.accumAngle * 180) / Math.PI
             if (Math.abs(deg) > 1e-4) this.#host.onRotateComplete(this.#nodeId, drag.axis, deg)
         }
+        this.#redraw()
         this.#host.requestRender()
         return true
     }
@@ -350,16 +403,13 @@ export class GizmoController {
             this.#host.gizmoPreview({ translate: [0, 0, 0] }) // revert preview to base
             this.#host.gizmoEnd()
             this.#center = drag.baseCenter
-            this.#host.postGizmo({ visible: true, center: drag.baseCenter, hoverHandle: -1, activeHandle: -1 })
-        } else {
-            if (drag.rotateNodeId > 0) {
-                this.#host.gizmoPreview({ rotate: drag.baseEuler }) // revert preview to base
-                this.#host.gizmoEnd()
-            }
-            // The rings may have tracked the spin during the drag; `#orient` is still
-            // the base, so push it to snap them back to the un-rotated orientation.
-            this.#host.postGizmo({ visible: true, orient: this.#orient, hoverHandle: -1, activeHandle: -1 })
+        } else if (drag.rotateNodeId > 0) {
+            this.#host.gizmoPreview({ rotate: drag.baseEuler }) // revert preview to base
+            this.#host.gizmoEnd()
         }
+        // `#orient`/`#center` are back at the base (never mutated mid-drag), and
+        // `#drag` is now null, so the redraw snaps the rings/handles to neutral.
+        this.#redraw()
         this.#host.requestRender()
     }
 
@@ -511,6 +561,125 @@ export class GizmoController {
         const uvX = (uvAspX - 0.5) / aspectRt + this.#host.viewCenter.x
         const uvY = uvAspY - 0.5 + this.#host.viewCenter.y
         return { x: uvX * cssW, y: (1 - uvY) * cssH }
+    }
+
+    /** 2D context of the overlay canvas (lazily fetched, then cached). */
+    #context(): CanvasRenderingContext2D | null {
+        if (!this.#ctx) this.#ctx = this.#host.gizmoCanvas.getContext("2d")
+        return this.#ctx
+    }
+
+    /**
+     * Draw the entire gizmo into the overlay canvas (clears first). A few dozen
+     * Canvas2D paths on the main thread — never touches the scene raymarch. The
+     * backing store is device pixels; `#project` yields CSS px, scaled by `dpr`.
+     * Order: translucent plane fills, then rings, then shafts, then arrowheads.
+     */
+    #redraw(): void {
+        const cv = this.#host.gizmoCanvas
+        const ctx = this.#context()
+        if (!ctx) return
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.clearRect(0, 0, cv.width, cv.height)
+        const center = this.#center
+        if (!this.#shown || !center) return
+        const canvas = this.#host.canvas
+        const cssW = canvas.clientWidth
+        const cssH = canvas.clientHeight
+        const zoom = this.#host.controls.zoom
+        if (cssW <= 0 || cssH <= 0 || zoom <= 0 || cv.width <= 0) return
+        const dpr = cv.width / cssW // overlay backing is device px; project gives CSS px
+        const invCam = new Mat4x4f(new Float32Array(this.#host.controls.viewTransform.data)).inverse()
+        const scale = this.#sizeWorld
+        const proj = (p: Vec3): ScreenPt | null => {
+            const s = this.#project(invCam, p, cssW, cssH, zoom)
+            return s ? { x: s.x * dpr, y: s.y * dpr } : null
+        }
+        const drag = this.#drag
+        const active = drag?.handle ?? -1
+        const hover = this.#hoverHandle
+        // Rings follow a live rotate spin, the same orientation #followOrient pins on release.
+        const orient = drag && drag.kind === "rotate" && drag.rotateNodeId > 0 ? this.#followOrient(drag) : this.#orient
+        ctx.lineJoin = "round"
+        ctx.lineCap = "round"
+
+        // 1) Plane quads — translucent fills, beneath the shafts/heads.
+        const off = GIZMO_PLANE_OFFSET * scale
+        const size = GIZMO_PLANE_SIZE * scale
+        for (let axis = 0; axis < 3; axis++) {
+            const e0 = GIZMO_AXES[(axis + 1) % 3]!
+            const e1 = GIZMO_AXES[(axis + 2) % 3]!
+            const c0 = proj(planeCorner(center, e0, e1, off, off))
+            const c1 = proj(planeCorner(center, e0, e1, off + size, off))
+            const c2 = proj(planeCorner(center, e0, e1, off + size, off + size))
+            const c3 = proj(planeCorner(center, e0, e1, off, off + size))
+            if (!c0 || !c1 || !c2 || !c3) continue
+            ctx.beginPath()
+            ctx.moveTo(c0.x, c0.y)
+            ctx.lineTo(c1.x, c1.y)
+            ctx.lineTo(c2.x, c2.y)
+            ctx.lineTo(c3.x, c3.y)
+            ctx.closePath()
+            ctx.fillStyle = planeCss(axis, handleHl(gizmoPlaneHandle(axis), hover, active))
+            ctx.fill()
+        }
+
+        // 2) Rotation rings — smooth oriented circles (projected ellipses).
+        const r = GIZMO_RING_RADIUS * scale
+        ctx.lineWidth = LINE_WIDTH_PX
+        for (let axis = 0; axis < 3; axis++) {
+            const e0 = matColumn(orient, (axis + 1) % 3)
+            const e1 = matColumn(orient, (axis + 2) % 3)
+            ctx.beginPath()
+            let started = false
+            for (let s = 0; s <= RING_DRAW_SAMPLES; s++) {
+                const pt = proj(ringPoint(center, e0, e1, (s / RING_DRAW_SAMPLES) * Math.PI * 2, r))
+                if (!pt) {
+                    started = false
+                    continue
+                }
+                if (started) ctx.lineTo(pt.x, pt.y)
+                else {
+                    ctx.moveTo(pt.x, pt.y)
+                    started = true
+                }
+            }
+            ctx.strokeStyle = lineCss(AXIS_RGB[axis]!, handleHl(gizmoRingHandle(axis), hover, active))
+            ctx.stroke()
+        }
+
+        // 3) Arrow shafts + heads (world-aligned). Trim the shaft to the head base
+        // in screen space so the body meets the arrowhead with no gap or overlap.
+        for (let axis = 0; axis < 3; axis++) {
+            const u = GIZMO_AXES[axis]!
+            const startPt = proj(addScaled(center, u, GIZMO_CENTER_GAP * scale))
+            const tipPt = proj(addScaled(center, u, GIZMO_TIP * scale))
+            if (!startPt || !tipPt) continue
+            let dx = tipPt.x - startPt.x
+            let dy = tipPt.y - startPt.y
+            const len = Math.hypot(dx, dy) || 1
+            dx /= len
+            dy /= len
+            const trim = Math.min(HEAD_LEN_PX, len)
+            const baseX = tipPt.x - dx * trim
+            const baseY = tipPt.y - dy * trim
+            const nx = -dy
+            const ny = dx
+            const col = lineCss(AXIS_RGB[axis]!, handleHl(gizmoArrowHandle(axis), hover, active))
+            ctx.strokeStyle = col
+            ctx.lineWidth = LINE_WIDTH_PX
+            ctx.beginPath()
+            ctx.moveTo(startPt.x, startPt.y)
+            ctx.lineTo(baseX, baseY)
+            ctx.stroke()
+            ctx.fillStyle = col
+            ctx.beginPath()
+            ctx.moveTo(tipPt.x, tipPt.y)
+            ctx.lineTo(baseX + nx * HEAD_HALF_WIDTH_PX, baseY + ny * HEAD_HALF_WIDTH_PX)
+            ctx.lineTo(baseX - nx * HEAD_HALF_WIDTH_PX, baseY - ny * HEAD_HALF_WIDTH_PX)
+            ctx.closePath()
+            ctx.fill()
+        }
     }
 }
 

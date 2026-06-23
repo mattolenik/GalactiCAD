@@ -519,8 +519,12 @@ export class SDFRenderer {
     #updateGizmoForSelection(): void {
         const gc = this.#gizmoController
         if (!gc) return
-        const ids = this.#getCompactSelectedIds()
-        const single = this.#selectionMode === "object" && ids.length === 1 ? ids[0]! : 0
+        // "One object" = a single primary (root) selection. Its descendants may
+        // also be in the selection set: a click selects just the node, while the
+        // editor / post-edit reselect selects getAllDescendantIds(). Keying off the
+        // primary (not the raw id count) keeps the gizmo for both forms — only a
+        // genuine multi-object selection (>1 primary) suppresses it.
+        const single = this.#selectionMode === "object" ? this.#singlePrimarySelection() : 0
         const token = ++this.#gizmoToken
         if (single <= 0) {
             this.#gizmoNodeId = 0
@@ -538,6 +542,15 @@ export class SDFRenderer {
             }
             gc.show(bounds.center, bounds.invLinear, bounds.orient, single, bounds.rotateNodeId, bounds.rotateEuler)
         })
+    }
+
+    /** The single primary (root) selected node id for the gizmo, or 0 when the
+     * selection isn't exactly one object. A primary is a selected node with no
+     * selected ancestor, so a node selected alone OR together with all its
+     * descendants both count as one object. */
+    #singlePrimarySelection(): number {
+        const { primary } = this.getSelectionPrimaryAndChildIds()
+        return primary.length === 1 ? primary[0]! : 0
     }
 
     #loadPreviewSettings(): void {

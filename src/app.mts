@@ -57,6 +57,8 @@ import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
 import { applyGizmoTranslate, applyGizmoRotate, type GizmoReselect } from "./editor/gizmo-source-updates.mjs"
+import { classifyParamEdit } from "./editor/param-edit-classifier.mjs"
+import type { ChangeSet } from "@codemirror/state"
 import {
     canvasPreviewUvRect,
     editorSelectionInfoOffset,
@@ -144,6 +146,13 @@ class App {
      * ids, so the stale id-indexed selection would re-anchor the gizmo to the
      * wrong object (or hide it). Consumed by the next successful {@link build}. */
     #pendingGizmoReselect: GizmoReselect | null = null
+    /** Net document change accumulated over the current debounce window, fed to the
+     * incremental-param-edit classifier. Composed across updates; reset each tick. */
+    #pendingDocChanges: ChangeSet | null = null
+    /** True when the last build is settled, so {@link #tryIncrementalParamEdit} can
+     * trust #sceneNodeMap / the worker scene to reflect the current structure. Set
+     * false while a (structural) {@link build} is in flight, true on its success. */
+    #incrementalSafe = false
     #parsedCalls: ParsedShapeCall[] = []
     #parsedCallsWithRanges: [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }][] = []
     #sceneNodeMap: Map<number, NodeStub> = new Map()  // nodeId -> NodeStub for symbol lookup
@@ -185,6 +194,9 @@ class App {
                 // No active document - don't try to build
                 return
             }
+            // A (potentially structural) rebuild is in flight; disable the
+            // incremental fast path until it settles and re-establishes the baseline.
+            this.#incrementalSafe = false
             src = this.editor.getValue()
             const documentName = this.#tabs.active ?? undefined
 
@@ -248,6 +260,9 @@ class App {
 
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
+            // Build settled and #sceneNodeMap reflects the current structure — the
+            // incremental param-edit fast path may run for subsequent literal edits.
+            this.#incrementalSafe = true
             const postProcessMs = Math.round((performance.now() - tPost0) * 100) / 100
             const totalWallMs = Math.round((performance.now() - wallStart) * 100) / 100
             const pipeline = this.renderer.getLastSceneBuildPipelineMs()
@@ -593,6 +608,36 @@ class App {
     }
 
     /**
+     * Fast path for a structure-preserving numeric-literal edit (gizmo commit,
+     * manual number edit, or undo/redo of either): patch the one node's transform
+     * slot in the worker instead of re-evaluating the whole DSL and re-packing every
+     * node. Returns true when handled (caller skips {@link build}); false to fall
+     * back to a full build. See docs/plans/gizmo-incremental-param-edit.md.
+     */
+    #tryIncrementalParamEdit(changes: ChangeSet): boolean {
+        const r = classifyParamEdit(changes, this.editor.getValue(), this.#sourceParser)
+        if (!r) return false
+        // The transform's function name doesn't move under an edit to its own args,
+        // so the (pre-reparse) source map still resolves the node at this position.
+        const nodeId = this.#findNodeIdAtPosition(r.line, r.column)
+        if (nodeId === null || !this.#sceneNodeMap.has(nodeId)) return false
+
+        // A param-only edit keeps node ids stable, so the gizmo re-anchor done by
+        // paramPatch supersedes any pending source-position reselect (which exists
+        // only to recover from structural id renumbering) — drop it so it can't fire
+        // spuriously on a later build.
+        this.#pendingGizmoReselect = null
+        // Patch the worker slot + mirror into the shared stub (renderer side)...
+        this.renderer.paramPatch(nodeId, r.kind, r.value)
+        // ...then refresh the main-thread source map cheaply (no worker rebuild).
+        // The stub's pos is already updated, so node-matching stays consistent.
+        this.#reparseAfterGizmoEdit()
+        this.#updateColorIndicators()
+        this.#updateEditorHighlighting()
+        return true
+    }
+
+    /**
      * Handle editor selection to sync with preview.
      * Selects the corresponding object if a function name is fully selected.
      * For pure CSG operators (union, subtract, etc.), selects contained child shapes
@@ -737,15 +782,26 @@ class App {
                 this.#wireSaveShortcut()
                 const docChange$ = new Subject<void>()
                 this.editor.onUpdate(u => {
-                    if (u.docChanged) docChange$.next()
+                    if (!u.docChanged) return
+                    // Accumulate the net change over the debounce window so the
+                    // incremental classifier sees the composed edit, not just the last.
+                    this.#pendingDocChanges = this.#pendingDocChanges ? this.#pendingDocChanges.compose(u.changes) : u.changes
+                    docChange$.next()
                 })
                 docChange$
                     .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
                     .subscribe(() => {
+                        const changes = this.#pendingDocChanges
+                        this.#pendingDocChanges = null
                         if (this.renderer.isPushPullActive) {
                             this.#pushPullBuildPending = true
                             return
                         }
+                        // Fast path: a structure-preserving numeric-literal edit
+                        // (gizmo commit, manual number, undo/redo) patches one node's
+                        // slot in place — no DSL re-eval / re-pack / recompile. Only
+                        // when the last build is settled (structure known-current).
+                        if (changes && this.#incrementalSafe && this.#tryIncrementalParamEdit(changes)) return
                         this.build()
                     })
             }

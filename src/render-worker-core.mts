@@ -841,6 +841,40 @@ export class RenderWorkerCore {
         this.#gizmoDrag = null
     }
 
+    /**
+     * Apply a structure-preserving incremental param edit: set one node's
+     * transform absolutely and patch its (stable) preview slot in place — no DSL
+     * re-eval, full re-pack, or shader recompile. Used by the gizmo commit, a
+     * manual numeric-literal edit, and undo/redo of either (the main thread gates
+     * eligibility; see docs/plans/gizmo-incremental-param-edit.md). A missing node
+     * means the structure changed under us — the caller falls back to a full build.
+     */
+    paramPatch(msg: Extract<MainToWorkerMessage, { type: "paramPatch" }>): void {
+        const node = this.#scene?.get(msg.nodeId)
+        if (!node) return
+        let patched = false
+        if (msg.kind === "translate") {
+            setNodeTranslation(node, msg.value)
+            if (node.previewVec3Slot >= 0) {
+                this.#patchPreviewVec3(node.previewVec3Slot, msg.value)
+                patched = true
+            }
+        } else {
+            setNodeRotation(node, msg.value)
+            if (node.rotPreviewMat3Slot >= 0) {
+                this.#patchPreviewMat3(node.rotPreviewMat3Slot, eulerMatrices(node.rot.x, node.rot.y, node.rot.z).inv)
+                patched = true
+            } else if (node instanceof Rotate && node.previewMat3Slot >= 0) {
+                const { inv, fwd } = node.getWgslMatrices()
+                this.#patchPreviewMat3(node.previewMat3Slot, inv)
+                this.#patchPreviewMat3(node.previewMat3Slot + 1, fwd)
+                patched = true
+            }
+        }
+        if (!patched) this.#repackAndUploadParams()
+        this.#forceNextRender = true
+    }
+
     /** Re-pack scene + preview param banks from the (mutated) in-memory scene and
      * re-upload them — the param-only build path minus the DSL re-eval. No shader
      * recompile; just new buffer contents. */

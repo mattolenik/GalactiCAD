@@ -46,8 +46,13 @@ export interface GizmoTransformTarget {
     shiftIsLiteral: boolean
     /** Source range of the last shift's position args, when literal. */
     shiftRange: { start: number; end: number } | null
+    /** Parsed value of the last shift's literal args (absolute pos; last `.shift` wins), or null. */
+    shiftValue: [number, number, number] | null
     /** Whether a `.rotate(...)` appears BEFORE any `.shift` (maps to the object's local rotation). */
     hasPreShiftRotate: boolean
+    /** Count of pre-shift `.rotate(...)` calls in the chain. Incremental rot edits are only
+     * sound when this is 1 (a single literal rotate == the absolute rot; multiple compose). */
+    preShiftRotateCount: number
     /** Whether that pre-shift rotate's args are numeric literals (editable in place). */
     rotateIsLiteral: boolean
     /** Source range of the last pre-shift rotate's args, when literal. */
@@ -1426,6 +1431,7 @@ export class SourceParser {
         let firstShiftCall: ts.CallExpression | null = null
         let preShiftRotateArgs: ts.Expression[] | null = null
         let hasPreShiftRotate = false
+        let preShiftRotateCount = 0
         let seenShift = false
         for (const { method, args, call } of chain) {
             if (method === "shift") {
@@ -1435,11 +1441,18 @@ export class SourceParser {
                 seenShift = true
             } else if (method === "rotate" && !seenShift) {
                 hasPreShiftRotate = true
+                preShiftRotateCount++
                 preShiftRotateArgs = args // last pre-shift rotate wins
             }
         }
 
         const shiftRange = shiftArgs ? this.shiftPosRange(shiftArgs) : null
+        const shiftValueRaw = shiftArgs ? this.extractVec3Args(shiftArgs) : undefined
+        let shiftValue: [number, number, number] | null = null
+        if (shiftValueRaw !== undefined) {
+            const v = vec3(shiftValueRaw)
+            shiftValue = [v.x, v.y, v.z]
+        }
         const rotateRange = preShiftRotateArgs ? this.shiftPosRange(preShiftRotateArgs) : null
         const rotateBaseRaw = preShiftRotateArgs ? this.extractVec3Args(preShiftRotateArgs) : undefined
         let rotateBaseEuler: [number, number, number] | null = null
@@ -1464,7 +1477,9 @@ export class SourceParser {
             hasShift,
             shiftIsLiteral: shiftRange !== null,
             shiftRange,
+            shiftValue,
             hasPreShiftRotate,
+            preShiftRotateCount,
             rotateIsLiteral: rotateRange !== null,
             rotateRange,
             rotateBaseEuler,

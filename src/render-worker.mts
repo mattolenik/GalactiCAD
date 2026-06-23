@@ -265,6 +265,9 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "gizmoEnd":
             if (core) core.gizmoEnd()
             break
+        case "paramPatch":
+            if (core) core.paramPatch(msg)
+            break
         default:
             log("RenderWorker").info("unknown message", (msg as { type: string }).type)
     }

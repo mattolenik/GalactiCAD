@@ -263,6 +263,12 @@ export type MainToWorkerMessage =
     | { type: "gizmoBegin"; nodeId: number; kind: "translate" | "rotate" }
     | { type: "gizmoPreview"; translate?: [number, number, number]; rotate?: [number, number, number] }
     | { type: "gizmoEnd" }
+    // Incremental param edit: a structure-preserving literal change (gizmo
+    // commit, manual number edit, or undo/redo of either) sets one node's
+    // transform absolutely, patching its stable slot in place — no DSL re-eval,
+    // re-pack, or shader recompile. `value` is the absolute local translation /
+    // Euler (deg). See docs/plans/gizmo-incremental-param-edit.md.
+    | { type: "paramPatch"; nodeId: number; kind: "translate" | "rotate"; value: [number, number, number] }
     // Transform-gizmo overlay state: world-space anchor + size, visibility, and
     // the hovered/active handle (-1 = none). Worker stores it and draws the
     // gizmo each frame; pass `visible: false` to hide.

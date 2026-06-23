@@ -468,6 +468,26 @@ export class SDFRenderer {
         })
     }
 
+    /**
+     * Apply a structure-preserving incremental param edit (gizmo commit, manual
+     * numeric edit, or undo/redo of either) WITHOUT a full rebuild: patch the
+     * node's stable slot in the worker, mirror the value into the cached stub so a
+     * subsequent gizmo drag / node match reads fresh, and re-anchor the gizmo. The
+     * caller (App) has gated this to a fingerprint-unchanged edit; see
+     * docs/plans/gizmo-incremental-param-edit.md.
+     */
+    paramPatch(nodeId: number, kind: "translate" | "rotate", value: [number, number, number]): void {
+        this.#worker.postMessage({ type: "paramPatch", nodeId, kind, value })
+        // The cached stub is shared by reference with App's #sceneNodeMap, so this
+        // one mutation keeps node-matching (which compares pos) consistent for both.
+        if (kind === "translate") {
+            const node = this.#sceneNodeCache.find(n => n.id === nodeId)
+            if (node) node.pos = { x: value[0], y: value[1], z: value[2] }
+        }
+        this.#updateGizmoForSelection() // re-anchor off the patched worker scene
+        this.#needsRender = true
+    }
+
     /** Query the world-space AABB of a scene node (for gizmo placement). */
     getNodeBounds(
         nodeId: number,

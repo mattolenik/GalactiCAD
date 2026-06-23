@@ -1348,6 +1348,11 @@ class App {
         // renderer once, since #restoreRayMarchParams updates the inputs but does
         // not fire onRayMarchParamsChange.
         this.renderer.setRayMarchParams(devTools.rayMarchParams)
+        devTools.onPreviewShadingChange = (params) => {
+            this.renderer.setPreviewShading(params)
+        }
+        // Same one-shot push for the AO / preview-shading params (restored, not emitted).
+        this.renderer.setPreviewShading(devTools.previewShading)
         devTools.onUpscaleParamsChange = (params) => {
             this.renderer.setUpscaleParams(params)
         }

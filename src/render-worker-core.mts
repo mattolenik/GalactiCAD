@@ -516,6 +516,14 @@ export class RenderWorkerCore {
     }
     /** Frames since last profiling log. Reported every ~60 frames to avoid console spam. */
     #passTimeLogFrames = 0
+    /**
+     * Per-frame context surfaced in the `gpu pass times` log so each emitted
+     * line is self-describing. Lets a lighting-cost A/B (read `scene` ms with
+     * AO on vs off) be read straight from the devserver `/_logs` bridge: filter
+     * to full-res lines (`scale:1`) and compare `scene` across `ao:0` vs `ao:>0`.
+     * `xray`/`deferred` are logged too because both change scene-pass cost.
+     */
+    #profileCtx = { ao: 0, scale: 1, w: 0, h: 0 }
     /** Persistent MAP_READ staging for click/hover (no per-interaction alloc). */
     #clickIdReadback!: GPUBuffer
     #edgeHitReadback!: GPUBuffer
@@ -1347,7 +1355,16 @@ export class RenderWorkerCore {
         if (this.#passTimeLogFrames >= 60) {
             this.#passTimeLogFrames = 0
             const avg = this.#passTimeAverages
+            // Context tags make this line a self-contained A/B sample: `ao` and
+            // `scale` let you filter `/_logs` to full-res (`scale:1`) frames and
+            // compare `scene` with AO on (`ao:0.34`) vs off (`ao:0`). `xray` and
+            // `deferred` both shift scene-pass cost, so they're tagged too.
             log("RenderWorker").debug("gpu pass times (avg ms, 30-frame window)", {
+                res: `${this.#profileCtx.w}x${this.#profileCtx.h}`,
+                scale: roundMs2(this.#profileCtx.scale),
+                ao: roundMs2(this.#profileCtx.ao),
+                xray: this.#viewSettingsBuf[0],
+                deferred: this.#deferredShading ? 1 : 0,
                 beam: roundMs2(avg.beam.average),
                 scene: roundMs2(avg.scene.average),
                 shade: roundMs2(avg.shade.average),
@@ -1651,6 +1668,11 @@ export class RenderWorkerCore {
         if (sceneWidth === 0 || sceneHeight === 0) return
         if (!outputTextureView && (this.#fullWidth <= 0 || this.#fullHeight <= 0)) return
 
+        this.#profileCtx.ao = (msg.viewSettings.previewShading ?? DEFAULT_PREVIEW_SHADING).aoStrength
+        this.#profileCtx.scale = resolutionScale
+        this.#profileCtx.w = sceneWidth
+        this.#profileCtx.h = sceneHeight
+
         this.#ensureRenderTextures(sceneWidth, sceneHeight)
 
         this.#uploadCameraIfDirty(
@@ -1944,6 +1966,10 @@ export class RenderWorkerCore {
             aoSteps: f32[psBase + 12],
             aoBias: f32[psBase + 13],
         }
+        this.#profileCtx.ao = previewShading.aoStrength
+        this.#profileCtx.scale = resolutionScale
+        this.#profileCtx.w = sceneWidth
+        this.#profileCtx.h = sceneHeight
         this.#uploadCameraIfDirty(
             viewTransform,
             cameraPosition,

@@ -8,7 +8,7 @@ import {
     formatBenchmarkResultsHtml,
     type BenchmarkCase,
 } from "../benchmark/benchmark.mjs"
-import type { RayMarchParams, SimplifyTuning, UpscaleParams } from "../render-worker-protocol.mjs"
+import type { PreviewShadingParams, RayMarchParams, SimplifyTuning, UpscaleParams } from "../render-worker-protocol.mjs"
 import type { ExporterKind } from "../export/mesh-exporter.mjs"
 import type { MdcTuning } from "../export/mdc-tuning.mjs"
 import type { ShrecTuning } from "../export/shrec/shrec-tuning.mjs"
@@ -86,6 +86,7 @@ export class DevToolsPanel extends HTMLElement {
     onSimplifyTuningChange?: (tuning: SimplifyTuning) => void
     onMdcExportLeversChange?: () => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
+    onPreviewShadingChange?: (params: PreviewShadingParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
     onBenchmarkThisRequest?: () => BenchmarkCase | null
     onGetViewportSize?: () => { width: number; height: number } | null
@@ -239,6 +240,11 @@ export class DevToolsPanel extends HTMLElement {
         return this.#appSection.rayMarchParams
     }
 
+    /** Current preview shading / AO params (restored from persisted dev-tools state on load). */
+    get previewShading(): PreviewShadingParams {
+        return this.#appSection.previewShading
+    }
+
     /** Current FSR1 upscale params (restored from persisted dev-tools state on load). */
     get upscaleParams(): UpscaleParams {
         return this.#appSection.upscaleParams
@@ -351,6 +357,7 @@ export class DevToolsPanel extends HTMLElement {
         this.#appSection.onStepHeatmapChange = v => this.onStepHeatmapChange?.(v)
         this.#appSection.onDeferredShadingChange = v => this.onDeferredShadingChange?.(v)
         this.#appSection.onRayMarchParamsChange = p => this.onRayMarchParamsChange?.(p)
+        this.#appSection.onPreviewShadingChange = p => this.onPreviewShadingChange?.(p)
         this.#appSection.onUpscaleParamsChange = p => this.onUpscaleParamsChange?.(p)
 
         this.#logsSection.onDebugLogModulesChange = () => this.onDebugLogModulesChange?.()

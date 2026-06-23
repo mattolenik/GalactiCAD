@@ -384,6 +384,16 @@ export interface PreviewShadingParams {
     aoRadius: number
     /** Integer step count 1–8 (stored as float for uniform packing). */
     aoSteps: number
+    /**
+     * AO step count substituted for `aoSteps` during active camera motion — AO is
+     * the one shading knob not otherwise motion-reduced, yet motion frames are the
+     * ONLY frames that pay for lighting (static frames reuse the deferred G-buffer).
+     * `<= 0` disables AO while moving, which also drops the 6-tap de-seam refine
+     * (`refineHitAlongRay`) since both gate on `aoStrength`; a positive value just
+     * lowers the AO sample count. Main-thread-only: substituted into
+     * `aoSteps`/`aoStrength` before packing, so it has no SAB/worker slot of its
+     * own (hence optional — the worker-side reconstruction omits it). */
+    aoStepsMoving?: number
     /** Surface offset along normal before sampling (avoids self-hit). */
     aoBias: number
 }
@@ -397,10 +407,11 @@ export const DEFAULT_PREVIEW_SHADING: PreviewShadingParams = {
     backWeight: 0.12,
     specIntensity: 0.13,
     fresnelIntensity: 0.27,
-    aoStrength: 0.34,
-    aoRadius: 0.5,
-    aoSteps: 8,
-    aoBias: 0,
+    aoStrength: 0.2,
+    aoRadius: 1,
+    aoSteps: 2,
+    aoStepsMoving: 2, // keep AO (at reduced sample count) during motion; <=0 would disable it while moving
+    aoBias: 0.5,
 }
 
 export interface RenderViewSettings {

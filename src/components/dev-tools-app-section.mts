@@ -3,8 +3,10 @@ import type { Subscription } from "rxjs"
 import { connectCheckbox } from "../binding/bind.mjs"
 import { SettingsManager, type GlobalSettings } from "../storage/settings.mjs"
 import {
+    DEFAULT_PREVIEW_SHADING,
     DEFAULT_RAY_MARCH_PARAMS,
     DEFAULT_UPSCALE_PARAMS,
+    type PreviewShadingParams,
     type RayMarchParams,
     type UpscaleMode,
     type UpscaleParams,
@@ -61,6 +63,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     #deferredShading$: BehaviorSubject<boolean>
     #rayMarchState: RayMarchParams = { ...DEFAULT_RAY_MARCH_PARAMS }
     #rayMarchInputs = new Map<keyof RayMarchParams, HTMLInputElement>()
+    #previewShadingState: PreviewShadingParams = { ...DEFAULT_PREVIEW_SHADING }
     #upscaleState: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
     #upscaleScaleSelect?: HTMLSelectElement
     #upscaleModeSelect?: HTMLSelectElement
@@ -74,6 +77,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
     onStepHeatmapChange?: (enabled: boolean) => void
     onDeferredShadingChange?: (enabled: boolean) => void
     onRayMarchParamsChange?: (params: RayMarchParams) => void
+    onPreviewShadingChange?: (params: PreviewShadingParams) => void
     onUpscaleParamsChange?: (params: UpscaleParams) => void
 
     get renderNormals(): boolean {
@@ -108,6 +112,10 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
 
     get rayMarchParams(): RayMarchParams {
         return { ...this.#rayMarchState }
+    }
+
+    get previewShading(): PreviewShadingParams {
+        return { ...this.#previewShadingState }
     }
 
     get upscaleParams(): UpscaleParams {
@@ -434,6 +442,44 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             perfBox.appendChild(row)
         }
 
+        // --- Ambient occlusion: the only lighting effect that queries the SDF.
+        // `aoStrength` 0 disables it (and its 6-tap de-seam refine) entirely;
+        // `aoStepsMoving` substitutes during active camera motion (0 = AO off
+        // while moving, the only frames that actually pay for lighting). ---
+        const aoHeader = document.createElement("div")
+        aoHeader.textContent = "Ambient occlusion"
+        aoHeader.style.cssText = "font-size:11px;opacity:0.78;margin-top:4px;"
+        perfBox.appendChild(aoHeader)
+        const aoKnobs: { key: keyof PreviewShadingParams; label: string; min: number; max: number; step: number }[] = [
+            { key: "aoStrength", label: "AO strength", min: 0, max: 2, step: 0.01 },
+            { key: "aoRadius", label: "AO radius", min: 0, max: 5, step: 0.05 },
+            { key: "aoSteps", label: "AO steps", min: 1, max: 8, step: 1 },
+            { key: "aoStepsMoving", label: "AO steps (moving)", min: 0, max: 8, step: 1 },
+            { key: "aoBias", label: "AO bias", min: 0, max: 1, step: 0.01 },
+        ]
+        for (const k of aoKnobs) {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = k.label
+            const input = document.createElement("input")
+            input.type = "number"
+            input.min = String(k.min)
+            input.max = String(k.max)
+            input.step = String(k.step)
+            input.value = String(this.#previewShadingState[k.key] ?? 0)
+            input.style.cssText = "width:60px;font-size:11px;"
+            input.addEventListener("change", () => {
+                const v = parseFloat(input.value)
+                if (!Number.isFinite(v)) return
+                ;(this.#previewShadingState[k.key] as number) = v
+                this.onPreviewShadingChange?.({ ...this.#previewShadingState })
+            })
+            row.append(lab, input)
+            perfBox.appendChild(row)
+        }
+
         // --- Export: preview + simplify, then mesh-viewer overlay debug toggles ---
         const meshCb = this.#addCheckbox(exportBox, "Export preview", this.#meshViewer$.value)
         this.#subscriptions.push(connectCheckbox(meshCb, this.#meshViewer$))
@@ -557,6 +603,9 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             meshViewerEnabled: this.#meshViewer$.value,
             meshSimplifyOnExport: this.#meshSimplify$.value,
             rayMarchParams: { ...this.#rayMarchState },
+            // previewShading (AO etc.) is intentionally NOT persisted — it is
+            // code-default-driven from DEFAULT_PREVIEW_SHADING so editing those
+            // defaults reliably takes effect; the knobs remain live session controls.
             upscaleParams: { ...this.#upscaleState },
         }
     }

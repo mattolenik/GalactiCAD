@@ -1656,9 +1656,12 @@ export class SDFRenderer {
         return { ...this.#previewShading }
     }
 
-    /** Dev tools: tune SDF preview diffuse/specular/fresnel (not persisted). */
+    /** Dev tools: tune SDF preview diffuse/specular/fresnel (not persisted).
+     * Merge over DEFAULT so a partial/empty `params` can never leave a lighting
+     * field `undefined` — that packs as NaN into the camera uniform (every
+     * `previewShade*` slot) and renders the whole scene black. */
     setPreviewShading(params: PreviewShadingParams): void {
-        this.#previewShading = { ...params }
+        this.#previewShading = { ...DEFAULT_PREVIEW_SHADING, ...params }
         this.#needsRender = true
     }
 
@@ -1934,6 +1937,19 @@ export class SDFRenderer {
             p.viewSettings.rayMarchParams.maxSteps = this.#rayMarchParams.maxStepsMoving
             p.viewSettings.rayMarchParams.maxBeamSteps = this.#rayMarchParams.maxBeamStepsMoving
             p.viewSettings.rayMarchParams.hitRefineSteps = this.#rayMarchParams.hitRefineStepsMoving
+            // AO is the one shading knob not otherwise reduced during motion, yet
+            // motion frames are the ONLY frames that pay for lighting (static frames
+            // reuse the deferred G-buffer). `aoStepsMoving <= 0` disables AO while
+            // moving, which also drops the 6-tap de-seam refine (`refineHitAlongRay`
+            // gates on aoStrength); a positive value lowers the AO sample count.
+            // `p.viewSettings.previewShading` is a fresh copy (above), so this never
+            // mutates the persistent `#previewShading`.
+            const aoStepsMoving = this.#previewShading.aoStepsMoving ?? 0
+            if (aoStepsMoving <= 0) {
+                p.viewSettings.previewShading.aoStrength = 0
+            } else {
+                p.viewSettings.previewShading.aoSteps = aoStepsMoving
+            }
         }
         return p
     }

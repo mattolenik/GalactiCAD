@@ -9,9 +9,6 @@ import type { Subscription } from "rxjs"
 // @ts-ignore - quaternion library type definitions have issues
 import Quaternion from "quaternion"
 
-/** Must match `RAY_ORIGIN_DEPTH` in preview.wgsl / `computeRayOrigin` at optical center */
-const PREVIEW_RAY_ORIGIN_DEPTH = 300
-
 /** Reference dolly distance (orbit stand-off): orthographic half-height is proportional. */
 export const DOLLY_REF = 50
 /** Orthographic half-height in world units when `dollyDistance === DOLLY_REF`. */
@@ -120,8 +117,6 @@ export class CameraController {
     #tabChangeSub: Subscription | null = null
     /** When set, camera/trackball input is limited to this screen rect (visible preview minus editor overlay). */
     #getInteractionRect?: () => DOMRect
-    /** Last Cmd/Ctrl+double-click focus hit (world space); used by {@link recenterOnPoint} when refocusing. */
-    #lastFocusWorld: Vec3f | null = null
     /** Optical center in [0,1] UV space (matches preview.wgsl viewCenter). Updated by host when editor overlaps view. */
     #viewCenter: Vec2f = vec2(0.5, 0.5)
 
@@ -181,7 +176,7 @@ export class CameraController {
             const orthoOld = orthoHalfFromDolly(dollyOld)
             const orthoNew = orthoHalfFromDolly(this.#dollyDistance)
             const dOrtho = orthoNew - orthoOld
-            if (Math.abs(dOrtho) > 1e-10 && !this.#lastFocusWorld) {
+            if (Math.abs(dOrtho) > 1e-10) {
                 this.#applyOrthoDeltaToCursor(dOrtho, cursor.x, cursor.y)
             }
             this.#updateTransforms()
@@ -262,7 +257,6 @@ export class CameraController {
         if (state.pivot) {
             this.#pivot = vec3(state.pivot.x, state.pivot.y, state.pivot.z)
         }
-        this.#lastFocusWorld = null
         this.#syncTrackball()
         this.#updateTransforms(emit)
     }
@@ -479,7 +473,6 @@ export class CameraController {
 
     /** Reset the camera to the default view angle and centered position, with animation. */
     resetView(): void {
-        this.#lastFocusWorld = null
         this.#pivot = new Vec3f()
         // Returning to the default view also clears any explicit pivot lock.
         if (this.#autoPivotEnabled) this.#pivotMode = "auto"
@@ -526,7 +519,6 @@ export class CameraController {
 
     /** Shared body for the explicit focus gestures: silently move the orbit pivot to `hitWorld`, set mode. */
     #focusPivot(hitWorld: Vec3f, lock: boolean): void {
-        this.#lastFocusWorld = null
         this.#setPivotSilently(hitWorld)
         this.#pivotMode = lock || !this.#autoPivotEnabled ? "locked" : "auto"
         this.#saveCameraState()
@@ -604,94 +596,6 @@ export class CameraController {
         this.#setPivotSilently(this.#cameraTranslation.add(forward.scale(depth)))
     }
 
-    /**
-     * Central optical-axis ray in world space (fragment uv = viewCenter → uvAspect (0.5, 0.5) in preview.wgsl).
-     * Direction matches WGSL `normalize(-camera.transform[2].xyz)` via camera −Z → world.
-     */
-    #worldCentralRay(): { origin: Vec3f; dir: Vec3f } {
-        const ro = vec3(
-            this.cameraPosition.x,
-            this.cameraPosition.y,
-            this.cameraPosition.z + PREVIEW_RAY_ORIGIN_DEPTH,
-        )
-        const origin = this.viewTransform.transformPoint(ro)
-        const dirRaw = this.viewTransform.transformVector(vec3(0, 0, -1))
-        if (dirRaw.length() < 1e-20) {
-            return { origin, dir: vec3(0, 0, -1) }
-        }
-        return { origin, dir: dirRaw.normalize() }
-    }
-
-    /** World-space translation delta so `worldPoint` lies on the optical axis (matches preview center ray). */
-    #translationDeltaSnapWorldPointToCentralRay(worldPoint: Vec3f): Vec3f {
-        const { origin: O, dir } = this.#worldCentralRay()
-        const toP = worldPoint.subtract(O)
-        const tLine = toP.dot(dir)
-        const Q = O.add(dir.scale(tLine))
-        return worldPoint.subtract(Q)
-    }
-
-    /**
-     * Pan so `worldPoint` (raymarch hit) lies on the central view ray, matching preview.wgsl.
-     * If we already have a focus point, preserve Euclidean distance from ray origin O to the hit
-     * so it equals the previous |O − lastFocus|; otherwise only snap the hit onto the ray.
-     */
-    recenterOnPoint(worldPoint: Vec3f): void {
-        const { origin: O, dir } = this.#worldCentralRay()
-
-        let delta: Vec3f
-        const prevFocus = this.#lastFocusWorld
-        if (prevFocus) {
-            const dKeep = O.subtract(prevFocus).length()
-            if (dKeep < 1e-8) {
-                const toP = worldPoint.subtract(O)
-                const tLine = toP.dot(dir)
-                const Q = O.add(dir.scale(tLine))
-                delta = worldPoint.subtract(Q)
-            } else {
-                const along = worldPoint.subtract(O).dot(dir)
-                const sign = along >= 0 ? 1 : -1
-                const tAlong = sign * dKeep
-                const O_target = worldPoint.subtract(dir.scale(tAlong))
-                delta = O_target.subtract(O)
-            }
-        } else {
-            delta = this.#translationDeltaSnapWorldPointToCentralRay(worldPoint)
-        }
-
-        const targetTrans = vec3(
-            this.#cameraTranslation.x + delta.x,
-            this.#cameraTranslation.y + delta.y,
-            this.#cameraTranslation.z + delta.z,
-        )
-        const hit = worldPoint.clone()
-        this.#animateCameraTranslation(targetTrans, () => {
-            this.#lastFocusWorld = hit
-        })
-    }
-
-    #animateCameraTranslation(target: Vec3f, onComplete?: () => void): void {
-        const startTrans = this.#cameraTranslation.clone()
-        const startTime = performance.now()
-        const DURATION_MS = 300
-
-        const step = (now: number) => {
-            const t = Math.min((now - startTime) / DURATION_MS, 1)
-            // Ease in-out cubic
-            const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
-            this.#cameraTranslation.x = startTrans.x + (target.x - startTrans.x) * ease
-            this.#cameraTranslation.y = startTrans.y + (target.y - startTrans.y) * ease
-            this.#cameraTranslation.z = startTrans.z + (target.z - startTrans.z) * ease
-            this.#updateTransforms()
-            if (t < 1) requestAnimationFrame(step)
-            else {
-                this.#saveCameraState()
-                onComplete?.()
-            }
-        }
-        requestAnimationFrame(step)
-    }
-
     #quaternionToMatrix(q: Quaternion): Mat4x4f {
         // Convert quaternion to 4x4 rotation matrix
         const matrix4 = q.toMatrix4(false) // false = flat array, not 2D
@@ -752,7 +656,6 @@ export class CameraController {
 
     #loadCameraState(): void {
         const cam = this.#settings.getCamera()
-        this.#lastFocusWorld = null
         const pv = cam.pivot
         this.#pivot = vec3(pv?.[0] ?? 0, pv?.[1] ?? 0, pv?.[2] ?? 0)
         this.cameraPosition = vec3(cam.position[0], cam.position[1], cam.position[2])

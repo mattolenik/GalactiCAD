@@ -850,8 +850,9 @@ export class RenderWorkerCore {
      * means the structure changed under us — the caller falls back to a full build.
      */
     paramPatch(msg: Extract<MainToWorkerMessage, { type: "paramPatch" }>): void {
-        const node = this.#scene?.get(msg.nodeId)
-        if (!node) return
+        const scene = this.#scene
+        const node = scene?.get(msg.nodeId)
+        if (!scene || !node) return
         let patched = false
         if (msg.kind === "translate") {
             setNodeTranslation(node, msg.value)
@@ -872,6 +873,10 @@ export class RenderWorkerCore {
             }
         }
         if (!patched) this.#repackAndUploadParams()
+        // The node's transform changed in place; its memoized bounds (used by the
+        // gizmo re-anchor's getNodeBounds) are now stale. Drop the memo so the gizmo
+        // follows the moved/rotated object instead of snapping to the old center.
+        scene.invalidateBoundsCache()
         this.#forceNextRender = true
     }
 

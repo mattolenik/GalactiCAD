@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { transpileCadSource } from "../cad-transpile.mjs"
 import { SceneInfo } from "./scene.mjs"
+import { setNodeTranslation } from "../gizmo/world-transform.mjs"
 
 /**
  * Drift-free invariant for the incremental param-edit fast path
@@ -48,6 +49,21 @@ test("editing a rotate literal leaves all slots stable", () => {
     const s0 = "return box(2,2,2).rotate([0, 0, 45]).shift([1,0,0])"
     const s1 = "return box(2,2,2).rotate([0, 0, 50]).shift([1,0,0])"
     assertSlotsStable(build(s0), build(s1))
+})
+
+test("invalidateBoundsCache picks up an in-place transform mutation (gizmo re-anchor)", () => {
+    // Regression: the gizmo re-anchors via getNodeBounds → computeBounds, which is
+    // memoized. After an incremental paramPatch mutates a node in place, the memo
+    // must be dropped or the gizmo snaps back to the pre-edit center.
+    const scene = build("return box(2,2,2).shift([1, 2, 3])")
+    const box = scene.getAllNodes().find(n => n.getShapeType() === "box")!
+    const b0 = box.computeBounds()! // computes + memoizes at pos [1,2,3]
+    assert.deepEqual([b0.cx, b0.cy, b0.cz], [1, 2, 3])
+    setNodeTranslation(box, [7, 8, 9]) // what paramPatch does in place
+    assert.equal(box.computeBounds()!.cx, 1, "memoized bounds are stale before invalidation")
+    scene.invalidateBoundsCache()
+    const b1 = box.computeBounds()!
+    assert.deepEqual([b1.cx, b1.cy, b1.cz], [7, 8, 9], "bounds reflect the mutation after invalidation")
 })
 
 test("a structural edit (added node) DOES shift slots — fast path must not apply", () => {

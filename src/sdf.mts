@@ -361,6 +361,16 @@ export class SDFRenderer {
 
         this.#controlSubs.push(
             this.#controls.select$.subscribe(({ screenPos, shiftKey, altKey }) => {
+                // Swallow the click synthesized after a gizmo drag release so it
+                // doesn't re-pick under the cursor and deselect (which also hides the
+                // gizmo). Gated here — not just on the capture-phase click handler —
+                // because CameraController's click→select$ listener is on the same
+                // canvas, so at the AT_TARGET phase listener order (not capture flag)
+                // decides who runs first; gating the select$ consumer is order-proof.
+                if (this.#suppressGizmoReleaseClick) {
+                    this.#suppressGizmoReleaseClick = false
+                    return
+                }
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
                 if (uv) this.#worker.postMessage({ type: "click", clickUV: uv, shiftKey, altKey, documentName: this.#getActiveDocument?.() ?? undefined })
             }),

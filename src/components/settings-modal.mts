@@ -2,7 +2,6 @@ import { VERSION } from "../version.mjs"
 import { __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { BaseDialog } from "./base-dialog.mjs"
 import type {
-    CameraRotationMethod,
     EditorSettings,
     LineNumbersMode,
     RenderWhitespaceMode,
@@ -10,34 +9,40 @@ import type {
 } from "../storage/settings.mjs"
 
 export class SettingsModal extends BaseDialog<void> {
-    #initialMode: CameraRotationMethod
     #initialTheme: ThemeMode
     #initialDevToolsEnabled: boolean
     #initialEditorSettings: EditorSettings
-    #onCameraModeChange: (method: CameraRotationMethod) => void
+    #initialAutoPivot: boolean
+    #initialHoverInspect: boolean
     #onThemeChange: (theme: ThemeMode) => void
     #onDevToolsChange: (enabled: boolean) => void
     #onEditorChange: (settings: EditorSettings) => void
+    #onAutoPivotChange: (enabled: boolean) => void
+    #onHoverInspectChange: (enabled: boolean) => void
 
     constructor(
-        initialMode: CameraRotationMethod,
         initialTheme: ThemeMode,
         initialDevToolsEnabled: boolean,
         initialEditorSettings: EditorSettings,
-        onCameraModeChange: (method: CameraRotationMethod) => void,
         onThemeChange: (theme: ThemeMode) => void,
         onDevToolsChange: (enabled: boolean) => void,
-        onEditorChange: (settings: EditorSettings) => void
+        onEditorChange: (settings: EditorSettings) => void,
+        initialAutoPivot: boolean,
+        initialHoverInspect: boolean,
+        onAutoPivotChange: (enabled: boolean) => void,
+        onHoverInspectChange: (enabled: boolean) => void
     ) {
         super()
-        this.#initialMode = initialMode
         this.#initialTheme = initialTheme
         this.#initialDevToolsEnabled = initialDevToolsEnabled
         this.#initialEditorSettings = initialEditorSettings
-        this.#onCameraModeChange = onCameraModeChange
+        this.#initialAutoPivot = initialAutoPivot
+        this.#initialHoverInspect = initialHoverInspect
         this.#onThemeChange = onThemeChange
         this.#onDevToolsChange = onDevToolsChange
         this.#onEditorChange = onEditorChange
+        this.#onAutoPivotChange = onAutoPivotChange
+        this.#onHoverInspectChange = onHoverInspectChange
         this.renderContent()
     }
 
@@ -146,11 +151,12 @@ export class SettingsModal extends BaseDialog<void> {
                     </select>
                 </div>
                 <div class="setting-row">
-                    <label for="camera-mode">Camera mode</label>
-                    <select id="camera-mode">
-                        <option value="rounded_arcball">Rounded Arcball</option>
-                        <option value="azel">Azimuth/Elevation</option>
-                    </select>
+                    <label for="auto-pivot" title="Orbit around the surface under the cursor instead of a fixed 3D cursor. Cmd/Ctrl+double-click still locks an explicit pivot.">Auto-pivot</label>
+                    <input type="checkbox" id="auto-pivot" />
+                </div>
+                <div class="setting-row">
+                    <label for="hover-inspect" title="HoverCam: while orbiting, keep the pivot on the surface under the moving cursor for close-up inspection.">Hover inspect</label>
+                    <input type="checkbox" id="hover-inspect" />
                 </div>
                 <div class="setting-row">
                     <label for="devtools">Developer tools</label>
@@ -211,10 +217,12 @@ export class SettingsModal extends BaseDialog<void> {
 
         const themeSelect = this.dialog.querySelector("#theme") as HTMLSelectElement
         themeSelect.value = this.#initialTheme
-        const cameraSelect = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
-        cameraSelect.value = this.#initialMode
         const devToolsCheckbox = this.dialog.querySelector("#devtools") as HTMLInputElement
         devToolsCheckbox.checked = this.#initialDevToolsEnabled
+        const autoPivotCheckbox = this.dialog.querySelector("#auto-pivot") as HTMLInputElement
+        autoPivotCheckbox.checked = this.#initialAutoPivot
+        const hoverInspectCheckbox = this.dialog.querySelector("#hover-inspect") as HTMLInputElement
+        hoverInspectCheckbox.checked = this.#initialHoverInspect
 
         const lineNumbersSelect = this.dialog.querySelector("#line-numbers") as HTMLSelectElement
         lineNumbersSelect.value = e.lineNumbers
@@ -288,24 +296,18 @@ export class SettingsModal extends BaseDialog<void> {
             { signal }
         )
 
-        const cameraSelect = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
-        cameraSelect.addEventListener(
-            "change",
-            () => {
-                const value = cameraSelect.value as CameraRotationMethod
-                if (value === "rounded_arcball" || value === "azel") {
-                    this.#onCameraModeChange(value)
-                }
-            },
-            { signal }
-        )
-
         const devToolsCheckbox = this.dialog.querySelector("#devtools") as HTMLInputElement
         devToolsCheckbox.addEventListener(
             "change",
             () => this.#onDevToolsChange(devToolsCheckbox.checked),
             { signal }
         )
+
+        const autoPivotCheckbox = this.dialog.querySelector("#auto-pivot") as HTMLInputElement
+        autoPivotCheckbox.addEventListener("change", () => this.#onAutoPivotChange(autoPivotCheckbox.checked), { signal })
+
+        const hoverInspectCheckbox = this.dialog.querySelector("#hover-inspect") as HTMLInputElement
+        hoverInspectCheckbox.addEventListener("change", () => this.#onHoverInspectChange(hoverInspectCheckbox.checked), { signal })
 
         const editorInputs = [
             "#line-numbers",

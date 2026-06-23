@@ -57,6 +57,9 @@ import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
+import { applyGizmoTranslate, applyGizmoRotate, type GizmoReselect } from "./editor/gizmo-source-updates.mjs"
+import { classifyParamEdit } from "./editor/param-edit-classifier.mjs"
+import type { ChangeSet } from "@codemirror/state"
 import {
     canvasPreviewUvRect,
     editorSelectionInfoOffset,
@@ -139,6 +142,18 @@ class App {
     #updateViewCenter: (() => void) | undefined
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
+    /** After a gizmo edit, re-select the moved/rotated object at this (post-edit)
+     * source position once the rebuild lands — a structural edit renumbers node
+     * ids, so the stale id-indexed selection would re-anchor the gizmo to the
+     * wrong object (or hide it). Consumed by the next successful {@link build}. */
+    #pendingGizmoReselect: GizmoReselect | null = null
+    /** Net document change accumulated over the current debounce window, fed to the
+     * incremental-param-edit classifier. Composed across updates; reset each tick. */
+    #pendingDocChanges: ChangeSet | null = null
+    /** True when the last build is settled, so {@link #tryIncrementalParamEdit} can
+     * trust #sceneNodeMap / the worker scene to reflect the current structure. Set
+     * false while a (structural) {@link build} is in flight, true on its success. */
+    #incrementalSafe = false
     #parsedCalls: ParsedShapeCall[] = []
     #parsedCallsWithRanges: [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }][] = []
     #sceneNodeMap: Map<number, NodeStub> = new Map()  // nodeId -> NodeStub for symbol lookup
@@ -181,6 +196,9 @@ class App {
                 // No active document - don't try to build
                 return
             }
+            // A (potentially structural) rebuild is in flight; disable the
+            // incremental fast path until it settles and re-establishes the baseline.
+            this.#incrementalSafe = false
             src = this.editor.getValue()
             const documentName = this.#tabs.active ?? undefined
 
@@ -216,6 +234,19 @@ class App {
             // Update color indicators for all matched shapes
             this.#updateColorIndicators()
 
+            // A gizmo move/rotate may have renumbered node ids (wrapping the chain
+            // in translate(...), or turning .rotate(...) on a field-less primitive
+            // into a Rotate operator). The renderer's id-indexed selection is now
+            // stale, so re-select the object at its post-edit source position —
+            // this updates the selection to the new id and re-anchors the gizmo
+            // (setSelection → updateGizmoForSelection). Do it before highlighting so
+            // the editor outline tracks the new node too.
+            if (this.#pendingGizmoReselect) {
+                const { line, column } = this.#pendingGizmoReselect
+                this.#pendingGizmoReselect = null
+                this.#selectSceneNodeAtEditorPosition(line, column)
+            }
+
             // Drop isolated ids that no longer exist (a structural edit
             // renumbered/removed them); keep the survivors. Parameter-only edits
             // keep node ids stable, so isolation persists across those.
@@ -231,6 +262,9 @@ class App {
 
             // Update highlighting for current selection after build
             this.#updateEditorHighlighting()
+            // Build settled and #sceneNodeMap reflects the current structure — the
+            // incremental param-edit fast path may run for subsequent literal edits.
+            this.#incrementalSafe = true
             const postProcessMs = Math.round((performance.now() - tPost0) * 100) / 100
             const totalWallMs = Math.round((performance.now() - wallStart) * 100) / 100
             const pipeline = this.renderer.getLastSceneBuildPipelineMs()
@@ -535,6 +569,77 @@ class App {
     }
 
     /**
+     * Handle a gizmo translate completion: write the `.shift(...)` for the moved
+     * node into source (edit literal in place / wrap non-literal / append), then
+     * re-parse + re-match so subsequent drags use fresh offsets.
+     */
+    #handleGizmoTranslateComplete(nodeId: number, final: [number, number, number], delta: [number, number, number]) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location) return
+
+        const src = this.editor.getValue()
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const target = this.#sourceParser.findTransformTargetAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
+        if (!target) return
+
+        this.#pendingGizmoReselect = applyGizmoTranslate(this.editor.view, target, final, delta)
+        this.#reparseAfterGizmoEdit()
+    }
+
+    /**
+     * Handle a gizmo rotate completion: write a pre-shift `.rotate(...)` for the
+     * local rotation, then re-parse + re-match.
+     */
+    #handleGizmoRotateComplete(nodeId: number, axis: number, angleDeg: number) {
+        const location = this.#sourceLocationMap.get(nodeId)
+        if (!location) return
+        const src = this.editor.getValue()
+        const cached = this.#sourceParser.getCachedSourceFile(src)
+        const target = this.#sourceParser.findTransformTargetAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
+        if (!target) return
+        this.#pendingGizmoReselect = applyGizmoRotate(this.editor.view, target, axis, angleDeg)
+        this.#reparseAfterGizmoEdit()
+    }
+
+    /** Re-parse + re-match after a gizmo source edit so subsequent drags use fresh offsets. */
+    #reparseAfterGizmoEdit() {
+        const parsedCalls = this.#sourceParser.parseShapeCalls(this.editor.getValue())
+        this.#parsedCalls = parsedCalls
+        this.#parsedCallsWithRanges = parsedCalls.map(c => [c, c.location] as [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }])
+        this.#sourceLocationMap = matchNodesToSource(Array.from(this.#sceneNodeMap.values()), parsedCalls)
+    }
+
+    /**
+     * Fast path for a structure-preserving numeric-literal edit (gizmo commit,
+     * manual number edit, or undo/redo of either): patch the one node's transform
+     * slot in the worker instead of re-evaluating the whole DSL and re-packing every
+     * node. Returns true when handled (caller skips {@link build}); false to fall
+     * back to a full build. See docs/plans/gizmo-incremental-param-edit.md.
+     */
+    #tryIncrementalParamEdit(changes: ChangeSet): boolean {
+        const r = classifyParamEdit(changes, this.editor.getValue(), this.#sourceParser)
+        if (!r) return false
+        // The transform's function name doesn't move under an edit to its own args,
+        // so the (pre-reparse) source map still resolves the node at this position.
+        const nodeId = this.#findNodeIdAtPosition(r.line, r.column)
+        if (nodeId === null || !this.#sceneNodeMap.has(nodeId)) return false
+
+        // A param-only edit keeps node ids stable, so the gizmo re-anchor done by
+        // paramPatch supersedes any pending source-position reselect (which exists
+        // only to recover from structural id renumbering) — drop it so it can't fire
+        // spuriously on a later build.
+        this.#pendingGizmoReselect = null
+        // Patch the worker slot + mirror into the shared stub (renderer side)...
+        this.renderer.paramPatch(nodeId, r.kind, r.value)
+        // ...then refresh the main-thread source map cheaply (no worker rebuild).
+        // The stub's pos is already updated, so node-matching stays consistent.
+        this.#reparseAfterGizmoEdit()
+        this.#updateColorIndicators()
+        this.#updateEditorHighlighting()
+        return true
+    }
+
+    /**
      * Handle editor selection to sync with preview.
      * Selects the corresponding object if a function name is fully selected.
      * For pure CSG operators (union, subtract, etc.), selects contained child shapes
@@ -679,15 +784,26 @@ class App {
                 this.#wireSaveShortcut()
                 const docChange$ = new Subject<void>()
                 this.editor.onUpdate(u => {
-                    if (u.docChanged) docChange$.next()
+                    if (!u.docChanged) return
+                    // Accumulate the net change over the debounce window so the
+                    // incremental classifier sees the composed edit, not just the last.
+                    this.#pendingDocChanges = this.#pendingDocChanges ? this.#pendingDocChanges.compose(u.changes) : u.changes
+                    docChange$.next()
                 })
                 docChange$
                     .pipe(debounceTime(CONTENT_CHANGE_DEBOUNCE_MS))
                     .subscribe(() => {
+                        const changes = this.#pendingDocChanges
+                        this.#pendingDocChanges = null
                         if (this.renderer.isPushPullActive) {
                             this.#pushPullBuildPending = true
                             return
                         }
+                        // Fast path: a structure-preserving numeric-literal edit
+                        // (gizmo commit, manual number, undo/redo) patches one node's
+                        // slot in place — no DSL re-eval / re-pack / recompile. Only
+                        // when the last build is settled (structure known-current).
+                        if (changes && this.#incrementalSafe && this.#tryIncrementalParamEdit(changes)) return
                         this.build()
                     })
             }
@@ -1241,6 +1357,14 @@ class App {
             this.#handleCapPullComplete(nodeId, newH, newPosY)
         })
 
+        this.renderer.gizmoTranslateComplete$.subscribe(({ nodeId, final, delta }) => {
+            this.#handleGizmoTranslateComplete(nodeId, final, delta)
+        })
+
+        this.renderer.gizmoRotateComplete$.subscribe(({ nodeId, axis, angleDeg }) => {
+            this.#handleGizmoRotateComplete(nodeId, axis, angleDeg)
+        })
+
         this.renderer.pushPullExit$.subscribe(() => {
             // Undo grouping is handled by CM6's time-based history (rapid drag edits merge).
             if (this.#pushPullBuildPending) {
@@ -1644,19 +1768,15 @@ class App {
     async #showSettingsModal(): Promise<void> {
         const { SettingsModal } = await import("./components/settings-modal.mjs")
         const g = this.#settings.getGlobal()
-        const initialMode = g.preview.cameraRotationMethod ?? "rounded_arcball"
         const initialTheme = g.app.theme ?? "dark"
         const initialDevToolsEnabled = g.app.devToolsEnabled ?? false
         const initialEditorSettings = g.app.editor
+        const initialAutoPivot = g.preview.cameraAutoPivot ?? true
+        const initialHoverInspect = g.preview.cameraHoverInspect ?? false
         const modal = new SettingsModal(
-            initialMode,
             initialTheme,
             initialDevToolsEnabled,
             initialEditorSettings,
-            method => {
-                this.#settings.updateGlobal({ preview: { cameraRotationMethod: method } })
-                this.renderer?.controls.setRotationMethod(method)
-            },
             theme => {
                 this.#settings.updateGlobal({ app: { theme } })
                 this.#themeUnsubscribe?.()
@@ -1677,6 +1797,16 @@ class App {
                 const narrow = window.matchMedia("(max-width: 600px)").matches
                 this.editor.setOptions(settings)
                 this.editor.setLineNumbersForcedOff(narrow)
+            },
+            initialAutoPivot,
+            initialHoverInspect,
+            enabled => {
+                this.#settings.updateGlobal({ preview: { cameraAutoPivot: enabled } })
+                this.renderer?.controls.setAutoPivotEnabled(enabled)
+            },
+            enabled => {
+                this.#settings.updateGlobal({ preview: { cameraHoverInspect: enabled } })
+                this.renderer?.setCameraHoverInspect(enabled)
             }
         )
         await modal.show()

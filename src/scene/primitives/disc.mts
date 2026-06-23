@@ -1,7 +1,9 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Disc extends Node {
@@ -30,12 +32,15 @@ export class Disc extends Node {
         out.vec3[b + 2] = this.pos.data[2]!
         out.vec3[b + 3] = 0
         out.f32[this.previewF32Slot] = this.r
+        this.writeRotPreview(out)
     }
 
     #paramSlice(): Float32Array {
-        const buf = new Float32Array(4)
+        // pos (3) + r (1) + rot inverse (9, contiguous via reservePrimitiveRot).
+        const buf = new Float32Array(13)
         buf.set(this.pos.data, 0)
         buf[3] = this.r
+        this.writeRotScene(buf, 4)
         return buf
     }
 
@@ -45,6 +50,7 @@ export class Disc extends Node {
         this.previewF32Slot = this.scene.allocPreviewF32(1)
         this.paramOffset = this.scene.allocSceneParamFloats(4)
         this.paramCount = 4
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
     }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Disc${this.id}`
@@ -52,7 +58,7 @@ export class Disc extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot)
-        return { funcName, varName, text: `fDiscEx(p - ${pos}, ${r}, ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`fDiscEx(p - ${pos}, ${r}, ${this.id}u)`, pos) }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Disc${this.id}`
@@ -60,7 +66,7 @@ export class Disc extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot)
-        return { funcName, varName, text: `fDiscFast(p - ${pos}, ${r})` }
+        return { funcName, varName, text: this.warpRot(`fDiscFast(p - ${pos}, ${r})`, pos) }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Disc${this.id}`
@@ -68,16 +74,32 @@ export class Disc extends Node {
         const o = this.paramOffset
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot)
-        return { funcName, varName, text: `sdfMidSetOwner(fDiscMid(p - ${pos}, ${r}), ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`sdfMidSetOwner(fDiscMid(p - ${pos}, ${r}), ${this.id}u)`, pos) }
     }
 
     protected override computeBoundsCore(): AABB {
-        return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, 0.001, this.r)
+        // Expand the upright AABB for the local `rot` about the disc's center.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, 0, 0, this.r, 0.001, this.r), fwd)
+        return aabb(this.pos.x, this.pos.y, this.pos.z, r.hx, r.hy, r.hz)
     }
 
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the disc about its own center, param-only/live). AFTER a `.shift` it
+     * falls back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 }
 

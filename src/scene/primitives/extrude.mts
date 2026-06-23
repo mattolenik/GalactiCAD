@@ -1,7 +1,9 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { capDragOrF32Wgsl, f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D, polygon2dWindingSign } from "./polygon2d.mjs"
 import { VirtualCapNode } from "./virtual-cap.mjs"
@@ -78,6 +80,8 @@ export class Extrude extends Node {
         view[4] = 0
         // Total twist in radians (runtime); twist WGSL path reads this so param-only rebuilds see angle changes.
         view[5] = (this.twistDegrees * Math.PI) / 180
+        // rot inverse (9, contiguous via reservePrimitiveRot).
+        this.writeRotScene(view, 6)
     }
 
     override writePreviewParams(out: PreviewParamsOut): void {
@@ -89,6 +93,7 @@ export class Extrude extends Node {
         out.f32[this.previewF32Slot + 0] = this.h
         out.f32[this.previewF32Slot + 1] = 0
         out.f32[this.previewF32Slot + 2] = (this.twistDegrees * Math.PI) / 180
+        this.writeRotPreview(out)
     }
 
     override build() {
@@ -97,6 +102,7 @@ export class Extrude extends Node {
         this.previewF32Slot = this.scene.allocPreviewF32(3)
         this.paramOffset = this.scene.allocSceneParamFloats(6)
         this.paramCount = 6
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
         this.child.root = this.root
         this.child.build()
         this.capTop.root = this.root
@@ -521,7 +527,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`,
+            text: this.warpRot(`${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`, pos),
         }
     }
 
@@ -532,7 +538,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `${this.wgslFastFuncName}(p - ${pos})`,
+            text: this.warpRot(`${this.wgslFastFuncName}(p - ${pos})`, pos),
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
@@ -542,7 +548,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         return {
             funcName,
             varName,
-            text: `sdfMidSetOwner(sdfTranslateFeatureMid(${this.wgslMidFuncName}(p - ${pos}), p, ${pos}), ${this.id}u)`,
+            text: this.warpRot(`sdfMidSetOwner(sdfTranslateFeatureMid(${this.wgslMidFuncName}(p - ${pos}), p, ${pos}), ${this.id}u)`, pos),
         }
     }
 
@@ -559,7 +565,10 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             maxX = circ
             maxZ = circ
         }
-        return aabb(this.pos.x, this.pos.y, this.pos.z, maxX, this.h, maxZ)
+        // Expand the upright AABB for the local `rot` about the extrude's center.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, 0, 0, maxX, this.h, maxZ), fwd)
+        return aabb(this.pos.x, this.pos.y, this.pos.z, r.hx, r.hy, r.hz)
     }
 
     @fluent height(n: number): this {
@@ -574,7 +583,20 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
 
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the extrude about its own center, param-only/live). AFTER a `.shift` it
+     * falls back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 
     /**

@@ -1,6 +1,7 @@
-import { Vec3 } from "../vecmat/vector.mjs"
+import { Vec3, Vec3f, vec3 } from "../vecmat/vector.mjs"
 import type { PreviewParamsOut } from "./scene-params.mjs"
-import { compileParamMode } from "./scene-params.mjs"
+import { compileParamMode, mat3x3Wgsl, packMat3ColumnMajorToPreviewOut } from "./scene-params.mjs"
+import { composeEuler, eulerMatrices } from "./transform-math.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
 import type { ContourBuffer } from "./contour-buffer.mjs"
@@ -111,6 +112,68 @@ export class Node {
     previewVec3Slot = -1
     /** First index in `previewParamsMat3` for this node's matrices; `-1` if none. */
     previewMat3Slot = -1
+
+    /**
+     * Local rotation (Euler degrees) applied about this node's own origin BEFORE
+     * `pos`, for primitives that opt in via {@link reservePrimitiveRot}. Identity
+     * default. Always-present (slot reserved unconditionally) so the gizmo can
+     * edit it param-only — no shader recompile, no node added.
+     */
+    rot: Vec3f = vec3(0, 0, 0)
+    /** Preview `mat3` slot holding `rot`'s inverse matrix, or -1 if rot isn't supported. */
+    rotPreviewMat3Slot = -1
+    /** Scene-param (storage) f32 offset for `rot`'s inverse (9 floats), or -1. */
+    rotParamOffset = -1
+    /**
+     * Set once `.shift` has been applied. Gates a rot-supporting primitive's
+     * `.rotate`: pre-shift composes onto the local `rot` field (rotate about the
+     * node's own center, param-only/live); post-shift falls back to a `Rotate`
+     * operator (the shift becomes the pivot). Mirrors the chain-order semantics
+     * `Box` established, shared by every primitive that opts into a `rot` field.
+     */
+    protected shifted = false
+
+    /** Reserve always-present rotation slots (preview mat3 + 9 storage floats for
+     * the inverse). Call from a primitive's `build()` AFTER its own
+     * `allocSceneParamFloats`, so the rot floats are contiguous and covered by
+     * `paramCount`. */
+    protected reservePrimitiveRot(): void {
+        this.rotParamOffset = this.scene.allocSceneParamFloats(9)
+        this.paramCount += 9
+        this.rotPreviewMat3Slot = this.scene.allocPreviewMat3(1)
+    }
+
+    /** Compose an additional body-frame rotation (Euler deg) onto this node's
+     * local `rot` field — the shared pre-shift `.rotate` behavior for primitives
+     * that opt into a `rot` field (matches `Box.rotate`'s composition). */
+    protected composeLocalRot(r: Vec3f): void {
+        const c = composeEuler([this.rot.x, this.rot.y, this.rot.z], [r.x, r.y, r.z])
+        this.rot = vec3(c[0], c[1], c[2])
+    }
+
+    /** Write `rot`'s inverse matrix into the preview mat3 bank. */
+    protected writeRotPreview(out: PreviewParamsOut): void {
+        if (this.rotPreviewMat3Slot < 0) return
+        const { inv } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        packMat3ColumnMajorToPreviewOut(out.mat3, this.rotPreviewMat3Slot, new Float32Array(inv))
+    }
+
+    /** Write `rot`'s inverse matrix (9 floats) into a scene-param slice at `offset`. */
+    protected writeRotScene(view: Float32Array, offset: number): void {
+        if (this.rotParamOffset < 0) return
+        const { inv } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        view.set(inv, offset)
+    }
+
+    /** Wrap an emitted SDF expression so the sample point is rotated about `pos`
+     * by `rot` before the primitive evaluates: `p → invRot·(p − pos) + pos`.
+     * Unconditional (always emits the matrix read) so changing `rot` stays
+     * param-only. No-op for nodes without rot support. */
+    protected warpRot(text: string, posExpr: string): string {
+        if (this.rotPreviewMat3Slot < 0) return text
+        const invMat = mat3x3Wgsl(this.rotParamOffset, this.rotPreviewMat3Slot)
+        return text.replace(/\bp\b/g, `(${invMat} * (p - ${posExpr}) + ${posExpr})`)
+    }
 
     get scene() {
         return this.root.#scene

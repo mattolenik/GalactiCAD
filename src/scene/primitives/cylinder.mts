@@ -1,7 +1,9 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { BOTTOM, TOP, type DirectionIndicator } from "../direction-indicator.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import {
@@ -54,10 +56,12 @@ export class Cylinder extends Node {
         out.f32[s + 3] = this.filletBottom
         out.f32[s + 4] = this.chamferTop
         out.f32[s + 5] = this.chamferBottom
+        this.writeRotPreview(out)
     }
 
     #paramSlice(): Float32Array {
-        const buf = new Float32Array(9)
+        // pos (3) + r,h,fillets,chamfers (6) + rot inverse (9, via reservePrimitiveRot).
+        const buf = new Float32Array(18)
         buf.set(this.pos.data, 0)
         buf[3] = this.r
         buf[4] = this.h
@@ -65,6 +69,7 @@ export class Cylinder extends Node {
         buf[6] = this.filletBottom
         buf[7] = this.chamferTop
         buf[8] = this.chamferBottom
+        this.writeRotScene(buf, 9)
         return buf
     }
 
@@ -74,6 +79,7 @@ export class Cylinder extends Node {
         this.previewF32Slot = this.scene.allocPreviewF32(6)
         this.paramOffset = this.scene.allocSceneParamFloats(9)
         this.paramCount = 9
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
     }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Cylinder${this.id}`
@@ -87,7 +93,7 @@ export class Cylinder extends Node {
         const fb = f32Wgsl(o + 6, s + 3)
         const ct = f32Wgsl(o + 7, s + 4)
         const cb = f32Wgsl(o + 8, s + 5)
-        return { funcName, varName, text: `fCylinderEx(p - ${pos}, ${r}, ${h}, ${ft}, ${fb}, ${ct}, ${cb}, ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`fCylinderEx(p - ${pos}, ${r}, ${h}, ${ft}, ${fb}, ${ct}, ${cb}, ${this.id}u)`, pos) }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Cylinder${this.id}`
@@ -101,7 +107,7 @@ export class Cylinder extends Node {
         const fb = f32Wgsl(o + 6, s + 3)
         const ct = f32Wgsl(o + 7, s + 4)
         const cb = f32Wgsl(o + 8, s + 5)
-        return { funcName, varName, text: `fCylinderFast(p - ${pos}, ${r}, ${h}, ${ft}, ${fb}, ${ct}, ${cb})` }
+        return { funcName, varName, text: this.warpRot(`fCylinderFast(p - ${pos}, ${r}, ${h}, ${ft}, ${fb}, ${ct}, ${cb})`, pos) }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Cylinder${this.id}`
@@ -115,11 +121,14 @@ export class Cylinder extends Node {
         const fb = f32Wgsl(o + 6, s + 3)
         const ct = f32Wgsl(o + 7, s + 4)
         const cb = f32Wgsl(o + 8, s + 5)
-        return { funcName, varName, text: `sdfMidSetOwner(fCylinderMid(p - ${pos}, ${r}, ${h}, ${ft}, ${fb}, ${ct}, ${cb}), ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`sdfMidSetOwner(fCylinderMid(p - ${pos}, ${r}, ${h}, ${ft}, ${fb}, ${ct}, ${cb}), ${this.id}u)`, pos) }
     }
 
     protected override computeBoundsCore(): AABB {
-        return aabb(this.pos.x, this.pos.y, this.pos.z, this.r, this.h, this.r)
+        // Expand the upright AABB for the local `rot` about the cylinder's center.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, 0, 0, this.r, this.h, this.r), fwd)
+        return aabb(this.pos.x, this.pos.y, this.pos.z, r.hx, r.hy, r.hz)
     }
 
     @fluent height(h: number): this {
@@ -173,7 +182,20 @@ export class Cylinder extends Node {
 
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the cylinder about its own center, param-only/live). AFTER a `.shift` it
+     * falls back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 
     /**

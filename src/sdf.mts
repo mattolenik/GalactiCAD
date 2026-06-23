@@ -15,6 +15,7 @@ import type { Vec2f, Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
+import { GizmoController } from "./gizmo/gizmo-controller.mjs"
 import type { MeshData } from "./export/export.mjs"
 import {
     DEFAULT_PREVIEW_SHADING,
@@ -77,6 +78,17 @@ function roundScenePerfMs(x: number): number {
 const DEFAULT_TARGET_FPS = 120
 
 /** Lightweight node stub for main-thread selection logic. Reconstructed from SerializedNode. */
+/** Reply payload for `getNodeBounds` — world-space center, local half-extents,
+ *  and the row-major 3×3 mapping a world delta into the node's local frame. */
+export type NodeBoundsResult = {
+    center: [number, number, number]
+    half: [number, number, number]
+    invLinear: number[]
+    orient: number[]
+    rotateNodeId: number
+    rotateEuler: [number, number, number]
+}
+
 export interface NodeStub {
     id: number
     shapeType: string
@@ -132,6 +144,15 @@ export class SDFRenderer {
     /** Last hover screen position and altKey, cached for replay when camera movement stops. */
     #lastHoverScreenPos: { x: number; y: number } | null = null
     #lastHoverAltKey = false
+    /** Rec 5: HoverCam inspect mode — re-pick the surface under the cursor while orbiting (opt-in). */
+    #cameraHoverInspect = false
+    /**
+     * Rec 1: world-space surface point under the cursor, captured from the hover
+     * readback (`info.hover.hitPos`). Lets rotate-start re-anchor the pivot
+     * SYNCHRONOUSLY — the async pick round-trip lands too late (mid/after the drag),
+     * leaving the orbit on the stale far pivot. Invalidated on any camera motion.
+     */
+    #hoverWorldHit: { sx: number; sy: number; world: [number, number, number] } | null = null
     /** Tracks previous frame's isActivelyMoving for motion transition detection. */
     #wasActivelyMoving = false
     /** Defer hover replay until after the settled frame is published (avoids stale first-hover). */
@@ -239,6 +260,19 @@ export class SDFRenderer {
         { resolve: (v: ImageData) => void; reject: (err: unknown) => void; skipDocumentGuard?: boolean }
     >()
     #pendingPickPos = new Map<number, { resolve: (v: [number, number, number] | null) => void }>()
+    #pendingNodeBounds = new Map<number, { resolve: (v: NodeBoundsResult | null) => void }>()
+    /** Transform-gizmo controller (placement + hover hit-test). `#gizmoToken`
+     * guards against stale async bounds replies racing a newer selection. */
+    #gizmoController: GizmoController | null = null
+    #gizmoNodeId = 0
+    #gizmoToken = 0
+    /** Swallow the synthesized `click` that fires after a gizmo drag release.
+     * The gizmo grabs the pointer in the capture phase (so the camera controller
+     * never sees the drag and its `hasDragged` stays false), but the browser still
+     * emits a `click` on release — which `CameraController.#onClick` would treat as
+     * a fresh selection, re-picking whatever is under the cursor (or deselecting).
+     * Set on gizmo drag release/cancel, consumed by the capture-phase click handler. */
+    #suppressGizmoReleaseClick = false
     #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
     #pickObjectRequestId = 0
     #sharedBuffer: SharedArrayBuffer | null = null
@@ -286,6 +320,11 @@ export class SDFRenderer {
     readonly pushPullComplete$ = new Subject<{ nodeId: number; vertices: [number, number][] }>()
     readonly capPullComplete$ = new Subject<{ nodeId: number; newH: number; newPosY: number }>()
     readonly pushPullExit$ = new Subject<void>()
+    /** A gizmo translate drag committed: write `.shift` to source. `final` = new
+     *  absolute local translation, `delta` = local delta from drag start. */
+    readonly gizmoTranslateComplete$ = new Subject<{ nodeId: number; final: [number, number, number]; delta: [number, number, number] }>()
+    /** A gizmo rotate drag committed: a local rotation of `angleDeg` about local `axis` (0/1/2). */
+    readonly gizmoRotateComplete$ = new Subject<{ nodeId: number; axis: number; angleDeg: number }>()
     readonly previewSettingsLoaded$ = new Subject<void>()
 
     constructor(preview: PreviewWindow, tabsElement?: EventTarget | null, getInteractionRect?: () => DOMRect, getActiveDocument?: () => string | undefined) {
@@ -322,12 +361,25 @@ export class SDFRenderer {
 
         this.#controlSubs.push(
             this.#controls.select$.subscribe(({ screenPos, shiftKey, altKey }) => {
+                // Swallow the click synthesized after a gizmo drag release so it
+                // doesn't re-pick under the cursor and deselect (which also hides the
+                // gizmo). Gated here — not just on the capture-phase click handler —
+                // because CameraController's click→select$ listener is on the same
+                // canvas, so at the AT_TARGET phase listener order (not capture flag)
+                // decides who runs first; gating the select$ consumer is order-proof.
+                if (this.#suppressGizmoReleaseClick) {
+                    this.#suppressGizmoReleaseClick = false
+                    return
+                }
                 const uv = this.#screenToClickUV(screenPos.x, screenPos.y)
                 if (uv) this.#worker.postMessage({ type: "click", clickUV: uv, shiftKey, altKey, documentName: this.#getActiveDocument?.() ?? undefined })
             }),
             this.#controls.doubleClick$.subscribe(({ screenPos, metaKey, ctrlKey }) => {
                 if (metaKey || ctrlKey) {
-                    // Cmd/Ctrl+double-click: set orbit pivot to pick hit (world xyz)
+                    // Cmd/Ctrl+double-click sets an explicit locked pivot (3D cursor) — only
+                    // meaningful in classic mode. While auto-pivot is active it's disabled, so
+                    // it can't lock a pivot and surface the otherwise-hidden cursor.
+                    if (this.#controls.autoPivotActive) return
                     this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
                         if (pos) this.#controls.setPivotToWorldHit(vec3(pos[0], pos[1], pos[2]))
                     })
@@ -355,6 +407,43 @@ export class SDFRenderer {
             this.#controls.change$.subscribe(() => {
                 this.#needsRender = true
                 this.#updatePivotCursor()
+                // Any camera motion invalidates the cached screen→world hover hit
+                // (the mapping is camera-dependent). Refreshed by the next hover.
+                this.#hoverWorldHit = null
+            }),
+            // Rec 1: on rotate-start, re-anchor the orbit pivot to the surface under
+            // the cursor. Silent — no focus jump. setOrbitPivot no-ops if the pivot is
+            // locked, so the explicit 3D-cursor override wins. We re-anchor from the
+            // cached hover hit SYNCHRONOUSLY (the async pick lands too late to catch the
+            // start of the drag); only fall back to an async pick when there is no fresh
+            // hover hit under the cursor (e.g. you press without hovering first).
+            this.#controls.orbitStart$.subscribe(({ screenPos }) => {
+                if (this.#controls.pivotMode !== "auto") return
+                const cached = this.#hoverWorldHit
+                if (cached && Math.hypot(cached.sx - screenPos.x, cached.sy - screenPos.y) <= 16) {
+                    this.#controls.setOrbitPivot(vec3(cached.world[0], cached.world[1], cached.world[2]))
+                    return
+                }
+                this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
+                    this.#controls.setOrbitPivot(pos ? vec3(pos[0], pos[1], pos[2]) : null)
+                })
+            }),
+            // Rec 5 (HoverCam inspect mode, opt-in): while orbiting, keep the pivot on
+            // the surface under the moving cursor so the orbit hugs it for close-up
+            // inspection. Off by default; throttled to bound the per-drag pick cost.
+            this.#controls.orbitMove$.pipe(throttleTime(100)).subscribe(({ screenPos }) => {
+                if (!this.#cameraHoverInspect || this.#controls.pivotMode !== "auto") return
+                this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
+                    if (pos) this.#controls.setOrbitPivot(vec3(pos[0], pos[1], pos[2]))
+                })
+            }),
+            // Rec 4: explicit "frame here" (F) — frame the surface under the cursor.
+            this.#controls.frameRequest$.subscribe(() => {
+                const p = this.#lastHoverScreenPos
+                if (!p) return
+                this.pickPosAtScreen(p.x, p.y).then(pos => {
+                    if (pos) this.#controls.frameOnWorldPoint(vec3(pos[0], pos[1], pos[2]))
+                })
             })
         )
 
@@ -373,6 +462,11 @@ export class SDFRenderer {
                     this.#worker.postMessage({ type: "resize", fullWidth: w, fullHeight: h, devicePixelRatio })
                     this.#needsRender = true
                     this.#updatePivotCursor()
+                    // Keep the gizmo overlay's backing store in sync, then redraw it
+                    // at the new size (separate canvas — not part of the worker render).
+                    this.#preview.gizmoCanvas.width = w
+                    this.#preview.gizmoCanvas.height = h
+                    this.#gizmoController?.draw()
                 }
             })
         })
@@ -424,6 +518,81 @@ export class SDFRenderer {
         })
     }
 
+    /**
+     * Apply a structure-preserving incremental param edit (gizmo commit, manual
+     * numeric edit, or undo/redo of either) WITHOUT a full rebuild: patch the
+     * node's stable slot in the worker, mirror the value into the cached stub so a
+     * subsequent gizmo drag / node match reads fresh, and re-anchor the gizmo. The
+     * caller (App) has gated this to a fingerprint-unchanged edit; see
+     * docs/plans/gizmo-incremental-param-edit.md.
+     */
+    paramPatch(nodeId: number, kind: "translate" | "rotate", value: [number, number, number]): void {
+        this.#worker.postMessage({ type: "paramPatch", nodeId, kind, value })
+        // The cached stub is shared by reference with App's #sceneNodeMap, so this
+        // one mutation keeps node-matching (which compares pos) consistent for both.
+        if (kind === "translate") {
+            const node = this.#sceneNodeCache.find(n => n.id === nodeId)
+            if (node) node.pos = { x: value[0], y: value[1], z: value[2] }
+        }
+        this.#updateGizmoForSelection() // re-anchor off the patched worker scene
+        this.#needsRender = true
+    }
+
+    /** Query the world-space AABB of a scene node (for gizmo placement). */
+    getNodeBounds(
+        nodeId: number,
+    ): Promise<NodeBoundsResult | null> {
+        const requestId = ++this.#requestIdCounter
+        return new Promise(resolve => {
+            this.#pendingNodeBounds.set(requestId, { resolve })
+            this.#worker.postMessage({ type: "getNodeBounds", nodeId, requestId })
+        })
+    }
+
+    /**
+     * Show the transform gizmo when exactly one object is selected in object
+     * mode, anchored at that object's bbox center; hide it otherwise. The bounds
+     * query is async, so `#gizmoToken` discards replies superseded by a newer
+     * selection. The worker re-projects the stored anchor each frame, so the
+     * gizmo tracks camera moves without further messages.
+     */
+    #updateGizmoForSelection(): void {
+        const gc = this.#gizmoController
+        if (!gc) return
+        // "One object" = a single primary (root) selection. Its descendants may
+        // also be in the selection set: a click selects just the node, while the
+        // editor / post-edit reselect selects getAllDescendantIds(). Keying off the
+        // primary (not the raw id count) keeps the gizmo for both forms — only a
+        // genuine multi-object selection (>1 primary) suppresses it.
+        const single = this.#selectionMode === "object" ? this.#singlePrimarySelection() : 0
+        const token = ++this.#gizmoToken
+        if (single <= 0) {
+            this.#gizmoNodeId = 0
+            gc.hide()
+            this.#preview.canvas.style.cursor = ""
+            return
+        }
+        this.#gizmoNodeId = single
+        void this.getNodeBounds(single).then(bounds => {
+            if (token !== this.#gizmoToken) return // superseded by a newer selection
+            if (!bounds) {
+                gc.hide()
+                this.#preview.canvas.style.cursor = ""
+                return
+            }
+            gc.show(bounds.center, bounds.invLinear, bounds.orient, single, bounds.rotateNodeId, bounds.rotateEuler)
+        })
+    }
+
+    /** The single primary (root) selected node id for the gizmo, or 0 when the
+     * selection isn't exactly one object. A primary is a selected node with no
+     * selected ancestor, so a node selected alone OR together with all its
+     * descendants both count as one object. */
+    #singlePrimarySelection(): number {
+        const { primary } = this.getSelectionPrimaryAndChildIds()
+        return primary.length === 1 ? primary[0]! : 0
+    }
+
     #loadPreviewSettings(): void {
         const prev = this.#settings.getPreview()
         const global = this.#settings.getGlobal()
@@ -436,6 +605,10 @@ export class SDFRenderer {
         this.#featureGraphLineWidth = prev.featureGraphLineWidth
         this.#featureGraphDifferentiateSegments = prev.featureGraphDifferentiateSegments
         this.#selectionMode = global.preview.selectionMode
+        // Pivot policy: auto-pivot on (default) lets the orbit center track the
+        // surface under the cursor; off forces classic locked 3D-cursor behavior.
+        this.#controls.setAutoPivotEnabled(global.preview.cameraAutoPivot)
+        this.#cameraHoverInspect = global.preview.cameraHoverInspect
         this.previewSettingsLoaded$.next()
         this.#needsRender = true
     }
@@ -504,6 +677,9 @@ export class SDFRenderer {
                             this.#controls.loadCameraFromSettings()
                             this.#needsRender = true
                             this.#lastBuildTimingMs = msg.timingMs ?? null
+                            // Re-anchor the gizmo to the (possibly moved) selected
+                            // object after a rebuild, or hide it if it's gone.
+                            this.#updateGizmoForSelection()
                         }
                     }
                     pending.resolve(!msg.superseded)
@@ -561,6 +737,13 @@ export class SDFRenderer {
                 })) ?? []
                 this.#preview.updateSelectionInfo(msg.info)
                 this.#updateFaceHover(msg.info.hover ?? null)
+                // Rec 1: cache the world-space surface point under the cursor so a
+                // rotate-start can re-anchor the pivot synchronously (see orbitStart$).
+                const hoverHit = msg.info.hover?.hitPos
+                this.#hoverWorldHit =
+                    hoverHit && this.#lastHoverScreenPos
+                        ? { sx: this.#lastHoverScreenPos.x, sy: this.#lastHoverScreenPos.y, world: hoverHit }
+                        : null
                 if (this.#lastHoverScreenPos) {
                     this.hoverInfo$.next({ objectId: this.#hoveredObjectId, screenPos: this.#lastHoverScreenPos })
                 }
@@ -642,6 +825,14 @@ export class SDFRenderer {
                 if (pending) {
                     this.contextMenu$.next({ objectId: msg.objectId, clientX: pending.clientX, clientY: pending.clientY })
                     this.#pendingPickObject.delete(msg.requestId)
+                }
+                break
+            }
+            case "nodeBoundsResult": {
+                const pending = this.#pendingNodeBounds.get(msg.requestId)
+                if (pending) {
+                    pending.resolve(msg.bounds)
+                    this.#pendingNodeBounds.delete(msg.requestId)
                 }
                 break
             }
@@ -836,6 +1027,7 @@ export class SDFRenderer {
             this.selectionChange$.next([])
         }
         this.#pushSelectionInfo()
+        this.#updateGizmoForSelection()
         this.#needsRender = true
     }
 
@@ -1276,6 +1468,9 @@ export class SDFRenderer {
             canvas.width = this.#fullWidth
             canvas.height = this.#fullHeight
         }
+        // Size the main-thread gizmo overlay's backing store to match (device px).
+        this.#preview.gizmoCanvas.width = this.#fullWidth
+        this.#preview.gizmoCanvas.height = this.#fullHeight
         const offscreen = canvas.transferControlToOffscreen()
         this.#useSharedMemory = isSharedMemoryAvailable()
         log("Sdf").info("useSharedMemory", this.#useSharedMemory)
@@ -1349,8 +1544,52 @@ export class SDFRenderer {
             self.#needsRender = true
             self.pushPullExit$.next()
         }
+        this.#gizmoController = new GizmoController({
+            requestRender() {
+                self.requestRender()
+            },
+            get gizmoCanvas() {
+                return self.#preview.gizmoCanvas
+            },
+            gizmoBegin(nodeId, kind) {
+                self.#worker.postMessage({ type: "gizmoBegin", nodeId, kind })
+            },
+            gizmoPreview(p) {
+                self.#worker.postMessage({ type: "gizmoPreview", ...p })
+            },
+            gizmoEnd() {
+                self.#worker.postMessage({ type: "gizmoEnd" })
+            },
+            getNodeTranslation(nodeId) {
+                const node = self.#sceneNodeCache.find(n => n.id === nodeId)
+                return node?.pos ? [node.pos.x, node.pos.y, node.pos.z] : null
+            },
+            onTranslateComplete(nodeId, final, delta) {
+                self.gizmoTranslateComplete$.next({ nodeId, final, delta })
+            },
+            onRotateComplete(nodeId, axis, angleDeg) {
+                self.gizmoRotateComplete$.next({ nodeId, axis, angleDeg })
+            },
+            get canvas() {
+                return self.#preview.canvas
+            },
+            get controls() {
+                return self.#controls
+            },
+            get viewCenter() {
+                return self.#viewCenter
+            },
+        })
         const canvas = this.#preview.canvas
         canvas.addEventListener("click", (e: MouseEvent) => {
+            // Swallow the one click synthesized after a gizmo drag release so the
+            // moved/rotated object stays selected instead of re-picking whatever is
+            // under the cursor (see #suppressGizmoReleaseClick).
+            if (this.#suppressGizmoReleaseClick) {
+                this.#suppressGizmoReleaseClick = false
+                e.stopImmediatePropagation()
+                return
+            }
             // Swallow the click during an active push/pull drag, or a shift+click
             // that promotes a selected face to push/pull — but let plain clicks
             // through so face/object selection works normally.
@@ -1391,6 +1630,62 @@ export class SDFRenderer {
                 }
             }
         }, { capture: true })
+        // Gizmo: drag an axis arrow to translate, hover to highlight. Capture
+        // phase + stopPropagation so an active drag suppresses the camera orbit
+        // (mirrors the push/pull wiring above).
+        canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+            const gc = this.#gizmoController
+            if (!gc?.shown || e.button !== 0) return
+            if (gc.handlePointerDown(e.clientX, e.clientY)) {
+                canvas.setPointerCapture(e.pointerId)
+                canvas.style.cursor = "grabbing"
+                // Drop to reduced-resolution rendering during the drag (same
+                // signal the camera uses), so a complex scene stays interactive.
+                this.#controls.isDragging = true
+                e.preventDefault()
+                e.stopPropagation()
+            }
+        }, { capture: true })
+        canvas.addEventListener("pointermove", (e: PointerEvent) => {
+            const gc = this.#gizmoController
+            if (!gc?.shown) return
+            if (gc.dragging) {
+                gc.handleDragMove(e.clientX, e.clientY)
+                e.preventDefault()
+                e.stopPropagation()
+                return
+            }
+            if (this.#controls.isActivelyMoving) return
+            const over = gc.handlePointerMove(e.clientX, e.clientY)
+            canvas.style.cursor = over ? "grab" : ""
+        }, { capture: true })
+        canvas.addEventListener("pointerup", (e: PointerEvent) => {
+            const gc = this.#gizmoController
+            if (!gc?.dragging) return
+            gc.handlePointerUp(e.clientX, e.clientY)
+            if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
+            canvas.style.cursor = "grab"
+            // Suppress the click this release will synthesize, so it doesn't change
+            // the selection to whatever is under the cursor (keep the dragged object).
+            this.#suppressGizmoReleaseClick = true
+            // Back to full resolution; force a settle re-render.
+            this.#controls.isDragging = false
+            this.#needsRender = true
+            e.preventDefault()
+            e.stopPropagation()
+        }, { capture: true })
+        document.addEventListener("keydown", (e: KeyboardEvent) => {
+            if (e.key === "Escape" && this.#gizmoController?.dragging) {
+                this.#gizmoController.cancelDrag()
+                this.#controls.isDragging = false
+                this.#needsRender = true
+                this.#preview.canvas.style.cursor = ""
+                // The button is still held; its eventual release would synthesize a
+                // selection-changing click — swallow it too.
+                this.#suppressGizmoReleaseClick = true
+                e.preventDefault()
+            }
+        })
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
             if (this.#pushPullController?.isDragging) {
                 if (this.#pushPullController.handlePointerUp(e)) {
@@ -1540,6 +1835,7 @@ export class SDFRenderer {
         this.#selectionDirty = true
         if (notify) this.selectionChange$.next(this.selectedObjectIds)
         this.#pushSelectionInfo()
+        this.#updateGizmoForSelection()
         this.#needsRender = true
     }
 
@@ -1567,6 +1863,12 @@ export class SDFRenderer {
      * when the camera is idle.
      */
     #updatePivotCursor(): void {
+        // Auto-pivot re-anchors the orbit center every gesture, so the 3D-cursor
+        // marker is just noise — only show it for an explicit (locked) pivot.
+        if (this.#controls.autoPivotActive) {
+            this.#preview.setPivotCursor(0, 0, false)
+            return
+        }
         const canvas = this.#preview.canvas
         const cssW = canvas.clientWidth
         const cssH = canvas.clientHeight
@@ -1601,6 +1903,11 @@ export class SDFRenderer {
         // up to 32 px outside still need a sliver visible.
         const visible = cssX >= -32 && cssX <= cssW + 32 && cssY >= -32 && cssY <= cssH + 32
         this.#preview.setPivotCursor(cssX, cssY, visible)
+    }
+
+    /** Rec 5: toggle HoverCam inspect mode at runtime (from Settings). Persisted globally by the caller. */
+    setCameraHoverInspect(enabled: boolean): void {
+        this.#cameraHoverInspect = enabled
     }
 
     set xrayMode(enabled: boolean) {
@@ -1789,6 +2096,7 @@ export class SDFRenderer {
         this.#selectionDirty = true
         this.selectionChange$.next([])
         this.#pushSelectionInfo()
+        this.#updateGizmoForSelection()
         this.#needsRender = true
     }
     get selectionMode(): SelectionMode {
@@ -2009,6 +2317,9 @@ export class SDFRenderer {
         } else {
             this.#worker.postMessage(payload, [payload.viewTransform.buffer])
         }
+        // Re-project the main-thread gizmo overlay so it tracks the camera being
+        // rendered this frame (cheap Canvas2D redraw; no worker round-trip).
+        if (this.#gizmoController?.shown) this.#gizmoController.draw()
         if (this.#shouldReplayHoverAfterRender) {
             this.#shouldReplayHoverAfterRender = false
             this.#replayHoverWhenSettled()

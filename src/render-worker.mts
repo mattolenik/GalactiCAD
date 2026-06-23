@@ -230,6 +230,25 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
         case "clearFgSelection":
             if (core) core.clearFgSelection()
             break
+        case "getNodeBounds":
+            if (core) core.handleGetNodeBounds(msg.nodeId, msg.requestId)
+            else self.postMessage({ type: "nodeBoundsResult", bounds: null, requestId: msg.requestId })
+            break
+        case "setGizmo":
+            if (core) core.setGizmo(msg)
+            break
+        case "gizmoBegin":
+            if (core) core.gizmoBegin(msg.nodeId, msg.kind)
+            break
+        case "gizmoPreview":
+            if (core) core.gizmoPreview(msg)
+            break
+        case "gizmoEnd":
+            if (core) core.gizmoEnd()
+            break
+        case "paramPatch":
+            if (core) core.paramPatch(msg)
+            break
         default:
             log("RenderWorker").info("unknown message", (msg as { type: string }).type)
     }

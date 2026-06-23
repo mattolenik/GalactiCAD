@@ -224,9 +224,14 @@ export class GizmoController {
             drag.accumAngle += d
             drag.lastAngle = a
         }
-        // Live spin: set the rotate node's Euler = base ∘ delta (body-frame).
+        // Live spin: set the rotate node's Euler = base ∘ delta (body-frame), and
+        // track the rings to the same orientation so the whole gizmo follows the
+        // spun object (mirrors how a translate drag tracks `#center`). Without this
+        // the rings linger at the pre-rotation pose and visibly snap into place
+        // when the debounced source-edit rebuild finally re-anchors the gizmo.
         if (drag.rotateNodeId > 0) {
             this.#host.gizmoPreview({ rotate: this.#composedEuler(drag) })
+            this.#host.postGizmo({ visible: true, orient: this.#followOrient(drag), hoverHandle: drag.handle, activeHandle: drag.handle })
             this.#host.requestRender()
         }
         return true
@@ -238,6 +243,18 @@ export class GizmoController {
         const delta: Vec3 = [drag.axis === 0 ? deg : 0, drag.axis === 1 ? deg : 0, drag.axis === 2 ? deg : 0]
         const fwd = matMul3(eulerToFwd(drag.baseEuler[0], drag.baseEuler[1], drag.baseEuler[2]), eulerToFwd(delta[0], delta[1], delta[2]))
         return fwdToEuler(fwd)
+    }
+
+    /**
+     * World orientation of the gizmo rings after the drag's body-frame delta:
+     * `#orient` (the object's world orientation at drag start, already including
+     * its base rotation) post-multiplied by the local-axis delta. This equals the
+     * spun object's world orientation, so the rings stay glued to it during a live
+     * spin and hold the final pose through the rebuild.
+     */
+    #followOrient(drag: RotateDrag): number[] {
+        const deg = (drag.accumAngle * 180) / Math.PI
+        return matMul3(this.#orient, eulerToFwd(drag.axis === 0 ? deg : 0, drag.axis === 1 ? deg : 0, drag.axis === 2 ? deg : 0))
     }
 
     /** Finish an active drag, reporting the committed transform. */
@@ -255,8 +272,17 @@ export class GizmoController {
                 this.#host.onTranslateComplete(this.#nodeId, final, delta)
             }
         } else {
-            if (drag.rotateNodeId > 0) this.#host.gizmoEnd()
-            this.#host.postGizmo({ visible: true, hoverHandle: -1, activeHandle: -1 })
+            if (drag.rotateNodeId > 0) {
+                // Pin the rings to the final spun orientation so the gizmo stays on
+                // the object while the (debounced) source-edit rebuild is in flight,
+                // instead of flashing back to the pre-rotation pose and snapping
+                // into place when the rebuild re-anchors it.
+                this.#orient = this.#followOrient(drag)
+                this.#host.gizmoEnd()
+                this.#host.postGizmo({ visible: true, orient: this.#orient, hoverHandle: -1, activeHandle: -1 })
+            } else {
+                this.#host.postGizmo({ visible: true, hoverHandle: -1, activeHandle: -1 })
+            }
             const deg = (drag.accumAngle * 180) / Math.PI
             if (Math.abs(deg) > 1e-4) this.#host.onRotateComplete(this.#nodeId, drag.axis, deg)
         }
@@ -279,7 +305,9 @@ export class GizmoController {
                 this.#host.gizmoPreview({ rotate: drag.baseEuler }) // revert preview to base
                 this.#host.gizmoEnd()
             }
-            this.#host.postGizmo({ visible: true, hoverHandle: -1, activeHandle: -1 })
+            // The rings may have tracked the spin during the drag; `#orient` is still
+            // the base, so push it to snap them back to the un-rotated orientation.
+            this.#host.postGizmo({ visible: true, orient: this.#orient, hoverHandle: -1, activeHandle: -1 })
         }
         this.#host.requestRender()
     }

@@ -56,7 +56,7 @@ import { initDprintFormatting } from "./editor/dprint-formatter.mjs"
 import { findInnermostAtPosition } from "./editor/position-utils.mjs"
 import { applyVertexUpdates } from "./editor/polygon-source-updates.mjs"
 import { applyExtrudeLoftCapUpdates, type ExtrudeLikeNode } from "./editor/extrude-loft-source-updates.mjs"
-import { applyGizmoTranslate, applyGizmoRotate } from "./editor/gizmo-source-updates.mjs"
+import { applyGizmoTranslate, applyGizmoRotate, type GizmoReselect } from "./editor/gizmo-source-updates.mjs"
 import {
     canvasPreviewUvRect,
     editorSelectionInfoOffset,
@@ -139,6 +139,11 @@ class App {
     #updateViewCenter: (() => void) | undefined
     #sourceParser: SourceParser
     #sourceLocationMap: Map<number, SourceLocation> = new Map()
+    /** After a gizmo edit, re-select the moved/rotated object at this (post-edit)
+     * source position once the rebuild lands — a structural edit renumbers node
+     * ids, so the stale id-indexed selection would re-anchor the gizmo to the
+     * wrong object (or hide it). Consumed by the next successful {@link build}. */
+    #pendingGizmoReselect: GizmoReselect | null = null
     #parsedCalls: ParsedShapeCall[] = []
     #parsedCallsWithRanges: [ParsedShapeCall, { startLine: number; startColumn: number; endLine: number; endColumn: number }][] = []
     #sceneNodeMap: Map<number, NodeStub> = new Map()  // nodeId -> NodeStub for symbol lookup
@@ -214,6 +219,19 @@ class App {
 
             // Update color indicators for all matched shapes
             this.#updateColorIndicators()
+
+            // A gizmo move/rotate may have renumbered node ids (wrapping the chain
+            // in translate(...), or turning .rotate(...) on a field-less primitive
+            // into a Rotate operator). The renderer's id-indexed selection is now
+            // stale, so re-select the object at its post-edit source position —
+            // this updates the selection to the new id and re-anchors the gizmo
+            // (setSelection → updateGizmoForSelection). Do it before highlighting so
+            // the editor outline tracks the new node too.
+            if (this.#pendingGizmoReselect) {
+                const { line, column } = this.#pendingGizmoReselect
+                this.#pendingGizmoReselect = null
+                this.#selectSceneNodeAtEditorPosition(line, column)
+            }
 
             // Drop isolated ids that no longer exist (a structural edit
             // renumbered/removed them); keep the survivors. Parameter-only edits
@@ -547,7 +565,7 @@ class App {
         const target = this.#sourceParser.findTransformTargetAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
         if (!target) return
 
-        applyGizmoTranslate(this.editor.view, target, final, delta)
+        this.#pendingGizmoReselect = applyGizmoTranslate(this.editor.view, target, final, delta)
         this.#reparseAfterGizmoEdit()
     }
 
@@ -562,7 +580,7 @@ class App {
         const cached = this.#sourceParser.getCachedSourceFile(src)
         const target = this.#sourceParser.findTransformTargetAtPosition(src, location.startLine, location.startColumn, cached ?? undefined)
         if (!target) return
-        applyGizmoRotate(this.editor.view, target, axis, angleDeg)
+        this.#pendingGizmoReselect = applyGizmoRotate(this.editor.view, target, axis, angleDeg)
         this.#reparseAfterGizmoEdit()
     }
 

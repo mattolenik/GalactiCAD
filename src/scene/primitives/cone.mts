@@ -1,7 +1,9 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { Vec3, vec3 } from "../../vecmat/vector.mjs"
 
 export class Cone extends Node {
@@ -34,13 +36,16 @@ export class Cone extends Node {
         out.vec3[b + 3] = 0
         out.f32[this.previewF32Slot + 0] = this.r
         out.f32[this.previewF32Slot + 1] = this.h
+        this.writeRotPreview(out)
     }
 
     #paramSlice(): Float32Array {
-        const buf = new Float32Array(5)
+        // pos (3) + r,h (2) + rot inverse (9, contiguous via reservePrimitiveRot).
+        const buf = new Float32Array(14)
         buf.set(this.pos.data, 0)
         buf[3] = this.r
         buf[4] = this.h
+        this.writeRotScene(buf, 5)
         return buf
     }
 
@@ -50,6 +55,7 @@ export class Cone extends Node {
         this.previewF32Slot = this.scene.allocPreviewF32(2)
         this.paramOffset = this.scene.allocSceneParamFloats(5)
         this.paramCount = 5
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
     }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Cone${this.id}`
@@ -58,7 +64,7 @@ export class Cone extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot + 0)
         const h = f32Wgsl(o + 4, this.previewF32Slot + 1)
-        return { funcName, varName, text: `fConeEx(p - ${pos}, ${r}, ${h}, ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`fConeEx(p - ${pos}, ${r}, ${h}, ${this.id}u)`, pos) }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Cone${this.id}`
@@ -67,7 +73,7 @@ export class Cone extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot + 0)
         const h = f32Wgsl(o + 4, this.previewF32Slot + 1)
-        return { funcName, varName, text: `fConeFast(p - ${pos}, ${r}, ${h})` }
+        return { funcName, varName, text: this.warpRot(`fConeFast(p - ${pos}, ${r}, ${h})`, pos) }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Cone${this.id}`
@@ -76,11 +82,18 @@ export class Cone extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const r = f32Wgsl(o + 3, this.previewF32Slot + 0)
         const h = f32Wgsl(o + 4, this.previewF32Slot + 1)
-        return { funcName, varName, text: `sdfMidSetOwner(fConeMid(p - ${pos}, ${r}, ${h}), ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`sdfMidSetOwner(fConeMid(p - ${pos}, ${r}, ${h}), ${this.id}u)`, pos) }
     }
 
     protected override computeBoundsCore(): AABB {
-        return aabb(this.pos.x, this.pos.y + this.h * 0.5, this.pos.z, this.r, this.h * 0.5, this.r)
+        // Expand for the local `rot`, which warps the sample point about `pos`
+        // (the base center) — NOT the geometric center. The upright cone spans
+        // local y ∈ [0, h], so its box is centered at (0, h/2, 0) in pos-relative
+        // coords; rotate that off-center box about the pivot (origin) and then
+        // re-anchor at `pos`. Identity `rot` ⇒ original upright bounds.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, this.h * 0.5, 0, this.r, this.h * 0.5, this.r), fwd)
+        return aabb(this.pos.x + r.cx, this.pos.y + r.cy, this.pos.z + r.cz, r.hx, r.hy, r.hz)
     }
 
     @fluent height(h: number): this {
@@ -89,7 +102,20 @@ export class Cone extends Node {
     }
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the cone about its own base center, param-only/live). AFTER a `.shift` it
+     * falls back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 }
 

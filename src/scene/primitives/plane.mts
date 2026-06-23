@@ -1,6 +1,7 @@
 import { Node, CompileResult, fluent, decapitalize, DEFAULT_POS } from "../base.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { f32Wgsl, vec3Wgsl } from "../scene-params.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { Vec3, vec3, type Vec3f } from "../../vecmat/vector.mjs"
 
 export class PlaneNode extends Node {
@@ -37,13 +38,16 @@ export class PlaneNode extends Node {
         out.vec3[b + 2] = this.normal.data[2]!
         out.vec3[b + 3] = 0
         out.f32[this.previewF32Slot] = this.dist
+        this.writeRotPreview(out)
     }
 
     #paramSlice(): Float32Array {
-        const buf = new Float32Array(7)
+        // pos (3) + normal (3) + dist (1) + rot inverse (9, contiguous via reservePrimitiveRot).
+        const buf = new Float32Array(16)
         buf.set(this.pos.data, 0)
         buf.set(this.normal.data, 3)
         buf[6] = this.dist
+        this.writeRotScene(buf, 7)
         return buf
     }
 
@@ -53,6 +57,7 @@ export class PlaneNode extends Node {
         this.previewF32Slot = this.scene.allocPreviewF32(1)
         this.paramOffset = this.scene.allocSceneParamFloats(7)
         this.paramCount = 7
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
     }
     override compile(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
@@ -61,7 +66,7 @@ export class PlaneNode extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const nrm = vec3Wgsl(o + 3, this.previewVec3Slot + 1)
         const d = f32Wgsl(o + 6, this.previewF32Slot)
-        return { funcName, varName, text: `fPlaneEx(p - ${pos}, ${nrm}, ${d}, ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`fPlaneEx(p - ${pos}, ${nrm}, ${d}, ${this.id}u)`, pos) }
     }
     override compileFast(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
@@ -70,7 +75,7 @@ export class PlaneNode extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const nrm = vec3Wgsl(o + 3, this.previewVec3Slot + 1)
         const d = f32Wgsl(o + 6, this.previewF32Slot)
-        return { funcName, varName, text: `fPlaneFast(p - ${pos}, ${nrm}, ${d})` }
+        return { funcName, varName, text: this.warpRot(`fPlaneFast(p - ${pos}, ${nrm}, ${d})`, pos) }
     }
     override compileMid(indentLevel = 0): CompileResult {
         const funcName = `Plane${this.id}`
@@ -79,7 +84,7 @@ export class PlaneNode extends Node {
         const pos = vec3Wgsl(o, this.previewVec3Slot)
         const nrm = vec3Wgsl(o + 3, this.previewVec3Slot + 1)
         const d = f32Wgsl(o + 6, this.previewF32Slot)
-        return { funcName, varName, text: `sdfMidSetOwner(fPlaneMid(p - ${pos}, ${nrm}, ${d}), ${this.id}u)` }
+        return { funcName, varName, text: this.warpRot(`sdfMidSetOwner(fPlaneMid(p - ${pos}, ${nrm}, ${d}), ${this.id}u)`, pos) }
     }
 
     @fluent withNormal(n: Vec3 | number, ny?: number, nz?: number): this {
@@ -92,7 +97,20 @@ export class PlaneNode extends Node {
     }
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the plane about its own center, param-only/live). AFTER a `.shift` it falls
+     * back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 }
 

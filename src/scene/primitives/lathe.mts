@@ -1,7 +1,9 @@
 import { Node, CompileResult, decapitalize, fluent, BVH_MIN_COST, DEFAULT_POS } from "../base.mjs"
-import { aabb, type AABB } from "../aabb.mjs"
+import { aabb, aabbRotate, type AABB } from "../aabb.mjs"
 import type { PreviewParamsOut } from "../scene-params.mjs"
 import { vec3Wgsl } from "../scene-params.mjs"
+import { eulerMatrices } from "../transform-math.mjs"
+import { rotate as rotateOp, type Rotate } from "../operators/rotate.mjs"
 import { Vec3, vec3, Vec3f } from "../../vecmat/vector.mjs"
 import { Polygon2D, polygon2dWindingSign } from "./polygon2d.mjs"
 import {
@@ -213,7 +215,9 @@ export class Lathe extends Node {
         return `<circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" stroke-width="1" stroke-dasharray="2,1"/>`
     }
     override writeSceneParams(view: Float32Array): void {
-        view.set(this.pos.data)
+        // pos (3) + rot inverse (9, contiguous via reservePrimitiveRot).
+        view.set(this.pos.data, 0)
+        this.writeRotScene(view, 3)
     }
 
     override writePreviewParams(out: PreviewParamsOut): void {
@@ -222,6 +226,7 @@ export class Lathe extends Node {
         out.vec3[b + 1] = this.pos.data[1]!
         out.vec3[b + 2] = this.pos.data[2]!
         out.vec3[b + 3] = 0
+        this.writeRotPreview(out)
     }
 
     override build() {
@@ -229,6 +234,7 @@ export class Lathe extends Node {
         this.previewVec3Slot = this.scene.allocPreviewVec3(1)
         this.paramOffset = this.scene.allocSceneParamFloats(3)
         this.paramCount = 3
+        this.reservePrimitiveRot() // +9 storage floats (contiguous) + 1 preview mat3
         this.child.root = this.root
         this.child.build()
     }
@@ -365,7 +371,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         return {
             funcName,
             varName,
-            text: `${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`,
+            text: this.warpRot(`${this.wgslExFuncName}(p - ${pos}, ${this.id}u)`, pos),
         }
     }
 
@@ -377,7 +383,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         return {
             funcName,
             varName,
-            text: `${this.wgslFastFuncName}(p - ${pos})`,
+            text: this.warpRot(`${this.wgslFastFuncName}(p - ${pos})`, pos),
         }
     }
     override compileMid(indentLevel = 0): CompileResult {
@@ -388,7 +394,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         return {
             funcName,
             varName,
-            text: `sdfMidSetOwner(sdfTranslateFeatureMid(${this.wgslMidFuncName}(p - ${pos}), p, ${pos}), ${this.id}u)`,
+            text: this.warpRot(`sdfMidSetOwner(sdfTranslateFeatureMid(${this.wgslMidFuncName}(p - ${pos}), p, ${pos}), ${this.id}u)`, pos),
         }
     }
 
@@ -402,12 +408,30 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
         }
         const cy = (minY + maxY) * 0.5
         const hy = (maxY - minY) * 0.5
-        return aabb(this.pos.x, this.pos.y + cy, this.pos.z, maxR, hy, maxR)
+        // Expand the upright AABB for the local `rot` about the lathe's origin.
+        // The revolved geometry is centered at local (0, cy, 0) — keep that
+        // offset so the rotated center is recovered before translating by pos.
+        const { fwd } = eulerMatrices(this.rot.x, this.rot.y, this.rot.z)
+        const r = aabbRotate(aabb(0, cy, 0, maxR, hy, maxR), fwd)
+        return aabb(this.pos.x + r.cx, this.pos.y + r.cy, this.pos.z + r.cz, r.hx, r.hy, r.hz)
     }
 
     @fluent shift(v: Vec3 | number, y?: number, z?: number): this {
         this.pos = typeof v === "number" ? vec3(v, y!, z!) : vec3(v)
+        this.shifted = true
         return this
+    }
+
+    /**
+     * `.rotate` BEFORE any `.shift` composes onto the local `rot` field (rotates
+     * the lathe about its own origin, param-only/live). AFTER a `.shift` it falls
+     * back to a `Rotate` operator (the shift becomes the pivot).
+     */
+    @fluent override rotate(v: Vec3 | number, ry?: number, rz?: number): Rotate {
+        const r = typeof v === "number" ? vec3(v, ry!, rz!) : vec3(v)
+        if (this.shifted) return rotateOp(r, this)
+        this.composeLocalRot(r)
+        return this as unknown as Rotate
     }
 
     /**

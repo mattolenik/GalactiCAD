@@ -412,9 +412,6 @@ export class RenderWorkerCore {
     // ViewSettings in preview.wgsl); padded to 8 (32 bytes) for uniform 16-byte alignment.
     #viewSettingsBuf = new Uint32Array(8)
     #selDataBuf = new Uint32Array(1024)
-    // OutlineSettings CPU mirrors removed — selection rendering moved
-    // inline into preview.wgsl, so the post-process pass has no per-frame
-    // uniforms to upload.
     #selectionStylesBuf = new ArrayBuffer(80)
     #selectionStylesF32 = new Float32Array(this.#selectionStylesBuf)
     #edgeHeaderBuf = new ArrayBuffer(SELECTED_EDGES_HEADER)
@@ -1929,9 +1926,8 @@ export class RenderWorkerCore {
 
         this.#uploadRayMarchParams(viewSettings.rayMarchParams ?? DEFAULT_RAY_MARCH_PARAMS)
 
-        // OutlineSettings upload removed — the outline shader is now a pure
-        // blit and reads none of these fields. Selection rendering lives
-        // inline in preview.wgsl.
+        // Selection rendering lives inline in preview.wgsl (object/face tint +
+        // crosshatch + edge highlight); the blit shader reads no view settings.
 
         const ss = viewSettings.selectionStyles
         const def = DEFAULT_SELECTION_STYLES
@@ -2250,10 +2246,8 @@ export class RenderWorkerCore {
             rayOriginDepth: new Float32Array(buffer, rmBase + 20, 1)[0],
         })
 
-        // OutlineSettings upload removed — the outline shader is now a pure
-        // blit and reads none of these fields. Selection rendering lives
-        // inline in preview.wgsl (boundary outline via `fwidth(selFloat)` +
-        // the existing object tint).
+        // Selection rendering lives inline in preview.wgsl (object/face tint +
+        // crosshatch + edge highlight); the blit shader reads no view settings.
 
         const def = DEFAULT_SELECTION_STYLES
         const so = L.O_SELECTION_STYLES / 4
@@ -2849,9 +2843,6 @@ export class RenderWorkerCore {
                     xrayMode: false,
                     beamEnabled: false,
                     selectionMode: 0,
-                    outlineMode: 0,
-                    outlineThickness: 1,
-                    outlineColor: [1, 1, 0],
                     selectionStyles: {
                         face: { darken: DEFAULT_SELECTION_STYLES.face.darken, tint: [...DEFAULT_SELECTION_STYLES.face.tint] },
                         edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
@@ -2997,9 +2988,6 @@ export class RenderWorkerCore {
                     xrayMode: false,
                     beamEnabled: false,
                     selectionMode: 0,
-                    outlineMode: 0,
-                    outlineThickness: 1,
-                    outlineColor: [1, 1, 0],
                     selectionStyles: {
                         face: { darken: DEFAULT_SELECTION_STYLES.face.darken, tint: [...DEFAULT_SELECTION_STYLES.face.tint] },
                         edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
@@ -3712,8 +3700,6 @@ export class RenderWorkerCore {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             label: "easuConst",
         })
-
-        // OutlineSettings GPU buffer dropped — no shader binding reads it.
 
         ub.selectionStyles = this.#device.createBuffer({
             size: 80,

@@ -462,9 +462,6 @@ export interface RenderViewSettings {
     ghostMode?: boolean
     beamEnabled: boolean
     selectionMode: number
-    outlineMode: number
-    outlineThickness: number
-    outlineColor: [number, number, number]
     selectionStyles: RenderSelectionStyles
     previewShading: PreviewShadingParams
     /** When true, SDF preview shades hits with scene-space normal RGB (matches mesh viewer opaque). */

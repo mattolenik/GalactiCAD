@@ -63,8 +63,9 @@ const S_O_TRANSLATION = 116
 const S_O_VIEW_CENTER = 128
 const S_O_CAMERA_PIVOT = 136
 const S_O_VIEW_SETTINGS = 152
-const S_O_OUTLINE_THICKNESS = 156
-const S_O_OUTLINE_COLOR = 160
+// Bytes 156–171 are reserved (formerly outlineThickness + outlineColor). The
+// outline post-process pass is gone; the slots stay so downstream offsets don't
+// shift (same convention as the dead PreviewShading slots below).
 const S_O_SELECTION_STYLES = 172
 const S_O_PREVIEW_SHADING = 200 // 14 floats: PreviewShadingParams
 const S_O_SELECTED_OBJECT_IDS = 256
@@ -135,8 +136,6 @@ export const SAB_LAYOUT = {
     O_VIEW_CENTER: S_O_VIEW_CENTER,
     O_CAMERA_PIVOT: S_O_CAMERA_PIVOT,
     O_VIEW_SETTINGS: S_O_VIEW_SETTINGS,
-    O_OUTLINE_THICKNESS: S_O_OUTLINE_THICKNESS,
-    O_OUTLINE_COLOR: S_O_OUTLINE_COLOR,
     O_SELECTION_STYLES: S_O_SELECTION_STYLES,
     O_PREVIEW_SHADING: S_O_PREVIEW_SHADING,
     O_SELECTED_OBJECT_IDS: S_O_SELECTED_OBJECT_IDS,
@@ -220,18 +219,17 @@ export function writeRenderPayloadSlot(
     f32[b4 + S_O_CAMERA_PIVOT / 4 + 3] = 0
 
     const vs = payload.viewSettings
+    // packed bits 5–6 are unused (formerly outlineMode) — the outline
+    // post-process pass is gone; selection rendering lives inline in preview.wgsl.
     const packed =
         (vs.xrayMode ? 1 : 0) |
         (vs.beamEnabled ? 2 : 0) |
         (vs.selectionMode << 2) |
-        (vs.outlineMode << 5) |
         (vs.previewNormalShading ? 128 : 0) |
         (vs.ghostMode ? 256 : 0) |
         (vs.flatShading ? 512 : 0) |
         (vs.debugTessEdges ? 1024 : 0)
     u32[b4 + S_O_VIEW_SETTINGS / 4] = packed
-    u32[b4 + S_O_OUTLINE_THICKNESS / 4] = vs.outlineThickness
-    f32.set(vs.outlineColor, base / 4 + S_O_OUTLINE_COLOR / 4)
     const ss = vs.selectionStyles
     f32[b4 + S_O_SELECTION_STYLES / 4] = ss.face.darken
     f32.set(ss.face.tint, base / 4 + S_O_SELECTION_STYLES / 4 + 1)
@@ -344,9 +342,6 @@ export function readRenderPayload(buffer: SharedArrayBuffer): Extract<MainToWork
         ghostMode: (packed & 256) !== 0,
         beamEnabled: (packed & 2) !== 0,
         selectionMode: (packed >> 2) & 7,
-        outlineMode: (packed >> 5) & 3,
-        outlineThickness: u32[b4 + S_O_OUTLINE_THICKNESS / 4],
-        outlineColor: [f32[b4 + S_O_OUTLINE_COLOR / 4], f32[b4 + S_O_OUTLINE_COLOR / 4 + 1], f32[b4 + S_O_OUTLINE_COLOR / 4 + 2]],
         selectionStyles: {
             face: {
                 darken: f32[b4 + S_O_SELECTION_STYLES / 4],

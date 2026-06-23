@@ -216,9 +216,9 @@ const FACE_HIGHLIGHT_ID: u32 = 1023u;       // Side/edge face highlight (unchang
 const FACE_HIGHLIGHT_TOP: u32 = 1023u;     // Top cap when selected
 const FACE_HIGHLIGHT_BOTTOM: u32 = 1022u;  // Bottom cap when selected (distinct from top)
 
-// Fragment output: color and object ID for MRT outline detection
-// FragmentOutput dropped — the previous `@location(1) objectId: vec4<u32>`
-// existed to feed the old outline post-process pass, which is gone. Click
+// Fragment output: a single color. FragmentOutput dropped — the previous
+// `@location(1) objectId: vec4<u32>` existed to feed the old outline
+// post-process pass, which is gone. Click
 // picking uses the `clickedObjectId` atomic written from inside the shader,
 // not a read-back ID texture. Scene fragments now return a single vec4
 // color and write directly into the canvas swapchain.
@@ -755,7 +755,7 @@ fn specularAndFresnelRim(n: vec3f, viewDir: vec3f) -> vec3f {
     let x = 1.0 - ndv;
     let x2 = x * x;
     let x4 = x2 * x2;
-    let fresnel = x4 * x * frInt;
+    let fresnel = x4 * x4 * frInt;
 
     let specColor = vec3f(0.96, 0.98, 1.0);
     return specColor * spec + vec3f(fresnel);
@@ -877,7 +877,7 @@ fn hitNormalToRgb(nScene: vec3f) -> vec3f {
 // viewDir: direction from hit toward camera (unit), for specular / fresnel.
 // worldPos: hit position in scene space (for ambient occlusion samples).
 // hitSel: pre-computed `f32(selectedObjectIds[hit.id] != 0u)`. The caller
-//   already needs this value to compute the boundary outline in fragmentMain;
+//   already needs this value to compute the selection tint in fragmentMain;
 //   threading it in here saves a duplicate storage read per pixel. May still
 //   be overridden by face-highlight matching below.
 // stepCount: cumulative sceneSDF_fast counter; passed to AO so the heatmap

@@ -59,7 +59,6 @@ import { captureAgentMeshImageData, captureMeshThumbnailImageData } from "./agen
 import type { AgentMeshOverlay } from "./agent-autotest/agent-testcase.mjs"
 
 export type SelectionMode = "object" | "seam" | "edge" | "corner" | "face" | "auto"
-export type OutlineMode = "none" | "solid" | "dashed" | "dotted"
 export { EdgeKind } from "./edge-kind.mjs"
 
 export type {
@@ -214,9 +213,6 @@ export class SDFRenderer {
     // no rebuild, feature graph untouched.)
     #lastBuiltSrc: string | null = null
     #lastBuiltDocumentName: string | null = null
-    #outlineMode: OutlineMode = DEFAULT_SELECTION_STYLES.outline.mode
-    #outlineThickness: number = DEFAULT_SELECTION_STYLES.outline.thickness
-    #outlineColor: [number, number, number] = [...DEFAULT_SELECTION_STYLES.outline.color]
     #selectionStyles: RenderSelectionStyles = {
         face: { darken: DEFAULT_SELECTION_STYLES.face.darken, tint: [...DEFAULT_SELECTION_STYLES.face.tint] },
         edge: { color: [...DEFAULT_SELECTION_STYLES.edge.color] },
@@ -310,9 +306,6 @@ export class SDFRenderer {
                 xrayMode: false,
                 beamEnabled: false,
                 selectionMode: 0,
-                outlineMode: 0,
-                outlineThickness: 1,
-                outlineColor: [0, 0, 0],
                 selectionStyles: {
                     face: { darken: 0.9, tint: [0.15, 0.15, 0.15] },
                     edge: { color: [1, 1, 0] },
@@ -2158,33 +2151,6 @@ export class SDFRenderer {
         return this.#selectionMode
     }
 
-    set outlineMode(_mode: OutlineMode) {
-        this.#outlineMode = _mode
-        this.#needsRender = true
-    }
-    get outlineMode(): OutlineMode {
-        return this.#outlineMode
-    }
-
-    set outlineThickness(px: number) {
-        // Capped at 4 to match the shader-side ceiling in outline.wgsl.
-        // The outline pass scans (2t+1)² neighbour ID loads per pixel, so a
-        // thickness of 8 cost 4× more per-pixel work than the new max of 4.
-        this.#outlineThickness = Math.max(1, Math.min(4, Math.round(px)))
-        this.#needsRender = true
-    }
-    get outlineThickness(): number {
-        return this.#outlineThickness
-    }
-
-    set outlineColor(rgb: [number, number, number]) {
-        this.#outlineColor = [rgb[0], rgb[1], rgb[2]]
-        this.#needsRender = true
-    }
-    get outlineColor(): [number, number, number] {
-        return [...this.#outlineColor]
-    }
-
     /** Update the shape color palette on the GPU. Call when theme changes. */
     setShapePalette(palette: Vec3f[]): void {
         const paletteData = paletteToFloat32Array(palette)
@@ -2199,9 +2165,8 @@ export class SDFRenderer {
         this.#needsRender = true
     }
 
-    /** Update selection styles (outline, face tint, edge color). Call when theme changes. */
+    /** Update selection styles (face tint, edge color). Call when theme changes. */
     setSelectionStyles(styles: SelectionStyles): void {
-        this.#outlineColor = [styles.outline.color[0], styles.outline.color[1], styles.outline.color[2]]
         this.#selectionStyles = {
             face: { darken: styles.face.darken, tint: [...styles.face.tint] },
             edge: { color: [...styles.edge.color] },
@@ -2271,9 +2236,6 @@ export class SDFRenderer {
         // corner appended as 5 (not renumbered) to keep existing values stable
         // in the SAB 3-bit field and the preview shader.
         p.viewSettings.selectionMode = { object: 0, seam: 1, edge: 2, face: 3, auto: 4, corner: 5 }[this.#selectionMode]
-        p.viewSettings.outlineMode = { none: 0, solid: 1, dashed: 2, dotted: 3 }[this.#outlineMode]
-        p.viewSettings.outlineThickness = this.#outlineThickness
-        p.viewSettings.outlineColor = this.#outlineColor
         p.viewSettings.selectionStyles = this.#selectionStyles
         p.viewSettings.previewShading = { ...this.#previewShading }
         p.viewSettings.previewNormalShading = this.#previewNormalShading

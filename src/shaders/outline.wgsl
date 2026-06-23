@@ -1,6 +1,6 @@
 // Post-process blit pass — upsamples the scene-resolution color attachment
-// to a caller-supplied output target. Selection rendering (object tint + 1
-// px boundary outline via fwidth) lives inline in the SDF scene shader
+// to a caller-supplied output target. Selection rendering (object/face tint +
+// crosshatch + edge highlight) lives inline in the SDF scene shader
 // (preview.wgsl `fragmentMain` / `shadeHit`).
 //
 // Used only when the worker renders to a foreign `outputTextureView`

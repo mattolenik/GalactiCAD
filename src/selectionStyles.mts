@@ -1,24 +1,11 @@
 /**
- * Selection styling constants for outline, face shading, and edge highlight.
+ * Selection styling constants for face shading and edge highlight.
  * Theme-aware: dark theme uses light colors on dark preview bg; light theme uses dark colors on light bg.
  */
 
 import type { EffectiveTheme } from "./style/theme.mjs"
 
 export const DEFAULT_SELECTION_STYLES = {
-    outline: {
-        mode: "solid" as const,
-        // 3 px is the new default; capped at 4 by both the setter and the shader.
-        // The cap exists because the outline pass scans a filled-circle stencil
-        // of (2t+1)² neighbour ID loads per pixel, so larger radii are quadratically
-        // more expensive for little visual gain.
-        thickness: 3,
-        color: [0.9, 0.9, 0.9] as [number, number, number],
-        dashSpacing: 10,
-        dashLength: 5,
-        dotSizeMin: 2,
-        dotSpacingMultiplier: 3,
-    },
     face: {
         darken: 0.9,
         tint: [0.15, 0.15, 0.15] as [number, number, number],
@@ -36,9 +23,8 @@ export const DEFAULT_SELECTION_STYLES = {
     },
 } as const
 
-/** Theme-variant selection styles. Uses number for theme-dependent fields (outline color, face darken/tint, edge color). */
+/** Theme-variant selection styles. Uses number for theme-dependent fields (face darken/tint, edge color). */
 export interface SelectionStyles {
-    readonly outline: Omit<typeof DEFAULT_SELECTION_STYLES.outline, "color"> & { color: [number, number, number] }
     readonly face: Omit<typeof DEFAULT_SELECTION_STYLES.face, "darken" | "tint"> & { darken: number; tint: [number, number, number] }
     readonly edge: Omit<typeof DEFAULT_SELECTION_STYLES.edge, "color"> & { color: [number, number, number] }
 }
@@ -46,7 +32,6 @@ export interface SelectionStyles {
 /** Selection styles for light theme (preview bg #e8e8e8). Dark theme uses DEFAULT_SELECTION_STYLES. */
 const SELECTION_STYLES_LIGHT: SelectionStyles = {
     ...DEFAULT_SELECTION_STYLES,
-    outline: { ...DEFAULT_SELECTION_STYLES.outline, color: [0.25, 0.25, 0.25] },
     face: {
         ...DEFAULT_SELECTION_STYLES.face,
         darken: 0.85,

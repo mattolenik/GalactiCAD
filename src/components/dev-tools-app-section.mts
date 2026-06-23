@@ -242,10 +242,11 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         // Debug-only; not persisted across sessions. Defaults off so the user
         // gets normal shading on startup.
         this.#stepHeatmap$ = new BehaviorSubject(false)
-        // Deferred selection shading: off by default (single-pass fragmentMain).
-        // When on, selection/hover repaints skip the SDF march — big win on deep
-        // scenes; ~+200MB G-buffer VRAM and a tiny extra pass on full frames.
-        this.#deferredShading$ = new BehaviorSubject(false)
+        // Deferred selection shading: ON by default. Selection/hover repaints on a
+        // static view skip the SDF march — the dominant CAD interaction — at the cost
+        // of a full-res G-buffer (VRAM) and a tiny extra pass on camera-moving frames.
+        // (app.mts:1321 re-syncs this from the renderer's value on init.)
+        this.#deferredShading$ = new BehaviorSubject(true)
 
         const persist = () => {
             if (this.#applying) return

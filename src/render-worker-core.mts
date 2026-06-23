@@ -334,10 +334,12 @@ export class RenderWorkerCore {
     // Deferred selection shading (knob: #deferredShading). geometryMain marches
     // the SDF + bakes AO/lighting into the per-pixel G-buffer; shadeMain runs
     // only the selection-dependent tail. Lets selection/hover repaints skip the
-    // SDF entirely (Phase 2). Best-effort: pipeline build failures disable
-    // deferred without touching the proven single-pass path. Always off until a
-    // knob/agent request flips it.
-    #deferredShading = false
+    // SDF entirely (Phase 2). Best-effort: `#prepareDeferred` falls back to the
+    // proven single-pass `fragmentMain` whenever it can't run (pipelines not yet
+    // compiled, x-ray mode, or G-buffer over maxStorageBufferBindingSize).
+    // ON by default: the dominant CAD interaction is selecting/hovering on a
+    // static view, which deferred makes a no-march repaint.
+    #deferredShading = true
     #geometryPipeline: GPURenderPipeline | null = null
     #shadePipeline: GPURenderPipeline | null = null
     // FeatureGraph overlay occlusion depth reconstructed from the G-buffer (no

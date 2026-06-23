@@ -159,7 +159,7 @@ export class SDFRenderer {
     #featureGraphLineWidth = 2
     #featureGraphDifferentiateSegments = false
     #stepHeatmapEnabled = false
-    #deferredShadingEnabled = false
+    #deferredShadingEnabled = true // ON by default; selection/hover repaints skip the SDF march (worker falls back to fragmentMain when it can't run)
     #selectionMode: SelectionMode = "object"
     #cameraOptimization = true
     #viewCenter = vec2(0.5, 0.5)

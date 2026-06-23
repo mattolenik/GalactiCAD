@@ -528,6 +528,43 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
             perfBox.appendChild(row)
         }
 
+        // --- Specular & Fresnel rim: the view-dependent highlight terms
+        // (`specularAndFresnelRim`). Only the INTENSITIES are tunable — the
+        // Blinn-Phong specular exponent (32) and Schlick Fresnel exponent (5)
+        // are hard-coded in the shader as repeated-squaring constants to drop
+        // two per-pixel `pow()` calls, so surfacing them would add shader cost.
+        // Intensity 0 mutes the contribution (the math still runs). ---
+        const specHeader = document.createElement("div")
+        specHeader.textContent = "Specular & Fresnel"
+        specHeader.style.cssText = "font-size:11px;opacity:0.78;margin-top:4px;"
+        perfBox.appendChild(specHeader)
+        const specKnobs: { key: keyof PreviewShadingParams; label: string; min: number; max: number; step: number }[] = [
+            { key: "specIntensity", label: "Specular (Blinn-Phong)", min: 0, max: 2, step: 0.01 },
+            { key: "fresnelIntensity", label: "Fresnel rim (Schlick)", min: 0, max: 2, step: 0.01 },
+        ]
+        for (const k of specKnobs) {
+            const row = document.createElement("div")
+            row.className = "shade-row"
+            const lab = document.createElement("label")
+            lab.className = "knob-label"
+            lab.textContent = k.label
+            const input = document.createElement("input")
+            input.type = "number"
+            input.min = String(k.min)
+            input.max = String(k.max)
+            input.step = String(k.step)
+            input.value = String(this.#previewShadingState[k.key] ?? 0)
+            input.style.cssText = "width:60px;font-size:11px;"
+            input.addEventListener("change", () => {
+                const v = parseFloat(input.value)
+                if (!Number.isFinite(v)) return
+                ;(this.#previewShadingState[k.key] as number) = v
+                this.onPreviewShadingChange?.({ ...this.#previewShadingState })
+            })
+            row.append(lab, input)
+            perfBox.appendChild(row)
+        }
+
         // --- Export: preview + simplify, then mesh-viewer overlay debug toggles ---
         const meshCb = this.#addCheckbox(exportBox, "Export preview", this.#meshViewer$.value)
         this.#subscriptions.push(connectCheckbox(meshCb, this.#meshViewer$))

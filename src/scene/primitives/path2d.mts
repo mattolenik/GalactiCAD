@@ -61,6 +61,35 @@ function effectiveChordTol(elements: PathElement[]): number {
 /** Subdivision-depth cap per curve, bounding worst-case vertex count to 2^depth. */
 const PATH2D_MAX_DEPTH = 8
 
+/**
+ * Cosine of the max per-facet turn permitted before forcing another subdivision,
+ * applied on top of (and independent of) the chord-flatness test. Flatness bounds
+ * the sagitta, NOT the angle: a span on a tight curve can stay within `tol` of its
+ * chord while still turning 20–25°, leaving the silhouette visibly polygonal where
+ * curvature is highest. This criterion is scale-invariant (turn angle, not world
+ * distance), so it concentrates extra vertices specifically around tight curves
+ * regardless of the size-adaptive chord tolerance. ~15° keeps tight bends smooth
+ * without exploding vertex count (the `PATH2D_MAX_DEPTH` cap still bounds it).
+ */
+const PATH2D_MAX_TURN_COS = Math.cos((15 * Math.PI) / 180)
+
+/**
+ * Cosine of the turn of a (sub-)cubic — the angle between its start and end
+ * tangent directions, derived from the control legs with degenerate-leg fallbacks.
+ * Returns 1 (no turn) when both endpoints are degenerate, so flatness alone decides.
+ */
+function spanTurnCos(a: Vec2, b: Vec2, c: Vec2, d: Vec2): number {
+    let s: Vec2 = [b[0] - a[0], b[1] - a[1]]
+    if (s[0] * s[0] + s[1] * s[1] < 1e-24) s = [c[0] - a[0], c[1] - a[1]]
+    if (s[0] * s[0] + s[1] * s[1] < 1e-24) s = [d[0] - a[0], d[1] - a[1]]
+    let e: Vec2 = [d[0] - c[0], d[1] - c[1]]
+    if (e[0] * e[0] + e[1] * e[1] < 1e-24) e = [d[0] - b[0], d[1] - b[1]]
+    if (e[0] * e[0] + e[1] * e[1] < 1e-24) e = [d[0] - a[0], d[1] - a[1]]
+    const sl = Math.hypot(s[0], s[1]), el = Math.hypot(e[0], e[1])
+    if (sl < 1e-12 || el < 1e-12) return 1
+    return (s[0] * e[0] + s[1] * e[1]) / (sl * el)
+}
+
 function isVertexElement(el: PathElement): el is Vec2 {
     return typeof el[0] === "number"
 }
@@ -115,7 +144,10 @@ function flatEnough(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, tol: number): boolea
 function tessellateCubic(cubic: [Vec2, Vec2, Vec2, Vec2], tol: number): Vec2[] {
     const out: Vec2[] = []
     const rec = (a: Vec2, b: Vec2, c: Vec2, d: Vec2, depth: number) => {
-        if (depth >= PATH2D_MAX_DEPTH || flatEnough(a, b, c, d, tol)) {
+        if (
+            depth >= PATH2D_MAX_DEPTH ||
+            (flatEnough(a, b, c, d, tol) && spanTurnCos(a, b, c, d) >= PATH2D_MAX_TURN_COS)
+        ) {
             out.push(d)
             return
         }

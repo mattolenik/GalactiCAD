@@ -303,5 +303,5 @@ gcad-wasm: gcad-wasm/wasm/pkg/.stamp
 
 .PHONY: deploy
 deploy: clean release
-	npx wrangler pages deployment create --project-name galacticad "$(DIST)/"
+	npx wrangler pages deployment create --project-name galacticad --branch prod "$(DIST)/"
 

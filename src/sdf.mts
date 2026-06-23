@@ -336,7 +336,10 @@ export class SDFRenderer {
             }),
             this.#controls.doubleClick$.subscribe(({ screenPos, metaKey, ctrlKey }) => {
                 if (metaKey || ctrlKey) {
-                    // Cmd/Ctrl+double-click: set orbit pivot to pick hit (world xyz)
+                    // Cmd/Ctrl+double-click sets an explicit locked pivot (3D cursor) — only
+                    // meaningful in classic mode. While auto-pivot is active it's disabled, so
+                    // it can't lock a pivot and surface the otherwise-hidden cursor.
+                    if (this.#controls.autoPivotActive) return
                     this.pickPosAtScreen(screenPos.x, screenPos.y).then(pos => {
                         if (pos) this.#controls.setPivotToWorldHit(vec3(pos[0], pos[1], pos[2]))
                     })

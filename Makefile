@@ -288,3 +288,7 @@ gcad-wasm/wasm/pkg/.stamp: $(GCAD_WASM_SRC)
 .PHONY: gcad-wasm
 gcad-wasm: gcad-wasm/wasm/pkg/.stamp
 
+.PHONY: deploy
+deploy: clean release
+	npx wrangler pages deployment create --project-name galacticad "$(DIST)/site"
+

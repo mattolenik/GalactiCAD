@@ -1,7 +1,7 @@
 import { Vec3, Vec3f, vec3 } from "../vecmat/vector.mjs"
 import type { PreviewParamsOut } from "./scene-params.mjs"
 import { compileParamMode, mat3x3Wgsl, packMat3ColumnMajorToPreviewOut } from "./scene-params.mjs"
-import { eulerMatrices } from "./transform-math.mjs"
+import { composeEuler, eulerMatrices } from "./transform-math.mjs"
 import type { AABB } from "./aabb.mjs"
 import { aabbUnion } from "./aabb.mjs"
 import type { ContourBuffer } from "./contour-buffer.mjs"
@@ -124,6 +124,14 @@ export class Node {
     rotPreviewMat3Slot = -1
     /** Scene-param (storage) f32 offset for `rot`'s inverse (9 floats), or -1. */
     rotParamOffset = -1
+    /**
+     * Set once `.shift` has been applied. Gates a rot-supporting primitive's
+     * `.rotate`: pre-shift composes onto the local `rot` field (rotate about the
+     * node's own center, param-only/live); post-shift falls back to a `Rotate`
+     * operator (the shift becomes the pivot). Mirrors the chain-order semantics
+     * `Box` established, shared by every primitive that opts into a `rot` field.
+     */
+    protected shifted = false
 
     /** Reserve always-present rotation slots (preview mat3 + 9 storage floats for
      * the inverse). Call from a primitive's `build()` AFTER its own
@@ -133,6 +141,14 @@ export class Node {
         this.rotParamOffset = this.scene.allocSceneParamFloats(9)
         this.paramCount += 9
         this.rotPreviewMat3Slot = this.scene.allocPreviewMat3(1)
+    }
+
+    /** Compose an additional body-frame rotation (Euler deg) onto this node's
+     * local `rot` field — the shared pre-shift `.rotate` behavior for primitives
+     * that opt into a `rot` field (matches `Box.rotate`'s composition). */
+    protected composeLocalRot(r: Vec3f): void {
+        const c = composeEuler([this.rot.x, this.rot.y, this.rot.z], [r.x, r.y, r.z])
+        this.rot = vec3(c[0], c[1], c[2])
     }
 
     /** Write `rot`'s inverse matrix into the preview mat3 bank. */

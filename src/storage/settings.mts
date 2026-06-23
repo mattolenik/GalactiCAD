@@ -99,8 +99,6 @@ export interface DocumentSettings {
 
 export type SelectionMode = "object" | "seam" | "edge" | "corner" | "face" | "auto"
 
-export type CameraRotationMethod = "rounded_arcball" | "azel"
-
 export type ThemeMode = "light" | "dark" | "auto"
 
 export type LineNumbersMode = "on" | "off" | "relative"
@@ -128,7 +126,6 @@ export interface GlobalSettings {
     preview: {
         movementScale: number
         selectionMode: SelectionMode
-        cameraRotationMethod: CameraRotationMethod
         /** Auto-pivot: orbit center tracks the surface under the cursor (default true). Off = classic locked 3D cursor. */
         cameraAutoPivot: boolean
         /** HoverCam inspect mode: re-pick the surface under the cursor while orbiting (default false). */
@@ -241,7 +238,6 @@ function defaultGlobalSettings(): GlobalSettings {
         preview: {
             movementScale: 0.5,
             selectionMode: "object",
-            cameraRotationMethod: "rounded_arcball",
             cameraAutoPivot: true,
             cameraHoverInspect: false,
         },

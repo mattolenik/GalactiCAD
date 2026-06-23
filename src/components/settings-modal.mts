@@ -2,7 +2,6 @@ import { VERSION } from "../version.mjs"
 import { __fg_color, __tone_1, __tone_2, __tone_3, __tone_accent } from "../style/style.mjs"
 import { BaseDialog } from "./base-dialog.mjs"
 import type {
-    CameraRotationMethod,
     EditorSettings,
     LineNumbersMode,
     RenderWhitespaceMode,
@@ -10,13 +9,11 @@ import type {
 } from "../storage/settings.mjs"
 
 export class SettingsModal extends BaseDialog<void> {
-    #initialMode: CameraRotationMethod
     #initialTheme: ThemeMode
     #initialDevToolsEnabled: boolean
     #initialEditorSettings: EditorSettings
     #initialAutoPivot: boolean
     #initialHoverInspect: boolean
-    #onCameraModeChange: (method: CameraRotationMethod) => void
     #onThemeChange: (theme: ThemeMode) => void
     #onDevToolsChange: (enabled: boolean) => void
     #onEditorChange: (settings: EditorSettings) => void
@@ -24,11 +21,9 @@ export class SettingsModal extends BaseDialog<void> {
     #onHoverInspectChange: (enabled: boolean) => void
 
     constructor(
-        initialMode: CameraRotationMethod,
         initialTheme: ThemeMode,
         initialDevToolsEnabled: boolean,
         initialEditorSettings: EditorSettings,
-        onCameraModeChange: (method: CameraRotationMethod) => void,
         onThemeChange: (theme: ThemeMode) => void,
         onDevToolsChange: (enabled: boolean) => void,
         onEditorChange: (settings: EditorSettings) => void,
@@ -38,13 +33,11 @@ export class SettingsModal extends BaseDialog<void> {
         onHoverInspectChange: (enabled: boolean) => void
     ) {
         super()
-        this.#initialMode = initialMode
         this.#initialTheme = initialTheme
         this.#initialDevToolsEnabled = initialDevToolsEnabled
         this.#initialEditorSettings = initialEditorSettings
         this.#initialAutoPivot = initialAutoPivot
         this.#initialHoverInspect = initialHoverInspect
-        this.#onCameraModeChange = onCameraModeChange
         this.#onThemeChange = onThemeChange
         this.#onDevToolsChange = onDevToolsChange
         this.#onEditorChange = onEditorChange
@@ -158,13 +151,6 @@ export class SettingsModal extends BaseDialog<void> {
                     </select>
                 </div>
                 <div class="setting-row">
-                    <label for="camera-mode">Camera mode</label>
-                    <select id="camera-mode">
-                        <option value="rounded_arcball">Rounded Arcball</option>
-                        <option value="azel">Azimuth/Elevation</option>
-                    </select>
-                </div>
-                <div class="setting-row">
                     <label for="auto-pivot" title="Orbit around the surface under the cursor instead of a fixed 3D cursor. Cmd/Ctrl+double-click still locks an explicit pivot.">Auto-pivot</label>
                     <input type="checkbox" id="auto-pivot" />
                 </div>
@@ -231,8 +217,6 @@ export class SettingsModal extends BaseDialog<void> {
 
         const themeSelect = this.dialog.querySelector("#theme") as HTMLSelectElement
         themeSelect.value = this.#initialTheme
-        const cameraSelect = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
-        cameraSelect.value = this.#initialMode
         const devToolsCheckbox = this.dialog.querySelector("#devtools") as HTMLInputElement
         devToolsCheckbox.checked = this.#initialDevToolsEnabled
         const autoPivotCheckbox = this.dialog.querySelector("#auto-pivot") as HTMLInputElement
@@ -307,18 +291,6 @@ export class SettingsModal extends BaseDialog<void> {
                 const value = themeSelect.value as ThemeMode
                 if (value === "light" || value === "dark" || value === "auto") {
                     this.#onThemeChange(value)
-                }
-            },
-            { signal }
-        )
-
-        const cameraSelect = this.dialog.querySelector("#camera-mode") as HTMLSelectElement
-        cameraSelect.addEventListener(
-            "change",
-            () => {
-                const value = cameraSelect.value as CameraRotationMethod
-                if (value === "rounded_arcball" || value === "azel") {
-                    this.#onCameraModeChange(value)
                 }
             },
             { signal }

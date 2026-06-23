@@ -1,36 +1,19 @@
 /**
- * A virtual trackball controller for 3D rotations, with multiple rotation methods.
- * Requires https://github.com/rawify/Quaternion.js
- * Author: @scottshambaugh
- * License: MIT
+ * A virtual trackball controller for 3D rotations using azimuth/elevation.
+ * Based on work by @scottshambaugh (MIT). Requires the Quaternion.js library.
  */
 // @ts-ignore - quaternion library type definitions have issues
 import Quaternion from "quaternion"
-
-export type TrackballRotationMethod =
-    | "azel"
-    | "trackball"
-    | "trackball_no_precession"
-    | "shoemake"
-    | "sphere"
-    | "bell"
-    | "rounded_arcball"
 
 export interface TrackballOptions {
     /** The DOM element that will contain the trackball */
     scene: HTMLElement
     /** Optional rect for interaction (e.g. visible area when editor overlays). Uses scene.getBoundingClientRect() when omitted. */
     getInteractionRect?: () => DOMRect
-    /** The rotation method to use */
-    rotationMethod?: TrackballRotationMethod
     /** Callback function called when trackball is rotated */
     onDraw?: (this: Trackball, q: Quaternion) => void
     /** Whether to clamp elevation rotation */
     clampElevation?: boolean
-    /** Border size in pixels */
-    border?: number
-    /** Size of the trackball relative to container */
-    ballsize?: number
     /** Initial rotation quaternion */
     q?: Quaternion
     /** Whether to invert X rotation */
@@ -46,7 +29,6 @@ type TrackballOptionsInput =
     | { nodeType: unknown; scene?: never }
 
 interface DragState {
-    startVector: [number, number, number]
     startPosition: [number, number]
     box: DOMRect
 }
@@ -63,12 +45,9 @@ export class Trackball {
     #drag: DragState | null = null
     #isUpdatePending = false
     #lastMousePosition: { clientX: number; clientY: number } | null = null
-    #opts: Required<
-        Omit<TrackballOptions, "scene" | "rotationMethod" | "q" | "getInteractionRect">
-    > & {
+    #opts: Required<Omit<TrackballOptions, "scene" | "q" | "getInteractionRect">> & {
         scene: HTMLElement
         getInteractionRect?: () => DOMRect
-        rotationMethod?: TrackballRotationMethod
     }
 
     /**
@@ -88,11 +67,8 @@ export class Trackball {
         const {
             scene,
             getInteractionRect,
-            rotationMethod,
             onDraw = () => { },
             clampElevation = false,
-            border = 0,
-            ballsize = 0.75,
             q = Quaternion.ONE,
             invertX = false,
             invertY = false,
@@ -105,11 +81,8 @@ export class Trackball {
         this.#opts = {
             scene,
             getInteractionRect,
-            rotationMethod,
             onDraw,
             clampElevation,
-            border,
-            ballsize,
             invertX,
             invertY,
             speed,
@@ -117,10 +90,6 @@ export class Trackball {
 
         // Core state initialization
         this.#q0 = this.#q = q
-
-        if (this.#opts.rotationMethod === "rounded_arcball") {
-            ; (this.#opts as { border: number }).border = 0.5
-        }
 
         this.#initEventListeners()
         this.#draw()
@@ -148,8 +117,8 @@ export class Trackball {
 
     /**
      * Align internal rotation to an external quaternion (e.g. pinch-twist on the host).
-     * Does not clear an active drag; refreshes arcball start vectors when we have a recent
-     * 1-finger position so continuing orbit after pinch stays coherent.
+     * Does not clear an active drag; when continuing a 1-finger orbit after a pinch,
+     * re-base the azimuth/elevation deltas from the current pointer so it stays coherent.
      */
     applySceneRotation(quaternion: Quaternion): void {
         const v = quaternion.toVector()
@@ -164,23 +133,9 @@ export class Trackball {
         this.#roll_start = this.#roll
 
         if (this.#drag && this.#lastMousePosition) {
-            const box = this.#drag.box
-            const { clientX, clientY } = this.#lastMousePosition
-            const sv = this.#project(clientX, clientY, box)
-            if (sv) {
-                this.#drag.startVector = sv
-                this.#drag.startPosition = [clientX, clientY]
-            }
+            this.#drag.startPosition = [this.#lastMousePosition.clientX, this.#lastMousePosition.clientY]
         }
         this.#draw()
-    }
-
-    /** Set the rotation method at runtime. */
-    set rotationMethod(m: TrackballRotationMethod) {
-        ; (this.#opts as { rotationMethod: TrackballRotationMethod }).rotationMethod = m
-        if (m === "rounded_arcball") {
-            ; (this.#opts as { border: number }).border = 0.5
-        }
     }
 
     /**
@@ -244,10 +199,7 @@ export class Trackball {
         const box = this.#opts.getInteractionRect?.() ?? this.#opts.scene.getBoundingClientRect()
         if (!this.#isInBounds(event.clientX, event.clientY, box)) return
 
-        const startVector =
-            this.#project(event.clientX, event.clientY, box) ?? [0, 0, 1]
         this.#drag = {
-            startVector,
             startPosition: [event.clientX, event.clientY],
             box,
         }
@@ -287,84 +239,7 @@ export class Trackball {
         const deltaX = clientX - this.#drag!.startPosition[0]
         const deltaY = clientY - this.#drag!.startPosition[1]
         if (deltaX === 0 && deltaY === 0) return
-
-        const { rotationMethod } = this.#opts
-
-        if (rotationMethod === "azel") {
-            this.#updateAzEl(deltaX, deltaY)
-        } else if (
-            rotationMethod === "trackball" ||
-            rotationMethod === "trackball_no_precession"
-        ) {
-            this.#updateTrackball(deltaX, deltaY, clientX, clientY)
-        } else {
-            this.#updateSphericalMethods(clientX, clientY)
-        }
-    }
-
-    #updateTrackball(
-        deltaX: number,
-        deltaY: number,
-        clientX: number,
-        clientY: number
-    ): void {
-        const minDim = Math.min(this.#drag!.box.height, this.#drag!.box.width)
-        const invertedDeltaX = this.#opts.invertX ? -deltaX : deltaX
-        const invertedDeltaY = this.#opts.invertY ? -deltaY : deltaY
-
-        const k = [
-            invertedDeltaY / minDim,
-            invertedDeltaX / minDim,
-            0,
-        ] as [number, number, number]
-        const norm = Math.sqrt(k[0] * k[0] + k[1] * k[1] + k[2] * k[2])
-        const theta =
-            (norm * Math.PI) / 2 * this.#opts.speed
-
-        const cosTheta = Math.cos(theta)
-        const sinThetaNormalized = Math.sin(theta) / norm
-        const dq = new Quaternion(
-            cosTheta,
-            k[0] * sinThetaNormalized,
-            k[1] * sinThetaNormalized,
-            k[2] * sinThetaNormalized
-        )
-        this.#q = dq.mul(this.#q0)
-
-        if (this.#opts.rotationMethod === "trackball") {
-            this.#q0 = this.#q
-            this.#drag!.startPosition = [clientX, clientY]
-        }
-    }
-
-    #updateSphericalMethods(clientX: number, clientY: number): void {
-        const box = this.#drag!.box
-        const invertedX = this.#opts.invertX
-            ? 2 * this.#drag!.startPosition[0] - clientX
-            : clientX
-        const invertedY = this.#opts.invertY
-            ? 2 * this.#drag!.startPosition[1] - clientY
-            : clientY
-
-        const currentVector = this.#project(invertedX, invertedY, box)
-        if (!currentVector) return
-        const dq = Quaternion.fromVectors(
-            this.#drag!.startVector,
-            currentVector
-        )
-
-        if (this.#opts.rotationMethod === "sphere") {
-            this.#q = dq.mul(this.#q0)
-            this.#q0 = this.#q
-            this.#drag!.startVector = currentVector
-            this.#drag!.startPosition = [clientX, clientY]
-        } else if (
-            ["shoemake", "rounded_arcball", "bell"].includes(
-                this.#opts.rotationMethod ?? ""
-            )
-        ) {
-            this.#q = dq.mul(dq.mul(this.#q0))
-        }
+        this.#updateAzEl(deltaX, deltaY)
     }
 
     #handleMouseUp(_event?: MouseEvent | Touch): void {
@@ -377,45 +252,6 @@ export class Trackball {
         this.#elevation_start = this.#elevation
         this.#roll_start = this.#roll
         this.#draw()
-    }
-
-    #project(
-        x: number,
-        y: number,
-        box: DOMRect
-    ): [number, number, number] | undefined {
-        const maxDim = Math.max(box.width, box.height) - 1
-        const ballsize = this.#opts.ballsize
-        const border = this.#opts.border
-        const ra = 1 + border
-        const a = border * (1 + border / 2)
-        const ri = 2 / (ra + 1 / ra)
-
-        let px = (2 * (x - box.x) - box.width - 1) / maxDim / ballsize
-        let py = -(2 * (y - box.y) - box.height - 1) / maxDim / ballsize
-
-        const dist2 = (px * px + py * py) * (ra * ra)
-        const dist = Math.sqrt(dist2)
-
-        if (
-            ["sphere", "shoemake", "rounded_arcball"].includes(
-                this.#opts.rotationMethod ?? ""
-            )
-        ) {
-            if (dist < ri) {
-                return [px, py, Math.sqrt(1 - dist2)]
-            } else if (dist < ra) {
-                const dr = ra - dist
-                return [px, py, a - Math.sqrt((a + dr) * (a - dr))]
-            }
-            return [px, py, 0]
-        } else if (this.#opts.rotationMethod === "bell") {
-            if (dist < 1 / Math.sqrt(2)) {
-                return [px, py, Math.sqrt(1 - dist2)]
-            }
-            return [px, py, 1 / (2 * dist)]
-        }
-        return undefined
     }
 
     #updateAzEl(deltaX: number, deltaY: number): void {

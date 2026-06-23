@@ -1639,21 +1639,15 @@ class App {
     async #showSettingsModal(): Promise<void> {
         const { SettingsModal } = await import("./components/settings-modal.mjs")
         const g = this.#settings.getGlobal()
-        const initialMode = g.preview.cameraRotationMethod ?? "rounded_arcball"
         const initialTheme = g.app.theme ?? "dark"
         const initialDevToolsEnabled = g.app.devToolsEnabled ?? false
         const initialEditorSettings = g.app.editor
         const initialAutoPivot = g.preview.cameraAutoPivot ?? true
         const initialHoverInspect = g.preview.cameraHoverInspect ?? false
         const modal = new SettingsModal(
-            initialMode,
             initialTheme,
             initialDevToolsEnabled,
             initialEditorSettings,
-            method => {
-                this.#settings.updateGlobal({ preview: { cameraRotationMethod: method } })
-                this.renderer?.controls.setRotationMethod(method)
-            },
             theme => {
                 this.#settings.updateGlobal({ app: { theme } })
                 this.#themeUnsubscribe?.()

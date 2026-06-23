@@ -4,7 +4,7 @@ import { SettingsManager, type CameraSettings } from "../storage/settings.mjs"
 import { lookAt, Mat4x4f } from "../vecmat/matrix.mjs"
 import { vec2, Vec2f, vec3, Vec3f } from "../vecmat/vector.mjs"
 import { PinchZoomController } from "./pinchzoom-controller.mjs"
-import { Trackball, type TrackballRotationMethod } from "./trackball.mjs"
+import { Trackball } from "./trackball.mjs"
 import type { Subscription } from "rxjs"
 // @ts-ignore - quaternion library type definitions have issues
 import Quaternion from "quaternion"
@@ -201,13 +201,10 @@ export class CameraController {
         // Initialize rotation from Euler angles (for backward compatibility)
         this.#rotation = Quaternion.fromEuler(initialPhi, initialTheta, 0, "YXZ")
 
-        const rotationMethod =
-            this.#settings.getGlobal().preview.cameraRotationMethod ?? "rounded_arcball"
         this.#isSyncing = true
         this.#trackball = new Trackball({
             scene: this.#host.canvas,
             getInteractionRect,
-            rotationMethod,
             q: this.#rotation,
             onDraw: (q) => {
                 if (this.#isSyncing) return
@@ -680,11 +677,6 @@ export class CameraController {
         this.#trackball.reset()
         this.#trackball.rotate(this.#rotation)
         this.#isSyncing = false
-    }
-
-    /** Set the trackball rotation method at runtime (e.g. from Settings). */
-    setRotationMethod(m: TrackballRotationMethod): void {
-        this.#trackball.rotationMethod = m
     }
 
     /**

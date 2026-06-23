@@ -578,6 +578,14 @@ fn refineRayHit(origin: vec3f, dir: vec3f, tLo: f32, tHi: f32, stepCount: ptr<fu
     var lo = tLo;
     var hi = tHi;
     for (var r: i32 = 0; r < rayMarchParams.hitRefineSteps; r = r + 1) {
+        // Adaptive early-terminate: once the bracket is tighter than the surface
+        // tolerance the hit is localized to within SURF_DIST, so the remaining
+        // fixed iterations only halve nothing useful. Head-on rays (the majority)
+        // start with a tiny last-step bracket and exit in a few iters; grazing
+        // rays still run up to `hitRefineSteps`. Same precision, fewer SDF taps.
+        if (hi - lo < SURF_DIST) {
+            break;
+        }
         let mid = 0.5 * (lo + hi);
         let dm = sceneSDF_fast(origin + mid * dir).d;
         *stepCount = *stepCount + 1u;
@@ -613,21 +621,6 @@ fn raymarch(origin: vec3f, dir: vec3f, t_start: f32, stepCount: ptr<function, u3
         }
     }
     return hitDataMiss();
-}
-
-// Relax t toward the ray–surface crossing. Beam pre-pass uses one t_start per tile, so raw
-// hit.t can jump at 8px tile edges; ambient occlusion samples are sensitive and show seams.
-fn refineHitAlongRay(origin: vec3f, dir: vec3f, t0: f32, stepCount: ptr<function, u32>) -> f32 {
-    var t = t0;
-    for (var k: i32 = 0; k < 6; k = k + 1) {
-        let sr = sceneSDF_fast(origin + t * dir);
-        *stepCount = *stepCount + 1u;
-        t = t + sr.d * sr.safeStepMul;
-        if (abs(sr.d) < SURF_DIST * 0.5) {
-            break;
-        }
-    }
-    return t;
 }
 
 // Refine a sign change bracket along the ray. lo must be inside (d < 0),
@@ -1109,13 +1102,11 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
     // screen-space dot pattern in the selection color — see
     // `applySelectionOverlay`) is applied to the shaded color below.
     let selFloat = select(0.0, f32(selectedObjectIds[hit.id] != 0u), hit.t > 0.0);
-    // Refined position for AO only — keeps original HitData (IDs, normal, seam)
-    // untouched so coplanar union faces don't flicker.
-    var aoPos = hitPos;
-    if (hit.t > 0.0 && camera.previewShade3.x > 0.0) {
-        let tRef = refineHitAlongRay(transformedOrigin, transformedDir, hit.t, &stepCount);
-        aoPos = transformedOrigin + transformedDir * tRef;
-    }
+    // AO samples from the converged hit position directly. raymarch's refineRayHit
+    // (hitRefineSteps bisection) already lands hit.t on the surface, so the former
+    // separate refineHitAlongRay de-seam march only re-derived a position matching
+    // hitPos to sub-pixel — pure redundant SDF taps, now dropped.
+    let aoPos = hitPos;
 
     // In xray mode, find the back (inner) surface and use it for selection so
     // inner edges are selectable.  useBack replaces the old selecHit alias
@@ -1127,17 +1118,10 @@ fn fragmentMain(@location(0) fragCoord: vec2f) -> @location(0) vec4f {
         backHit = raymarchFromInside(transformedOrigin, transformedDir, hit.t, &stepCount);
         if (backHit.t > 0.0) {
             useBack = true;
+            // backHit.t is already the converged exit surface (raymarchFromInside's
+            // bisectSurfaceCrossing). The former extra back-AO bisect only re-bracketed
+            // it to (exit-front)/64 — coarser, not finer — so sample AO here directly.
             backAoPos = transformedOrigin + transformedDir * backHit.t;
-            if (camera.previewShade3.x > 0.0) {
-                let tb = bisectSurfaceCrossing(
-                    transformedOrigin,
-                    transformedDir,
-                    hit.t + max(SURF_DIST * 4.0, 1e-3),
-                    backHit.t,
-                    &stepCount,
-                );
-                backAoPos = transformedOrigin + transformedDir * tb;
-            }
         }
     }
     // Click detection using pixel-accurate matching
@@ -1312,12 +1296,8 @@ fn geometryMain(@builtin(position) pos: vec4f, @location(0) fragCoord: vec2f) ->
     let hit = raymarch(transformedOrigin, transformedDir, t_start, &stepCount);
     let hitPos = transformedOrigin + transformedDir * hit.t;
 
-    // Refined position for AO only (matches fragmentMain).
-    var aoPos = hitPos;
-    if (hit.t > 0.0 && camera.previewShade3.x > 0.0) {
-        let tRef = refineHitAlongRay(transformedOrigin, transformedDir, hit.t, &stepCount);
-        aoPos = transformedOrigin + transformedDir * tRef;
-    }
+    // AO samples from the converged hit position directly (matches fragmentMain).
+    let aoPos = hitPos;
 
     // Click / hover picking — fragmentMain's NON-x-ray front-surface path.
     let needSeamSegment = viewSettings.selectionMode == SELECTION_MODE_EDGE || viewSettings.selectionMode == SELECTION_MODE_AUTO;

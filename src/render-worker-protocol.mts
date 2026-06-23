@@ -388,9 +388,9 @@ export interface PreviewShadingParams {
      * AO step count substituted for `aoSteps` during active camera motion — AO is
      * the one shading knob not otherwise motion-reduced, yet motion frames are the
      * ONLY frames that pay for lighting (static frames reuse the deferred G-buffer).
-     * `<= 0` disables AO while moving, which also drops the 6-tap de-seam refine
-     * (`refineHitAlongRay`) since both gate on `aoStrength`; a positive value just
-     * lowers the AO sample count. Main-thread-only: substituted into
+     * `<= 0` disables AO while moving (sets `aoStrength` to 0, dropping its SDF
+     * taps entirely); a positive value just lowers the AO sample count. The whole
+     * AO path is `aoStrength`-gated. Main-thread-only: substituted into
      * `aoSteps`/`aoStrength` before packing, so it has no SAB/worker slot of its
      * own (hence optional — the worker-side reconstruction omits it). */
     aoStepsMoving?: number

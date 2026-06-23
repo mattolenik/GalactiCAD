@@ -1940,10 +1940,9 @@ export class SDFRenderer {
             // AO is the one shading knob not otherwise reduced during motion, yet
             // motion frames are the ONLY frames that pay for lighting (static frames
             // reuse the deferred G-buffer). `aoStepsMoving <= 0` disables AO while
-            // moving, which also drops the 6-tap de-seam refine (`refineHitAlongRay`
-            // gates on aoStrength); a positive value lowers the AO sample count.
-            // `p.viewSettings.previewShading` is a fresh copy (above), so this never
-            // mutates the persistent `#previewShading`.
+            // moving (aoStrength = 0, dropping its SDF taps); a positive value just
+            // lowers the AO sample count. `p.viewSettings.previewShading` is a fresh
+            // copy (above), so this never mutates the persistent `#previewShading`.
             const aoStepsMoving = this.#previewShading.aoStepsMoving ?? 0
             if (aoStepsMoving <= 0) {
                 p.viewSettings.previewShading.aoStrength = 0

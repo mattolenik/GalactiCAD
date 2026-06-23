@@ -64,6 +64,12 @@ struct Gizmo {
 // Feathering band, in framebuffer pixels, at the outer edge of the line core.
 const LINE_AA_PX: f32 = 1.0;
 
+// Arrowhead size in framebuffer pixels. Declared here (not just in the head
+// shader) because the line shader also needs HEAD_LEN_PX to trim each arrow
+// shaft back to the head base.
+const HEAD_LEN_PX: f32 = 14.0;
+const HEAD_HALF_WIDTH_PX: f32 = 6.0;
+
 // Highlight states (mirror the gizmo controller's encoding).
 const SEL_HOVER: u32 = 1u;
 const SEL_ACTIVE: u32 = 2u;
@@ -120,6 +126,13 @@ fn axisColor(axisId: u32) -> vec3f {
     return vec3f(0.30, 0.52, 0.95);
 }
 
+// Planar-translation handle color: additive blend of the plane's two component
+// axis colors (the axes it spans), matching RGB light mixing — YZ→cyan,
+// XZ→magenta, XY→yellow. `axisId` is the axis the plane is PERPENDICULAR to.
+fn planeColor(axisId: u32) -> vec3f {
+    return clamp(axisColor((axisId + 1u) % 3u) + axisColor((axisId + 2u) % 3u), vec3f(0.0), vec3f(1.0));
+}
+
 // Hover brightens toward white; active overrides to yellow.
 fn applyHighlight(color: vec3f, state: u32) -> vec3f {
     if (state == SEL_ACTIVE) { return vec3f(1.0, 0.85, 0.10); }
@@ -133,10 +146,11 @@ fn handleState(handleId: i32) -> u32 {
     return 0u;
 }
 
-// flags bit layout: bits 0..1 = axisId (0/1/2), bit 2 = kind (0 arrow, 1 ring).
-// (`meta` is a WGSL reserved keyword, so the instance tag is named `flags`.)
+// flags bit layout: bits 0..1 = axisId (0/1/2), bits 2..3 = kind
+// (0 arrow, 1 ring, 2 plane). (`meta` is a WGSL reserved keyword, so the
+// instance tag is named `flags`.)
 fn metaAxis(flags: u32) -> u32 { return flags & 3u; }
-fn metaKind(flags: u32) -> u32 { return (flags >> 2u) & 1u; }
+fn metaKind(flags: u32) -> u32 { return (flags >> 2u) & 3u; }
 fn metaHandle(flags: u32) -> i32 { return i32(metaAxis(flags) + metaKind(flags) * 3u); }
 
 // Rotation-ring vertices (kind 1) are oriented into the object's local frame;
@@ -174,6 +188,15 @@ fn lineVertexMain(
     dir = dir / len;
     let normal = vec2f(-dir.y, dir.x);
 
+    // Arrow shafts (kind 0) end at the BACK of the arrowhead, which sits a fixed
+    // HEAD_LEN_PX behind the tip in screen space (see headVertexMain.baseCenter).
+    // The shaft instance is authored out to the tip, so trim its far end here: the
+    // tail then meets the head base at every zoom rather than running through the
+    // (narrowing) cone. Rings (kind 1) keep their full length. The clamp stops a
+    // tiny on-screen gizmo from inverting the segment.
+    var endPix = pixB;
+    if (metaKind(flags) == 0u) { endPix = pixB - dir * min(HEAD_LEN_PX, len); }
+
     let halfExtent = gizmo.lineWidthPx * 0.5 + LINE_AA_PX;
 
     var alongLUT = array<f32, 6>(0.0, 1.0, 1.0, 0.0, 1.0, 0.0);
@@ -181,7 +204,7 @@ fn lineVertexMain(
     let along = alongLUT[vid];
     let side = sideLUT[vid];
 
-    let basePix = mix(pixA, pixB, along);
+    let basePix = mix(pixA, endPix, along);
     let pix = basePix + normal * (side * halfExtent);
 
     var out: LineVOut;
@@ -206,10 +229,6 @@ struct HeadVOut {
     @location(0) @interpolate(flat) axisId: u32,
     @location(1) @interpolate(flat) state: u32,
 }
-
-// Arrowhead size in framebuffer pixels.
-const HEAD_LEN_PX: f32 = 14.0;
-const HEAD_HALF_WIDTH_PX: f32 = 6.0;
 
 @vertex
 fn headVertexMain(
@@ -244,4 +263,41 @@ fn headVertexMain(
 @fragment
 fn headFragmentMain(in: HeadVOut) -> @location(0) vec4f {
     return vec4f(applyHighlight(axisColor(in.axisId), in.state), 1.0);
+}
+
+struct PlaneVOut {
+    @builtin(position) position: vec4f,
+    @location(0) @interpolate(flat) axisId: u32,
+    @location(1) @interpolate(flat) state: u32,
+}
+
+// Planar-translation quad (kind 2): a world-aligned square spanned by `edgeA`/
+// `edgeB` from `origin`, in the plane perpendicular to `axisId`. World-aligned
+// like the arrows (translation is along world axes), so no `gizmo.orient`.
+@vertex
+fn planeVertexMain(
+    @location(0) origin: vec3f,
+    @location(1) edgeA: vec3f,
+    @location(2) edgeB: vec3f,
+    @location(3) flags: u32,
+    @builtin(vertex_index) vid: u32,
+) -> PlaneVOut {
+    var aLUT = array<f32, 6>(0.0, 1.0, 1.0, 0.0, 1.0, 0.0);
+    var bLUT = array<f32, 6>(0.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+    let local = origin + edgeA * aLUT[vid] + edgeB * bLUT[vid];
+    let p = project(localToWorld(local));
+    var out: PlaneVOut;
+    out.position = vec4f(p.clip, 0.5, 1.0);
+    out.axisId = metaAxis(flags);
+    out.state = handleState(metaHandle(flags));
+    return out;
+}
+
+@fragment
+fn planeFragmentMain(in: PlaneVOut) -> @location(0) vec4f {
+    var color = planeColor(in.axisId);
+    var alpha = 0.4;
+    if (in.state == SEL_ACTIVE) { color = mix(color, vec3f(1.0), 0.45); alpha = 0.85; }
+    else if (in.state == SEL_HOVER) { color = mix(color, vec3f(1.0), 0.30); alpha = 0.7; }
+    return vec4f(color, alpha);
 }

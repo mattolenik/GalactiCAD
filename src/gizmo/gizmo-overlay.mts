@@ -37,6 +37,8 @@ import { Mat4x4f } from "../vecmat/matrix.mjs"
 import {
     GIZMO_AXES as AXES,
     GIZMO_CENTER_GAP as CENTER_GAP,
+    GIZMO_PLANE_OFFSET as PLANE_OFFSET,
+    GIZMO_PLANE_SIZE as PLANE_SIZE,
     GIZMO_RING_RADIUS as RING_RADIUS,
     GIZMO_SHAFT_END as SHAFT_END,
     GIZMO_TIP as TIP,
@@ -46,6 +48,8 @@ import {
 const LINE_STRIDE = 32
 /** localTip (vec3f,12) + localBack (vec3f,12) + meta (u32,4) + pad (4) = 32. */
 const HEAD_STRIDE = 32
+/** origin (vec3f,12) + edgeA (vec3f,12) + edgeB (vec3f,12) + meta (u32,4) + pad (4) = 48. */
+const PLANE_STRIDE = 48
 
 /** Camera uniform size (bytes). Layout mirrors `OverlayCamera` in the shader. */
 const CAMERA_UNIFORM_BYTES = 112
@@ -77,13 +81,16 @@ export class GizmoOverlay {
     #shaderModule: GPUShaderModule
     #linePipeline: GPURenderPipeline
     #headPipeline: GPURenderPipeline
+    #planePipeline: GPURenderPipeline
     #bindGroupLayout: GPUBindGroupLayout
     #cameraBuffer: GPUBuffer
     #gizmoBuffer: GPUBuffer
     #lineBuffer: GPUBuffer
     #headBuffer: GPUBuffer
+    #planeBuffer: GPUBuffer
     #lineCount = 0
     #headCount = 0
+    #planeCount = 0
     #bindGroup?: GPUBindGroup
 
     #cameraStaging = new ArrayBuffer(CAMERA_UNIFORM_BYTES)
@@ -174,18 +181,51 @@ export class GizmoOverlay {
             primitive: { topology: "triangle-list" },
         })
 
-        const { lineBuffer, lineCount, headBuffer, headCount } = this.#buildGeometry()
+        this.#planePipeline = this.#device.createRenderPipeline({
+            label: "Gizmo Overlay Plane Pipeline",
+            layout: pipelineLayout,
+            vertex: {
+                module: this.#shaderModule,
+                entryPoint: "planeVertexMain",
+                buffers: [
+                    {
+                        arrayStride: PLANE_STRIDE,
+                        stepMode: "instance",
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: "float32x3" },
+                            { shaderLocation: 1, offset: 12, format: "float32x3" },
+                            { shaderLocation: 2, offset: 24, format: "float32x3" },
+                            { shaderLocation: 3, offset: 36, format: "uint32" },
+                        ],
+                    },
+                ],
+            },
+            fragment: { module: this.#shaderModule, entryPoint: "planeFragmentMain", targets: [target] },
+            primitive: { topology: "triangle-list" },
+        })
+
+        const { lineBuffer, lineCount, headBuffer, headCount, planeBuffer, planeCount } = this.#buildGeometry()
         this.#lineBuffer = lineBuffer
         this.#lineCount = lineCount
         this.#headBuffer = headBuffer
         this.#headCount = headCount
+        this.#planeBuffer = planeBuffer
+        this.#planeCount = planeCount
     }
 
     /**
      * Generate the static gizmo geometry (3 axis shafts + 3 rotation rings as
-     * line segments, 3 arrowheads) into GPU instance buffers. Called once.
+     * line segments, 3 arrowheads, 3 planar-translation quads) into GPU instance
+     * buffers. Called once.
      */
-    #buildGeometry(): { lineBuffer: GPUBuffer; lineCount: number; headBuffer: GPUBuffer; headCount: number } {
+    #buildGeometry(): {
+        lineBuffer: GPUBuffer
+        lineCount: number
+        headBuffer: GPUBuffer
+        headCount: number
+        planeBuffer: GPUBuffer
+        planeCount: number
+    } {
         const lineCount = AXES.length * (1 + RING_SEGMENTS)
         const lineBuf = new ArrayBuffer(lineCount * LINE_STRIDE)
         const lf = new Float32Array(lineBuf)
@@ -205,8 +245,11 @@ export class GizmoOverlay {
 
         for (let axis = 0; axis < AXES.length; axis++) {
             const u = AXES[axis]!
-            // Translate shaft: meta kind 0.
-            pushLine([u[0] * CENTER_GAP, u[1] * CENTER_GAP, u[2] * CENTER_GAP], [u[0] * SHAFT_END, u[1] * SHAFT_END, u[2] * SHAFT_END], axis)
+            // Translate shaft: meta kind 0. Authored out to the TIP, but the line
+            // vertex shader trims its far end back to the arrowhead base (a fixed
+            // pixel offset from the tip), so the tail meets the BACK of the head at
+            // every zoom — no gap, and no overlap into the cone.
+            pushLine([u[0] * CENTER_GAP, u[1] * CENTER_GAP, u[2] * CENTER_GAP], [u[0] * TIP, u[1] * TIP, u[2] * TIP], axis)
             // Rotation ring in the plane perpendicular to this axis: meta kind 1.
             const e0 = AXES[(axis + 1) % 3]!
             const e1 = AXES[(axis + 2) % 3]!
@@ -248,7 +291,38 @@ export class GizmoOverlay {
         })
         this.#device.queue.writeBuffer(headBuffer, 0, headBuf)
 
-        return { lineBuffer, lineCount, headBuffer, headCount: AXES.length }
+        // Planar-translation quads: one per plane, indexed by the axis it's
+        // perpendicular to (so plane `axis` spans the other two axes). World-aligned
+        // square in the corner near the hub. meta kind 2.
+        const planeBuf = new ArrayBuffer(AXES.length * PLANE_STRIDE)
+        const pf = new Float32Array(planeBuf)
+        const pu = new Uint32Array(planeBuf)
+        for (let axis = 0; axis < AXES.length; axis++) {
+            const e0 = AXES[(axis + 1) % 3]!
+            const e1 = AXES[(axis + 2) % 3]!
+            const o = axis * 12
+            // origin (inner corner) = e0*OFFSET + e1*OFFSET
+            pf[o + 0] = e0[0] * PLANE_OFFSET + e1[0] * PLANE_OFFSET
+            pf[o + 1] = e0[1] * PLANE_OFFSET + e1[1] * PLANE_OFFSET
+            pf[o + 2] = e0[2] * PLANE_OFFSET + e1[2] * PLANE_OFFSET
+            // edgeA = e0*SIZE
+            pf[o + 3] = e0[0] * PLANE_SIZE
+            pf[o + 4] = e0[1] * PLANE_SIZE
+            pf[o + 5] = e0[2] * PLANE_SIZE
+            // edgeB = e1*SIZE
+            pf[o + 6] = e1[0] * PLANE_SIZE
+            pf[o + 7] = e1[1] * PLANE_SIZE
+            pf[o + 8] = e1[2] * PLANE_SIZE
+            pu[o + 9] = axis | (2 << 2) // kind 2 = plane
+        }
+        const planeBuffer = this.#device.createBuffer({
+            label: "GizmoOverlay.Plane",
+            size: planeBuf.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        })
+        this.#device.queue.writeBuffer(planeBuffer, 0, planeBuf)
+
+        return { lineBuffer, lineCount, headBuffer, headCount: AXES.length, planeBuffer, planeCount: AXES.length }
     }
 
     /** Push the per-frame camera uniform (same convention as FeatureGraphOverlay). */
@@ -311,7 +385,8 @@ export class GizmoOverlay {
         return this.#visible
     }
 
-    /** Issue draw calls into an open render pass (rings/shafts first, heads on top). */
+    /** Issue draw calls into an open render pass (translucent planes underneath,
+     * then rings/shafts, then heads on top). */
     render(pass: GPURenderPassEncoder): void {
         if (!this.#visible) return
         if (!this.#bindGroup) {
@@ -325,6 +400,9 @@ export class GizmoOverlay {
             })
         }
         pass.setBindGroup(0, this.#bindGroup)
+        pass.setPipeline(this.#planePipeline)
+        pass.setVertexBuffer(0, this.#planeBuffer)
+        pass.draw(6, this.#planeCount)
         pass.setPipeline(this.#linePipeline)
         pass.setVertexBuffer(0, this.#lineBuffer)
         pass.draw(6, this.#lineCount)
@@ -338,6 +416,7 @@ export class GizmoOverlay {
         this.#gizmoBuffer.destroy()
         this.#lineBuffer.destroy()
         this.#headBuffer.destroy()
+        this.#planeBuffer.destroy()
         this.#bindGroup = undefined
     }
 }

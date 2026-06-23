@@ -9,6 +9,9 @@
  *    nearest, and drive the shader's hover highlight.
  *  - Translate drag (arrows): axis-locked, world-space; previewed live in the
  *    worker (no recompile); writes `.shift` on release.
+ *  - Planar translate drag (corner squares): locked to a world plane (the two
+ *    component axes); the dragged point follows the cursor's ray∩plane. Shares
+ *    the translate preview + `.shift` write-back.
  *  - Rotate drag (rings): rotation about the object's LOCAL axis (the ring's
  *    world plane), reported on release so a pre-shift `.rotate` is written.
  *    (Live spin is layered on later.)
@@ -22,10 +25,13 @@ import {
     GIZMO_AXES,
     GIZMO_CENTER_GAP,
     GIZMO_DEFAULT_SIZE_WORLD,
+    GIZMO_PLANE_OFFSET,
+    GIZMO_PLANE_SIZE,
     GIZMO_RING_RADIUS,
     GIZMO_TIP,
     gizmoArrowHandle,
     gizmoHandleParts,
+    gizmoPlaneHandle,
     gizmoRingHandle,
 } from "./gizmo-geometry.mjs"
 
@@ -79,6 +85,19 @@ interface TranslateDrag {
     base: Vec3
 }
 
+interface PlaneDrag {
+    kind: "plane"
+    handle: number
+    /** Axis the plane is perpendicular to (its world normal). */
+    axis: number
+    normal: Vec3
+    /** World point where the drag-start ray pierced the plane (cursor anchor). */
+    startHit: Vec3
+    baseCenter: Vec3
+    /** The node's local translation at drag start. */
+    base: Vec3
+}
+
 interface RotateDrag {
     kind: "rotate"
     handle: number
@@ -109,7 +128,7 @@ export class GizmoController {
     #sizeWorld = GIZMO_DEFAULT_SIZE_WORLD
     #hoverHandle = -1
     #shown = false
-    #drag: TranslateDrag | RotateDrag | null = null
+    #drag: TranslateDrag | RotateDrag | PlaneDrag | null = null
 
     constructor(host: GizmoHost) {
         this.#host = host
@@ -175,9 +194,9 @@ export class GizmoController {
         const cssY = clientY - rect.top
         const handle = this.#hitTest(cssX, cssY)
         if (handle < 0) return false
-        const { axis, isRing } = gizmoHandleParts(handle)
+        const { axis, kind } = gizmoHandleParts(handle)
 
-        if (isRing) {
+        if (kind === "ring") {
             // Ring world frame: normal + in-plane basis from the oriented local axes.
             const normal = norm(matColumn(this.#orient, axis))
             const u = norm(matColumn(this.#orient, (axis + 1) % 3))
@@ -189,6 +208,17 @@ export class GizmoController {
             }
             // Live spin only when a pre-shift rotate node already exists.
             if (this.#rotateNodeId > 0) this.#host.gizmoBegin(this.#rotateNodeId, "rotate")
+        } else if (kind === "plane") {
+            // Planar translate: lock to the world plane ⊥ this axis. Anchor the drag
+            // to where the start ray pierces that plane; subsequent moves track the
+            // cursor's hit so the grabbed point stays under the pointer.
+            const normal: Vec3 = [...GIZMO_AXES[axis]!]
+            const startHit = this.#planeHit(cssX, cssY, this.#center, normal)
+            if (!startHit) return false
+            const base = this.#host.getNodeTranslation(this.#nodeId)
+            if (!base) return false
+            this.#drag = { kind: "plane", handle, axis, normal, startHit, baseCenter: [...this.#center], base }
+            this.#host.gizmoBegin(this.#nodeId, "translate")
         } else {
             const base = this.#host.getNodeTranslation(this.#nodeId)
             if (!base) return false
@@ -213,6 +243,18 @@ export class GizmoController {
             this.#center = [drag.baseCenter[0] + worldDelta[0], drag.baseCenter[1] + worldDelta[1], drag.baseCenter[2] + worldDelta[2]]
             this.#host.postGizmo({ visible: true, center: this.#center, hoverHandle: drag.handle, activeHandle: drag.handle })
             this.#host.requestRender()
+            return true
+        }
+        if (drag.kind === "plane") {
+            // World delta = (current ray∩plane) − (start ray∩plane); lies in the plane.
+            const hit = this.#planeHit(clientX - rect.left, clientY - rect.top, drag.baseCenter, drag.normal)
+            if (hit) {
+                const worldDelta = sub(hit, drag.startHit)
+                this.#host.gizmoPreview({ translate: applyMat3(this.#invLinear, worldDelta) })
+                this.#center = [drag.baseCenter[0] + worldDelta[0], drag.baseCenter[1] + worldDelta[1], drag.baseCenter[2] + worldDelta[2]]
+                this.#host.postGizmo({ visible: true, center: this.#center, hoverHandle: drag.handle, activeHandle: drag.handle })
+                this.#host.requestRender()
+            }
             return true
         }
         // Rotate: accumulate the swept angle in the ring plane (continuous).
@@ -262,8 +304,17 @@ export class GizmoController {
         const drag = this.#drag
         if (!drag) return false
         this.#drag = null
-        if (drag.kind === "translate") {
-            const worldDelta = this.#axisWorldDelta(drag.axis, clientX - drag.startX, clientY - drag.startY)
+        if (drag.kind === "translate" || drag.kind === "plane") {
+            let worldDelta: Vec3
+            if (drag.kind === "translate") {
+                worldDelta = this.#axisWorldDelta(drag.axis, clientX - drag.startX, clientY - drag.startY)
+            } else {
+                const rect = this.#host.canvas.getBoundingClientRect()
+                const hit = this.#planeHit(clientX - rect.left, clientY - rect.top, drag.baseCenter, drag.normal)
+                worldDelta = hit
+                    ? sub(hit, drag.startHit)
+                    : sub(this.#center ?? drag.baseCenter, drag.baseCenter)
+            }
             const delta = applyMat3(this.#invLinear, worldDelta)
             const final: Vec3 = [drag.base[0] + delta[0], drag.base[1] + delta[1], drag.base[2] + delta[2]]
             this.#host.gizmoEnd()
@@ -295,7 +346,7 @@ export class GizmoController {
         const drag = this.#drag
         if (!drag) return
         this.#drag = null
-        if (drag.kind === "translate") {
+        if (drag.kind === "translate" || drag.kind === "plane") {
             this.#host.gizmoPreview({ translate: [0, 0, 0] }) // revert preview to base
             this.#host.gizmoEnd()
             this.#center = drag.baseCenter
@@ -333,14 +384,23 @@ export class GizmoController {
      * the view ray is parallel to the plane.
      */
     #ringAngle(cssX: number, cssY: number, center: Vec3, n: Vec3, u: Vec3, v: Vec3): number | null {
+        const hit = this.#planeHit(cssX, cssY, center, n)
+        if (!hit) return null
+        const w = sub(hit, center)
+        return Math.atan2(dot(w, v), dot(w, u))
+    }
+
+    /**
+     * World point where the view ray through (cssX, cssY) pierces the plane
+     * through `center` with unit normal `n`. Null if the ray is parallel to it.
+     */
+    #planeHit(cssX: number, cssY: number, center: Vec3, n: Vec3): Vec3 | null {
         const ray = this.#screenRay(cssX, cssY)
         if (!ray) return null
         const denom = dot(ray.dir, n)
         if (Math.abs(denom) < 1e-6) return null
         const t = dot(sub(center, ray.origin), n) / denom
-        const hit: Vec3 = [ray.origin[0] + ray.dir[0] * t, ray.origin[1] + ray.dir[1] * t, ray.origin[2] + ray.dir[2] * t]
-        const w = sub(hit, center)
-        return Math.atan2(dot(w, v), dot(w, u))
+        return [ray.origin[0] + ray.dir[0] * t, ray.origin[1] + ray.dir[1] * t, ray.origin[2] + ray.dir[2] * t]
     }
 
     /** Orthographic world-space ray (origin + dir) through a canvas CSS pixel. */
@@ -364,7 +424,7 @@ export class GizmoController {
         return { origin: [o.x, o.y, o.z], dir }
     }
 
-    /** Nearest handle (0..5) under the canvas CSS-pixel point, or -1. */
+    /** Nearest handle (0..8) under the canvas CSS-pixel point, or -1. */
     #hitTest(cssX: number, cssY: number): number {
         const center = this.#center
         if (!center) return -1
@@ -379,6 +439,32 @@ export class GizmoController {
         // so the grabbable regions track the drawn gizmo at every zoom.
         const scale = this.#sizeWorld
         const project = (p: Vec3): ScreenPt | null => this.#project(invCam, p, cssW, cssH, zoom)
+
+        // Planes take priority over arrows/rings: their filled quads sit in the
+        // diagonal gaps near the hub, so a hit there is unambiguous. Pick the
+        // nearest-centroid plane when projected quads overlap.
+        const off = GIZMO_PLANE_OFFSET * scale
+        const size = GIZMO_PLANE_SIZE * scale
+        let bestPlane = -1
+        let bestPlaneDist = Infinity
+        for (let axis = 0; axis < 3; axis++) {
+            const e0 = GIZMO_AXES[(axis + 1) % 3]!
+            const e1 = GIZMO_AXES[(axis + 2) % 3]!
+            const c0 = project(planeCorner(center, e0, e1, off, off))
+            const c1 = project(planeCorner(center, e0, e1, off + size, off))
+            const c2 = project(planeCorner(center, e0, e1, off + size, off + size))
+            const c3 = project(planeCorner(center, e0, e1, off, off + size))
+            if (c0 && c1 && c2 && c3 && pointInQuad(cssX, cssY, c0, c1, c2, c3)) {
+                const cx = (c0.x + c1.x + c2.x + c3.x) / 4
+                const cy = (c0.y + c1.y + c2.y + c3.y) / 4
+                const d = Math.hypot(cssX - cx, cssY - cy)
+                if (d < bestPlaneDist) {
+                    bestPlane = gizmoPlaneHandle(axis)
+                    bestPlaneDist = d
+                }
+            }
+        }
+        if (bestPlane >= 0) return bestPlane
 
         let best = -1
         let bestDist = Infinity
@@ -430,6 +516,32 @@ export class GizmoController {
 
 function addScaled(c: Vec3, u: readonly number[], s: number): Vec3 {
     return [c[0] + u[0]! * s, c[1] + u[1]! * s, c[2] + u[2]! * s]
+}
+
+/** Corner `c + e0*s0 + e1*s1` of a plane quad spanned by axes `e0`/`e1`. */
+function planeCorner(c: Vec3, e0: readonly number[], e1: readonly number[], s0: number, s1: number): Vec3 {
+    return [
+        c[0] + e0[0]! * s0 + e1[0]! * s1,
+        c[1] + e0[1]! * s0 + e1[1]! * s1,
+        c[2] + e0[2]! * s0 + e1[2]! * s1,
+    ]
+}
+
+/** Is (px,py) inside the convex quad a→b→c→d? Consistent cross-product sign. */
+function pointInQuad(px: number, py: number, a: ScreenPt, b: ScreenPt, c: ScreenPt, d: ScreenPt): boolean {
+    const pts = [a, b, c, d]
+    let sign = 0
+    for (let i = 0; i < 4; i++) {
+        const p0 = pts[i]!
+        const p1 = pts[(i + 1) % 4]!
+        const cross = (p1.x - p0.x) * (py - p0.y) - (p1.y - p0.y) * (px - p0.x)
+        if (cross !== 0) {
+            const s = cross > 0 ? 1 : -1
+            if (sign === 0) sign = s
+            else if (s !== sign) return false
+        }
+    }
+    return true
 }
 
 function ringPoint(c: Vec3, e0: readonly number[], e1: readonly number[], theta: number, r: number): Vec3 {

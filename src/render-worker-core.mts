@@ -1966,12 +1966,18 @@ export class RenderWorkerCore {
         // path supports it too so captures can A/B EASU headlessly; otherwise
         // off-screen renders keep the legacy intermediate + bilinear blit.
         const up = viewSettings.upscaleParams
-        const fsrEnabled = (up?.mode ?? "off") !== "off" && resolutionScale < 1.0
-        const fsrFxaa = fsrEnabled && up?.mode === "easu-fxaa"
-        // FXAA ("easu-fxaa") also applies on full-res frames (still / 100%): the
-        // scene renders into the full-res intermediate and FXAA composites it.
-        const wantFxaa = up?.mode === "easu-fxaa"
-        const fullResFxaa = wantFxaa && !fsrEnabled
+        const mode = up?.mode ?? "off"
+        const upscaleEnabled = mode !== "off" && resolutionScale < 1.0
+        // During motion EASU upsamples for "easu"/"easu-fxaa"; "bilinear-fxaa"
+        // uses a plain bilinear blit instead. (Mutually exclusive per frame.)
+        const useEasu = upscaleEnabled && (mode === "easu" || mode === "easu-fxaa")
+        const useBilinear = upscaleEnabled && mode === "bilinear-fxaa"
+        // FXAA ("easu-fxaa" / "bilinear-fxaa") also applies on full-res frames
+        // (still / 100%): the scene renders into the full-res intermediate and
+        // FXAA composites it.
+        const wantFxaa = mode === "easu-fxaa" || mode === "bilinear-fxaa"
+        const upscaleFxaa = upscaleEnabled && wantFxaa
+        const fullResFxaa = wantFxaa && !upscaleEnabled
         const fullW = Math.max(1, Math.round(cameraRes[0]))
         const fullH = Math.max(1, Math.round(cameraRes[1]))
 
@@ -1981,7 +1987,7 @@ export class RenderWorkerCore {
         // free browser CSS upscale. Off-screen (`outputTextureView`) leaves the
         // canvas untouched.
         if (!outputTextureView) {
-            this.#resizeCanvasIfNeeded(fsrEnabled || wantFxaa ? fullW : sceneWidth, fsrEnabled || wantFxaa ? fullH : sceneHeight)
+            this.#resizeCanvasIfNeeded(upscaleEnabled || wantFxaa ? fullW : sceneWidth, upscaleEnabled || wantFxaa ? fullH : sceneHeight)
         }
         if (fullResFxaa) this.#ensureUpscaleTextures(fullW, fullH, true)
         const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
@@ -2030,13 +2036,16 @@ export class RenderWorkerCore {
         // swapchain directly.
         const offscreenBlit = !!outputTextureView && !fullResFxaa
         const sceneColorView =
-            fsrEnabled || offscreenBlit ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : finalTarget
+            upscaleEnabled || offscreenBlit ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : finalTarget
         const deferred = this.#prepareDeferred(viewSettings.xrayMode, sceneWidth, sceneHeight)
         this.#encodeScenePass(commandEncoder, sceneColorView, deferred)
 
-        if (fsrEnabled) {
+        if (useEasu) {
             // EASU (+FXAA) resolves the reduced-res scene into the final target.
-            this.#encodeUpscale(commandEncoder, finalTarget, sceneWidth, sceneHeight, fullW, fullH, fsrFxaa)
+            this.#encodeUpscale(commandEncoder, finalTarget, sceneWidth, sceneHeight, fullW, fullH, upscaleFxaa)
+        } else if (useBilinear) {
+            // Bilinear blit (+FXAA) resolves the reduced-res scene into the target.
+            this.#encodeBilinearUpscale(commandEncoder, finalTarget, fullW, fullH, upscaleFxaa)
         } else if (fullResFxaa) {
             // Full-res native frame: FXAA the scene intermediate into the target.
             this.#encodeFxaaPass(commandEncoder, finalTarget)
@@ -2055,8 +2064,8 @@ export class RenderWorkerCore {
 
         // Overlay: at full display res when upscaling or full-res FXAA (crisp
         // lines), else at the scene resolution the target currently holds.
-        const overlayW = fsrEnabled || fullResFxaa ? fullW : sceneWidth
-        const overlayH = fsrEnabled || fullResFxaa ? fullH : sceneHeight
+        const overlayW = upscaleEnabled || fullResFxaa ? fullW : sceneWidth
+        const overlayH = upscaleEnabled || fullResFxaa ? fullH : sceneHeight
         this.#renderFeatureGraphOverlay(
             commandEncoder,
             finalTarget,
@@ -2161,16 +2170,22 @@ export class RenderWorkerCore {
         // (still camera) or mode "off" it stays disabled and we keep the legacy
         // browser-bilinear stretch path below.
         const upscaleMode = u32[b4 + L.O_UPSCALE_MODE / 4]
-        const fsrEnabled = upscaleMode !== 0 && resolutionScale < 1.0
-        const fsrFxaa = fsrEnabled && upscaleMode === 2
-        // FXAA (mode "easu-fxaa") also runs on full-res frames — after EASU
-        // during motion, or directly on the native scene when not upscaling
-        // (still camera / 100% render scale). `fullOutput` = the frame ends up
-        // at full display resolution (so the canvas is sized full and a final
-        // post pass composites into it).
-        const wantFxaa = upscaleMode === 2
-        const fullResFxaa = wantFxaa && !fsrEnabled
-        const fullOutput = fsrEnabled || wantFxaa
+        // Any non-"off" mode upscales the reduced-res scene during motion. Ints
+        // (see upscaleModeToInt): 1 = EASU, 2 = EASU+FXAA, 3 = Bilinear+FXAA.
+        const upscaleEnabled = upscaleMode !== 0 && resolutionScale < 1.0
+        // During motion EASU upsamples for modes 1/2; mode 3 uses a plain bilinear
+        // blit instead. (Mutually exclusive per frame.)
+        const useEasu = upscaleEnabled && (upscaleMode === 1 || upscaleMode === 2)
+        const useBilinear = upscaleEnabled && upscaleMode === 3
+        // FXAA (modes 2/3) also runs on full-res frames — chained after the motion
+        // upscale, or directly on the native scene when not upscaling (still camera
+        // / 100% render scale). `fullOutput` = the frame ends up at full display
+        // resolution (so the canvas is sized full and a final post pass composites
+        // into it).
+        const wantFxaa = upscaleMode === 2 || upscaleMode === 3
+        const upscaleFxaa = upscaleEnabled && wantFxaa
+        const fullResFxaa = wantFxaa && !upscaleEnabled
+        const fullOutput = upscaleEnabled || wantFxaa
 
         if (!this.#pipeline) return
         if (sceneWidth === 0 || sceneHeight === 0) return
@@ -2378,7 +2393,7 @@ export class RenderWorkerCore {
         // full-res `#easuOutView` intermediate when applying full-res FXAA; else
         // the canvas swapchain directly. The r32uint object-ID texture is gone —
         // click picking uses the `clickedObjectId` atomic written in the shader.
-        const sceneTarget = fsrEnabled ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : canvasView
+        const sceneTarget = upscaleEnabled ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : canvasView
         const deferred = this.#prepareDeferred((packed & 1) !== 0, sceneWidth, sceneHeight)
         // Phase 2: if only selection/hover changed since the last geometry pass
         // (same camera/resolution/shading + build generation), reuse the
@@ -2398,8 +2413,10 @@ export class RenderWorkerCore {
         }
         this.#encodeScenePass(commandEncoder, sceneTarget, deferred, skipGeometry)
 
-        if (fsrEnabled) {
-            this.#encodeUpscale(commandEncoder, canvasView, sceneWidth, sceneHeight, this.#fullWidth, this.#fullHeight, fsrFxaa)
+        if (useEasu) {
+            this.#encodeUpscale(commandEncoder, canvasView, sceneWidth, sceneHeight, this.#fullWidth, this.#fullHeight, upscaleFxaa)
+        } else if (useBilinear) {
+            this.#encodeBilinearUpscale(commandEncoder, canvasView, this.#fullWidth, this.#fullHeight, upscaleFxaa)
         } else if (fullResFxaa) {
             this.#encodeFxaaPass(commandEncoder, canvasView)
         }
@@ -3610,6 +3627,41 @@ export class RenderWorkerCore {
         easuPass.setBindGroup(0, this.#easuBindGroup!)
         easuPass.draw(4)
         easuPass.end()
+
+        if (needFxaa) {
+            this.#encodeFxaaPass(encoder, finalTarget)
+        }
+    }
+
+    /**
+     * Encode the bilinear upscale chain (mode "bilinear-fxaa") — a cheaper, softer
+     * alternative to {@link #encodeUpscale}'s edge-adaptive EASU. The scene must
+     * already be rendered into the reduced-res `#colorTextureView`. The outline
+     * blit pipeline (a pure passthrough whose `#colorSampler` is linear, so the
+     * magnification IS bilinear) resolves it to full resolution; when `needFxaa`,
+     * it writes the full-res intermediate that FXAA then smooths into
+     * `finalTarget`, otherwise it writes `finalTarget` directly (callers only use
+     * this with FXAA — bilinear with no post pass is just the browser stretch).
+     */
+    #encodeBilinearUpscale(
+        encoder: GPUCommandEncoder,
+        finalTarget: GPUTextureView,
+        fullW: number,
+        fullH: number,
+        needFxaa: boolean,
+    ): void {
+        this.#ensureUpscaleTextures(fullW, fullH, needFxaa)
+
+        const blitTarget = needFxaa ? this.#easuOutView! : finalTarget
+        const blitPass = encoder.beginRenderPass({
+            label: "Bilinear Upscale",
+            colorAttachments: [{ view: blitTarget, loadOp: "clear", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("outline"),
+        })
+        blitPass.setPipeline(this.#outlinePipeline)
+        blitPass.setBindGroup(0, this.#outlineBindGroup!)
+        blitPass.draw(4)
+        blitPass.end()
 
         if (needFxaa) {
             this.#encodeFxaaPass(encoder, finalTarget)

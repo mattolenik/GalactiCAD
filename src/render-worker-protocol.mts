@@ -372,8 +372,12 @@ export const DEFAULT_RAY_MARCH_PARAMS: RayMarchParams = {
  *  - `easu-fxaa` — EASU followed by FXAA (luma post-process antialiasing). FXAA
  *              also runs on full-res frames (still camera / 100% scale), where it
  *              smooths all edge types (creases + silhouettes).
+ *  - `bilinear-fxaa` — a plain bilinear upscale (the blit pipeline's linear
+ *              filter, no edge direction) followed by FXAA. Cheaper than EASU but
+ *              softer; FXAA recovers most of the edge crispness. Like `easu-fxaa`,
+ *              FXAA also runs on full-res frames.
  */
-export type UpscaleMode = "off" | "easu" | "easu-fxaa"
+export type UpscaleMode = "off" | "easu" | "easu-fxaa" | "bilinear-fxaa"
 
 /**
  * Spatial-upscale (FSR1) tunables, adjustable from dev tools. Only takes effect

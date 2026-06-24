@@ -419,6 +419,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
                 { value: "off", label: "Bilinear" },
                 { value: "easu", label: "EASU" },
                 { value: "easu-fxaa", label: "EASU+FXAA" },
+                { value: "bilinear-fxaa", label: "Bilinear+FXAA" },
             ],
             this.#upscaleState.mode,
         )
@@ -740,7 +741,13 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         const incoming = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, JSONValue>) : {}
         const next: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
         if (typeof incoming.renderScale === "number" && Number.isFinite(incoming.renderScale)) next.renderScale = incoming.renderScale
-        if (incoming.mode === "off" || incoming.mode === "easu" || incoming.mode === "easu-fxaa") next.mode = incoming.mode
+        if (
+            incoming.mode === "off" ||
+            incoming.mode === "easu" ||
+            incoming.mode === "easu-fxaa" ||
+            incoming.mode === "bilinear-fxaa"
+        )
+            next.mode = incoming.mode
         this.#upscaleState = next
         if (this.#upscaleScaleSelect) this.#upscaleScaleSelect.value = String(next.renderScale)
         if (this.#upscaleModeSelect) this.#upscaleModeSelect.value = next.mode

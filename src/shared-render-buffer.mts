@@ -20,12 +20,12 @@ import {
 
 /** Encode {@link UpscaleMode} as the u32 stored in the SAB / read by the worker. */
 export function upscaleModeToInt(mode: UpscaleMode): number {
-    return mode === "easu-fxaa" ? 2 : mode === "easu" ? 1 : 0
+    return mode === "bilinear-fxaa" ? 3 : mode === "easu-fxaa" ? 2 : mode === "easu" ? 1 : 0
 }
 
 /** Inverse of {@link upscaleModeToInt}. */
 export function upscaleModeFromInt(v: number): UpscaleMode {
-    return v === 2 ? "easu-fxaa" : v === 1 ? "easu" : "off"
+    return v === 3 ? "bilinear-fxaa" : v === 2 ? "easu-fxaa" : v === 1 ? "easu" : "off"
 }
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
 
@@ -78,7 +78,7 @@ const S_O_HOVERED_OBJECT_ID = 6944
 const S_O_RAY_MARCH_PARAMS = 6948
 // FSR1 spatial-upscale mode (consumed on the reduced-res motion frames + the
 // full-res FXAA path). `resolutionScale` above already carries the render scale.
-const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+FXAA
+const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+FXAA, 3 = Bilinear+FXAA
 // "View Isolated" no longer rides the SAB: isolation recompiles the preview SDF
 // from the isolated subtree(s) as root (see SceneInfo.isolationRoot), driven by a
 // `setIsolatedIds` message — not a per-frame render-state field.

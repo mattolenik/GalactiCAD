@@ -255,6 +255,7 @@ clean: stop kill-agent-browsers
 .PHONY: scrub
 scrub: clean
 	rm -rf $(BROWSERS_DIR)
+	rm -rf $(USER_DATA_DIR)
 	rm -rf node_modules
 	rm -f .devserver*log
 

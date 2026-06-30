@@ -43,7 +43,7 @@ build: setup gcad-wasm
 	$(BUILD) $(BUILD_FLAGS)
 
 .PHONY: test
-test: setup check
+test: build
 	$(TSX) --test
 
 # check is deprecated, just use build instead

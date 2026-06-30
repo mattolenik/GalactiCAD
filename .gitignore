@@ -16,4 +16,6 @@ sharpiso/
 .agents/testimages
 .claude/settings.local.json
 .browsers/
+.user-browser/
 .agents/tmp
+

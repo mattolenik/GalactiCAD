@@ -12,6 +12,7 @@ export TSC     ?= node_modules/.bin/tsc
 BUILD          := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 BROWSERS_CLI   := npx @puppeteer/browsers
 BROWSERS_DIR   := .browsers
+USER_DATA_DIR  := $(PWD)/$(BROWSERS_DIR)/users-user-data-dir
 export VERSION  = $(shell scripts/version)
 
 ifeq ($(AGENT),true)
@@ -22,7 +23,8 @@ export RUN_FILE := .devserver.run
 export LOG_FILE := .devserver.log
 endif
 
-SHELL := bash
+SHELL       := bash
+.SHELLFLAGS := -ec
 .ONESHELL:
 
 default: setup build test
@@ -36,16 +38,17 @@ setup:
 	fi
 
 .PHONY: build
-build: setup check
+build: setup gcad-wasm
+	$(TSC) --noEmit
 	$(BUILD) $(BUILD_FLAGS)
 
 .PHONY: test
 test: setup check
 	$(TSX) --test
 
-.PHONY: check
-check: gcad-wasm
-	$(TSC) --noEmit
+# check is deprecated, just use build instead
+#.PHONY: check
+#check: gcad-wasm
 
 .PHONY: _start
 _start: gcad-wasm
@@ -97,6 +100,19 @@ stop-agent:
 start:
 	make start-browser
 
+# Open a dedicated, isolated Chromium window for THIS git workspace, pointed at the
+# interactive devserver. The profile lives in a per-workspace user-data-dir (.user-browser/)
+# so each workspace's Chromium is a completely separate process tree — a WebGPU crash in one
+# window can't take down another workspace's window. Uses the same Chromium that the agent
+# devserver launches (installed under .browsers/ by `make setup`). The user browser is
+# intentionally NOT reaped by kill-agent-browsers; that target spares its whole process tree.
+.PHONY: open
+open: start-browser
+	@port=$$(jq -r .port "$(RUN_FILE)")
+	chromium=$$(scripts/chromium-path)
+	echo "Opening isolated user browser (profile $(USER_DATA_DIR)): http://localhost:$$port"
+	nohup "$$chromium" --user-data-dir="$(USER_DATA_DIR)" --enable-unsafe-webgpu "http://localhost:$$port" > /dev/null 2>&1 &
+
 .PHONY: _stop
 _stop:
 	@if [[ -f "$(RUN_FILE)" ]]; then
@@ -116,7 +132,8 @@ stop: stop-browser stop-agent
 .PHONY: kill-agent-browsers
 kill-agent-browsers: stop-agent
 	jq -r '.browser_pids[]?' < .devserver.agent.run | xargs kill -9 2> /dev/null || echo 'No dangling browser PIDs found in .devserver.agent.run'
-	pkill -f '$(PWD)/\.browsers' || true
+	# Sweep any remaining processes, excluding user browsers
+	pgrep -fl "$(PWD)/.browsers" | awk '!/\.user-browser/ {print $$1}' | xargs kill -9 2> /dev/null || true
 
 .PHONY: restart
 restart: stop start

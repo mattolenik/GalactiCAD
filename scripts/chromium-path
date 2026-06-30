@@ -1,0 +1,18 @@
+#!/usr/bin/env node --disable-warning=ExperimentalWarning
+
+// CLI: print the absolute path to the Chromium executable installed under .browsers/
+// (the @puppeteer/browsers download cache, populated by `make setup`). Mirrors how the
+// agent devserver resolves Chromium (build/devserver.mts: resolveChromiumExecutable), so
+// `make open` launches the same binary the agent uses. Path on stdout, errors on stderr.
+// Usage: scripts/chromium-path
+import path from "node:path"
+import { getInstalledBrowsers } from "@puppeteer/browsers"
+
+const cacheDir = path.resolve(process.cwd(), ".browsers")
+const chromium = (await getInstalledBrowsers({ cacheDir })).find(b => b.browser === "chromium")
+if (!chromium) {
+    process.stderr.write("chromium not found under .browsers/ (run 'make setup')\n")
+    process.exit(1)
+}
+process.stdout.write(chromium.executablePath)
+

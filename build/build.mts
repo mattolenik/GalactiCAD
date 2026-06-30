@@ -69,6 +69,7 @@ const Options = {
 const WatchOptions = {
     ignored: [
         ".cursor",
+        ".browsers",
         ".github",
         ".DS_Store",
         ".git",

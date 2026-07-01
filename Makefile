@@ -4,16 +4,17 @@ SHELL          := bash
 #   dist/site     — web build (esbuild output, also what's deployed)
 #   dist/build    — electron-builder buildResources (generated icons)
 #   dist/release  — electron-builder packaged installers/archives
-DIST_ROOT      ?= dist
-DIST           ?= $(DIST_ROOT)/site
-SED            := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
-export TSX     ?= node_modules/.bin/tsx
-export TSC     ?= node_modules/.bin/tsc
-BUILD          := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
-BROWSERS_CLI   := npx @puppeteer/browsers
-BROWSERS_DIR   := .browsers
-USER_DATA_DIR  := $(PWD)/$(BROWSERS_DIR)/users-user-data-dir
-export VERSION  = $(shell scripts/version)
+DIST_ROOT        ?= dist
+DIST             ?= $(DIST_ROOT)/site
+SED              := $(shell [[ $$(uname) == Darwin ]] && echo gsed || echo sed)
+export TSX       ?= node_modules/.bin/tsx
+export TSC       ?= node_modules/.bin/tsc
+BUILD            := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
+BROWSERS_CLI     := npx @puppeteer/browsers
+BROWSERS_DIR     := .browsers
+USER_DATA_DIR    := $(PWD)/$(BROWSERS_DIR)/users-user-data-dir
+export CHROMIUM   = $(shell scripts/chromium-path)
+export VERSION    = $(shell scripts/version)
 
 ifeq ($(AGENT),true)
 export RUN_FILE := .devserver.agent.run
@@ -100,18 +101,14 @@ stop-agent:
 start:
 	make start-browser
 
-# Open a dedicated, isolated Chromium window for THIS git workspace, pointed at the
-# interactive devserver. The profile lives in a per-workspace user-data-dir (.user-browser/)
-# so each workspace's Chromium is a completely separate process tree — a WebGPU crash in one
-# window can't take down another workspace's window. Uses the same Chromium that the agent
-# devserver launches (installed under .browsers/ by `make setup`). The user browser is
-# intentionally NOT reaped by kill-agent-browsers; that target spares its whole process tree.
+# Open a dedicated browser intended specifically for this repo root.
+# This isolates each workspaces' Chromium processes from each other,
+# which prevents a Chromium fatal crash from affecting other workspaces.
 .PHONY: open
-open: start-browser
+open: start-browser kill-user-browser
 	@port=$$(jq -r .port "$(RUN_FILE)")
-	chromium=$$(scripts/chromium-path)
 	echo "Opening isolated user browser (profile $(USER_DATA_DIR)): http://localhost:$$port"
-	nohup "$$chromium" --user-data-dir="$(USER_DATA_DIR)" --enable-unsafe-webgpu "http://localhost:$$port" > /dev/null 2>&1 &
+	nohup "$(CHROMIUM)" --user-data-dir="$(USER_DATA_DIR)" --enable-unsafe-webgpu "http://localhost:$$port" > /dev/null 2>&1 &
 
 .PHONY: _stop
 _stop:
@@ -129,11 +126,15 @@ _stop:
 .PHONY: stop
 stop: stop-browser stop-agent
 
+.PHONY: kill-user-browser
+kill-user-browser:
+	@pkill -9 -fl "user-data-dir=$(USER_DATA_DIR)" 2>/dev/null || true
+
 .PHONY: kill-agent-browsers
 kill-agent-browsers: stop-agent
 	jq -r '.browser_pids[]?' < .devserver.agent.run | xargs kill -9 2> /dev/null || echo 'No dangling browser PIDs found in .devserver.agent.run'
 	# Sweep any remaining processes, excluding user browsers
-	pgrep -fl "$(PWD)/.browsers" | awk '!/\.user-browser/ {print $$1}' | xargs kill -9 2> /dev/null || true
+	pgrep -fl "$(PWD)/.browsers" | awk '!/$(USER_DATA_DIR)/ {print $$1}' | xargs kill -9 2> /dev/null || true
 
 .PHONY: restart
 restart: stop start

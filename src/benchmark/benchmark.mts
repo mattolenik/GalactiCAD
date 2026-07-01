@@ -106,7 +106,7 @@ function createOffscreenHost(width: number, height: number): import("../componen
         canvas: HTMLCanvasElement
         updateSelectionInfo: (info: import("../components/preview-window.mjs").SelectionInfo) => void
         setSelectionInfoLeft: (offsetPx: number) => void
-        updateFPS: (fps: number) => void
+        updateFrameTimings: (timings: import("../render-worker-protocol.mjs").FrameTimings) => void
     }
     host.style.cssText =
         "position:fixed;left:-9999px;top:0;width:" + width + "px;height:" + height + "px;pointer-events:none"
@@ -117,7 +117,7 @@ function createOffscreenHost(width: number, height: number): import("../componen
     host.canvas = canvas
     host.updateSelectionInfo = () => { }
     host.setSelectionInfoLeft = () => { }
-    host.updateFPS = () => { }
+    host.updateFrameTimings = () => { }
     document.body.appendChild(host)
     return host as unknown as import("../components/preview-window.mjs").PreviewWindow
 }

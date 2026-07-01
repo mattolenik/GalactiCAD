@@ -79,7 +79,7 @@ import {
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 import { log, logWgsl } from "./logging/debug-log.mjs"
-import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset, SLOT_SIZE } from "./shared-render-buffer.mjs"
+import { SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset, SLOT_SIZE } from "./shared-render-buffer.mjs"
 
 if (!isoSampleBatchShaderSource.includes("fn isoSampleBatch") || !isoSampleBatchShaderSource.includes("fn isoSampleBatchMid")) {
     throw new Error("iso_sample_batch.wgsl failed to bundle for render worker")
@@ -403,10 +403,6 @@ export class RenderWorkerCore {
     #renderTextureHeight = 0
     #fullWidth = 0
     #fullHeight = 0
-    #framerate = new AveragedBuffer(4)
-    #lastRenderTime = 0
-    #fpsFrameCount = 0
-    #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
     // [0..6]=xray,heatmap,beam,selMode,ghost,flatShading,debugTessEdges (matches
     // ViewSettings in preview.wgsl); padded to 8 (32 bytes) for uniform 16-byte alignment.
@@ -494,7 +490,6 @@ export class RenderWorkerCore {
      * param-only rebuild stay param-only when isolation is unchanged, and forces a
      * full recompile (agent path) when it differs. */
     #builtIsolatedIds: number[] = []
-    #fpsVersion = 0
     /** Pre-allocated dedup caches (param-only); `-1` length = never uploaded. */
     #lastSceneParamUpload = new Float32Array(SCENE_PARAMS_F32_CAPACITY)
     #lastSceneParamLen = -1
@@ -539,6 +534,24 @@ export class RenderWorkerCore {
     }
     /** Frames since last profiling log. Reported every ~60 frames to avoid console spam. */
     #passTimeLogFrames = 0
+    /**
+     * Short 15-frame rolling averages mirroring {@link #passTimeAverages}, feeding
+     * the "Show Framerate" overlay. The 30-frame set above stays for the console
+     * A/B diagnostic; the overlay shows the last-15-frame figure the user asked for.
+     */
+    #overlayPassMs: Record<ProfiledPassName, AveragedBuffer> = {
+        beam: new AveragedBuffer(15),
+        scene: new AveragedBuffer(15),
+        shade: new AveragedBuffer(15),
+        easu: new AveragedBuffer(15),
+        fxaa: new AveragedBuffer(15),
+        outline: new AveragedBuffer(15),
+        overlay: new AveragedBuffer(15),
+    }
+    /** 15-frame rolling average of total GPU frame time (sum of the passes that ran). */
+    #overlayFrameMs = new AveragedBuffer(15)
+    /** `performance.now()` of the last `frameTimings` post; throttles the overlay feed to ~10 Hz. */
+    #lastFrameTimingsPost = 0
     /**
      * Per-frame context surfaced in the `gpu pass times` log so each emitted
      * line is self-describing. Lets a lighting-cost A/B (read `scene` ms with
@@ -1564,6 +1577,7 @@ export class RenderWorkerCore {
             this.#timestampBusy = false
             return
         }
+        let frameMs = 0
         try {
             const bi = new BigInt64Array(staging.getMappedRange(0, byteLen).slice(0))
             for (let i = 0; i < filled.length; i++) {
@@ -1573,12 +1587,21 @@ export class RenderWorkerCore {
                 // Timestamps are unordered across queues only when the GPU
                 // reorders work; for pass-pair writes inside one encoder we
                 // expect t1 >= t0. Guard anyway against driver weirdness.
-                if (ns >= 0) this.#passTimeAverages[filled[i]!].update(ns / 1_000_000)
+                if (ns >= 0) {
+                    const ms = ns / 1_000_000
+                    this.#passTimeAverages[filled[i]!].update(ms) // 30-frame: console A/B
+                    this.#overlayPassMs[filled[i]!].update(ms) // 15-frame: "Show Framerate" overlay
+                    frameMs += ms
+                }
             }
         } finally {
             staging.unmap()
             this.#timestampBusy = false
         }
+        // Total per-frame GPU time (sum of the passes that ran), 15-frame averaged,
+        // then pushed (throttled) to the main-thread overlay.
+        this.#overlayFrameMs.update(frameMs)
+        this.#postFrameTimings()
         this.#passTimeLogFrames++
         if (this.#passTimeLogFrames >= 60) {
             this.#passTimeLogFrames = 0
@@ -1602,6 +1625,38 @@ export class RenderWorkerCore {
                 overlay: roundMs2(avg.overlay.average),
             })
         }
+    }
+
+    /**
+     * Push the current 15-frame GPU timings to the main thread for the "Show
+     * Framerate" overlay. Throttled to ~10 Hz — the overlay only needs a readable
+     * cadence, and the averages already smooth over the last 15 frames. Sent
+     * whenever profiling is active (timestamp-query available); the overlay
+     * element stays hidden until the user enables it, so an off overlay just drops
+     * the message cheaply.
+     */
+    #postFrameTimings(): void {
+        const now = performance.now()
+        if (now - this.#lastFrameTimingsPost < 100) return
+        this.#lastFrameTimingsPost = now
+        const o = this.#overlayPassMs
+        self.postMessage({
+            type: "frameTimings",
+            timings: {
+                frame: roundMs2(this.#overlayFrameMs.average),
+                beam: roundMs2(o.beam.average),
+                scene: roundMs2(o.scene.average),
+                shade: roundMs2(o.shade.average),
+                easu: roundMs2(o.easu.average),
+                fxaa: roundMs2(o.fxaa.average),
+                outline: roundMs2(o.outline.average),
+                overlay: roundMs2(o.overlay.average),
+                res: `${this.#profileCtx.w}x${this.#profileCtx.h}`,
+                scale: roundMs2(this.#profileCtx.scale),
+                ao: roundMs2(this.#profileCtx.ao),
+                deferred: !!this.#deferredShading,
+            },
+        })
     }
 
     /**
@@ -1865,29 +1920,7 @@ export class RenderWorkerCore {
     render(
         msg: Extract<MainToWorkerMessage, { type: "render" }>,
         outputTextureView?: GPUTextureView,
-        sharedBuffer?: SharedArrayBuffer,
     ): void {
-        const now = performance.now()
-        if (this.#lastRenderTime > 0) {
-            const delta = now - this.#lastRenderTime
-            if (delta > 0) {
-                this.#framerate.update(1000 / delta)
-                this.#fpsFrameCount++
-                const timeSinceFps = now - this.#lastFpsSendTime
-                if (this.#fpsFrameCount >= 5 || timeSinceFps >= 100) {
-                    this.#fpsFrameCount = 0
-                    this.#lastFpsSendTime = now
-                    if (sharedBuffer) {
-                        this.#fpsVersion++
-                        writeFps(sharedBuffer, this.#framerate.average, this.#fpsVersion)
-                    } else {
-                        self.postMessage({ type: "fps", fps: this.#framerate.average })
-                    }
-                }
-            }
-        }
-        this.#lastRenderTime = now
-
         this.#lastRenderMsg = msg
         this.#lastSelectionMode = msg.viewSettings.selectionMode
         const { viewTransform, cameraPosition, cameraRes, viewSettings, viewCenter, resolutionScale, selectionState } = msg
@@ -1966,12 +1999,18 @@ export class RenderWorkerCore {
         // path supports it too so captures can A/B EASU headlessly; otherwise
         // off-screen renders keep the legacy intermediate + bilinear blit.
         const up = viewSettings.upscaleParams
-        const fsrEnabled = (up?.mode ?? "off") !== "off" && resolutionScale < 1.0
-        const fsrFxaa = fsrEnabled && up?.mode === "easu-fxaa"
-        // FXAA ("easu-fxaa") also applies on full-res frames (still / 100%): the
-        // scene renders into the full-res intermediate and FXAA composites it.
-        const wantFxaa = up?.mode === "easu-fxaa"
-        const fullResFxaa = wantFxaa && !fsrEnabled
+        const mode = up?.mode ?? "off"
+        const upscaleEnabled = mode !== "off" && resolutionScale < 1.0
+        // During motion EASU upsamples for "easu"/"easu-fxaa"; "bilinear-fxaa"
+        // uses a plain bilinear blit instead. (Mutually exclusive per frame.)
+        const useEasu = upscaleEnabled && (mode === "easu" || mode === "easu-fxaa")
+        const useBilinear = upscaleEnabled && mode === "bilinear-fxaa"
+        // FXAA ("easu-fxaa" / "bilinear-fxaa") also applies on full-res frames
+        // (still / 100%): the scene renders into the full-res intermediate and
+        // FXAA composites it.
+        const wantFxaa = mode === "easu-fxaa" || mode === "bilinear-fxaa"
+        const upscaleFxaa = upscaleEnabled && wantFxaa
+        const fullResFxaa = wantFxaa && !upscaleEnabled
         const fullW = Math.max(1, Math.round(cameraRes[0]))
         const fullH = Math.max(1, Math.round(cameraRes[1]))
 
@@ -1981,7 +2020,7 @@ export class RenderWorkerCore {
         // free browser CSS upscale. Off-screen (`outputTextureView`) leaves the
         // canvas untouched.
         if (!outputTextureView) {
-            this.#resizeCanvasIfNeeded(fsrEnabled || wantFxaa ? fullW : sceneWidth, fsrEnabled || wantFxaa ? fullH : sceneHeight)
+            this.#resizeCanvasIfNeeded(upscaleEnabled || wantFxaa ? fullW : sceneWidth, upscaleEnabled || wantFxaa ? fullH : sceneHeight)
         }
         if (fullResFxaa) this.#ensureUpscaleTextures(fullW, fullH, true)
         const canvasTexture = outputTextureView ? null : this.#context.getCurrentTexture()
@@ -2030,13 +2069,16 @@ export class RenderWorkerCore {
         // swapchain directly.
         const offscreenBlit = !!outputTextureView && !fullResFxaa
         const sceneColorView =
-            fsrEnabled || offscreenBlit ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : finalTarget
+            upscaleEnabled || offscreenBlit ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : finalTarget
         const deferred = this.#prepareDeferred(viewSettings.xrayMode, sceneWidth, sceneHeight)
         this.#encodeScenePass(commandEncoder, sceneColorView, deferred)
 
-        if (fsrEnabled) {
+        if (useEasu) {
             // EASU (+FXAA) resolves the reduced-res scene into the final target.
-            this.#encodeUpscale(commandEncoder, finalTarget, sceneWidth, sceneHeight, fullW, fullH, fsrFxaa)
+            this.#encodeUpscale(commandEncoder, finalTarget, sceneWidth, sceneHeight, fullW, fullH, upscaleFxaa)
+        } else if (useBilinear) {
+            // Bilinear blit (+FXAA) resolves the reduced-res scene into the target.
+            this.#encodeBilinearUpscale(commandEncoder, finalTarget, fullW, fullH, upscaleFxaa)
         } else if (fullResFxaa) {
             // Full-res native frame: FXAA the scene intermediate into the target.
             this.#encodeFxaaPass(commandEncoder, finalTarget)
@@ -2055,8 +2097,8 @@ export class RenderWorkerCore {
 
         // Overlay: at full display res when upscaling or full-res FXAA (crisp
         // lines), else at the scene resolution the target currently holds.
-        const overlayW = fsrEnabled || fullResFxaa ? fullW : sceneWidth
-        const overlayH = fsrEnabled || fullResFxaa ? fullH : sceneHeight
+        const overlayW = upscaleEnabled || fullResFxaa ? fullW : sceneWidth
+        const overlayH = upscaleEnabled || fullResFxaa ? fullH : sceneHeight
         this.#renderFeatureGraphOverlay(
             commandEncoder,
             finalTarget,
@@ -2129,23 +2171,6 @@ export class RenderWorkerCore {
             this.#forceNextRender = false
         }
 
-        const now = performance.now()
-        if (!pickClickUV && this.#lastRenderTime > 0) {
-            const delta = now - this.#lastRenderTime
-            if (delta > 0) {
-                this.#framerate.update(1000 / delta)
-                this.#fpsFrameCount++
-                const timeSinceFps = now - this.#lastFpsSendTime
-                if (this.#fpsFrameCount >= 5 || timeSinceFps >= 100) {
-                    this.#fpsFrameCount = 0
-                    this.#lastFpsSendTime = now
-                    this.#fpsVersion++
-                    writeFps(buffer, this.#framerate.average, this.#fpsVersion)
-                }
-            }
-        }
-        this.#lastRenderTime = now
-
         const L = SAB_LAYOUT
         const u32 = new Uint32Array(buffer)
         const f32 = new Float32Array(buffer)
@@ -2161,16 +2186,22 @@ export class RenderWorkerCore {
         // (still camera) or mode "off" it stays disabled and we keep the legacy
         // browser-bilinear stretch path below.
         const upscaleMode = u32[b4 + L.O_UPSCALE_MODE / 4]
-        const fsrEnabled = upscaleMode !== 0 && resolutionScale < 1.0
-        const fsrFxaa = fsrEnabled && upscaleMode === 2
-        // FXAA (mode "easu-fxaa") also runs on full-res frames — after EASU
-        // during motion, or directly on the native scene when not upscaling
-        // (still camera / 100% render scale). `fullOutput` = the frame ends up
-        // at full display resolution (so the canvas is sized full and a final
-        // post pass composites into it).
-        const wantFxaa = upscaleMode === 2
-        const fullResFxaa = wantFxaa && !fsrEnabled
-        const fullOutput = fsrEnabled || wantFxaa
+        // Any non-"off" mode upscales the reduced-res scene during motion. Ints
+        // (see upscaleModeToInt): 1 = EASU, 2 = EASU+FXAA, 3 = Bilinear+FXAA.
+        const upscaleEnabled = upscaleMode !== 0 && resolutionScale < 1.0
+        // During motion EASU upsamples for modes 1/2; mode 3 uses a plain bilinear
+        // blit instead. (Mutually exclusive per frame.)
+        const useEasu = upscaleEnabled && (upscaleMode === 1 || upscaleMode === 2)
+        const useBilinear = upscaleEnabled && upscaleMode === 3
+        // FXAA (modes 2/3) also runs on full-res frames — chained after the motion
+        // upscale, or directly on the native scene when not upscaling (still camera
+        // / 100% render scale). `fullOutput` = the frame ends up at full display
+        // resolution (so the canvas is sized full and a final post pass composites
+        // into it).
+        const wantFxaa = upscaleMode === 2 || upscaleMode === 3
+        const upscaleFxaa = upscaleEnabled && wantFxaa
+        const fullResFxaa = wantFxaa && !upscaleEnabled
+        const fullOutput = upscaleEnabled || wantFxaa
 
         if (!this.#pipeline) return
         if (sceneWidth === 0 || sceneHeight === 0) return
@@ -2378,7 +2409,7 @@ export class RenderWorkerCore {
         // full-res `#easuOutView` intermediate when applying full-res FXAA; else
         // the canvas swapchain directly. The r32uint object-ID texture is gone —
         // click picking uses the `clickedObjectId` atomic written in the shader.
-        const sceneTarget = fsrEnabled ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : canvasView
+        const sceneTarget = upscaleEnabled ? this.#colorTextureView : fullResFxaa ? this.#easuOutView! : canvasView
         const deferred = this.#prepareDeferred((packed & 1) !== 0, sceneWidth, sceneHeight)
         // Phase 2: if only selection/hover changed since the last geometry pass
         // (same camera/resolution/shading + build generation), reuse the
@@ -2398,8 +2429,10 @@ export class RenderWorkerCore {
         }
         this.#encodeScenePass(commandEncoder, sceneTarget, deferred, skipGeometry)
 
-        if (fsrEnabled) {
-            this.#encodeUpscale(commandEncoder, canvasView, sceneWidth, sceneHeight, this.#fullWidth, this.#fullHeight, fsrFxaa)
+        if (useEasu) {
+            this.#encodeUpscale(commandEncoder, canvasView, sceneWidth, sceneHeight, this.#fullWidth, this.#fullHeight, upscaleFxaa)
+        } else if (useBilinear) {
+            this.#encodeBilinearUpscale(commandEncoder, canvasView, this.#fullWidth, this.#fullHeight, upscaleFxaa)
         } else if (fullResFxaa) {
             this.#encodeFxaaPass(commandEncoder, canvasView)
         }
@@ -3610,6 +3643,41 @@ export class RenderWorkerCore {
         easuPass.setBindGroup(0, this.#easuBindGroup!)
         easuPass.draw(4)
         easuPass.end()
+
+        if (needFxaa) {
+            this.#encodeFxaaPass(encoder, finalTarget)
+        }
+    }
+
+    /**
+     * Encode the bilinear upscale chain (mode "bilinear-fxaa") — a cheaper, softer
+     * alternative to {@link #encodeUpscale}'s edge-adaptive EASU. The scene must
+     * already be rendered into the reduced-res `#colorTextureView`. The outline
+     * blit pipeline (a pure passthrough whose `#colorSampler` is linear, so the
+     * magnification IS bilinear) resolves it to full resolution; when `needFxaa`,
+     * it writes the full-res intermediate that FXAA then smooths into
+     * `finalTarget`, otherwise it writes `finalTarget` directly (callers only use
+     * this with FXAA — bilinear with no post pass is just the browser stretch).
+     */
+    #encodeBilinearUpscale(
+        encoder: GPUCommandEncoder,
+        finalTarget: GPUTextureView,
+        fullW: number,
+        fullH: number,
+        needFxaa: boolean,
+    ): void {
+        this.#ensureUpscaleTextures(fullW, fullH, needFxaa)
+
+        const blitTarget = needFxaa ? this.#easuOutView! : finalTarget
+        const blitPass = encoder.beginRenderPass({
+            label: "Bilinear Upscale",
+            colorAttachments: [{ view: blitTarget, loadOp: "clear", storeOp: "store" }],
+            timestampWrites: this.#timestampWritesFor("outline"),
+        })
+        blitPass.setPipeline(this.#outlinePipeline)
+        blitPass.setBindGroup(0, this.#outlineBindGroup!)
+        blitPass.draw(4)
+        blitPass.end()
 
         if (needFxaa) {
             this.#encodeFxaaPass(encoder, finalTarget)

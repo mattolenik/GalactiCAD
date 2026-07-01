@@ -20,17 +20,14 @@ import {
 
 /** Encode {@link UpscaleMode} as the u32 stored in the SAB / read by the worker. */
 export function upscaleModeToInt(mode: UpscaleMode): number {
-    return mode === "easu-fxaa" ? 2 : mode === "easu" ? 1 : 0
+    return mode === "bilinear-fxaa" ? 3 : mode === "easu-fxaa" ? 2 : mode === "easu" ? 1 : 0
 }
 
 /** Inverse of {@link upscaleModeToInt}. */
 export function upscaleModeFromInt(v: number): UpscaleMode {
-    return v === 2 ? "easu-fxaa" : v === 1 ? "easu" : "off"
+    return v === 3 ? "bilinear-fxaa" : v === 2 ? "easu-fxaa" : v === 1 ? "easu" : "off"
 }
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
-
-/** FPS scale factor: stored as fps * FPS_SCALE for integer storage */
-export const FPS_SCALE = 100
 
 /** Edge layout matches render-worker-core SELECTED_EDGE_SIZE */
 const SELECTED_EDGE_SIZE = 80
@@ -42,9 +39,10 @@ const SELECTED_EDGES_COUNT = 16
 
 const O_PUBLISHED_VERSION = 0
 const O_PUBLISHED_SLOT = 4
-const O_FPS = 8
-const O_FPS_VERSION = 12
-
+// Bytes 8–15 are reserved (formerly O_FPS + O_FPS_VERSION). The live FPS counter
+// was replaced by the "Show Framerate" overlay, which receives per-pass GPU
+// timings via a `frameTimings` postMessage instead of the SAB. The header stays
+// 16 bytes so slot offsets don't shift.
 const HEADER_SIZE = 16
 
 // ---------------------------------------------------------------------------
@@ -78,7 +76,7 @@ const S_O_HOVERED_OBJECT_ID = 6944
 const S_O_RAY_MARCH_PARAMS = 6948
 // FSR1 spatial-upscale mode (consumed on the reduced-res motion frames + the
 // full-res FXAA path). `resolutionScale` above already carries the render scale.
-const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+FXAA
+const S_O_UPSCALE_MODE = 6980 // u32: 0 = off (bilinear), 1 = EASU, 2 = EASU+FXAA, 3 = Bilinear+FXAA
 // "View Isolated" no longer rides the SAB: isolation recompiles the preview SDF
 // from the isolated subtree(s) as root (see SceneInfo.isolationRoot), driven by a
 // `setIsolatedIds` message — not a per-frame render-state field.
@@ -462,24 +460,6 @@ function readEdgesFromBuffer(
     return result
 }
 
-// ---------------------------------------------------------------------------
-// Worker: write FPS to shared buffer (header)
-// ---------------------------------------------------------------------------
-
-export function writeFps(buffer: SharedArrayBuffer, fps: number, version: number): void {
-    const u32 = new Uint32Array(buffer)
-    u32[O_FPS / 4] = Math.round(fps * FPS_SCALE)
-    Atomics.store(u32, O_FPS_VERSION / 4, version)
-}
-
-// ---------------------------------------------------------------------------
-// Main thread: read FPS from shared buffer
-// ---------------------------------------------------------------------------
-
-export function readFps(buffer: SharedArrayBuffer): number {
-    const u32 = new Uint32Array(buffer)
-    return u32[O_FPS / 4] / FPS_SCALE
-}
 
 /** Check if SharedArrayBuffer is available (cross-origin isolated). */
 export function isSharedMemoryAvailable(): boolean {

@@ -300,8 +300,11 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         exportBox.setAttribute("collapse-id", DEVTOOLS_COLLAPSE.appExport)
         shadow.appendChild(exportBox)
 
-        // --- Viewport: Show FPS, FeatureGraph overlay, Performance ---
-        const showFpsCb = this.#addCheckbox(viewportBox, "Show FPS", this.#showFps$.value)
+        // --- Viewport: Show Framerate, FeatureGraph overlay, Performance ---
+        // Toggles the top-left per-pass GPU frame-time overlay (replaced the old
+        // FPS counter). The state subject + persisted key stay named `showFps` for
+        // back-compat with saved settings; only the user-facing label changed.
+        const showFpsCb = this.#addCheckbox(viewportBox, "Show Framerate", this.#showFps$.value)
         this.#subscriptions.push(connectCheckbox(showFpsCb, this.#showFps$))
         this.#showFps$.pipe(skip(1)).subscribe(() => {
             persist()
@@ -419,6 +422,7 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
                 { value: "off", label: "Bilinear" },
                 { value: "easu", label: "EASU" },
                 { value: "easu-fxaa", label: "EASU+FXAA" },
+                { value: "bilinear-fxaa", label: "Bilinear+FXAA" },
             ],
             this.#upscaleState.mode,
         )
@@ -740,7 +744,13 @@ export class DevToolsAppSection extends HTMLElement implements DevToolsPersistab
         const incoming = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, JSONValue>) : {}
         const next: UpscaleParams = { ...DEFAULT_UPSCALE_PARAMS }
         if (typeof incoming.renderScale === "number" && Number.isFinite(incoming.renderScale)) next.renderScale = incoming.renderScale
-        if (incoming.mode === "off" || incoming.mode === "easu" || incoming.mode === "easu-fxaa") next.mode = incoming.mode
+        if (
+            incoming.mode === "off" ||
+            incoming.mode === "easu" ||
+            incoming.mode === "easu-fxaa" ||
+            incoming.mode === "bilinear-fxaa"
+        )
+            next.mode = incoming.mode
         this.#upscaleState = next
         if (this.#upscaleScaleSelect) this.#upscaleScaleSelect.value = String(next.renderScale)
         if (this.#upscaleModeSelect) this.#upscaleModeSelect.value = next.mode

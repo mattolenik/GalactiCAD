@@ -101,6 +101,35 @@ export interface BenchmarkResultPayload {
     error?: string
 }
 
+/**
+ * Per-pass GPU frame timings surfaced to the "Show Framerate" overlay (top-left
+ * of the SDF preview). All times are milliseconds, rolling-averaged over the last
+ * 3 rendered frames — rendering is event-driven (only on camera motion / content
+ * change), so this measures per-frame GPU cost, not a steady-state frame rate.
+ * `frame` is the total GPU time (sum of the passes that ran this frame); the rest
+ * are the individual passes (the same set logged to the console). `res`/`scale`/
+ * `ao`/`deferred` are context tags, not times.
+ */
+export interface FrameTimings {
+    /** Total GPU ms this frame (sum of passes that ran), averaged over the last 15 frames. */
+    frame: number
+    beam: number
+    scene: number
+    shade: number
+    easu: number
+    fxaa: number
+    outline: number
+    overlay: number
+    /** Render resolution "WxH" (after resolution-scale). */
+    res: string
+    /** Resolution scale in effect (1 = full res). */
+    scale: number
+    /** AO strength (context tag; AO's own cost is folded into `shade`). */
+    ao: number
+    /** Whether deferred shading ran this frame. */
+    deferred: boolean
+}
+
 /** Serializable representation of a scene node for main-thread getSceneNodes/matchNodesToSource. */
 export interface SerializedNode {
     id: number
@@ -372,8 +401,12 @@ export const DEFAULT_RAY_MARCH_PARAMS: RayMarchParams = {
  *  - `easu-fxaa` — EASU followed by FXAA (luma post-process antialiasing). FXAA
  *              also runs on full-res frames (still camera / 100% scale), where it
  *              smooths all edge types (creases + silhouettes).
+ *  - `bilinear-fxaa` — a plain bilinear upscale (the blit pipeline's linear
+ *              filter, no edge direction) followed by FXAA. Cheaper than EASU but
+ *              softer; FXAA recovers most of the edge crispness. Like `easu-fxaa`,
+ *              FXAA also runs on full-res frames.
  */
-export type UpscaleMode = "off" | "easu" | "easu-fxaa"
+export type UpscaleMode = "off" | "easu" | "easu-fxaa" | "bilinear-fxaa"
 
 /**
  * Spatial-upscale (FSR1) tunables, adjustable from dev tools. Only takes effect
@@ -518,4 +551,4 @@ export type WorkerToMainMessage =
           } | null
           requestId: number
       }
-    | { type: "fps"; fps: number }
+    | { type: "frameTimings"; timings: FrameTimings }

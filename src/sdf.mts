@@ -47,7 +47,6 @@ import {
     writeRenderPayloadSlot,
     publishRenderSlot,
     getPublishedRenderSlot,
-    readFps,
     SHARED_RENDER_BUFFER_SIZE,
     initSharedRenderBuffer,
 } from "./shared-render-buffer.mjs"
@@ -819,8 +818,8 @@ export class SDFRenderer {
                 if (msg.requestId != null) this.#pendingThumbnail.delete(msg.requestId)
                 break
             }
-            case "fps":
-                if (!this.#useSharedMemory) this.#preview.updateFPS(msg.fps)
+            case "frameTimings":
+                this.#preview.updateFrameTimings(msg.timings)
                 break
             case "pickPosResult": {
                 const pending = this.#pendingPickPos.get(msg.requestId)
@@ -2332,7 +2331,6 @@ export class SDFRenderer {
             )
             publishRenderSlot(this.#sharedBuffer, nextSlot, this.#renderVersion)
             this.#worker.postMessage({ type: "renderKick", version: this.#renderVersion })
-            this.#preview.updateFPS(readFps(this.#sharedBuffer))
         } else {
             this.#worker.postMessage(payload, [payload.viewTransform.buffer])
         }

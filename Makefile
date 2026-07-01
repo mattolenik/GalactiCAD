@@ -13,7 +13,6 @@ BUILD            := $(TSX) --disable-warning=ExperimentalWarning build/build.mts
 BROWSERS_CLI     := npx @puppeteer/browsers
 BROWSERS_DIR     := .browsers
 USER_DATA_DIR    := $(PWD)/$(BROWSERS_DIR)/users-user-data-dir
-export CHROMIUM   = $(shell scripts/chromium-path)
 export VERSION    = $(shell scripts/version)
 
 ifeq ($(AGENT),true)
@@ -108,7 +107,8 @@ start:
 open: start-browser kill-user-browser
 	@port=$$(jq -r .port "$(RUN_FILE)")
 	echo "Opening isolated user browser (profile $(USER_DATA_DIR)): http://localhost:$$port"
-	nohup "$(CHROMIUM)" --user-data-dir="$(USER_DATA_DIR)" --enable-unsafe-webgpu "http://localhost:$$port" > /dev/null 2>&1 &
+	chromium=$$(scripts/chromium-path)
+	nohup "$$chromium" --user-data-dir="$(USER_DATA_DIR)" --enable-unsafe-webgpu "http://localhost:$$port" > /dev/null 2>&1 &
 
 .PHONY: _stop
 _stop:

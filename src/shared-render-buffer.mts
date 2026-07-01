@@ -29,9 +29,6 @@ export function upscaleModeFromInt(v: number): UpscaleMode {
 }
 import type { MainToWorkerMessage } from "./render-worker-protocol.mjs"
 
-/** FPS scale factor: stored as fps * FPS_SCALE for integer storage */
-export const FPS_SCALE = 100
-
 /** Edge layout matches render-worker-core SELECTED_EDGE_SIZE */
 const SELECTED_EDGE_SIZE = 80
 const SELECTED_EDGES_COUNT = 16
@@ -42,9 +39,10 @@ const SELECTED_EDGES_COUNT = 16
 
 const O_PUBLISHED_VERSION = 0
 const O_PUBLISHED_SLOT = 4
-const O_FPS = 8
-const O_FPS_VERSION = 12
-
+// Bytes 8–15 are reserved (formerly O_FPS + O_FPS_VERSION). The live FPS counter
+// was replaced by the "Show Framerate" overlay, which receives per-pass GPU
+// timings via a `frameTimings` postMessage instead of the SAB. The header stays
+// 16 bytes so slot offsets don't shift.
 const HEADER_SIZE = 16
 
 // ---------------------------------------------------------------------------
@@ -462,24 +460,6 @@ function readEdgesFromBuffer(
     return result
 }
 
-// ---------------------------------------------------------------------------
-// Worker: write FPS to shared buffer (header)
-// ---------------------------------------------------------------------------
-
-export function writeFps(buffer: SharedArrayBuffer, fps: number, version: number): void {
-    const u32 = new Uint32Array(buffer)
-    u32[O_FPS / 4] = Math.round(fps * FPS_SCALE)
-    Atomics.store(u32, O_FPS_VERSION / 4, version)
-}
-
-// ---------------------------------------------------------------------------
-// Main thread: read FPS from shared buffer
-// ---------------------------------------------------------------------------
-
-export function readFps(buffer: SharedArrayBuffer): number {
-    const u32 = new Uint32Array(buffer)
-    return u32[O_FPS / 4] / FPS_SCALE
-}
 
 /** Check if SharedArrayBuffer is available (cross-origin isolated). */
 export function isSharedMemoryAvailable(): boolean {

@@ -1527,10 +1527,10 @@ class App {
             devTools.featureGraphDifferentiateSegments = this.renderer.featureGraphDifferentiateSegments
         })
 
-        const showFps = devTools.showFps
-        preview.showFps = showFps
+        const showFramerate = devTools.showFps
+        preview.showFramerate = showFramerate
         devTools.onShowFpsChange = (enabled) => {
-            preview.showFps = enabled
+            preview.showFramerate = enabled
         }
 
         const meshViewerEnabled = devTools.meshViewer
@@ -1820,9 +1820,9 @@ class App {
                 this.#settings.updateGlobal({ app: { devToolsEnabled: enabled } })
                 this.#toolbarRefs.devTools.visible = enabled
                 if (!enabled) {
-                    this.#preview.showFps = false
+                    this.#preview.showFramerate = false
                 } else {
-                    this.#preview.showFps = this.#toolbarRefs.devTools.showFps
+                    this.#preview.showFramerate = this.#toolbarRefs.devTools.showFps
                 }
             },
             settings => {

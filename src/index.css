@@ -161,6 +161,19 @@ mesh-viewer {
     bottom: 0;
     width: var(--editor-width, 35%);
 }
+/* Offsets for top-left preview chrome (the framerate overlay) so it clears the
+   editor overlay. Inherited into the preview-window shadow DOM; the % resolves
+   against the preview host box (== #main-panels), matching the editor's size and
+   tracking split drags live. Landscape = shift right by the editor column;
+   portrait = shift down by the editor row. */
+#workspace.editor-left #main-panels {
+    --fr-left: var(--editor-width, 35%);
+    --fr-top: 0px;
+}
+#workspace:not(.editor-left) #main-panels {
+    --fr-left: 0px;
+    --fr-top: var(--editor-height, 22%);
+}
 /* Polygon / path editor replaces the code editor in the same slot */
 #main-panels polygon-editor,
 #main-panels path2d-editor {

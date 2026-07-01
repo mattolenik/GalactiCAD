@@ -79,7 +79,7 @@ import {
 import type { SelectionInfo } from "./components/preview-window.mjs"
 import { EdgeKind } from "./edge-kind.mjs"
 import { log, logWgsl } from "./logging/debug-log.mjs"
-import { writeFps, SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset, SLOT_SIZE } from "./shared-render-buffer.mjs"
+import { SAB_LAYOUT, readSelectionStateFromSAB, getPublishedRenderSlot, getSlotByteOffset, SLOT_SIZE } from "./shared-render-buffer.mjs"
 
 if (!isoSampleBatchShaderSource.includes("fn isoSampleBatch") || !isoSampleBatchShaderSource.includes("fn isoSampleBatchMid")) {
     throw new Error("iso_sample_batch.wgsl failed to bundle for render worker")
@@ -403,10 +403,6 @@ export class RenderWorkerCore {
     #renderTextureHeight = 0
     #fullWidth = 0
     #fullHeight = 0
-    #framerate = new AveragedBuffer(4)
-    #lastRenderTime = 0
-    #fpsFrameCount = 0
-    #lastFpsSendTime = 0
     #lightDirBuf = new Float32Array(12)
     // [0..6]=xray,heatmap,beam,selMode,ghost,flatShading,debugTessEdges (matches
     // ViewSettings in preview.wgsl); padded to 8 (32 bytes) for uniform 16-byte alignment.
@@ -494,7 +490,6 @@ export class RenderWorkerCore {
      * param-only rebuild stay param-only when isolation is unchanged, and forces a
      * full recompile (agent path) when it differs. */
     #builtIsolatedIds: number[] = []
-    #fpsVersion = 0
     /** Pre-allocated dedup caches (param-only); `-1` length = never uploaded. */
     #lastSceneParamUpload = new Float32Array(SCENE_PARAMS_F32_CAPACITY)
     #lastSceneParamLen = -1
@@ -539,6 +534,24 @@ export class RenderWorkerCore {
     }
     /** Frames since last profiling log. Reported every ~60 frames to avoid console spam. */
     #passTimeLogFrames = 0
+    /**
+     * Short 15-frame rolling averages mirroring {@link #passTimeAverages}, feeding
+     * the "Show Framerate" overlay. The 30-frame set above stays for the console
+     * A/B diagnostic; the overlay shows the last-15-frame figure the user asked for.
+     */
+    #overlayPassMs: Record<ProfiledPassName, AveragedBuffer> = {
+        beam: new AveragedBuffer(15),
+        scene: new AveragedBuffer(15),
+        shade: new AveragedBuffer(15),
+        easu: new AveragedBuffer(15),
+        fxaa: new AveragedBuffer(15),
+        outline: new AveragedBuffer(15),
+        overlay: new AveragedBuffer(15),
+    }
+    /** 15-frame rolling average of total GPU frame time (sum of the passes that ran). */
+    #overlayFrameMs = new AveragedBuffer(15)
+    /** `performance.now()` of the last `frameTimings` post; throttles the overlay feed to ~10 Hz. */
+    #lastFrameTimingsPost = 0
     /**
      * Per-frame context surfaced in the `gpu pass times` log so each emitted
      * line is self-describing. Lets a lighting-cost A/B (read `scene` ms with
@@ -1564,6 +1577,7 @@ export class RenderWorkerCore {
             this.#timestampBusy = false
             return
         }
+        let frameMs = 0
         try {
             const bi = new BigInt64Array(staging.getMappedRange(0, byteLen).slice(0))
             for (let i = 0; i < filled.length; i++) {
@@ -1573,12 +1587,21 @@ export class RenderWorkerCore {
                 // Timestamps are unordered across queues only when the GPU
                 // reorders work; for pass-pair writes inside one encoder we
                 // expect t1 >= t0. Guard anyway against driver weirdness.
-                if (ns >= 0) this.#passTimeAverages[filled[i]!].update(ns / 1_000_000)
+                if (ns >= 0) {
+                    const ms = ns / 1_000_000
+                    this.#passTimeAverages[filled[i]!].update(ms) // 30-frame: console A/B
+                    this.#overlayPassMs[filled[i]!].update(ms) // 15-frame: "Show Framerate" overlay
+                    frameMs += ms
+                }
             }
         } finally {
             staging.unmap()
             this.#timestampBusy = false
         }
+        // Total per-frame GPU time (sum of the passes that ran), 15-frame averaged,
+        // then pushed (throttled) to the main-thread overlay.
+        this.#overlayFrameMs.update(frameMs)
+        this.#postFrameTimings()
         this.#passTimeLogFrames++
         if (this.#passTimeLogFrames >= 60) {
             this.#passTimeLogFrames = 0
@@ -1602,6 +1625,38 @@ export class RenderWorkerCore {
                 overlay: roundMs2(avg.overlay.average),
             })
         }
+    }
+
+    /**
+     * Push the current 15-frame GPU timings to the main thread for the "Show
+     * Framerate" overlay. Throttled to ~10 Hz — the overlay only needs a readable
+     * cadence, and the averages already smooth over the last 15 frames. Sent
+     * whenever profiling is active (timestamp-query available); the overlay
+     * element stays hidden until the user enables it, so an off overlay just drops
+     * the message cheaply.
+     */
+    #postFrameTimings(): void {
+        const now = performance.now()
+        if (now - this.#lastFrameTimingsPost < 100) return
+        this.#lastFrameTimingsPost = now
+        const o = this.#overlayPassMs
+        self.postMessage({
+            type: "frameTimings",
+            timings: {
+                frame: roundMs2(this.#overlayFrameMs.average),
+                beam: roundMs2(o.beam.average),
+                scene: roundMs2(o.scene.average),
+                shade: roundMs2(o.shade.average),
+                easu: roundMs2(o.easu.average),
+                fxaa: roundMs2(o.fxaa.average),
+                outline: roundMs2(o.outline.average),
+                overlay: roundMs2(o.overlay.average),
+                res: `${this.#profileCtx.w}x${this.#profileCtx.h}`,
+                scale: roundMs2(this.#profileCtx.scale),
+                ao: roundMs2(this.#profileCtx.ao),
+                deferred: !!this.#deferredShading,
+            },
+        })
     }
 
     /**
@@ -1865,29 +1920,7 @@ export class RenderWorkerCore {
     render(
         msg: Extract<MainToWorkerMessage, { type: "render" }>,
         outputTextureView?: GPUTextureView,
-        sharedBuffer?: SharedArrayBuffer,
     ): void {
-        const now = performance.now()
-        if (this.#lastRenderTime > 0) {
-            const delta = now - this.#lastRenderTime
-            if (delta > 0) {
-                this.#framerate.update(1000 / delta)
-                this.#fpsFrameCount++
-                const timeSinceFps = now - this.#lastFpsSendTime
-                if (this.#fpsFrameCount >= 5 || timeSinceFps >= 100) {
-                    this.#fpsFrameCount = 0
-                    this.#lastFpsSendTime = now
-                    if (sharedBuffer) {
-                        this.#fpsVersion++
-                        writeFps(sharedBuffer, this.#framerate.average, this.#fpsVersion)
-                    } else {
-                        self.postMessage({ type: "fps", fps: this.#framerate.average })
-                    }
-                }
-            }
-        }
-        this.#lastRenderTime = now
-
         this.#lastRenderMsg = msg
         this.#lastSelectionMode = msg.viewSettings.selectionMode
         const { viewTransform, cameraPosition, cameraRes, viewSettings, viewCenter, resolutionScale, selectionState } = msg
@@ -2137,23 +2170,6 @@ export class RenderWorkerCore {
             this.#lastRenderedSabHash = hash
             this.#forceNextRender = false
         }
-
-        const now = performance.now()
-        if (!pickClickUV && this.#lastRenderTime > 0) {
-            const delta = now - this.#lastRenderTime
-            if (delta > 0) {
-                this.#framerate.update(1000 / delta)
-                this.#fpsFrameCount++
-                const timeSinceFps = now - this.#lastFpsSendTime
-                if (this.#fpsFrameCount >= 5 || timeSinceFps >= 100) {
-                    this.#fpsFrameCount = 0
-                    this.#lastFpsSendTime = now
-                    this.#fpsVersion++
-                    writeFps(buffer, this.#framerate.average, this.#fpsVersion)
-                }
-            }
-        }
-        this.#lastRenderTime = now
 
         const L = SAB_LAYOUT
         const u32 = new Uint32Array(buffer)

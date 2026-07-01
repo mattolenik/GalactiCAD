@@ -1,5 +1,6 @@
 import { EdgeKind } from "../edge-kind.mjs"
 import type { ThemeMode } from "../storage/settings.mjs"
+import type { FrameTimings } from "../render-worker-protocol.mjs"
 
 export interface EdgeSelectionInfo {
     kind: number
@@ -55,23 +56,29 @@ export class PreviewWindow extends HTMLElement {
      * reach the WebGPU canvas underneath. */
     readonly gizmoCanvas: HTMLCanvasElement
 
-    #counter: HTMLSpanElement
+    #framerateOverlay: HTMLDivElement
     #selInfo: HTMLDivElement
     #themeBtn: HTMLButtonElement
-    #framerateThreshold: number = 120
-    #showFps: boolean = false
+    #showFramerate: boolean = false
     /** Blender-style 3D pivot cursor — was a per-pixel SDF in `preview.wgsl`; now a DOM overlay positioned via `setPivotCursor()`. */
     #pivotCursor: HTMLDivElement
 
     onThemeCycle?: () => void
 
-    get showFps(): boolean {
-        return this.#showFps
+    get showFramerate(): boolean {
+        return this.#showFramerate
     }
 
-    set showFps(enabled: boolean) {
-        this.#showFps = enabled
-        this.#counter.style.visibility = enabled ? "visible" : "hidden"
+    set showFramerate(enabled: boolean) {
+        this.#showFramerate = enabled
+        this.#framerateOverlay.style.visibility = enabled ? "visible" : "hidden"
+        if (!enabled) {
+            this.#framerateOverlay.textContent = ""
+        } else if (!this.#framerateOverlay.textContent) {
+            // Timings only arrive while the camera moves (rendering is event-driven),
+            // so prompt rather than show a blank box until the first sample lands.
+            this.#framerateOverlay.textContent = "GPU ms · move camera…"
+        }
     }
 
     constructor() {
@@ -110,9 +117,25 @@ export class PreviewWindow extends HTMLElement {
             align-items: flex-end;
             gap: 2px;
         }
-        .fps-counter {
-            font-size: 20px;
-            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.35);
+        .framerate-overlay {
+            position: absolute;
+            /* Clear the editor overlay: it covers the left column (landscape,
+               --fr-left) or top row (portrait, --fr-top) of #main-panels. Those
+               vars are set per-orientation in index.css and inherit through the
+               shadow boundary; their % resolves against this host (== #main-panels
+               box), so the overlay stays pinned to the visible viewport's top-left
+               and tracks editor-split drags live. */
+            top: calc(10px + var(--fr-top, 0px));
+            left: calc(10px + var(--fr-left, 0px));
+            pointer-events: none;
+            z-index: 1;
+            font-family: ui-monospace, "SF Mono", Menlo, monospace;
+            font-size: 11px;
+            line-height: 1.35;
+            white-space: pre;
+            color: rgb(from var(--fg-color, whitesmoke) r g b / 0.7);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+            visibility: hidden;
         }
         .sel-info {
             position: absolute;
@@ -175,10 +198,13 @@ export class PreviewWindow extends HTMLElement {
 
         const overlay = document.createElement("div")
         overlay.classList.add("overlay")
-        this.#counter = document.createElement("span")
-        this.#counter.classList.add("fps-counter")
         shadow.appendChild(overlay)
-        overlay.appendChild(this.#counter)
+
+        // Per-pass GPU frame-time readout, top-left. Fed by `updateFrameTimings`
+        // (worker `frameTimings` messages); hidden until "Show Framerate" is on.
+        this.#framerateOverlay = document.createElement("div")
+        this.#framerateOverlay.classList.add("framerate-overlay")
+        shadow.appendChild(this.#framerateOverlay)
 
         this.#themeBtn = document.createElement("button")
         this.#themeBtn.classList.add("theme-btn")
@@ -285,14 +311,25 @@ export class PreviewWindow extends HTMLElement {
         this.#selInfo.style.setProperty("--sel-info-left", `${offsetPx}px`)
     }
 
-    updateFPS(fps: number) {
-        if (!this.#showFps) return
-
-        if (fps <= this.#framerateThreshold) {
-            this.#counter.textContent = fps.toFixed(0)
-        } else {
-            this.#counter.textContent = ""
-        }
+    /**
+     * Render the per-pass GPU frame timings (15-frame averages, ms) in the top-left
+     * overlay. No-op while "Show Framerate" is off. Rendering is event-driven, so
+     * these are per-frame GPU costs, not a steady-state frame rate.
+     */
+    updateFrameTimings(t: FrameTimings) {
+        if (!this.#showFramerate) return
+        const row = (label: string, ms: number) => label.padEnd(8) + ms.toFixed(2).padStart(6)
+        this.#framerateOverlay.textContent =
+            "GPU ms · avg 15 frames\n" +
+            row("frame", t.frame) + "\n" +
+            row("scene", t.scene) + "\n" +
+            row("shade", t.shade) + "\n" +
+            row("beam", t.beam) + "\n" +
+            row("easu", t.easu) + "\n" +
+            row("fxaa", t.fxaa) + "\n" +
+            row("outline", t.outline) + "\n" +
+            row("overlay", t.overlay) + "\n" +
+            `${t.res} · ${t.scale}× · ao ${t.ao}${t.deferred ? " · deferred" : ""}`
     }
 }
 

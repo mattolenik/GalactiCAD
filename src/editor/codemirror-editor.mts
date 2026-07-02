@@ -51,6 +51,7 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } 
 import { searchKeymap } from "@codemirror/search"
 import { lintKeymap } from "@codemirror/lint"
 import { javascript } from "@codemirror/lang-javascript"
+import { vim } from "@replit/codemirror-vim"
 import type { EditorSettings } from "../storage/settings.mjs"
 import { editorThemeExtension, type ThemeName } from "./codemirror-theme.mjs"
 import { dprintFormatting } from "./dprint-formatter.mjs"
@@ -112,11 +113,15 @@ const whitespaceExt = (mode: EditorSettings["renderWhitespace"]): Extension =>
 const foldExt = (on: boolean): Extension => (on ? [codeFolding(), foldGutter()] : [])
 const tabExt = (n: number): Extension => [EditorState.tabSize.of(n), indentUnit.of(" ".repeat(n))]
 const fontExt = (px: number): Extension => EditorView.theme({ "&": { fontSize: `${px}px` } })
+// Vim keybindings. Must precede the app's keymaps so Vim intercepts keys first
+// (the compartment sits at the head of #baseExtensions); off ⇒ no extension.
+const vimExt = (on: boolean): Extension => (on ? vim() : [])
 
 export class CodeEditor {
     readonly view: EditorView
 
     // Reconfigurable option compartments.
+    #cVim = new Compartment()
     #cLineNumbers = new Compartment()
     #cWrap = new Compartment()
     #cWhitespace = new Compartment()
@@ -154,6 +159,9 @@ export class CodeEditor {
     /** The base extension set shared by every document state. */
     #baseExtensions(): Extension {
         return [
+            // Vim keymap must come before every other keymap so it wins key
+            // dispatch; keep it at the head of the extension set.
+            this.#cVim.of(vimExt(this.#opts.vim)),
             // Compartmented options (current values; re-applied on setState).
             this.#cLineNumbers.of(lineNumbersExt(this.#effectiveLineNumbers())),
             this.#cWrap.of(wrapExt(this.#opts.wordWrap)),
@@ -207,6 +215,7 @@ export class CodeEditor {
     /** Effects that reconfigure all option compartments to the current values. */
     #optionEffects() {
         return [
+            this.#cVim.reconfigure(vimExt(this.#opts.vim)),
             this.#cLineNumbers.reconfigure(lineNumbersExt(this.#effectiveLineNumbers())),
             this.#cWrap.reconfigure(wrapExt(this.#opts.wordWrap)),
             this.#cWhitespace.reconfigure(whitespaceExt(this.#opts.renderWhitespace)),

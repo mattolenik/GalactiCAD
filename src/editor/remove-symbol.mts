@@ -96,17 +96,48 @@ export function canRemoveAt(src: string, offset: number, opts?: RemoveOptions): 
  * edit was applied. Mirrors the dispatch pattern in insert-shape.mts.
  */
 export function removeSymbolAt(editor: CodeEditor, offset: number, opts?: RemoveOptions): boolean {
+    return removeSymbolsAt(editor, [offset], opts)
+}
+
+/**
+ * Compute + dispatch the removal of the symbols at each of `offsets` in ONE
+ * transaction. All edits are computed against the original document, then
+ * overlapping ranges are merged so CodeMirror receives a non-overlapping set.
+ * Used to delete one or more objects selected in the SDF preview. Returns true
+ * if anything was removed.
+ */
+export function removeSymbolsAt(editor: CodeEditor, offsets: number[], opts?: RemoveOptions): boolean {
     const view = editor.view
     const src = view.state.doc.toString()
-    const edits = computeRemoveEdits(src, offset, opts)
-    if (!edits || edits.length === 0) return false
-    const sorted = [...edits].sort((a, b) => a.from - b.from)
+    const all: TextEdit[] = []
+    for (const offset of offsets) {
+        const edits = computeRemoveEdits(src, offset, opts)
+        if (edits) all.push(...edits)
+    }
+    if (all.length === 0) return false
+    const merged = mergeEdits(all)
     view.dispatch({
-        changes: sorted,
-        selection: EditorSelection.cursor(sorted[0].from),
+        changes: merged,
+        selection: EditorSelection.cursor(merged[0].from),
     })
     editor.focus()
     return true
+}
+
+/** Sort edits and merge any overlapping ranges (deletions dominate; inserts concatenate). */
+export function mergeEdits(edits: TextEdit[]): TextEdit[] {
+    const sorted = [...edits].sort((a, b) => a.from - b.from || a.to - b.to)
+    const out: TextEdit[] = []
+    for (const e of sorted) {
+        const last = out[out.length - 1]
+        if (last && e.from < last.to) {
+            last.to = Math.max(last.to, e.to)
+            last.insert += e.insert
+        } else {
+            out.push({ ...e })
+        }
+    }
+    return out
 }
 
 // ---------------------------------------------------------------------------

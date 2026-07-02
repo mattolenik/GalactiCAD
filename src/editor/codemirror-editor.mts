@@ -348,6 +348,14 @@ export class CodeEditor {
         return this.view.posAtCoords({ x, y }) ?? null
     }
 
+    /** 0-based character offset for a 1-based line/column, or null if out of range. */
+    lineColToOffset(line: number, column: number): number | null {
+        const doc = this.view.state.doc
+        if (line < 1 || line > doc.lines) return null
+        const l = doc.line(line)
+        return Math.min(l.from + (column - 1), l.to)
+    }
+
     /** Current cursor (head) and ordered selection range, or null if no document. */
     getSelectionLineCol(): { pos: LineCol; sel: LineColSelection } | null {
         const r = this.view.state.selection.main

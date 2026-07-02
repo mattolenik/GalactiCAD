@@ -5,6 +5,7 @@
 
 import * as ts from "typescript"
 import { log } from "../logging/debug-log.mjs"
+import { ALL_SHAPE_FUNCTIONS, CSG_PASSTHROUGH_FUNCTIONS, MODIFIER_NAMES } from "./shape-classification.mjs"
 import { BOTTOM, LEFT, RIGHT, TOP } from "../scene/direction-indicator.mjs"
 import { vec3, type Vec3, Vec3f } from "../vecmat/vector.mjs"
 import type { PathElement } from "../scene/primitives/path2d.mjs"
@@ -211,6 +212,16 @@ function parseSource(src: string): ts.SourceFile {
 }
 
 /**
+ * Parse bare user source into a wrapped `ts.SourceFile` (same wrapping/offset
+ * convention as the rest of this module: node offsets are in wrapped space, so
+ * a user-source offset maps to `offset + WRAP_PREFIX_CHARS`). Exposed for the
+ * editor's "Remove symbol" feature, which needs the raw AST structure.
+ */
+export function parseUserSource(src: string): ts.SourceFile {
+    return parseSource(src)
+}
+
+/**
  * Parse source and return the TypeScript SourceFile plus syntactic diagnostics.
  * Uses getSyntacticDiagnostics (not getPreEmitDiagnostics) so that semantic errors
  * from missing lib.d.ts types (Math, console, etc.) do not produce false positives
@@ -293,20 +304,9 @@ export function findReturnStatementLine(src: string): number | null {
     return lastReturnLine
 }
 
-/**
- * Shape functions we care about for source location tracking
- */
-const PRIMITIVE_FUNCTIONS = new Set(["sphere", "box", "cylinder", "cone", "torus", "threaded_rod", "capsule", "plane", "hexprism", "disc", "blob", "polygon2d", "path2d"])
-const COMPOSITE_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "tongue", "morph", "seam", "extrude", "loft", "lathe", "knurl"])
-const MODIFIER_NAMES = new Set(["rotate", "translate", "scale", "shell", "offset", "elongate", "twist", "bend", "taper", "repeatPolar"])
-const ALL_SHAPE_FUNCTIONS = new Set([...PRIMITIVE_FUNCTIONS, ...COMPOSITE_FUNCTIONS, ...MODIFIER_NAMES])
-
-/**
- * CSG operators that act as pure pass-throughs: they have no independent visual representation
- * and should be "looked through" when resolving logical leaf calls.
- * Modifiers (rotate, shell, etc.) and rendering composites (extrude, loft, lathe) are NOT in this set.
- */
-const CSG_PASSTHROUGH_FUNCTIONS = new Set(["union", "subtract", "intersect", "pipe", "engrave", "groove", "knurl", "tongue", "morph", "seam"])
+// Shape/function classification sets (PRIMITIVE_FUNCTIONS, MODIFIER_NAMES,
+// ALL_SHAPE_FUNCTIONS, CSG_PASSTHROUGH_FUNCTIONS, …) now live in
+// ./shape-classification.mjs so they can be shared without importing this parser.
 
 /**
  * Parser for extracting source locations from CAD code

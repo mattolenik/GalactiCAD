@@ -343,6 +343,11 @@ export class CodeEditor {
         return offset == null ? null : this.#offsetToLineCol(offset)
     }
 
+    /** 0-based character offset at client coords, or null if outside content. */
+    offsetAtCoords(x: number, y: number): number | null {
+        return this.view.posAtCoords({ x, y }) ?? null
+    }
+
     /** Current cursor (head) and ordered selection range, or null if no document. */
     getSelectionLineCol(): { pos: LineCol; sel: LineColSelection } | null {
         const r = this.view.state.selection.main

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { computeRemoveEdits, type TextEdit } from "./remove-symbol.mjs"
+import { computeRemoveEdits, mergeEdits, type TextEdit } from "./remove-symbol.mjs"
 
 /** Parse a source string with a `|` caret marker → { src, offset }. */
 function caret(marked: string): { src: string; offset: number } {
@@ -167,4 +167,47 @@ test("variable reference occurrence removes just that occurrence", () => {
     const edits = computeRemoveEdits(src, offset)
     assert.notEqual(edits, null)
     assert.equal(applyEdits(src, edits!), "let obj = box([1, 1, 1])\nunion(a, c)")
+})
+
+// --- multi-object removal (SDF-preview selection / Delete key) ---------------
+
+/** Mirror removeSymbolsAt's pure core: edits for many offsets, computed together, merged. */
+function removeMany(src: string, offsets: number[]): string {
+    const all: TextEdit[] = []
+    for (const o of offsets) {
+        const edits = computeRemoveEdits(src, o)
+        if (edits) all.push(...edits)
+    }
+    return applyEdits(src, mergeEdits(all))
+}
+
+test("multi-object: two distinct objects are removed together", () => {
+    const src = "let a = box([1, 1, 1])\nlet b = sphere.radius(2)"
+    const out = removeMany(src, [src.indexOf("box") + 1, src.indexOf("sphere") + 1])
+    assert.equal(out, "let a = \nlet b = ")
+})
+
+test("multi-object: overlapping parent+child edits merge to the parent removal", () => {
+    const src = "let s = union(box([1, 1, 1]), sphere.radius(1))"
+    const out = removeMany(src, [src.indexOf("union") + 1, src.indexOf("box") + 1])
+    assert.equal(out, "let s = ")
+})
+
+test("mergeEdits: disjoint deletions are kept separate and sorted", () => {
+    const merged = mergeEdits([
+        { from: 10, to: 15, insert: "" },
+        { from: 2, to: 5, insert: "" },
+    ])
+    assert.deepEqual(merged, [
+        { from: 2, to: 5, insert: "" },
+        { from: 10, to: 15, insert: "" },
+    ])
+})
+
+test("mergeEdits: overlapping ranges collapse into one", () => {
+    const merged = mergeEdits([
+        { from: 5, to: 20, insert: "" },
+        { from: 8, to: 12, insert: "" },
+    ])
+    assert.deepEqual(merged, [{ from: 5, to: 20, insert: "" }])
 })

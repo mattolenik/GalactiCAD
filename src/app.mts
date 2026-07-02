@@ -72,6 +72,7 @@ import {
     visibleRegionForCanvas,
 } from "./layout/editor-layout.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
+import { canRemoveAt, removeSymbolAt } from "./editor/remove-symbol.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad, openSingleScad } from "./fs/file-picker.mjs"
 import { createFolderIncludeResolver } from "./fs/scad-includes.mjs"
@@ -860,10 +861,11 @@ class App {
 
     /**
      * Build the editor right-click menu items for a 1-based source position.
-     * "Edit polygon" and "View Isolated" are gated by what sits at the click
-     * (app-side); "Insert shape" is always offered.
+     * `offset` is the 0-based character offset of the click (or null when it
+     * could not be resolved). "Edit polygon", "View Isolated" and "Remove" are
+     * gated by what sits at the click (app-side); "Insert shape" is always offered.
      */
-    #buildEditorContextMenuItems(line: number, column: number): ContextMenuItem[] {
+    #buildEditorContextMenuItems(line: number, column: number, offset: number | null): ContextMenuItem[] {
         const items: ContextMenuItem[] = []
 
         const parsedCall = this.#findParsedCallAtPosition(line, column)
@@ -876,6 +878,17 @@ class App {
         const isolatableId = this.#findIsolatableNodeIdAtPosition(line, column)
         if (isolatableId !== null) {
             items.push({ label: "View Isolated", action: () => this.#applyIsolation([isolatableId]) })
+        }
+
+        if (offset !== null) {
+            const src = this.editor.getValue()
+            const opts = {
+                sourceFile: this.#sourceParser.getCachedSourceFile(src),
+                fluentMethods: styleInfo.FluentMethods,
+            }
+            if (canRemoveAt(src, offset, opts)) {
+                items.push({ label: "Remove", action: () => removeSymbolAt(this.editor, offset, opts) })
+            }
         }
 
         items.push({
@@ -1327,7 +1340,8 @@ class App {
             cancelEditorHoverForRightClick()
             const lc = this.editor.coordsToLineCol(e.clientX, e.clientY) ?? this.editor.getCursor()
             if (!lc) return
-            const items = this.#buildEditorContextMenuItems(lc.line, lc.column)
+            const offset = this.editor.offsetAtCoords(e.clientX, e.clientY)
+            const items = this.#buildEditorContextMenuItems(lc.line, lc.column, offset)
             if (items.length === 0) return
             e.preventDefault()
             this.#contextMenu?.setItems(items)

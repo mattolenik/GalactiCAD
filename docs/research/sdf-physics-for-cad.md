@@ -129,6 +129,62 @@ solid represented as an SDF, fluid solved on a background grid.
 
 **Confidence: high** that SDF-IBM CFD is real and used.
 
+### Moving boundaries & fluid-structure interaction (valves, flaps, hinged parts)
+
+Moving geometry is not an extension of immersed-boundary CFD — it is the **mainstream** use, and the
+static case above is the simplification. Peskin invented IBM in 1972 for **heart-valve leaflets** —
+moving flaps in blood flow — precisely so the grid would not have to be regenerated as the boundary
+moved. Two of the cited methods already do this: **CFD-DEM** (CMAME 2023) has particles that translate
+**and rotate** through a *fixed* Eulerian grid, re-classified each step "by testing the signs of each
+mesh node… without mesh intersection tests"; **sdfibm** validated 100-particle sedimentation. The
+template is: **the fluid grid stays fixed; the solid SDF is re-located on it every step via the sign.**
+
+- **Rigid motion is metric-free (kernel win).** A rotation+translation of a true SDF is still a true
+  SDF (isometry preserves `|∇φ| = 1`), and galacticad leaves already evaluate in body-local coords via
+  `inv_apply_point`. Moving a rigid valve/flap to pose `M(t)` is just composing `M⁻¹` into that
+  transform — exact at any pose, and it does **not** re-corrupt the field. (A genuinely *deforming*
+  flap re-inflates the gradient like the twist/loft cases → redistance per step.)
+- **Moving-wall BC.** No-slip becomes `u_fluid → u_wall = v + ω × r`, not `→ 0`; get `v, ω`
+  analytically from the pose rate and the wall normal from the normalized gradient.
+- **Re-tag + narrow-band redistance per step**, amortized — only re-band when the interface has moved
+  ≳1 cell; cost is `O(band cells)`, not the whole domain.
+- **Fresh / dead cells — the real numerical headache.** A cell that flips from solid to fluid
+  ("uncovered"/fresh) has no valid history; naïve handling causes **spurious force oscillations**.
+  Mitigate by extrapolating velocity/pressure into fresh cells or using a diffuse/fractional
+  (VOF-style) interface so cells transition gradually instead of flipping binary.
+
+**Prescribed motion vs. two-way FSI:**
+
+- **Prescribed** (known valve schedule / flap angle vs. time) → one-way, easy: drive the pose, run the
+  fluid.
+- **Two-way FSI** (flap moves *because* the fluid pushes it) → integrate fluid traction over the
+  immersed surface into force and torque, `F = ∮ (−pI + τ)·n dS`, `M = ∮ r × (σ·n) dS` (normal `n`
+  from the gradient), update the body, move the SDF, repeat. Beware **added-mass instability** — a
+  light body in a dense fluid needs *strong* (sub-iterated) coupling.
+- **Usually 1-DOF.** A valve/flap is typically a rigid body on a hinge or slide, so its state is a
+  single number (angle or travel) solved from torque balance about the hinge. This is a *mechanism
+  DOF* — solved on the CAD/constraint side (§5's gap), not as an SDF query.
+
+**The hard corner — full seating (`gap → 0`).** As a valve closes, the fluid film becomes sub-cell and
+enters the lubrication regime; brute-force CFD fails. Handled with modeling hacks (minimum-gap clamp,
+porous-media leakage across the seat, or switching to a lumped model near closure). Seating is also a
+**contact event**, so CFD hands off to the collision/contact machinery of §1–§2 at the seat while flow
+governs the gap up to closure. Combined FSI-plus-contact (check valves, seals) is a research frontier.
+
+**The upside SDFs give here.** When a valve seals and **splits the fluid domain into two disconnected
+chambers** (or reopens and merges them), that is a topology change — catastrophic for a conforming
+mesh, but on a fixed grid it is just sign changes. Pinching/merging/splitting of the fluid region is
+free; this is the structural reason moving-boundary flow was implicit/immersed from the start.
+
+| Moving-boundary cost (galacticad) | Cost | Notes |
+|---|---|---|
+| Evaluate moving rigid SDF at any pose | cheap, exact | `inv_apply_point` composition; no re-corruption |
+| Wall normal + wall velocity | cheap, exact | normalized gradient + analytic pose rate |
+| Re-tag + narrow-band redistance / step | moderate, recurring | amortize: only when interface moves ≥1 cell |
+| Fresh/dead cell reconstruction | hard (numerics) | source of force oscillations; diffuse interface helps |
+| Two-way FSI stability | hard (numerics) | added-mass → strong coupling for light bodies |
+| Full seating / `gap → 0` | hard (modeling) | min-gap clamp / leakage model / hand to contact solver |
+
 ---
 
 ## 4. Does FEA fundamentally need a mesh? — No (not a conforming one)

@@ -169,17 +169,75 @@ symbolically/numerically on the B-rep/sketch side, not on the field.
 Given galacticad already has SFCC/kernel SDF infrastructure and analytic gradients (analytic normals,
 no finite differences — per the SDF-lighting-perf notes):
 
-- **Collision & rigid-body "push" simulation is the low-hanging fruit.** Penetration depth = `φ`,
-  contact normal = `∇φ`, push-out = `p = x − φ·∇φ`. A PBD/XPBD-style solver over sample points on each
+- **Collision & rigid-body "push" simulation is the low-hanging fruit.** Penetration depth ≈ `φ`,
+  contact normal = `∇φ`, push-out `p = x − φ·∇φ`. A PBD/XPBD-style solver over sample points on each
   body, using the Minkowski-difference reduction for body/body, is the well-trodden path — and it is
   GPU-friendly, matching the WebGPU stack. Design for a **static-collider SDF queried by moving
-  bodies** (the iMSTK limitation): SDFs don't rigidly transform cheaply.
+  bodies** (the iMSTK limitation): SDFs don't rigidly transform cheaply. **Caveat:** those textbook
+  identities assume a *true* (Eikonal) SDF; galacticad's fields are bounded/Lipschitz, not exact — see
+  the fidelity section below for how each identity degrades and the corrected forms to use.
 - **CFD is plausible but is a background-grid project, not a "solve on the SDF" project.** Stand up a
   Cartesian / LBM fluid grid and use the SDF purely as the immersed boundary (sign test for cell
   classification + `∇φ` for wall normals). **sdfibm** is the reference architecture. Don't expect
   certification-grade drag numbers without validation work.
 - **Structural analysis via FCM** is the realistic "FEA without meshing" route and is *designed* for
   arbitrary geometry input — but budget for small-cut-cell conditioning problems.
+
+---
+
+## Fidelity on galacticad's bounded (non-true) SDFs
+
+Everything above implicitly assumes a *true* SDF (`|∇φ| = 1`, `φ` = exact Euclidean distance). The
+galacticad kernel does **not** produce true SDFs — but it produces the *favorable* kind of non-true
+field: a **bounded Lipschitz field with a known constant**, not arbitrary non-metric values. Grounded
+in `kernel/src/sdf.rs` and `kernel/src/primitives/smin.rs`:
+
+- **Leaves are true SDFs.** `f = sign·s·shape(Rᵀ(p−t)/s − pos)` is a *uniform* similarity (single
+  scalar `s`), which preserves `|∇f| = 1`. Non-uniform scaling — the worst metric-breaker — is not in
+  the model.
+- **Hard union = `min`** → exact outside, only a bound in interior overlaps. **Intersect/subtract =
+  `max`** → conservative *underestimate* near the seam, exact away from it. Both stay 1-Lipschitz.
+- **Smooth booleans underestimate, provably.** The `smin_is_below_hard_min` test asserts
+  `smin(a,b) ≤ min(a,b)`; round-seam displacement is `(√2−1)·r`. Inside blend bands `|∇φ| < 1`, so
+  depth reads low.
+- **The two *expanding* ops (`|∇φ| > 1`) are tracked.** `Leaf::local_lipschitz` returns `√(1+(kρ)²)`
+  for the twisted extrude and morphing loft, `None` (= exactly 1) otherwise. The kernel already knows
+  where and by how much the field lies.
+- **Normals are analytic and normalized** (`smin_grad_weights` → "callers normalize… only the ratio
+  matters"), so direction is correct even where magnitude isn't.
+
+**Governing principle: sign and normal survive; metric distance does not.** Techniques needing only
+inside/outside or the surface normal work as-is; techniques needing accurate distance *magnitude*
+degrade — but conservatively, and fixably.
+
+| Technique | Needs | Verdict on galacticad's fields |
+|---|---|---|
+| Boolean collision (point-in-solid) | sign only | **Excellent, as-is** — sign exact under min/max/smin/uniform-scale/warp. |
+| Contact normal | `∇φ/\|∇φ\|` | **Good** — analytic, normalized, blended (better than FD). Ambiguous only at hard creases, which SFCC/feature-catalog already localizes. |
+| Penetration depth | `\|φ\|` magnitude | **Degraded but conservative** — accurate on isolated primitives & shallow single-surface contact; *under*-reads inside fillets/rounds and near subtract seams. XPBD iteration absorbs it. |
+| Closest-point projection | `p = x − φ·∇φ` | **Naive formula breaks** (`\|∇φ\|≠1`). Use normalized Newton step `p = x − φ·n`, iterated 2–4× (more in blend bands). |
+| Rigid push (translate) | normal + depth | **Works** — slightly soft where fillets are the contact surface; solver iteration compensates. |
+| Rigid rotate (torque) | contact *point* → moment arm | **Gated by the projection** — accurate with iterated projection; biased with single-step. |
+| Raycast / sphere-trace (CCD, GJK-free) | step ≤ `φ/L` | **Works, but must divide by `local_lipschitz`** — naive stepping by `φ` oversteps twisted/loft geometry. Infra already exists. |
+| CFD immersed boundary | cell tag + normal + wall *distance* | **Feasible with a redistancing pass** — sign tagging robust as-is; wall-interpolation distance needs a metric field, so fast-march/sweep the background fluid grid from the zero-set (as sdfibm/GenSDF do). |
+| FCM / FEA | inside/outside indicator | **Robust, zero changes** — adaptive quadrature needs only point membership = sign. Non-trueness is invisible to it. |
+
+**What to actually do:**
+
+1. **Lean on the sign** — broad-phase collision, FCM, VOF-style CFD tagging are all exact.
+2. **Never single-step-project** — replace `x − φ·∇φ` with iterated `x − φ·n`; this one change fixes
+   contact-point → depth → moment-arm in blend bands.
+3. **Route raycasts through `local_lipschitz`** — use the divisor the kernel already computes instead
+   of assuming 1-Lipschitz.
+4. **Redistance only for CFD** — FCM doesn't need it; contact solving tolerates conservative depth.
+5. **Fillets are the trap** — smin bands are simultaneously where bodies most often touch and where
+   `|φ|` under-reads most; if contacts feel mushy, iterate the projection or locally redistance the
+   patch (not a bug).
+
+Net: uniform-similarity transforms + tracked Lipschitz + analytic normals put galacticad in the
+sphere-tracing-friendly regime (Quilez / Media Molecule *Dreams*), not the metric-hostile one. Most
+report techniques port with normalized normals + Newton-iterated projection; CFD is the only one that
+wants a genuine redistancing step.
 
 ---
 

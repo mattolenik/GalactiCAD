@@ -129,6 +129,54 @@ solid represented as an SDF, fluid solved on a background grid.
 
 **Confidence: high** that SDF-IBM CFD is real and used.
 
+### Simplest feasible CFD — where to start (vacuum / dust-collection example)
+
+**The honest physics.** A representative target — dust collection, shop vacuum, air pulled toward a
+low-pressure source around obstacles — is *incompressible* (Mach ≈ 0.05, drop all compressibility) but
+*turbulent*: a 4″ duct at ~20 m/s is Re ≈ 130,000, and even the ~1 m/s hood-face capture flow is
+Re ≈ 7,000. Turbulence is what makes "real" CFD expensive. **The reframe that saves you:** design work
+is *comparative* ("is hood A better than B", "where does flow stagnate"), not *certification*, so a
+qualitatively-right, quantitatively-loose solver is enough — which drops the bar dramatically.
+
+**Feasibility ladder:**
+
+| Tier | Solver | Effort | Answers | Misses |
+|---|---|---|---|---|
+| **0** | Potential flow (`∇²φ = 0`, `v = ∇φ`) | small — one linear solve, no time-stepping | where air comes from, capture reach, streamlines bending around obstacles | separation, wakes, dead zones, pressure loss (predicts *zero* drag) |
+| **1** | LBM + LES (lattice Boltzmann + Smagorinsky) | medium — explicit GPU compute, bounce-back walls | above **plus** recirculation, wakes, dead zones, *relative* pressure loss | wall-accurate numbers (needs fine near-wall grid) |
+| **2** | Incompressible Navier–Stokes + RANS (k-ω SST) | large — implicit pressure solve, turbulence transport, y⁺ meshing | real engineering numbers (pressure drop, capture velocity) | ≈ rebuilding OpenFOAM |
+
+**Start at Tier 0 — and it is not a toy for this use case.** Potential flow assumes incompressible +
+inviscid + irrotational, so velocity is the gradient of a scalar satisfying Laplace's equation (same
+math as steady heat conduction / electrostatics). Recipe on this stack: (1) voxel-tag the scene by
+`sign(φ)` → solid/fluid — **uses only the sign, so robust on non-true fields, no redistancing**; (2)
+solve `∇²φ = 0` on fluid cells with `∂φ/∂n = 0` at walls (Neumann), the **vacuum as a sink**, open room
+boundaries as far-field — a red-black Gauss–Seidel or geometric-multigrid Poisson solve in a WebGPU
+compute shader; (3) `v = ∇φ`, trace streamlines and render `|v|` as a capture-velocity heat map. The
+ACGIH *Industrial Ventilation* hood-design standard uses exactly this (point/slot sink + potential-flow
+capture contours), so for the *reach* question it is the established engineering approximation, not a
+hack. **Its one blind spot:** no viscous wake, so it shows capture but **not** the stagnant dead zone
+behind a bluff obstacle where dust settles — it tells you *reach*, not *dead spots*. Dead-zone hunting
+is the signal to climb to Tier 1.
+
+**Cheap win — dust as particles.** Given any velocity field (Tier 0 or 1), advect passive tracers
+`dx/dt = v(x)` from the workpiece to see where dust goes / whether it reaches the vacuum; add gravity +
+Stokes drag for heavier dust (**one-way coupling** — flow moves dust, dust does not affect flow — correct
+for dilute dust and nearly free). Turns an abstract streamline plot into a visceral capture demo.
+
+**Climb to Tier 1 (LBM)** when you need dead-zone/recirculation maps or *relative* pressure-loss between
+duct shapes (Tier 0 predicts zero loss and is useless for that). LBM is the natural GPU/voxel/SDF fit —
+explicit, local, Cartesian grid, solid walls are just **bounce-back on sign-tagged cells** (the report's
+GPU-LBM method, tagging by SDF sign instead of ray-casting an STL); add an **LES Smagorinsky** subgrid
+model for the high Re. Tier 2 (RANS) is the endgame only if the feature must emit trustworthy numbers.
+
+**Build vs. borrow.** For one-off "is this part good," free tools (OpenFOAM, SimScale free tier,
+SolidWorks Flow) give better numbers with zero solver-dev effort. Building CFD *into* galacticad is worth
+it only for what they cannot do: **interactive, in-editor, live-updating flow tied to the parametric SDF**
+— drag the duct wall, watch streamlines and dust capture update live. The value prop is *fast comparative
+feel*, not *certifiable accuracy*; framed that way, Tier 0 + particle advection is already a shippable
+first cut.
+
 ### Moving boundaries & fluid-structure interaction (valves, flaps, hinged parts)
 
 Moving geometry is not an extension of immersed-boundary CFD — it is the **mainstream** use, and the
@@ -184,6 +232,61 @@ free; this is the structural reason moving-boundary flow was implicit/immersed f
 | Fresh/dead cell reconstruction | hard (numerics) | source of force oscillations; diffuse interface helps |
 | Two-way FSI stability | hard (numerics) | added-mass → strong coupling for light bodies |
 | Full seating / `gap → 0` | hard (modeling) | min-gap clamp / leakage model / hand to contact solver |
+
+### Branching manifolds & backpressure — 1D resistance networks + Murray's law
+
+For a tube that branches progressively to distribute flow while limiting **backpressure**, the right
+tool is *not* a field CFD solver — it is a **1D hydraulic-resistance network** on the graph, which is
+both cheaper and more accurate for the pressure-drop question. Key reframe: **backpressure is an
+irreversible *loss* quantity** (wall friction + junction/bend losses), so **potential flow is useless
+here** — it predicts zero loss (d'Alembert). Field CFD (LBM+LES) can compute backpressure directly but
+is wall-shear-dominated → sensitive to near-wall resolution → *loose* absolute numbers unless finely
+resolved, and expensive across all branches at once.
+
+**The resistance network (primary tool).** A branching tube is a resistor network under the
+hydraulic-electrical analogy — pressure↔voltage, flow `Q`↔current, resistance↔resistance; junctions
+enforce `ΣQ_in = ΣQ_out` (mass) and pressure continuity (Kirchhoff). Per-segment resistance:
+
+- **Laminar (Re < ~2300):** Hagen–Poiseuille `ΔP = 128 μ L Q / (π D⁴)` — linear in `Q`, one linear
+  solve. Note the brutal **1/D⁴** sensitivity.
+- **Turbulent (Re > ~4000, the likely regime):** Darcy–Weisbach `ΔP = f·(L/D)·(ρv²/2)`, `f` from
+  Colebrook/Haaland — `ΔP ∝ Q²`, nonlinear, solve iteratively (Hardy–Cross / Newton). Still ms-scale
+  for thousands of segments.
+- **Junctions/bends/area changes:** minor losses `ΔP = K·(ρv²/2)`; in a manifold the **junction losses
+  usually dominate** and are what you optimize.
+
+The solve yields, directly: **total inlet backpressure** for a prescribed flow *and* the **flow split**
+among branches (distribution balance) — both optimization-loop-cheap.
+
+**Design optimum — Murray's law.** For distributing flow to many outlets, progressive branching beats
+alternatives because parallel paths + growing total cross-section drop velocity (losses scale `v²`).
+The optimal taper is Murray's law `r_parent³ = Σ r_daughter³` (minimizes network resistance, holds wall
+shear constant across generations — why vasculature/lungs/trees branch this way). Refinements: it also
+gives the **optimal bifurcation angle**; the cube exponent is the *laminar* result — **turbulent**
+networks follow a diameter exponent closer to **~2.3** (generalized Murray). The optimizer's job: taper
+toward Murray (regime-correct exponent), tune junction angle/blend to cut `K`, read backpressure + flow
+balance off the 1D solve.
+
+**SDF connection (galacticad).** Two links make this native: (1) **the SDF hands you the network** —
+extract the medial axis/skeleton → graph (centerlines, connectivity, lengths), and for a true SDF **the
+field value at the medial axis *is* the local inscribed radius**, so `r(s)` (the key input to every
+resistance law) comes straight out of `φ`. *Caveats, per the fidelity section:* the medial axis is
+unstable to surface wiggles (use tube-aware thinning), and `φ`-as-radius is exact only in true regions
+— off in blend bands and near junctions (where the skeleton is messiest anyway; junctions get
+3D-resolved regardless). (2) **The 1D model localizes where 3D is needed** — junction `K`-factors for
+custom geometries aren't tabulated, so 3D-resolve a *single* junction (LBM+LES) to extract its `K` and
+plug it into the fast network. Multiscale: 3D-resolve the uncorrelated components, 1D-network the
+assembly.
+
+**3D's role here** is *not* the primary backpressure engine: (a) calibrate junction `K`-factors
+(one at a time, well-resolved, cheap), and (b) diagnose flow **maldistribution** (starved branches) and
+junction **recirculation** that 1D can't see.
+
+Recommended pipeline: skeleton + `r(s)` from the SDF → 1D resistance solve (Poiseuille/Darcy) →
+optimize diameters toward Murray + branch angles under equal-distribution constraints → calibrate
+custom-junction `K`s with localized LBM+LES → optional full-tree LBM to validate/inspect
+maldistribution (not in the inner loop). This is a graph solver over a skeletonized SDF with 3D used
+surgically — far more optimization-friendly (hundreds of topologies/sec at the 1D level) than field CFD.
 
 ---
 

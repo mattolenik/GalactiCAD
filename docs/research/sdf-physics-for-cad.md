@@ -344,6 +344,64 @@ no finite differences — per the SDF-lighting-perf notes):
 
 ---
 
+## Foundational substrate & build order — start here
+
+The single most foundational thing — the atom every approach above sits on top of — is:
+
+> **Sample the scene SDF onto a background Cartesian grid, and sign-classify each cell inside/outside.**
+
+A "voxelize the scene into a signed field buffer" pass. Everything else is a layer on top of that
+one buffer. It is the *first step* of every field method (all three CFD tiers, FCM, moving-boundary
+re-tagging, particle advection) — exactly what sdfibm/GenSDF/CFD-DEM mean by "the SDF sign-test
+classifies cell occupancy, replacing mesh-intersection tests."
+
+| Approach | What it needs from the foundation |
+|---|---|
+| Potential flow (Tier 0) | grid + sign-tag (solid/fluid cells + wall faces) |
+| LBM+LES (Tier 1) | grid + sign-tag (bounce-back on solid cells) |
+| RANS Navier–Stokes (Tier 2) | grid + sign-tag + boundary cells |
+| FCM / FEA | grid + sign-tag (the inside/outside indicator α = point membership) |
+| Moving boundaries / FSI | *re-sample* the same grid at each new pose |
+| Particle advection (dust) | reads velocity field on the grid; sign detects wall hits |
+| Collision / contact | grid as broad-phase spatial acceleration (queries φ/∇φ at points) |
+
+**Why it's the right place to start on galacticad's fields:** this layer is **sign-only**, and the
+sign is the part of a bounded/non-true SDF that is *exactly correct* (see the fidelity section below).
+So the foundation has **zero fidelity caveats** — no redistancing, no Newton projection, no Lipschitz
+worries. All the caveated machinery (metric distance for wall stencils, penetration depth,
+closest-point projection) lives in layers *above* this, and only for the subset of methods that need
+it.
+
+**Most of it already exists.** Three pieces, two done:
+1. **Point evaluation of φ and ∇φ** — ✅ `Leaf::f` + analytic `normal` in the kernel (the expensive part).
+2. **Grid sampler** — the new piece: scene SDF + bbox + resolution → per-cell φ in a 3D buffer via one
+   WebGPU compute dispatch (embarrassingly parallel, reuses `Leaf::f`, ~a couple hundred lines).
+3. **Sign + narrow-band classification** — per cell `sign(φ)` → {solid, fluid, boundary}, flag cells
+   whose sign flips across a neighbor (the band); this is the indicator every field method consumes.
+
+The **SFCC octree already does this shape of work** (sign-classified, surface-refined sampling;
+`prune_to_box` / `rebuild_octree_from_leaves` / band logic). The physics foundation is its simpler
+cousin — a **uniform dense lattice** (CFD/LBM stencils want regularity). Start uniform-dense because
+it is simplest; borrow the octree's band-refinement later as an optimization (the "forest-of-octrees"
+trick the GPU-LBM paper uses).
+
+**MVP + validation (do this before any solver exists):** `sampleSceneToGrid(sdf, bbox, N) → φ buffer`
+→ `classify → per-cell tag + boundary-cell list`, keeping analytic `normal(p)` for BCs. Validate by
+checking the sampled zero-crossing matches the SFCC mesh surface — render the sign-tag mask overlaid
+on the mesh; if the tagged boundary hugs the mesh, the sampler is correct. Self-contained and testable.
+
+**The one exception:** the 1D branching-manifold solver is a graph, not a grid, so it does not consume
+the voxel buffer directly — but it still rides on piece #1 (skeleton extraction samples the field;
+`φ` at the medial axis = tube radius), and in practice the skeleton is extracted *from* the sampled
+grid anyway.
+
+**Build order that maximizes reuse:** grid sampler + sign-classification first (validate against the
+mesh) → then the cheapest useful consumer to prove it end-to-end (a Laplace potential-flow solve for
+the vacuum case, or FCM cell-tagging — both sign-only, no new fidelity work) → metric-distance layers
+(redistancing, projection) only when a specific method demands them.
+
+---
+
 ## Fidelity on galacticad's bounded (non-true) SDFs
 
 Everything above implicitly assumes a *true* SDF (`|∇φ| = 1`, `φ` = exact Euclidean distance). The

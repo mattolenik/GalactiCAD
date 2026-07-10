@@ -35,6 +35,7 @@ const Static = {
     "src/_headers": "/",
     "src/assets/*": "/assets",
     "src/scene/samples/*.gcad": "/assets/samples/",
+    "src/scene/samples/prusa/*.gcad": "/assets/samples/prusa/",
     "node_modules/@dprint/typescript/plugin.wasm": ["/assets", "dprint-typescript.wasm"] as [string, string],
 }
 // All generated output lives under ./dist:

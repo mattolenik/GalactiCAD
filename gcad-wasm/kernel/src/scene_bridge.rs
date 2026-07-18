@@ -283,10 +283,18 @@ impl WalkState {
     }
 }
 
-/// A leaf at a baked similarity. Strata are attached in a later pass (left-to-right
-/// traversal of the built tree), so this only records shape/sim/pos.
-fn make_leaf(shape: Shape, sim: Similarity, pos: [f64; 3]) -> CsgNode {
-    sdf::leaf(shape, sim, pos)
+/// A leaf at a baked similarity, with the negation parity BAKED into its sign
+/// (`sign = neg ? −1 : 1`, verbatim from `makeLeaf` in cpu-sdf.mts). Strata are
+/// attached in a later pass (left-to-right traversal of the built tree), so this
+/// only records shape/sim/pos/sign.
+fn make_leaf(shape: Shape, sim: Similarity, pos: [f64; 3], neg: bool) -> CsgNode {
+    match sdf::leaf(shape, sim, pos) {
+        CsgNode::Leaf(mut l) => {
+            l.sign = if neg { -1.0 } else { 1.0 };
+            CsgNode::Leaf(l)
+        }
+        other => other,
+    }
 }
 
 /// Walk the bridge node, mirroring `compileCpuSdf`'s `walk` (negation parity folds
@@ -295,21 +303,21 @@ fn make_leaf(shape: Shape, sim: Similarity, pos: [f64; 3]) -> CsgNode {
 fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) -> Option<CsgNode> {
     match node {
         // --- primitives ------------------------------------------------------
-        BridgeNode::Box { pos, half, .. } => Some(make_leaf(Shape::Cuboid { half: *half }, sim, *pos)),
-        BridgeNode::Sphere { pos, r, .. } => Some(make_leaf(Shape::Sphere { r: *r }, sim, *pos)),
+        BridgeNode::Box { pos, half, .. } => Some(make_leaf(Shape::Cuboid { half: *half }, sim, *pos, neg)),
+        BridgeNode::Sphere { pos, r, .. } => Some(make_leaf(Shape::Sphere { r: *r }, sim, *pos, neg)),
         BridgeNode::Cylinder { pos, r, h, fillet_top, fillet_bottom, chamfer_top, chamfer_bottom, .. } => {
             if *fillet_top != 0.0 || *fillet_bottom != 0.0 || *chamfer_top != 0.0 || *chamfer_bottom != 0.0 {
                 return state.reject(node, "cylinder fillet/chamfer (needs a torus carrier — v1.5)");
             }
-            Some(make_leaf(Shape::Cylinder { r: *r, h: *h }, sim, *pos))
+            Some(make_leaf(Shape::Cylinder { r: *r, h: *h }, sim, *pos, neg))
         }
-        BridgeNode::Cone { pos, r, h, .. } => Some(make_leaf(Shape::Cone { r: *r, h: *h }, sim, *pos)),
+        BridgeNode::Cone { pos, r, h, .. } => Some(make_leaf(Shape::Cone { r: *r, h: *h }, sim, *pos, neg)),
         BridgeNode::Extrude { pos, verts, h, twist_degrees, .. } => {
             let twist_rad = twist_degrees * std::f64::consts::PI / 180.0;
             let wind = winding_sign(verts);
             // Flatten to [x0,z0,x1,z1,…] (the Shape::Extrude layout).
             let flat: Vec<f64> = verts.iter().flat_map(|v| [v[0], v[1]]).collect();
-            Some(make_leaf(Shape::Extrude { verts: flat, wind, h: *h, twist_rad }, sim, *pos))
+            Some(make_leaf(Shape::Extrude { verts: flat, wind, h: *h, twist_rad }, sim, *pos, neg))
         }
         BridgeNode::Loft { pos, profiles, h, .. } => {
             if profiles.is_empty() {
@@ -324,7 +332,7 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
             let profs: Vec<Vec<f64>> =
                 profiles.iter().map(|pr| pr.iter().flat_map(|v| [v[0], v[1]]).collect()).collect();
             let winds: Vec<f64> = profiles.iter().map(|pr| winding_sign(pr)).collect();
-            Some(make_leaf(Shape::Loft { profs, winds, h: *h }, sim, *pos))
+            Some(make_leaf(Shape::Loft { profs, winds, h: *h }, sim, *pos, neg))
         }
         BridgeNode::Lathe { pos, verts, .. } => {
             for &[r, _] in verts {
@@ -342,7 +350,7 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
             if !edges.iter().any(|e| e.kind != LatheEdgeKind::None) {
                 return state.reject(node, "degenerate lathe profile (every edge on the revolution axis)");
             }
-            Some(make_leaf(Shape::Lathe { edges }, sim, *pos))
+            Some(make_leaf(Shape::Lathe { edges }, sim, *pos, neg))
         }
 
         // --- transforms ------------------------------------------------------
@@ -422,12 +430,12 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
                     mode: m,
                     r: *radius,
                     n,
-                    children: vec![l, sdf::negate(r)],
+                    children: vec![l, r],
                 })
             } else if neg {
-                Some(CsgNode::Min(vec![l, sdf::negate(r)]))
+                Some(CsgNode::Min(vec![l, r]))
             } else {
-                Some(CsgNode::Max(vec![l, sdf::negate(r)]))
+                Some(CsgNode::Max(vec![l, r]))
             }
         }
         BridgeNode::Intersect { lh, rh, radius, mode, n, .. } => {
@@ -558,6 +566,65 @@ mod tests {
         // At (2,0,0): inside box, inside the carve → removed (positive).
         assert!(tree.f([2.0, 0.0, 0.0]) > 0.0);
         assert!(matches!(tree, CsgNode::Max(_)));
+    }
+
+    #[test]
+    fn subtract_union_rhs_carves_the_whole_union() {
+        // Regression: the walk used to double-negate a COMPOSITE subtract rh
+        // (neg flag AND sdf::negate), flipping the union into an intersection —
+        // subtract(A, union(C, D)) carved C∩D (= ∅ here) instead of C∪D.
+        let scene = BridgeNode::Subtract {
+            node_id: 3,
+            lh: Box::new(BridgeNode::Box { node_id: 0, pos: [0.0; 3], half: [4.0, 4.0, 4.0] }),
+            rh: Box::new(BridgeNode::Union {
+                node_id: 4,
+                children: vec![
+                    BridgeNode::Sphere { node_id: 1, pos: [2.5, 0.0, 0.0], r: 1.0 },
+                    BridgeNode::Sphere { node_id: 2, pos: [-2.5, 0.0, 0.0], r: 1.0 },
+                ],
+                radius: 0.0,
+                mode: None,
+                n: None,
+            }),
+            radius: 0.0,
+            mode: None,
+            n: None,
+        };
+        let tree = build_csg_tree(&scene).unwrap();
+        // Each sphere center is inside exactly one union child → carved.
+        assert!(tree.f([2.5, 0.0, 0.0]) > 0.0);
+        assert!(tree.f([-2.5, 0.0, 0.0]) > 0.0);
+        // Origin: in the box, outside both spheres → solid.
+        assert!(tree.f([0.0, 0.0, 0.0]) < 0.0);
+    }
+
+    #[test]
+    fn subtract_nested_subtract_rhs_preserves_shielded_core() {
+        // Regression companion: subtract(A, subtract(P, Q)) must carve the
+        // shell P−Q only — the Q-shielded core stays solid. The old double
+        // negation warped the rh into a different set entirely.
+        let scene = BridgeNode::Subtract {
+            node_id: 4,
+            lh: Box::new(BridgeNode::Box { node_id: 0, pos: [0.0; 3], half: [4.0, 4.0, 4.0] }),
+            rh: Box::new(BridgeNode::Subtract {
+                node_id: 3,
+                lh: Box::new(BridgeNode::Sphere { node_id: 1, pos: [0.0; 3], r: 2.0 }),
+                rh: Box::new(BridgeNode::Sphere { node_id: 2, pos: [0.0; 3], r: 1.0 }),
+                radius: 0.0,
+                mode: None,
+                n: None,
+            }),
+            radius: 0.0,
+            mode: None,
+            n: None,
+        };
+        let tree = build_csg_tree(&scene).unwrap();
+        // Origin: inside Q, so NOT part of P−Q → stays solid.
+        assert!(tree.f([0.0, 0.0, 0.0]) < 0.0);
+        // In the shell (1 < |p| < 2) → carved.
+        assert!(tree.f([1.5, 0.0, 0.0]) > 0.0);
+        // Beyond P but inside the box → solid.
+        assert!(tree.f([3.0, 0.0, 0.0]) < 0.0);
     }
 
     #[test]

@@ -1,5 +1,7 @@
 # Stratified Feature-Conforming Contouring (SFCC)
 
+> **Superseded (2026-07-18):** this is the original pre-implementation design note. The algorithm as actually implemented is documented in [`docs/sfcc-meshing-algorithm.md`](../sfcc-meshing-algorithm.md), which also catalogues where this design and the implementation diverge (its §11).
+
 *A novel SDF→mesh algorithm design for CAD applications, synthesized from a verified
 literature survey. Hard requirements: exact sharp-feature preservation (no roundover,
 including unclassifiable corners) and guaranteed 2-manifold watertight output. Design
@@ -114,7 +116,6 @@ per-cell disk topology.
      stratum** using the single active primitive's smooth gradient — restoring the
      smoothness precondition away from features;
    - *feature-separation certificate*.
-4. **Half-edge mesh** keyed by exact shared octree faces.
 
 ### 3.2 Stages
 
@@ -129,10 +130,7 @@ trimmed by the tree.
 - (ii) each touched segment crosses each cell face **at most once, transversally**
   (interval Newton on the curve–face intersection);
 - (iii) per-stratum MC-compatibility holds (complex-cell + star-shaped, or
-  normal-variation);
-- (iv) *degeneracy guard*: past depth D near a suspected tangency, switch to an
-  ε-resolution policy — declare contact, locally merge strata, re-certify — instead
-  of looping (addresses Varadhan's proven non-termination at tangential contact).
+  normal-variation).
 
 **S3 — Stratified per-cell meshing (primal, CMS-style).** Compute all face data
 **once per octree face**, shared by both incident cells: edge iso-crossings plus
@@ -153,9 +151,6 @@ Optional *embedding check*: confine each cell's triangles to the cell plus certi
 curve-chord envelopes (targets MDC's conceded self-intersection gap). Failed cells
 refine and re-mesh **locally** — inter-cell independence makes this cheap.
 
-**S5 — Optional manifold-safe decimation.** MDC Proposition-1 clustering on smooth
-regions only; feature chains locked.
-
 ### 3.3 Stated deltas over prior work
 
 | vs. | Delta |
@@ -163,7 +158,7 @@ regions only; feature chains locked.
 | **MDC** (ours included) | Exact analytic feature loci replace LINE/CORNER classification + QEF snapping — unclassified-corner roundover is eliminated *by construction*, not by a better classifier |
 | **EMC / DC** | No normal-cone or spectral classifier; no QEF, hence no out-of-cell minimizer and no clamping dilemma (notches vs. fold-backs) |
 | **CMS** | Heuristic 2D face-feature sampling replaced by exact curve–face intersections; a manifoldness argument added on top of its crack-free invariant |
-| **Varadhan** | Exact feature stratification replaces heuristic EMC; ε-degeneracy policy for their proven tangency non-termination |
+| **Varadhan** | Exact feature stratification replaces heuristic EMC |
 | **Plantinga–Vegter** | Interval certification applied per smooth stratum (where the CSG SDF locally equals one primitive's C¹ SDF), extending their guarantee around the non-smooth feature set |
 | **DMC** | Its feature-of-f sizing reused only as a refinement oracle for thin features; contouring stays primal |
 
@@ -185,7 +180,6 @@ solved** — and no QEF whose minimizer can escape the cell.
 - *Thin features* are protected because the complex-cell criterion forces refinement
   until sheets separate, with DMC-style feature-of-f sizing keeping that refinement
   economical.
-- *Decimation* preserves manifoldness and genus by MDC Proposition 1.
 
 Note the proof obligations: the composition holds only where the published theorems'
 preconditions hold (manifold exact boundary, no tangential contact, smoothness away
@@ -195,8 +189,7 @@ from the stratified feature set, terminating refinement).
 
 ## 4. Expected failure modes
 
-1. **Exact / near-tangential primitive contact** — refinement blow-up; the ε-policy
-   changes topology by declared contact. A deliberate, logged decision, not silent.
+1. **Exact / near-tangential primitive contact** — refinement blow-up.
 2. **Genuinely non-manifold exact boundaries** (e.g. two cubes meeting at an edge) —
    out of scope by theorem preconditions; must be detected and reported, not meshed.
 3. **Incomplete FeatureGraph silently degrades exactness** — a missing seam curve

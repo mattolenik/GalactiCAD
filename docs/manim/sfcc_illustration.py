@@ -118,6 +118,32 @@ def cell_square(cx, cy, h, **kw):
     return Square(side_length=2 * h, **kw).move_to(P(cx, cy))
 
 
+# --------------------------------------------- ch1d: torture-test slides
+# (asset base name, caption lines) — captions carry each scene's operator
+# inventory and export stats, filled from the actual export runs.
+TORTURE = [
+    ("torture_bracket", [
+        "part 1 — a bracket: 3-way rounded union, a chamfer-blended",
+        "200° twisted rib, a domed hard intersect, 7 hard subtracts —",
+        "71,210 triangles, manifold-clean, 0 failed cells"]),
+    ("torture_knob", [
+        "part 2 — a knob: lathe body ∪ 220°-twisted star fins (rounded),",
+        "hard envelope intersect, chamfer-blended ring groove, hard hex",
+        "socket, smooth-intersect crown — 125,382 triangles, manifold-clean"]),
+    ("torture_housing", [
+        "part 3 — a housing: rounded cylinder tee, a square→12-gon loft",
+        "flange, chamfered cone port, 8 hard subtracts hollowing it out —",
+        "98,020 triangles, manifold-clean, 0 failed cells"]),
+    ("torture_mess1", [
+        "mess 1 — 11 primitives, every blend mode in the book: round,",
+        "chamfer, stairs, columns unions + subtracts, a 270° twisted star,",
+        "a hard sphere trim — 134,330 triangles, still manifold-clean"]),
+    ("torture_mess2", [
+        "mess 2 — 10 primitives: lathe vase, stairs/chamfer/round blends,",
+        "cone spike, hard trim, a 400°-twisted ribbon slapped on last —",
+        "111,636 triangles, manifold-clean, 0 failed cells"]),
+]
+
 # ---------------------------------------------------------------- scene
 CAP_KW = dict(font_size=26, color=GREY_A)
 HEAD_KW = dict(font_size=34, weight=BOLD)
@@ -127,6 +153,10 @@ class SFCC(Scene):
     def caption(self, *lines, pos=DOWN * 3.2, **kw):
         opts = {**CAP_KW, **kw}
         grp = VGroup(*[Text(t, **opts) for t in lines]).arrange(DOWN, buff=0.12).move_to(pos)
+        if grp.width > 13.4:
+            grp.scale_to_fit_width(13.4)
+        if grp.get_bottom()[1] < -3.82:
+            grp.shift(UP * (-3.82 - grp.get_bottom()[1]))
         return grp
 
     def set_header(self, text):
@@ -151,9 +181,11 @@ class SFCC(Scene):
         self.ch1b_problem()
         self.ch1b2_narrow()
         self.ch1c_feature_aware()
+        self.ch1d_torture()
         self.ch2_input()
         self.ch3_features()
         self.ch3b_featureset()
+        self.ch3c_blends()
         self.ch4_octree()
         self.ch5_contour()
         self.ch5b_provenance()
@@ -229,7 +261,26 @@ class SFCC(Scene):
         self.play(LaggedStart(*[FadeIn(q, scale=1.6) for q in qmarks], lag_ratio=0.25),
                   run_time=1.0)
         self.wait(5.2)
-        self.play(FadeOut(Group(img, kick, qmarks)), FadeOut(cap2), run_time=0.7)
+
+        mesh_s = load_render("box_mesh_solid_crop.png", 3.6).move_to(P(-0.55, 0.55))
+        mesh_w = load_render("box_mesh_crop.png", 3.6).move_to(P(2.9, 0.55))
+        ml1 = Text("solid", font_size=20, color=GREY_A).next_to(mesh_s, DOWN, buff=0.15)
+        ml2 = Text("wireframe", font_size=20, color=GREY_A).next_to(mesh_w, DOWN, buff=0.15)
+        arr = Arrow(P(-3.1, 0.55), P(-2.45, 0.55), color=GREY_B, stroke_width=4,
+                    max_tip_length_to_length_ratio=0.35)
+        alab = Text("SFCC", font_size=22, weight=BOLD, color=RED_B)\
+            .next_to(arr, UP, buff=0.15)
+        cap3 = self.caption("this video: SFCC closes that gap — here is the mesh it actually",
+                            "exports from that field: every corner and edge is a known, exact",
+                            "vertex, not a reconstruction; the rest is how")
+        self.play(FadeOut(kick), FadeOut(qmarks), FadeOut(cap2),
+                  img.animate.scale_to_fit_height(3.6).move_to(P(-4.9, 0.55)),
+                  run_time=0.8)
+        self.play(FadeIn(mesh_s), FadeIn(mesh_w), FadeIn(ml1), FadeIn(ml2),
+                  GrowArrow(arr), FadeIn(alab), FadeIn(cap3), run_time=1.0)
+        self.wait(6.0)
+        self.play(FadeOut(Group(img, mesh_s, mesh_w, ml1, ml2, arr, alab)),
+                  FadeOut(cap3), run_time=0.7)
 
     # ---------------------------------------------------------- chapter 1b
     def ch1b_problem(self):
@@ -390,19 +441,82 @@ class SFCC(Scene):
         self.play(FadeIn(img3), GrowArrow(ar2), FadeIn(al2), run_time=1.0)
         self.wait(5.6)
 
-        csg = load_render("csg_seam_crop.png", 4.6).move_to(P(-0.2, 0.5))
+        m1s = load_render("box_mesh_solid_crop.png", 2.6).move_to(P(-4.05, 0.5))
+        m1w = load_render("box_mesh_crop.png", 2.6).move_to(P(-1.7, 0.5))
+        m2s = load_render("box_twisted_mesh_solid_crop.png", 5.0).move_to(P(0.45, 0.45))
+        m2w = load_render("box_twisted_mesh_crop.png", 5.0).move_to(P(1.85, 0.45))
+        m3s = load_render("box_twisted_stretched_mesh_solid_crop.png", 5.2).move_to(P(3.6, 0.45))
+        m3w = load_render("box_twisted_stretched_mesh_crop.png", 5.2).move_to(P(4.65, 0.45))
+        meshes = Group(m1s, m1w, m2s, m2w, m3s, m3w)
+        mlegend = Text("each pair: solid · wireframe", font_size=18, color=GREY_B)\
+            .move_to(P(0.2, 3.0))
+        capm = self.caption("and these are the actual SFCC meshes of all three: the helical",
+                            "creases are vertex chains sampled on the exact analytic helices,",
+                            "the cap rims exact — nothing here was detected from samples")
+        self.play(FadeOut(Group(img, img2, img3, ar1, ar2, al1, al2)),
+                  FadeIn(meshes), FadeIn(mlegend),
+                  FadeOut(cap3), FadeIn(capm), run_time=1.0)
+        self.wait(6.2)
+
+        csg = load_render("csg_seam_crop.png", 3.2).move_to(P(-4.6, 0.5))
+        csgm_s = load_render("csg_seam_mesh_solid_crop.png", 3.2).move_to(P(0.0, 0.5))
+        csgm_w = load_render("csg_seam_mesh_crop.png", 3.2).move_to(P(4.6, 0.5))
+        clabels = VGroup(
+            Text("SDF", font_size=20, color=GREY_A).move_to(P(-4.6, 2.45)),
+            Text("mesh — solid", font_size=20, color=GREY_A).move_to(P(0.0, 2.45)),
+            Text("mesh — wireframe", font_size=20, color=GREY_A).move_to(P(4.6, 2.45)))
         cap4 = self.caption("CSG works the same way: booleans create seams — computed exactly",
                             "on the analytic carriers, trimmed where a shape swallows an edge —",
                             "complex SDF geometry, without ever losing the underlying shape")
-        self.play(FadeOut(Group(img, img2, img3, ar1, ar2, al1, al2)),
-                  FadeOut(cap3), FadeIn(csg), FadeIn(cap4), run_time=0.9)
+        self.play(FadeOut(meshes), FadeOut(mlegend), FadeOut(capm),
+                  FadeIn(Group(csg, csgm_s, csgm_w)), FadeIn(clabels),
+                  FadeIn(cap4), run_time=0.9)
         self.wait(6.0)
 
-        cap5 = self.caption("that is SFCC, end to end — here is the pipeline,",
-                            "walked in 2D cross-section")
-        self.swap_caption(cap5, cap4)
+        cap4b = self.caption("and its SFCC mesh: the seam is meshed by edge cells — in-cell",
+                             "crease polylines strung between exact pins — the seam∧edge",
+                             "junctions are exact corner vertices, the swallowed edge simply gone")
+        self.swap_caption(cap4b, cap4)
+        self.wait(5.8)
+
+        cap5 = self.caption("that is the idea — but does it survive abuse?",
+                            "five torture tests before we open the pipeline")
+        self.swap_caption(cap5, cap4b)
         self.wait(3.6)
-        self.play(FadeOut(csg), FadeOut(cap5), run_time=0.8)
+        self.play(FadeOut(Group(csg, csgm_s, csgm_w, clabels)), FadeOut(cap5), run_time=0.8)
+
+    # ---------------------------------------------------------- chapter 1d
+    def ch1d_torture(self):
+        self.set_header("Torture tests — SFCC under abuse")
+
+        def cell(name, x):
+            m = load_render(name, 3.9)
+            if m.width > 4.25:
+                m.scale_to_fit_width(4.25)
+            return m.move_to(P(x, 0.35))
+
+        labels = VGroup(
+            Text("SDF", font_size=20, color=GREY_A).move_to(P(-4.6, 2.62)),
+            Text("mesh — solid", font_size=20, color=GREY_A).move_to(P(0.0, 2.62)),
+            Text("mesh — wireframe", font_size=20, color=GREY_A).move_to(P(4.6, 2.62)))
+        self.play(FadeIn(labels), run_time=0.5)
+        prev = None
+        for base, lines in TORTURE:
+            trio = Group(cell(f"{base}_crop.png", -4.6),
+                         cell(f"{base}_mesh_solid_crop.png", 0.0),
+                         cell(f"{base}_mesh_crop.png", 4.6))
+            cap = self.caption(*lines)
+            anims = [FadeIn(trio), FadeIn(cap)]
+            if prev is not None:
+                anims += [FadeOut(prev[0]), FadeOut(prev[1])]
+            self.play(*anims, run_time=0.9)
+            self.wait(6.4)
+            prev = (trio, cap)
+        capx = self.caption("five abusive trees, five certified manifold meshes —",
+                            "now the pipeline, walked in 2D cross-section")
+        self.play(FadeOut(prev[0]), FadeOut(prev[1]), FadeIn(capx), run_time=0.8)
+        self.wait(3.8)
+        self.play(FadeOut(labels), FadeOut(capx), run_time=0.7)
 
     # ---------------------------------------------------------- chapter 2
     def ch2_input(self):
@@ -570,6 +684,125 @@ class SFCC(Scene):
 
         self.play(FadeOut(c3), FadeOut(lbl), FadeOut(strata_hl), FadeOut(cap3),
                   world.animate.shift(-shift), run_time=0.8)
+
+    # ---------------------------------------------------------- chapter 3c
+    def ch3c_blends(self):
+        self.set_header("Smooth CSG — when a fillet meets a sharp edge")
+        bg = Rectangle(width=13.9, height=5.9, stroke_width=1.5, color=GREY_B,
+                       fill_color=BLACK, fill_opacity=0.95).move_to(UP * 0.32)
+        hard = load_render("csg_seam_crop.png", 4.1).move_to(P(-3.3, 0.4))
+        smooth = load_render("smooth_union_crop.png", 4.1).move_to(P(3.3, 0.4))
+        lh = Text("union", font_size=24, color=GREY_A).next_to(hard, UP, buff=0.18)
+        ls = Text("smooth union", font_size=24, weight=BOLD, color=BLUE_B)\
+            .next_to(smooth, UP, buff=0.18)
+        cap = self.caption("CSG can be smooth too: a blended union (smin, radius r) replaces",
+                           "the sharp seam with a fillet band — featureless by construction:",
+                           "no primitive owns its surface, so no seam is traced there at all")
+        self.play(FadeIn(bg), FadeIn(hard), FadeIn(smooth), FadeIn(lh), FadeIn(ls),
+                  FadeIn(cap), run_time=1.1)
+        self.wait(6.0)
+
+        hl = Ellipse(width=2.3, height=2.1, color=YELLOW, stroke_width=3)\
+            .move_to(P(4.0, 1.1))
+        cap2 = self.caption("the fillet also swallows part of the cube's own edges: near the",
+                            "sphere the surface pulls off the edge's carriers and rounds over;",
+                            "farther out the same edge is untouched — still exactly analytic")
+        self.swap_caption(cap2, cap)
+        self.play(Create(hl), run_time=0.8)
+        self.wait(5.8)
+
+        meshr_s = load_render("smooth_union_mesh_solid_crop.png", 3.1).move_to(P(0.0, 0.4))
+        meshr_w = load_render("smooth_union_mesh_crop.png", 3.1).move_to(P(4.55, 0.4))
+        lms = Text("SFCC mesh — solid", font_size=22, weight=BOLD, color=RED_B)\
+            .move_to(P(0.0, 2.25))
+        lmw = Text("wireframe", font_size=22, weight=BOLD, color=RED_B)\
+            .move_to(P(4.55, 2.25))
+        ls2 = Text("smooth union", font_size=22, color=GREY_A).move_to(P(-4.55, 2.25))
+        capm = self.caption("the meshed result: the fillet band is triangulated smooth under",
+                            "the gradient-cone certificate, and the crease polylines terminate",
+                            "at their exact endpoints — no crack where sharp meets smooth")
+        self.play(FadeOut(Group(hard, lh, hl, ls)),
+                  smooth.animate.scale_to_fit_height(3.1).move_to(P(-4.55, 0.4)),
+                  FadeOut(cap2), FadeIn(capm), run_time=0.9)
+        self.play(FadeIn(meshr_s), FadeIn(meshr_w), FadeIn(lms), FadeIn(lmw), FadeIn(ls2),
+                  run_time=0.8)
+        self.wait(6.0)
+
+        # trim tick diagram (right)
+        tk_y = 1.55
+        tline = Line(P(0.9, tk_y), P(6.3, tk_y), color=WHITE, stroke_width=3)
+        tlab = Text("a native box edge — parameter t", font_size=18, color=GREY_A)\
+            .next_to(tline, UP, buff=0.35)
+        t_cut = 0.64
+        ticks = VGroup()
+        for i in range(27):
+            t = i / 26
+            alive = t < t_cut
+            x = 0.9 + 5.4 * t
+            ticks.add(Line(P(x, tk_y - 0.12), P(x, tk_y + 0.12),
+                           color=GREEN_B if alive else RED, stroke_width=3,
+                           stroke_opacity=1.0 if alive else 0.55))
+        cutx = 0.9 + 5.4 * t_cut
+        cut = Dot(P(cutx, tk_y), radius=0.09, color=YELLOW)
+        la = Text("alive: on surface · creased · flanks OK", font_size=16,
+                  color=GREEN_B).move_to(P(2.4, tk_y - 0.5))
+        ld = Text("dead: displaced into the fillet", font_size=16,
+                  color=RED).move_to(P(5.5, tk_y - 0.5))
+        cl = Text("bisected: the crease's exact endpoint", font_size=17,
+                  color=YELLOW).move_to(P(4.3, tk_y - 1.05))
+        cptr = Line(cl.get_top(), cut.get_bottom() + DOWN * 0.03,
+                    color=GREY_B, stroke_width=2)
+        tick_grp = VGroup(tline, tlab, ticks, cut, la, ld, cl, cptr)
+        cap3 = self.caption("S1c trim makes the hand-off exact: each native edge is sampled",
+                            "against the blended tree; the alive→dead transition is bisected —",
+                            "the crease ends at the exact point it sinks into the fillet")
+        self.play(FadeOut(Group(smooth, ls2, meshr_s, meshr_w, lms, lmw)), FadeOut(capm),
+                  FadeIn(cap3), run_time=0.8)
+        self.play(Create(tline), FadeIn(tlab), run_time=0.6)
+        self.play(LaggedStart(*[GrowFromCenter(t) for t in ticks], lag_ratio=0.04),
+                  run_time=1.4)
+        self.play(GrowFromCenter(cut), FadeIn(la), FadeIn(ld), FadeIn(cl),
+                  Create(cptr), run_time=0.9)
+        self.wait(6.2)
+
+        # 2D smooth-union contour (left), colored by ownership
+        hard2d = DashedVMobject(Polygon(*union_outline(), color=GREY_A, stroke_width=3),
+                                num_dashes=110)
+        pts = smooth_contour(r=0.75)
+        sm2d = VGroup()
+        for i in range(len(pts)):
+            a, b = pts[i], pts[(i + 1) % len(pts)]
+            m = (a + b) / 2
+            band = min(abs(f_box(m[0], m[1])), abs(f_circ(m[0], m[1]))) > 0.03
+            sm2d.add(Line(a, b, color=YELLOW if band else BLUE_B,
+                          stroke_width=5.5 if band else 4))
+        dead_dots = VGroup(*[Dot(p, radius=0.08, color=RED) for p in (SEAM_TOP, SEAM_RIGHT)])
+        live_dots = VGroup(*[Dot(p, radius=0.08, color=PURPLE_A)
+                             for p in (CORNER_TL, CORNER_BL, CORNER_BR)])
+        grp2d = VGroup(hard2d, sm2d, dead_dots, live_dots)\
+            .scale(0.72).move_to(P(-3.5, 0.75))
+        legend = Text("yellow: the fillet band — no owner, no feature", font_size=16,
+                      color=YELLOW).next_to(grp2d, DOWN, buff=0.22)
+        crosses = VGroup(*[Cross(scale_factor=0.11).move_to(d) for d in dead_dots])
+        cap4 = self.caption("in the 2D scene: smooth-union the same primitives — the two seam",
+                            "features die (trim kills them), the far corners survive; features",
+                            "exist exactly where the model is actually sharp")
+        self.swap_caption(cap4, cap3)
+        self.play(FadeIn(hard2d), FadeIn(sm2d), FadeIn(dead_dots), FadeIn(live_dots),
+                  run_time=1.6)
+        self.play(FadeIn(crosses), FadeIn(legend),
+                  *[Indicate(d, color=PURPLE_A, scale_factor=1.6) for d in live_dots],
+                  run_time=1.0)
+        self.wait(5.6)
+
+        cap5 = self.caption("the band meshes as smooth surface — no strata, so refinement uses",
+                            "the tree's own ∇f cone (κ ≤ 1/r analytically) — and it joins the",
+                            "crease's cells via once-per-face contouring: crack-free")
+        self.swap_caption(cap5, cap4)
+        self.wait(6.4)
+
+        self.play(FadeOut(VGroup(bg, tick_grp, grp2d, crosses, legend)), FadeOut(cap5),
+                  run_time=0.8)
 
     # ---------------------------------------------------------- chapter 4
     def ch4_octree(self):
@@ -773,20 +1006,6 @@ class SFCC(Scene):
         self.play(GrowFromCenter(good), FadeIn(gl), run_time=0.5)
         self.wait(5.8)
 
-        p3 = make_card("so… aren't those keys float64s?", BLUE_B, [
-            "in Rust they are i64 — but keys do ride through f64s:",
-            "JS numbers, the wasm boundary, doubles everywhere",
-            "an f64 is exact for every integer up to 2⁵³",
-            "so every key space is sized to fit under that limit:",
-            "depth ≤ 14 ⇒ span ≈ 2¹⁴ ⇒ latticeKey < 2⁴² ⇒ keys < 2⁴⁵ ✓",
-            "spatial-index key: 3 × 17-bit coords packed < 2⁵¹ ✓",
-        ], width=7.4).move_to(card_pos)
-        cap4 = self.caption("integers travel inside doubles, exactly — every packed key is",
-                            "deliberately kept below f64's 2⁵³ integer-exactness limit")
-        self.play(FadeOut(p2), FadeIn(p3, shift=RIGHT * 0.3),
-                  FadeOut(cap3), FadeIn(cap4), run_time=0.7)
-        self.wait(6.4)
-
         p4 = make_card("when a float must join a key — freeze it", YELLOW_C, [
             "pin keys fix the curve parameter into text:",
             "\"F{axis}:{faceKey}:{curveId}:{t:.12}\"",
@@ -797,8 +1016,8 @@ class SFCC(Scene):
         ], width=7.4).move_to(card_pos)
         cap5 = self.caption("a float can join a key only frozen — fixed-format text or its",
                             "exact IEEE-754 bits — never through float equality")
-        self.play(FadeOut(p3), FadeIn(p4, shift=RIGHT * 0.3),
-                  FadeOut(cap4), FadeIn(cap5), run_time=0.7)
+        self.play(FadeOut(p2), FadeIn(p4, shift=RIGHT * 0.3),
+                  FadeOut(cap3), FadeIn(cap5), run_time=0.7)
         self.wait(6.0)
 
         self.play(FadeOut(VGroup(bg, cellA, cellB, lblA, lblB, edge, curve, good, gl, p4)),
@@ -884,6 +1103,23 @@ class IntroOnly(SFCC):
         self.ch1b_problem()
         self.ch1b2_narrow()
         self.ch1c_feature_aware()
+        self.ch1d_torture()
+
+
+class BlendOnly(SFCC):
+    """Dev helper: render just the smooth-CSG chapter for fast iteration."""
+
+    def construct(self):
+        self._header = None
+        self.ch3c_blends()
+
+
+class TortureOnly(SFCC):
+    """Dev helper: render just the torture-test chapter for fast iteration."""
+
+    def construct(self):
+        self._header = None
+        self.ch1d_torture()
 
 
 # ------------------------------------------------------------- helpers
@@ -1176,6 +1412,36 @@ def narrow_stage(fw, C, half, n, K, nu, nl):
                          stroke_width=1.5, stroke_color=RED,
                          fill_color=RED, fill_opacity=0.5))
     return VGroup(grid, chords, lost)
+
+
+# --------------------------------------------- ch3c: smooth-CSG demo
+def smin_round(a, b, r):
+    h = min(max(0.5 + 0.5 * (b - a) / r, 0.0), 1.0)
+    return b + (a - b) * h - r * h * (1.0 - h)
+
+
+def f_smooth2d(x, y, r=0.55):
+    return smin_round(f_box(x, y), f_circ(x, y), r)
+
+
+def smooth_contour(r=0.55, n=480):
+    """Zero contour of the 2D smooth union, ray-cast from an interior point."""
+    c = np.array([0.35, 0.1])
+    pts = []
+    for k in range(n):
+        th = 2 * np.pi * k / n
+        d = np.array([np.cos(th), np.sin(th)])
+        lo, hi = 0.0, 6.0
+        for _ in range(48):
+            m = (lo + hi) / 2
+            q = c + m * d
+            if f_smooth2d(q[0], q[1], r) < 0:
+                lo = m
+            else:
+                hi = m
+        q = c + 0.5 * (lo + hi) * d
+        pts.append(P(q[0], q[1]))
+    return pts
 
 
 # --------------------------------------------- ch3b: feature-data cards

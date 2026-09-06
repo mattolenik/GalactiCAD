@@ -109,6 +109,9 @@ fn assert_worker_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
 
         // The "main thread" merges the partials by global key + runs the S4 tail.
         let merged = merge(tree, c, &tuning(), &partials);
+        assert_eq!(merged.validation, serial.validation, "{name}: validation parity at N={n}");
+        if name == "box" { assert!(!merged.serial_recovery, "box must exercise the actual worker merge"); }
+        eprintln!("{name} N={n} recovery={} rounds={}", merged.serial_recovery, merged.re_refine_rounds);
 
         assert!(
             merged.manifold.ok,
@@ -160,4 +163,27 @@ fn rounded_union_worker_partition_equiv_serial() {
 fn twisted_l_worker_partition_equiv_serial() {
     let (tree, c) = twisted_l_scene();
     assert_worker_equiv_serial("twisted-l", &tree, &c);
+}
+
+#[test]
+fn worker_recovery_and_reversed_completion_order_match_serial() {
+    let (tree, c) = twisted_l_scene();
+    let mut t = tuning();
+    t.max_polyline_points_per_cell = 1;
+    t.curve_chord_tol_mm = 1e-8;
+    let serial = run_sfcc_pipeline(&tree, &c, &t);
+    let leaves = prepare(&tree, &c, &t);
+    let mut partials: Vec<_> = (0..2).map(|i| mesh_partition(&tree,&c,&t,&leaves,i,2)).collect();
+    let forward = merge(&tree,&c,&t,&partials);
+    assert!(forward.serial_recovery, "fixture must exercise recovery, not vacuous round-zero parity");
+    assert!(forward.re_refine_rounds > 0);
+    assert!(serial.validation.numerical.chord_budget > 0);
+    partials.reverse();
+    let reversed = merge(&tree,&c,&t,&partials);
+    assert_eq!(forward.verts, serial.verts);
+    assert_eq!(forward.tris, serial.tris);
+    assert_eq!(reversed.verts, forward.verts);
+    assert_eq!(reversed.tris, forward.tris);
+    assert_eq!(forward.validation, serial.validation);
+    assert!(!forward.ok);
 }

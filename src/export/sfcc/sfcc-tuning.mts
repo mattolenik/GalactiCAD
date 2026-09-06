@@ -100,15 +100,15 @@ export interface SfccTuning {
     recoveryCull: boolean
 
     // --- Driver ---------------------------------------------------------------
-    /** Max global re-runs with forced splits after S4 audit failures. */
+    /** Max global re-runs with forced splits after loop failures or initial feature fallbacks. */
     reRefineMaxRounds: number
     /** Max root-cube jitter retries on exact lattice degeneracies. */
     jitterRetries: number
-    /** On hard certification failure: return the partial mesh + diagnostics, or throw. */
+    /** Legacy option, ignored by the Rust exporter: it returns best-effort geometry plus validation. */
     failurePolicy: "partial" | "throw"
     /** Crease angle (deg) for the shading vertex-split post-pass. */
     creaseAngleDeg: number
-    /** Also verify each vertex's triangle fan is a single cycle in the S4 audit. */
+    /** Verify each vertex fan is a single cycle (default on). Disabling leaves validation incomplete. */
     checkVertexLinks: boolean
     /** Emit debug overlays (feature polylines, face segments, failed cells) in MeshData.debug. */
     debugOutput: boolean
@@ -157,7 +157,7 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     jitterRetries: 3,
     failurePolicy: "partial",
     creaseAngleDeg: 30,
-    checkVertexLinks: false,
+    checkVertexLinks: true,
     debugOutput: false,
     profile: false,
 }

@@ -72,6 +72,52 @@ pub struct Leaf {
 }
 
 impl Leaf {
+    fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
+        if !matches!(self.shape, Shape::Sphere { .. } | Shape::Cuboid { .. } | Shape::Cylinder { .. }) {
+            let radius = half[0].hypot(half[1]).hypot(half[2]);
+            let f = self.f(c);
+            let reach = self.local_lipschitz(c, radius).unwrap_or(1.0) * radius;
+            return (f - reach, f + reach);
+        }
+        let local = self.sim.inv_apply_point(c[0], c[1], c[2]);
+        let mut near = [0.0; 3];
+        let mut far = [0.0; 3];
+        for a in 0..3 {
+            let h = (0..3).map(|b| self.sim.r[b * 3 + a].abs() * half[b]).sum::<f64>() / self.sim.s;
+            let d = (local[a] - self.pos[a]).abs();
+            near[a] = (d - h).max(0.0);
+            far[a] = d + h;
+        }
+        let (lo, hi) = match self.shape {
+            Shape::Sphere { r } => {
+                // Rotation does not change a sphere: use its world center for
+                // tight ranges even when the parent similarity is rotated.
+                let center = self.sim.apply_point(self.pos[0], self.pos[1], self.pos[2]);
+                for a in 0..3 {
+                    let d = (c[a] - center[a]).abs() / self.sim.s;
+                    near[a] = (d - half[a] / self.sim.s).max(0.0);
+                    far[a] = d + half[a] / self.sim.s;
+                }
+                (near[0].hypot(near[1]).hypot(near[2]) - r, far[0].hypot(far[1]).hypot(far[2]) - r)
+            }
+            Shape::Cuboid { half: h } => (
+                shapes::box_dist(near[0], near[1], near[2], h[0], h[1], h[2]),
+                shapes::box_dist(far[0], far[1], far[2], h[0], h[1], h[2]),
+            ),
+            Shape::Cylinder { r, h } => (
+                shapes::cylinder_dist(near[0], near[1], near[2], r, h),
+                shapes::cylinder_dist(far[0], far[1], far[2], r, h),
+            ),
+            _ => unreachable!(),
+        };
+        let (lo, hi) = if self.sign < 0.0 { (-hi, -lo) } else { (lo, hi) };
+        // Outward roundoff allowance: never reject a box because of a last-bit
+        // cancellation in the transform/range arithmetic.
+        let slack = 32.0 * f64::EPSILON * (1.0 + c.iter().map(|v| v.abs()).sum::<f64>()
+            + self.sim.t.iter().map(|v| v.abs()).sum::<f64>()
+            + self.sim.s * (lo.abs() + hi.abs() + self.pos.iter().map(|v| v.abs()).sum::<f64>()));
+        (lo * self.sim.s - slack, hi * self.sim.s + slack)
+    }
     pub fn f(&self, p: [f64; 3]) -> f64 {
         let l = self.sim.inv_apply_point(p[0], p[1], p[2]);
         self.sign * self.sim.s * self.shape.dist(l[0] - self.pos[0], l[1] - self.pos[1], l[2] - self.pos[2])
@@ -440,9 +486,22 @@ impl CsgNode {
         }
     }
 
-    /// Enclosure of f over an axis-aligned box via its circumscribed ball.
+    /// Box enclosure. Sphere/box/cylinder leaves use coordinate ranges rather
+    /// than a circumscribed ball, avoiding false candidates near flat faces and
+    /// small enclosed components. Other fields retain their Lipschitz enclosure.
     pub fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
-        self.interval_over_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt())
+        match self {
+            Self::Leaf(l) => l.interval_over_box(c, half),
+            Self::Min(ch) | Self::Max(ch) => {
+                let is_min = matches!(self, Self::Min(_));
+                let init = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
+                ch.iter().fold((init, init), |(lo, hi), child| {
+                    let (a, b) = child.interval_over_box(c, half);
+                    if is_min { (lo.min(a), hi.min(b)) } else { (lo.max(a), hi.max(b)) }
+                })
+            }
+            _ => self.interval_over_ball(c, half[0].hypot(half[1]).hypot(half[2])),
+        }
     }
 
     /// CSG-aware winner set: the leaves whose surfaces can own the point — those
@@ -808,7 +867,18 @@ impl<'a> Pruned<'a> {
     }
 
     pub fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
-        self.interval_over_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt())
+        match self {
+            Self::Leaf(l) => l.interval_over_box(c, half),
+            Self::Min(ch) | Self::Max(ch) => {
+                let is_min = matches!(self, Self::Min(_));
+                let init = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
+                ch.iter().fold((init, init), |(lo, hi), child| {
+                    let (a, b) = child.interval_over_box(c, half);
+                    if is_min { (lo.min(a), hi.min(b)) } else { (lo.max(a), hi.max(b)) }
+                })
+            }
+            _ => self.interval_over_ball(c, half[0].hypot(half[1]).hypot(half[2])),
+        }
     }
 
     /// One-sided unit gradient — same winner routing / smin-weighted mix as

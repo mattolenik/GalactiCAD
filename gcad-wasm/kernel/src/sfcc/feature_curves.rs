@@ -74,7 +74,7 @@ enum Geom {
         arc: bool,
     },
     /// Numerically traced boolean-seam / twisted-helix polyline (boxed to keep
-    /// the enum small). Every sample is exactly on the carrier-pair locus;
+    /// the enum small). Samples approximate the carrier-pair locus;
     /// interpolation between samples is re-projected by `refine`.
     Traced(Box<TracedData>),
 }
@@ -117,46 +117,47 @@ impl FeatureCurve {
         }
     }
 
+    /// Best-effort query used by tracing/trim. Numerical failure is explicit in
+    /// the export diagnostics; mesh sampling can require `point_at_checked`.
     pub fn point_at(&self, t: f64) -> [f64; 3] {
+        if let Some(p) = self.point_at_checked(t) { return p; }
+        crate::sfcc::validation::curve_projection_failed();
+        self.interpolated_point(t)
+    }
+
+    fn interpolated_point(&self, t: f64) -> [f64; 3] {
         match &self.geom {
             Geom::Segment { a, d, .. } => [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t],
             Geom::Circle { c, e1, e2, r, .. } => {
                 let (co, si) = (t.cos(), t.sin());
-                [
-                    c[0] + r * (co * e1[0] + si * e2[0]),
-                    c[1] + r * (co * e1[1] + si * e2[1]),
-                    c[2] + r * (co * e1[2] + si * e2[2]),
-                ]
+                [c[0] + r * (co * e1[0] + si * e2[0]),
+                 c[1] + r * (co * e1[1] + si * e2[1]),
+                 c[2] + r * (co * e1[2] + si * e2[2])]
             }
             Geom::Traced(td) => {
-                let TracedData { samples, n, sa, sb, refine } = &**td;
-                let t_max = (*n - 1) as f64;
-                let mut tc = t;
-                if self.closed {
-                    tc %= t_max;
-                    if tc < 0.0 {
-                        tc += t_max;
-                    }
-                } else {
-                    tc = tc.clamp(0.0, t_max);
-                }
-                let i = (tc.floor() as usize).min(*n - 2);
+                let end = (td.n - 1) as f64;
+                let tc = if self.closed { t.rem_euclid(end) } else { t.clamp(0.0, end) };
+                let i = (tc.floor() as usize).min(td.n - 2);
                 let fr = tc - i as f64;
-                let (sx, sy, sz) = traced_sample(samples, i);
-                let (sx1, sy1, sz1) = traced_sample(samples, i + 1);
-                let lx = sx * (1.0 - fr) + sx1 * fr;
-                let ly = sy * (1.0 - fr) + sy1 * fr;
-                let lz = sz * (1.0 - fr) + sz1 * fr;
-                if fr == 0.0 || fr == 1.0 {
-                    return [lx, ly, lz];
-                }
-                match project_to_carrier_pair(
-                    sa, sb, lx, ly, lz, refine.curve_eps, refine.min_cross, refine.max_displacement,
-                ) {
-                    Some(q) => q,
-                    None => [lx, ly, lz],
-                }
+                let (x, y, z) = traced_sample(&td.samples, i);
+                let (nx, ny, nz) = traced_sample(&td.samples, i + 1);
+                [x * (1.0 - fr) + nx * fr, y * (1.0 - fr) + ny * fr, z * (1.0 - fr) + nz * fr]
             }
+        }
+    }
+
+    /// Returns only finite points satisfying both carrier residuals. A failed
+    /// projection never masquerades as an on-locus sample.
+    pub fn point_at_checked(&self, t: f64) -> Option<[f64; 3]> {
+        if !t.is_finite() { return None; }
+        let p = self.interpolated_point(t);
+        if !p.iter().all(|v| v.is_finite()) { return None; }
+        match &self.geom {
+            Geom::Traced(td) => project_to_carrier_pair(
+                &td.sa, &td.sb, p[0], p[1], p[2], td.refine.curve_eps,
+                td.refine.min_cross, td.refine.max_displacement,
+            ),
+            _ => Some(p),
         }
     }
 
@@ -282,7 +283,11 @@ impl FeatureCurve {
         if let Some(v) = hit {
             return v;
         }
+        let before = crate::sfcc::validation::numerical_failures();
         let v = Rc::new(self.axis_plane_crossings(axis, coord));
+        // Do not memoize failed queries: re-refinement resets round-local
+        // diagnostics, so a cached fallback would otherwise hide its failure.
+        if crate::sfcc::validation::numerical_failures() != before { return v; }
         XPC_CACHE.with(|c| {
             c.borrow_mut().map.insert(key, Rc::clone(&v));
         });
@@ -609,4 +614,22 @@ mod tests {
         let (_, dist) = c.project(3.0, 0.0, 0.0);
         assert!((dist - 2.0).abs() < 1e-9);
     }
+    #[test]
+    fn failed_traced_queries_cannot_be_hidden_by_the_crossing_cache() {
+        use crate::strata::StratumIdentity;
+        use crate::sfcc::validation::{NumericalGuard, numerical_failures, restore_numerical_failures};
+        let _scope = NumericalGuard::new();
+        let ident = |id| StratumIdentity { id, owner_node_id: -1, leaf_index: 0, local_index: id, sign: 1. };
+        let a = Stratum::plane(ident(0),0.,1.,0.,0.);
+        let b = Stratum::plane(ident(1),0.,1.,0.,-1.);
+        let curve = make_traced_curve(0,[0,1],vec![-1.,0.5,0.,1.,0.5,0.],false,a,b,
+            TracedRefine { curve_eps: 1e-12, min_cross: 1e-3, max_displacement: 1. },-1);
+        assert!(curve.point_at_checked(0.5).is_none());
+        for _ in 0..2 {
+            restore_numerical_failures(Default::default());
+            curve.axis_plane_crossings_cached(0,0.,0,u64::MAX);
+            assert!(numerical_failures().curve_projection > 0);
+        }
+    }
+
 }

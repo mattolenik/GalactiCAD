@@ -352,6 +352,9 @@ pub fn trim_and_wire(
                 project_to_triple(&sa, &sb, &sc, out[0], out[1], out[2], tol.curve_eps, tol.probe_delta * 4.0)
             {
                 out = refined;
+            } else {
+                // A retained endpoint seed is best-effort geometry, not a solved triple.
+                crate::sfcc::validation::curve_projection_failed();
             }
         }
         out

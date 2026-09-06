@@ -1034,24 +1034,31 @@ fn split_midpoint<T: SdfQuery + ?Sized>(
         + (points.z(b_id) - points.z(a_id)).powi(2))
     .sqrt();
     let mut q = [mx, my, mz];
-    for _ in 0..6 {
+    for _ in 0..16 {
         let fv = tree.f(q);
-        if fv.abs() <= root_tol {
-            break;
-        }
+        if !fv.is_finite() || fv.abs() <= root_tol { break; }
         let (_, grad) = tree.grad(q);
-        let g2 = grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2];
-        if g2 < 1e-20 {
-            break;
+        let g2 = grad.iter().map(|v| v * v).sum::<f64>();
+        if !g2.is_finite() || g2 < 1e-20 { break; }
+        let mut alpha = fv / g2;
+        let mut accepted = None;
+        for _ in 0..8 {
+            let next = [q[0] - alpha * grad[0], q[1] - alpha * grad[1], q[2] - alpha * grad[2]];
+            let drift = (next[0] - mx).hypot(next[1] - my).hypot(next[2] - mz);
+            let residual = tree.f(next).abs();
+            if drift <= seg_len + root_tol * 8.0 && residual.is_finite() && residual < fv.abs() {
+                accepted = Some(next);
+                break;
+            }
+            alpha *= 0.5;
         }
-        let k = fv / g2;
-        q[0] -= k * grad[0];
-        q[1] -= k * grad[1];
-        q[2] -= k * grad[2];
+        match accepted { Some(next) => q = next, None => break }
     }
     let drift = ((q[0] - mx).powi(2) + (q[1] - my).powi(2) + (q[2] - mz).powi(2)).sqrt();
-    if drift > seg_len + root_tol * 8.0 || tree.f(q).abs() > root_tol * 8.0 {
-        q = [mx, my, mz];
+    if !q.iter().all(|v| v.is_finite()) || drift > seg_len + root_tol * 8.0
+        || !tree.f(q).is_finite() || tree.f(q).abs() > root_tol * 8.0 {
+        crate::sfcc::validation::face_projection_failed();
+        q = [mx, my, mz]; // partial mesh only; validation reports the failed recovery
     }
     let (_, grad) = tree.grad(q);
     points.get_or_create_str(mid_key, || [q[0], q[1], q[2], grad[0], grad[1], grad[2]])
@@ -1415,5 +1422,23 @@ fn repair_face_duplicates(
             rec.consumed_fwd.push(0);
             rec.consumed_rev.push(0);
         }
+    }
+}
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+    use crate::sdf::{leaf_at, Shape};
+    use crate::sfcc::validation::{NumericalGuard, numerical_failures};
+    #[test]
+    fn midpoint_projection_respects_displacement_budget() {
+        let _scope = NumericalGuard::new();
+        let tree = leaf_at(Shape::Sphere { r: 1. },[0.;3]);
+        let mut p = PointTable::new();
+        let a = p.add(-0.01,0.,0.,-1.,0.,0.);
+        let b = p.add(0.01,0.,0.,1.,0.,0.);
+        let mid = split_midpoint(&tree,&mut p,a,b,1e-9,"singular-midpoint");
+        assert_eq!(numerical_failures().face_projection, 1);
+        assert_eq!(tree.f([p.x(mid),p.y(mid),p.z(mid)]), -1.);
     }
 }

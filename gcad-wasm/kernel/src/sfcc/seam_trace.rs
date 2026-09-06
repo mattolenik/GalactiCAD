@@ -391,3 +391,63 @@ pub fn trace_all_seams(
     }
     (curves, diagnostics)
 }
+
+/// Trace generated planar blend patches against primitive and earlier blend
+/// carriers. Full-tree residual and both flank tests in trim_and_wire decide
+/// which portions are exposed; supporting planes alone do not define a patch.
+pub fn trace_blend_plane_seams(
+    tree: &SfccTree<'_>,
+    patches: &[(usize, [f64; 6])],
+    tol: &ResolvedTolerances,
+    diag: &mut SeamTraceDiagnostics,
+    make_id: &mut dyn FnMut() -> usize,
+) -> Vec<FeatureCurve> {
+    let mut carriers = Vec::new();
+    for leaf in &tree.leaves {
+        for id in leaf.strata_start..leaf.strata_end {
+            carriers.push((id, leaf.aabb));
+        }
+    }
+    let mut curves = Vec::new();
+    let refine = TracedRefine {
+        curve_eps: tol.curve_eps,
+        min_cross: tol.min_tangency_sin,
+        max_displacement: tol.max_chord_error * 4.0,
+    };
+    for &(id, bounds) in patches {
+        let sa = tree.strata[id];
+        for &(other, ob) in &carriers {
+            let sb = tree.strata[other];
+            if sb.kind == crate::strata::CarrierKind::Plane {
+                let a = sa.normal(0., 0., 0.);
+                let b = sb.normal(0., 0., 0.);
+                if (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]).abs() > 1. - 1e-10 {
+                    continue;
+                }
+            }
+            let mut overlap = [0.; 6];
+            for k in 0..3 {
+                overlap[k] = bounds[k].max(ob[k]) - tol.probe_delta * 2.;
+                overlap[k + 3] = bounds[k + 3].min(ob[k + 3]) + tol.probe_delta * 2.;
+            }
+            if (0..3).any(|k| overlap[k] >= overlap[k + 3]) {
+                continue;
+            }
+            diag.pairs_considered += 1;
+            for (samples, closed) in trace_carrier_pair(&sa, &sb, &overlap, tol, diag) {
+                curves.push(make_traced_curve(
+                    make_id(),
+                    [id, other],
+                    samples,
+                    closed,
+                    sa,
+                    sb,
+                    refine,
+                    -1,
+                ));
+            }
+        }
+        carriers.push((id, bounds));
+    }
+    curves
+}

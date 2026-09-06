@@ -13,7 +13,7 @@
 //!                                  corner is `latticeKey` (unique among leaves)
 //! Rare composite provenances (feature points) use the string map.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub const POINT_KEY_INTERIOR: i64 = 3;
 
@@ -22,7 +22,7 @@ pub const POINT_KEY_INTERIOR: i64 = 3;
 /// boundary crossing or feature pin created independently in two partitions collapses
 /// to one vertex. `Unkeyed` points (cell-owned, e.g. feature polyline samples) are
 /// local to a single cell — hence a single partition — and must never dedup.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PointKey {
     Num(i64),
     Str(String),
@@ -50,9 +50,21 @@ pub struct PointTable {
     /// Per-point provenance key, parallel to `pos`/`normal` (one entry per id). The
     /// merge key for the separate-table spatial partition.
     keys: Vec<PointKey>,
+    protected_edges: HashSet<(usize, usize)>,
 }
 
 impl PointTable {
+    /// Feature edges must survive quality-improving diagonal flips.
+    pub fn protect_edge(&mut self, a: usize, b: usize) {
+        if a != b { self.protected_edges.insert((a.min(b), a.max(b))); }
+    }
+    pub fn edge_is_protected(&self, a: usize, b: usize) -> bool {
+        self.protected_edges.contains(&(a.min(b), a.max(b)))
+    }
+    pub fn protected_edges(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.protected_edges.iter().copied()
+    }
+
     pub fn new() -> Self {
         PointTable::default()
     }
@@ -141,6 +153,30 @@ impl PointTable {
         self.normal[id * 3] = nx;
         self.normal[id * 3 + 1] = ny;
         self.normal[id * 3 + 2] = nz;
+    }
+
+    /// Stable processing order for greedy cleanup, independent of partition
+    /// order and table-local ids. Coordinates order payloads; they do not weld
+    /// or identify vertices. Preserve each triangle's cyclic orientation.
+    pub fn ordered_triangles(&self, tris: &[usize]) -> Vec<usize> {
+        let mut ids: Vec<usize> = (0..self.count()).collect();
+        let cmp = |&a: &usize, &b: &usize| {
+            for (x, y) in self.pos[a*3..a*3+3].iter().chain(&self.normal[a*3..a*3+3])
+                .zip(self.pos[b*3..b*3+3].iter().chain(&self.normal[b*3..b*3+3])) {
+                let c = x.total_cmp(y);
+                if !c.is_eq() { return c; }
+            }
+            self.keys[a].cmp(&self.keys[b])
+        };
+        ids.sort_by(cmp);
+        let mut ranks = vec![0usize; ids.len()];
+        for (rank, &id) in ids.iter().enumerate() { ranks[id] = rank; }
+        let mut triangles: Vec<[usize; 3]> = tris.chunks_exact(3).map(|t| {
+            let k = (0..3).min_by_key(|&k| ranks[t[k]]).unwrap();
+            [t[k], t[(k+1)%3], t[(k+2)%3]]
+        }).collect();
+        triangles.sort_by_key(|t| [ranks[t[0]], ranks[t[1]], ranks[t[2]]]);
+        triangles.into_iter().flatten().collect()
     }
 
     /// Compact to the points referenced by `tris` and emit the MeshData vertex

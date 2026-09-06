@@ -32,3 +32,7 @@ pub mod spatial_index;
 pub mod tree;
 pub mod trim;
 pub mod worker;
+
+pub mod validation;
+
+mod blend_planes;

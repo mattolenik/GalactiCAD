@@ -13,7 +13,6 @@ use crate::sfcc::point_table::PointTable;
 use std::collections::{HashMap, HashSet};
 
 const SLIVER_ASPECT: f64 = 0.02; // height/longest-edge below this is a flip candidate
-const PACK: usize = 0x200000;
 
 /// height / longest edge (0 for zero-area); plus the longest edge's corner index.
 fn shape(points: &PointTable, a: usize, b: usize, c: usize) -> (f64, usize) {
@@ -58,14 +57,14 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
     let mut total_flips = 0usize;
 
     for _ in 0..max_sweeps {
-        let mut dir: HashMap<usize, usize> = HashMap::new();
+        let mut dir: HashMap<(usize, usize), usize> = HashMap::new();
         for t in 0..tri_count {
             for e in 0..3 {
-                dir.insert(cur[t * 3 + e] * PACK + cur[t * 3 + (e + 1) % 3], t);
+                dir.insert((cur[t * 3 + e], cur[t * 3 + (e + 1) % 3]), t);
             }
         }
         let mut touched = vec![false; tri_count];
-        let mut new_edges: HashSet<usize> = HashSet::new();
+        let mut new_edges: HashSet<(usize, usize)> = HashSet::new();
         let mut flips = 0usize;
         for t in 0..tri_count {
             if touched[t] {
@@ -80,7 +79,8 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
             let p = cur[t * 3 + e];
             let q = cur[t * 3 + (e + 1) % 3];
             let r = cur[t * 3 + (e + 2) % 3];
-            let o = match dir.get(&(q * PACK + p)) {
+            if points.edge_is_protected(p, q) { continue; }
+            let o = match dir.get(&(q, p)) {
                 Some(&o) if o != t && !touched[o] => o,
                 _ => continue,
             };
@@ -94,10 +94,10 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
             if d == usize::MAX || d == r {
                 continue;
             }
-            if dir.contains_key(&(r * PACK + d))
-                || dir.contains_key(&(d * PACK + r))
-                || new_edges.contains(&(r * PACK + d))
-                || new_edges.contains(&(d * PACK + r))
+            if dir.contains_key(&(r, d))
+                || dir.contains_key(&(d, r))
+                || new_edges.contains(&(r, d))
+                || new_edges.contains(&(d, r))
             {
                 continue;
             }
@@ -108,8 +108,8 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
             if after <= before * 2.0 || after <= 1e-6 {
                 continue;
             }
-            new_edges.insert(r * PACK + d);
-            new_edges.insert(d * PACK + r);
+            new_edges.insert((r, d));
+            new_edges.insert((d, r));
             cur[t * 3] = r;
             cur[t * 3 + 1] = p;
             cur[t * 3 + 2] = d;
@@ -130,4 +130,23 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
 
 fn hypot3(x: f64, y: f64, z: f64) -> f64 {
     (x * x + y * y + z * z).sqrt()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn crease_lock_prevents_an_otherwise_beneficial_flip() {
+        let mut p = PointTable::new();
+        let a = p.add(-1.,0.,0.,0.,0.,1.);
+        let b = p.add(1.,0.,0.,0.,0.,1.);
+        let c = p.add(0.,0.001,0.,0.,0.,1.);
+        let d = p.add(0.,-1.,0.,0.,0.,1.);
+        let tris = [a,b,c,b,a,d];
+        assert_eq!(flip_sliver_triangles(&p, &tris, 4).1, 1);
+        p.protect_edge(b,a);
+        let (out, flips) = flip_sliver_triangles(&p, &tris, 4);
+        assert_eq!(flips, 0);
+        assert_eq!(out, tris);
+    }
 }

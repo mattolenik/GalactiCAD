@@ -55,10 +55,26 @@ export interface MeshMdcDebugData {
     stats: MeshMdcDebugStats
 }
 
-/** SFCC certification diagnostics (see src/export/sfcc/assemble.mts). */
+export interface MeshSfccValidation {
+    status: "passed" | "failed" | "incomplete"
+    edgeIncidence: "passed" | "failed" | "notChecked"
+    vertexLinks: "passed" | "failed" | "notChecked"
+    faceSegments: "passed" | "failed" | "notChecked"
+    vertexResiduals: "passed" | "failed" | "notChecked"
+    unresolvedCells: number
+    featureFallbackCells: number
+    curveProjectionFailures: number
+    faceProjectionFailures: number
+    chordBudgetFailures: number
+    offSurfaceVertices: number
+    maxVertexResidual: number
+}
+
+/** SFCC topology, numerical-budget, and final vertex-residual diagnostics. */
 export interface MeshSfccDebugData {
     /** Pipeline stats blob (cell/face counts, audits, fallback counters). */
-    stats: Record<string, number | number[]>
+    stats: Record<string, unknown>
+    validation?: MeshSfccValidation
     /** World AABBs of cells whose loops failed to close, 6 floats per box. */
     failedCellBoxes: Float32Array<ArrayBuffer>
     /** Feature polyline overlay (xyz pairs per segment), when debugOutput is on. */

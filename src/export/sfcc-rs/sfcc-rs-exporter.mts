@@ -11,7 +11,7 @@
 
 import type { MeshExportContext, MeshExporter } from "../mesh-exporter.mjs"
 import { MeshExportCancelledError } from "../mesh-exporter.mjs"
-import type { MeshData } from "../export.mjs"
+import type { MeshSfccValidation, MeshData } from "../export.mjs"
 import { DEFAULT_SFCC_TUNING, normalizeSfccTuning, type SfccTuning } from "../sfcc/sfcc-tuning.mjs"
 import { serializeSceneToBridgeJson } from "./scene-bridge.mjs"
 import {
@@ -142,7 +142,7 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
     result.free()
 
     if (!ok) {
-        console.warn("[sfcc-rs] certification failed", stats)
+        console.warn("[sfcc-rs] export validation did not pass; returning a best-effort mesh", stats.validation ?? stats)
     }
     log("MeshExport").info("sfcc-rs stats", {
         ...stats,
@@ -153,7 +153,8 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
     const mesh: MeshData = { verts, tris }
     mesh.debug = {
         sfcc: {
-            stats: stats as Record<string, number | number[]>,
+            stats,
+            validation: stats.validation as MeshSfccValidation | undefined,
             // The wasm boundary doesn't surface failed-cell overlays (debug-only);
             // an empty buffer satisfies the MeshData contract.
             failedCellBoxes: new Float32Array(0),

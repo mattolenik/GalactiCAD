@@ -196,7 +196,7 @@ class SFCC(Scene):
     def ch1_title(self):
         t1 = Text("SFCC", font_size=96, weight=BOLD, color=BLUE_B)
         t2 = Text("Stratified Feature-Conforming Contouring", font_size=40)
-        t3 = Text("implicit CSG scene  →  certified, feature-exact mesh",
+        t3 = Text("implicit CSG scene  →  feature-conforming mesh",
                   font_size=28, color=GREY_A)
         grp = VGroup(t1, t2, t3).arrange(DOWN, buff=0.4)
         self.play(FadeIn(t1, scale=1.2), run_time=1.0)
@@ -247,7 +247,7 @@ class SFCC(Scene):
             "f_box never states them: no vertex list, no edge list,",
             "no face list exists anywhere in the model",
             "the field can confirm a point lies ON the surface —",
-            "it can never tell you where the corners ARE",
+            "a distance query does not directly expose the corner graph",
         ], width=7.0).move_to(P(3.2, 0.7))
         qmarks = VGroup(*[Text("?", font_size=34, weight=BOLD, color=YELLOW).move_to(m)
                           for m in [img.get_top() + DOWN * 0.02,
@@ -255,7 +255,7 @@ class SFCC(Scene):
                                     np.array([img.get_right()[0] - 0.06,
                                               img.get_top()[1] - 0.75 * img.height, 0])]])
         cap2 = self.caption("an SDF tells you that a surface is there —",
-                            "never where its features are")
+                            "without directly exposing its feature graph")
         self.play(FadeOut(code), FadeIn(kick, shift=RIGHT * 0.3),
                   FadeOut(cap), FadeIn(cap2), run_time=0.7)
         self.play(LaggedStart(*[FadeIn(q, scale=1.6) for q in qmarks], lag_ratio=0.25),
@@ -271,8 +271,8 @@ class SFCC(Scene):
         alab = Text("SFCC", font_size=22, weight=BOLD, color=RED_B)\
             .next_to(arr, UP, buff=0.15)
         cap3 = self.caption("this video: SFCC closes that gap — here is the mesh it actually",
-                            "exports from that field: every corner and edge is a known, exact",
-                            "vertex, not a reconstruction; the rest is how")
+                            "exports using model-derived corners and edges, with numerical",
+                            "projection where needed; the rest explains how")
         self.play(FadeOut(kick), FadeOut(qmarks), FadeOut(cap2),
                   img.animate.scale_to_fit_height(3.6).move_to(P(-4.9, 0.55)),
                   run_time=0.8)
@@ -310,7 +310,7 @@ class SFCC(Scene):
         self.play(Create(st[1]), FadeIn(st[2]), run_time=1.0)
         self.wait(4.4)
 
-        cap3 = self.caption("refining shrinks the error, but the crease never appears —",
+        cap3 = self.caption("refining shrinks geometric error without constructing a crease graph —",
                             "the mesh is chamfered at every resolution")
         self.swap_caption(cap3, cap2)
         for n in (2, 4):
@@ -333,9 +333,9 @@ class SFCC(Scene):
             nrm = n1 if p[0] < K[0] else n2
             arrows.add(Arrow(p, p + 0.75 * nrm, buff=0, stroke_width=3.5,
                              max_tip_length_to_length_ratio=0.3, color=GREEN_B))
-        cap4 = self.caption("dual contouring (DC / MDC): estimate normals at the crossings,",
-                            "detect the crease, place a QEF-minimizing vertex — the edge is",
-                            "reconstructed from samples every time, never known")
+        cap4 = self.caption("dual contouring (DC / MDC): use normals at sampled crossings,",
+                            "fit a QEF-minimizing vertex — analytic normals can be used,",
+                            "but feature placement depends on those local constraints")
         self.swap_caption(cap4, cap3)
         self.play(Create(hl), *[GrowArrow(a) for a in arrows], run_time=1.0)
         qdot = Dot(K, radius=0.1, color=YELLOW)
@@ -343,7 +343,7 @@ class SFCC(Scene):
         self.play(FadeIn(qdot), run_time=0.4)
         self.wait(0.8)
         trail = DashedLine(K, esc, color=YELLOW, stroke_width=2.5, dash_length=0.1)
-        qlbl = Text("?  clamp? snap?", font_size=24, color=YELLOW).next_to(esc, DOWN, buff=0.15)
+        qlbl = Text("possible escape", font_size=24, color=YELLOW).next_to(esc, DOWN, buff=0.15)
         self.play(qdot.animate.move_to(esc), Create(trail), run_time=1.1)
         self.play(FadeIn(qlbl), run_time=0.4)
         self.wait(4.6)
@@ -378,7 +378,7 @@ class SFCC(Scene):
         self.wait(4.6)
 
         cap3 = self.caption("2× finer: a tip appears — a full cell short, at the wrong angle;",
-                            "2× again: closer, but the true apex is still never produced")
+                            "2× again: closer; this sampled example still misses the true apex")
         self.swap_caption(cap3, cap2)
         for n in (12, 24):
             st2 = narrow_stage(fw, C, half, n, K, nu, nl)
@@ -387,15 +387,15 @@ class SFCC(Scene):
             st = st2
         self.wait(3.0)
 
-        cap4 = self.caption("DC / MDC fare no better here: the two flank normals are nearly",
-                            "parallel, so crease detection drowns in sampling noise and the",
-                            "QEF goes ill-conditioned — the edge is guessed, not solved")
+        cap4 = self.caption("nearly parallel flank normals can make the QEF ill-conditioned:",
+                            "placement then depends on sampling, regularization, and constraints",
+                            "— this is a possible failure mode, not an inevitable result")
         self.swap_caption(cap4, cap3)
         self.wait(5.6)
 
-        cap5 = self.caption("this is what makes raw SDFs unusable for CAD: edges locate datums,",
-                            "mates, chamfers — a model whose edges are estimates is inadequate",
-                            "at any resolution")
+        cap5 = self.caption("CAD often needs explicit features: edges locate datums,",
+                            "mates, and chamfers; SFCC uses the model structure to guide",
+                            "feature placement and reports unresolved numerical work")
         self.swap_caption(cap5, cap4)
         self.wait(5.6)
         self.play(FadeOut(VGroup(panel, tri, st)), FadeOut(cap5), run_time=0.8)
@@ -427,7 +427,7 @@ class SFCC(Scene):
             .next_to(ar1, UP, buff=0.18).shift(LEFT * 0.35)
         al2 = Text("stretch", font_size=20, color=YELLOW_C).next_to(ar2, UP, buff=0.18)
         cap2 = self.caption("every operator transforms BOTH: twist maps the field",
-                            "p → R(θ·p.y)·p — and maps each straight edge to an exact helix")
+                            "p → R(θ·p.y)·p — vertical edges sweep helices")
         self.play(FadeOut(card), FadeOut(cap),
                   img.animate.scale_to_fit_height(3.0).move_to(P(-4.9, 0.5)),
                   run_time=0.8)
@@ -435,8 +435,8 @@ class SFCC(Scene):
         self.wait(5.4)
 
         cap3 = self.caption("then stretch it: transforms stack — the final feature curves are",
-                            "closed forms of the whole composition (twist + stretch), exact,",
-                            "never re-estimated from samples")
+                            "model-derived carriers under twist and stretch, with sampled curves",
+                            "and numerical projection onto their carrier pairs")
         self.swap_caption(cap3, cap2)
         self.play(FadeIn(img3), GrowArrow(ar2), FadeIn(al2), run_time=1.0)
         self.wait(5.6)
@@ -451,8 +451,8 @@ class SFCC(Scene):
         mlegend = Text("each pair: solid · wireframe", font_size=18, color=GREY_B)\
             .move_to(P(0.2, 3.0))
         capm = self.caption("and these are the actual SFCC meshes of all three: the helical",
-                            "creases are vertex chains sampled on the exact analytic helices,",
-                            "the cap rims exact — nothing here was detected from samples")
+                            "creases are sampled vertex chains, projected onto carrier pairs;",
+                            "cap rims use model geometry; numerical failures are reported")
         self.play(FadeOut(Group(img, img2, img3, ar1, ar2, al1, al2)),
                   FadeIn(meshes), FadeIn(mlegend),
                   FadeOut(cap3), FadeIn(capm), run_time=1.0)
@@ -465,7 +465,7 @@ class SFCC(Scene):
             Text("SDF", font_size=20, color=GREY_A).move_to(P(-4.6, 2.45)),
             Text("mesh — solid", font_size=20, color=GREY_A).move_to(P(0.0, 2.45)),
             Text("mesh — wireframe", font_size=20, color=GREY_A).move_to(P(4.6, 2.45)))
-        cap4 = self.caption("CSG works the same way: booleans create seams — computed exactly",
+        cap4 = self.caption("CSG also creates seams — traced numerically on carrier pairs",
                             "on the analytic carriers, trimmed where a shape swallows an edge —",
                             "complex SDF geometry, without ever losing the underlying shape")
         self.play(FadeOut(meshes), FadeOut(mlegend), FadeOut(capm),
@@ -474,8 +474,8 @@ class SFCC(Scene):
         self.wait(6.0)
 
         cap4b = self.caption("and its SFCC mesh: the seam is meshed by edge cells — in-cell",
-                             "crease polylines strung between exact pins — the seam∧edge",
-                             "junctions are exact corner vertices, the swallowed edge simply gone")
+                             "crease polylines between projected pins — the seam∧edge",
+                             "junctions use refined corners; trim removes the swallowed edge")
         self.swap_caption(cap4b, cap4)
         self.wait(5.8)
 
@@ -512,7 +512,7 @@ class SFCC(Scene):
             self.play(*anims, run_time=0.9)
             self.wait(6.4)
             prev = (trio, cap)
-        capx = self.caption("five abusive trees, five certified manifold meshes —",
+        capx = self.caption("five complex trees, five export examples —",
                             "now the pipeline, walked in 2D cross-section")
         self.play(FadeOut(prev[0]), FadeOut(prev[1]), FadeIn(capx), run_time=0.8)
         self.wait(3.8)
@@ -550,7 +550,7 @@ class SFCC(Scene):
 
     # ---------------------------------------------------------- chapter 3
     def ch3_features(self):
-        self.set_header("S1 — Symbolic feature compilation (no QEF, nothing sampled)")
+        self.set_header("S1 — Model-derived features, with numerical tracing")
         sq, ci, solid = self.mob_scene
 
         # carriers: unbounded analytic surfaces
@@ -657,7 +657,7 @@ class SFCC(Scene):
             "box → 6 planes      cylinder → mantle + 2 caps",
             "sphere → 1      cone → mantle + base",
             "twisted extrude / loft sides → ruled sheets",
-            "each exposes  f(p) · exact normal · project · κ bound",
+            "carriers expose f(p), normals, projection, and curvature support",
         ]).move_to(card_pos)
         cap = self.caption("in this flat demo: 4 line carriers + 1 circle carrier,",
                            "each colored patch is one stratum", pos=DOWN * 3.35)
@@ -682,7 +682,7 @@ class SFCC(Scene):
         self.wait(5.8)
 
         c3 = make_card("CORNERS — where curves meet", RED_B, [
-            "exact position + (curve, end) wiring + incident strata",
+            "position + (curve, end) wiring + incident strata",
             "box → 8 corners (valence 3) · cone apex → valence 0",
             "here: c₁ = (0.44, 1.50) — where the box's top",
             "carrier meets the circle carrier",
@@ -735,8 +735,8 @@ class SFCC(Scene):
             .move_to(P(4.55, 2.25))
         ls2 = Text("smooth union", font_size=22, color=GREY_A).move_to(P(-4.55, 2.25))
         capm = self.caption("the meshed result: the fillet band is triangulated smooth under",
-                            "the gradient-cone certificate, and the crease polylines terminate",
-                            "at their exact endpoints — no crack where sharp meets smooth")
+                            "sampled gradient-cone checks, and the crease polylines terminate",
+                            "at tolerance-defined endpoints along the smooth transition")
         self.play(FadeOut(Group(hard, lh, hl, ls)),
                   smooth.animate.scale_to_fit_height(3.1).move_to(P(-4.55, 0.4)),
                   FadeOut(cap2), FadeIn(capm), run_time=0.9)
@@ -764,14 +764,14 @@ class SFCC(Scene):
                   color=GREEN_B).move_to(P(2.4, tk_y - 0.5))
         ld = Text("dead: displaced into the fillet", font_size=16,
                   color=RED).move_to(P(5.5, tk_y - 0.5))
-        cl = Text("bisected: the crease's exact endpoint", font_size=17,
+        cl = Text("bisected: tolerance-defined endpoint", font_size=17,
                   color=YELLOW).move_to(P(4.3, tk_y - 1.05))
         cptr = Line(cl.get_top(), cut.get_bottom() + DOWN * 0.03,
                     color=GREY_B, stroke_width=2)
         tick_grp = VGroup(tline, tlab, ticks, cut, la, ld, cl, cptr)
-        cap3 = self.caption("S1c trim makes the hand-off exact: each native edge is sampled",
-                            "against the blended tree; the alive→dead transition is bisected —",
-                            "the crease ends at the exact point it sinks into the fillet")
+        cap3 = self.caption("S1c trim samples each native edge and bisects live/dead transitions",
+                            "against the blended tree to locate a sharp-to-smooth hand-off;",
+                            "the endpoint depends on probe spacing and tolerance")
         self.play(FadeOut(Group(smooth, ls2, meshr_s, meshr_w, lms, lmw)), FadeOut(capm),
                   FadeIn(cap3), run_time=0.8)
         self.play(Create(tline), FadeIn(tlab), run_time=0.6)
@@ -802,7 +802,7 @@ class SFCC(Scene):
         crosses = VGroup(*[Cross(scale_factor=0.11).move_to(d) for d in dead_dots])
         cap4 = self.caption("in the 2D scene: smooth-union the same primitives — the two seam",
                             "features die (trim kills them), the far corners survive; features",
-                            "exist exactly where the model is actually sharp")
+                            "follow the sharp regions found by model-derived trimming")
         self.swap_caption(cap4, cap3)
         self.play(FadeIn(hard2d), FadeIn(sm2d), FadeIn(dead_dots), FadeIn(live_dots),
                   run_time=1.6)
@@ -812,7 +812,7 @@ class SFCC(Scene):
         self.wait(5.6)
 
         cap5 = self.caption("the band meshes as smooth surface — no strata, so refinement uses",
-                            "the tree's own ∇f cone (κ ≤ 1/r analytically) — and it joins the",
+                            "the tree's sampled ∇f cone by default — and it joins the",
                             "crease's cells via once-per-face contouring: crack-free")
         self.swap_caption(cap5, cap4)
         self.wait(6.4)
@@ -822,7 +822,7 @@ class SFCC(Scene):
 
     # ---------------------------------------------------------- chapter 4
     def ch4_octree(self):
-        self.set_header("S2 — Certified feature-aware octree (a quadtree here)")
+        self.set_header("S2 — Adaptive feature-aware octree (a quadtree here)")
         sq, ci, solid = self.mob_scene
         self.play(solid.animate.set_fill(opacity=0.30), run_time=0.4)
 
@@ -853,7 +853,7 @@ class SFCC(Scene):
         self.play(LaggedStart(*[FadeIn(c) for c in grid], lag_ratio=0.008), run_time=3.0)
         self.wait(1.8)
 
-        cap2 = self.caption("refine until every leaf is simple:",
+        cap2 = self.caption("refine toward simple leaves; the depth ceiling reports unresolved cells:",
                             "at most one feature curve through it — or exactly one claimed corner")
         self.swap_caption(cap2, cap)
         feats = [g for g, l in zip(grid, sorted(self.leaves, key=lambda l: l[3]))
@@ -896,7 +896,7 @@ class SFCC(Scene):
         c_label = Text("per stratum:  ✓ ✓", font_size=19, color=GREEN_B)\
             .next_to(crease_cell, DOWN, buff=0.12)
 
-        cap3 = self.caption("smoothness is certified per stratum, against each patch's own carrier —",
+        cap3 = self.caption("smoothness is checked per stratum, against each patch's own carrier —",
                             "the tree's normals never converge at a crease, but each carrier's do")
         self.swap_caption(cap3, cap2)
         self.play(FadeIn(backdrop), Create(smooth_cell), Create(arc),
@@ -906,13 +906,13 @@ class SFCC(Scene):
                   *[GrowArrow(a) for a in c_arrows], FadeIn(c_label), run_time=1.2)
         self.wait(4.0)
 
-        cap4 = self.caption("so refinement terminates at creases instead of chasing the kinked",
-                            "field forever; blend fillets certify the tree's own ∇f cone instead")
+        cap4 = self.caption("so refinement can stop at a crease, within the depth budget,",
+                            "while blend fillets check the tree's own ∇f cone")
         self.swap_caption(cap4, cap3)
         self.wait(4.0)
 
         cap5 = self.caption("2:1 balanced (no leaf neighbors a cell >1 level coarser);",
-                            "decisions are pure functions ⇒ the leaf set is order-independent")
+                            "serial and worker builds share the same round-based split decisions")
         self.swap_caption(cap5, cap4)
         self.wait(4.0)
 
@@ -984,9 +984,9 @@ class SFCC(Scene):
         self.play(FadeOut(amb), run_time=0.6)
 
         inset, route = pin_inset(self.leaves, P(4.95, -0.2), side=3.0)
-        cap4 = self.caption("near a feature curve: its exact analytic crossings with the face",
-                            "become pins — the certified route is  exit → pin → enter,",
-                            "one kinked arc through the exact feature point (no QEF)")
+        cap4 = self.caption("near a feature curve: closed-form or numerical face crossings",
+                            "become pins — the simple route is  exit → pin → enter,",
+                            "one kinked arc through the feature point (no QEF)")
         self.swap_caption(cap4, cap3b)
         ptr = Arrow(SEAM_RIGHT + RIGHT * 0.15, inset[0].get_left() + LEFT * 0.05,
                     color=GREY_B, stroke_width=2.5, max_tip_length_to_length_ratio=0.08)
@@ -1088,7 +1088,7 @@ class SFCC(Scene):
         self.wait(4.2)
 
         cap2 = self.caption("edge cells split their loop at the two pins into two disks, one per",
-                            "stratum; corner cells fan from the exact corner vertex; big smooth",
+                            "stratum; corner cells fan from their corner vertex; big smooth",
                             "loops fan from an interior vertex Newton-projected onto the surface")
         self.swap_caption(cap2, cap)
         self.wait(4.6)
@@ -1097,7 +1097,7 @@ class SFCC(Scene):
         lp = loop_inset(P(4.3, 0.9))
         cap2b = self.caption("how a cell meshes: its six faces' directed segments must chain",
                              "head-to-tail into closed loops — one outgoing segment per point,",
-                             "or the WHOLE cell fails into re-refinement (never guess, never patch)")
+                             "or the cell fails; feature routing also has reported smooth fallbacks")
         self.swap_caption(cap2b, cap2)
         self.play(FadeIn(lp[0]), FadeIn(lp[1]), Create(lp[2]), run_time=0.8)
         self.play(LaggedStart(*[GrowArrow(a) for a in lp[3]], lag_ratio=0.22), run_time=1.8)
@@ -1119,8 +1119,8 @@ class SFCC(Scene):
         right = crease_panel(P(3.1, -0.4), "sfcc")
         tl = Text("sampled contouring", font_size=24, color=GREY_A).next_to(left[0], UP, buff=0.2)
         tr = Text("SFCC", font_size=24, weight=BOLD, color=RED_B).next_to(right[0], UP, buff=0.2)
-        cap3 = self.caption("no QEF anywhere: no minimizer can escape the cell, no clamping —",
-                            "feature vertices are evaluations of the compiled analytic curves")
+        cap3 = self.caption("no QEF: feature curves guide placement; bounded projection can fail —",
+                            "fallbacks and final vertex residuals are reported with the mesh")
         self.play(FadeIn(left), FadeIn(tl), run_time=0.9)
         self.play(FadeIn(right), FadeIn(tr), run_time=0.9)
         self.play(FadeIn(cap3), run_time=0.4)
@@ -1132,12 +1132,12 @@ class SFCC(Scene):
 
     # ---------------------------------------------------------- chapter 7
     def ch7_audits(self):
-        self.set_header("S4 — Audits and assembly: a certification, not a repair")
+        self.set_header("S4 — Cleanup, audits, and explicit validation status")
         checks = [
             "face-segment audit: every interior segment consumed once forward, once reversed",
-            "combinatorial closed-2-manifold audit — open / non-manifold / misoriented edges: 0",
-            "coincident-pair drop · debris drop · sliver flips (bounded, deterministic)",
-            "irrational lattice jitter + provenance keys ⇒ bit-identical double runs",
+            "topology: edge incidence and orientation + vertex links (on by default)",
+            "cleanup preserves closed components and protects crease edges",
+            "success also requires residual checks and no exhausted budgets",
         ]
         lines = VGroup(*[Text("✓  " + c, font_size=21, t2c={"✓": GREEN_B}) for c in checks])
         lines.arrange(DOWN, buff=0.22, aligned_edge=LEFT).move_to(DOWN * 2.7)
@@ -1158,7 +1158,7 @@ class SFCC(Scene):
         audg = VGroup(tri_top, tri_bot, fwd, rev, aud)
         capA = self.caption("the audits are pure counting: every interior segment consumed once",
                             "forward + once reversed; every undirected edge used exactly twice,",
-                            "in opposite directions — disagreeing neighbors cannot exist")
+                            "in opposite directions — violations are reported, not ruled out a priori")
         self.play(FadeIn(capA), Create(tri_top), Create(tri_bot), run_time=0.9)
         self.play(GrowArrow(fwd), GrowArrow(rev), FadeIn(aud), run_time=0.8)
         self.wait(4.6)
@@ -1169,7 +1169,7 @@ class SFCC(Scene):
         self.wait(4.6)
 
         self.play(*[FadeOut(m) for m in list(self.mobjects)], run_time=1.0)
-        end1 = Text("The mesh ships with a certification — not a repair.",
+        end1 = Text("The mesh ships with an explicit validation status.",
                     font_size=38)
         end2 = Text("SFCC  ·  docs/sfcc-meshing-algorithm.md", font_size=24, color=GREY_B)
         grp = VGroup(end1, end2).arrange(DOWN, buff=0.6)
@@ -1323,7 +1323,7 @@ def pin_inset(leaves, center, side=3.2):
     d1 = Dot(T(cr[0][0]), radius=0.09, color=RED)
     d2 = Dot(T(cr[1][0]), radius=0.09, color=RED)
     pin = Dot(T(SEAM_RIGHT), radius=0.11, color=YELLOW)
-    pin_l = Text("pin (exact)", font_size=18, color=YELLOW)\
+    pin_l = Text("feature pin", font_size=18, color=YELLOW)\
         .next_to(pin, UR, buff=0.12)
     route = VMobject(color=RED, stroke_width=5)\
         .set_points_as_corners([T(cr[0][0]), T(SEAM_RIGHT), T(cr[1][0])])

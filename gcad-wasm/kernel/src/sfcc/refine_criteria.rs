@@ -413,7 +413,12 @@ pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
     has_blend: bool,
 ) -> bool {
     if !has_corner_sign_change(probe) {
-        return false; // inactive cell
+        // Equal corner signs do not exclude an enclosed component, cavity, or
+        // grazing sheet. Resolve every inconclusive box down to the depth ceiling;
+        // the octree records an unresolved leaf there instead of silently losing it.
+        let c = [probe.pts[24], probe.pts[25], probe.pts[26]];
+        let (lo, hi) = tree.interval_over_box(c, [probe.cell_size * 0.5; 3]);
+        return !(lo > 0.0 || hi < 0.0);
     }
     let strata = active_strata(tree, probe, grad_bound);
     if strata.is_empty() {

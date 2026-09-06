@@ -30,6 +30,7 @@ pub fn project_to_carrier_pair(
     for _ in 0..24 {
         let fa = sa.f(x, y, z);
         let fb = sb.f(x, y, z);
+        if !fa.is_finite() || !fb.is_finite() { return None; }
         if fa.abs() <= eps && fb.abs() <= eps {
             return Some([x, y, z]);
         }
@@ -38,18 +39,33 @@ pub fn project_to_carrier_pair(
         // Carrier fields are unit-gradient: J rows are the unit normals.
         let c = ga[0] * gb[0] + ga[1] * gb[1] + ga[2] * gb[2];
         let det = 1.0 - c * c; // = ‖∇A×∇B‖²
-        if det < min_cross * min_cross {
+        if !det.is_finite() || det <= min_cross * min_cross {
             return None;
         }
         // Solve [[1, c], [c, 1]] [a, b]ᵀ = [fa, fb]ᵀ.
         let a = (fa - c * fb) / det;
         let b = (fb - c * fa) / det;
-        x -= a * ga[0] + b * gb[0];
-        y -= a * ga[1] + b * gb[1];
-        z -= a * ga[2] + b * gb[2];
-        if ((x - px).powi(2) + (y - py).powi(2) + (z - pz).powi(2)).sqrt() > max_displacement {
-            return None;
+        let delta = [a * ga[0] + b * gb[0], a * ga[1] + b * gb[1], a * ga[2] + b * gb[2]];
+        // Backtrack instead of abandoning a usable locus after one overshoot.
+        // Every accepted iterate stays within the original displacement budget.
+        let before = fa.abs().max(fb.abs());
+        let mut alpha = 1.0;
+        let mut accepted = None;
+        for _ in 0..8 {
+            let q = [x - alpha * delta[0], y - alpha * delta[1], z - alpha * delta[2]];
+            let drift = (q[0] - px).hypot(q[1] - py).hypot(q[2] - pz);
+            if drift <= max_displacement {
+                let qa = sa.f(q[0], q[1], q[2]).abs();
+                let qb = sb.f(q[0], q[1], q[2]).abs();
+                if qa.is_finite() && qb.is_finite() && qa.max(qb) < before {
+                    accepted = Some(q);
+                    break;
+                }
+            }
+            alpha *= 0.5;
         }
+        let q = accepted?;
+        [x, y, z] = q;
     }
     None
 }
@@ -172,4 +188,16 @@ mod tests {
         let p = project_to_triple(&a, &b, &c, 0.0, 0.0, 0.0, 1e-12, 100.0).unwrap();
         assert!((p[0] - 1.0).abs() < 1e-10 && (p[1] - 2.0).abs() < 1e-10 && (p[2] - 3.0).abs() < 1e-10);
     }
+    #[test]
+    fn backtracking_recovers_overshoot_and_obeys_displacement() {
+        let sphere = Stratum::sphere(ident(0),0.,0.,0.,1.);
+        let plane = Stratum::plane(ident(1),0.,0.,1.,-0.9);
+        // The first full step overshoots the small sphere-plane intersection.
+        let q = project_to_carrier_pair(&sphere,&plane,0.05,0.,0.9,1e-12,1e-3,0.5).unwrap();
+        assert!(sphere.f(q[0],q[1],q[2]).abs() <= 1e-12);
+        assert!(plane.f(q[0],q[1],q[2]).abs() <= 1e-12);
+        assert!(project_to_carrier_pair(&sphere,&plane,0.05,0.,0.9,1e-12,1e-3,0.01).is_none());
+        assert!(project_to_carrier_pair(&sphere,&plane,f64::NAN,0.,0.9,1e-12,1e-3,0.5).is_none());
+    }
+
 }

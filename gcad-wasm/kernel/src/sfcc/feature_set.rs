@@ -1524,15 +1524,23 @@ pub fn compile_feature_set(
     for c in &mut native_curves {
         c.native = true;
     }
-    let tree = build_tree(root, build_leaf_strata);
+    let mut tree = build_tree(root, build_leaf_strata);
+    let blend_planes = super::blend_planes::append_chamfer_planes(&mut tree);
 
     let mut next_id = native_curves.len();
-    let (seam_curves, diagnostics) = trace_all_seams(&tree, tol, &mut || {
+    let (mut seam_curves, mut diagnostics) = trace_all_seams(&tree, tol, &mut || {
         let id = next_id;
         next_id += 1;
         id
     });
 
+    seam_curves.extend(super::seam_trace::trace_blend_plane_seams(
+        &tree, &blend_planes, tol, &mut diagnostics, &mut || {
+            let id = next_id;
+            next_id += 1;
+            id
+        },
+    ));
     let mut raw = native_curves;
     raw.extend(seam_curves);
     let trimmed = trim_and_wire(&tree, &raw, &native.corners, tol);

@@ -35,6 +35,7 @@ use crate::sfcc::refine_criteria::{
     SmoothCriteriaOptions,
 };
 use crate::sfcc::sliver_flip::flip_sliver_triangles;
+use crate::sfcc::validation::{self, AuditStatus, NumericalGuard, SfccValidation};
 use crate::tolerances::resolve_tolerances;
 use crate::tuning::SfccTuning;
 use std::collections::HashMap;
@@ -104,7 +105,7 @@ impl Default for PipelineTuning {
             interior_vertex_mode: InteriorVertexMode::Project,
             project_max_iters: 8,
             re_refine_max_rounds: 2,
-            check_vertex_links: false,
+            check_vertex_links: true,
             tangential_epsilon: 0.05,
             feature_query_inflate: 0.25,
             curve_chord_tol_mm: 0.02,
@@ -147,6 +148,7 @@ pub struct SfccPipelineResult {
     pub stats: SfccStats,
     pub manifold: ManifoldReport,
     pub ok: bool,
+    pub validation: SfccValidation,
     /// Phase wall-clock split in ms (zeros unless run via [`run_sfcc_pipeline_profiled`]).
     /// Measured from an injected clock so the dep-free kernel needs no time source.
     /// `contour`+`cellmesh` are the spatial-partition-PARALLELIZABLE phases; feature
@@ -196,6 +198,7 @@ fn cancelled_pipeline_result() -> SfccPipelineResult {
         },
         manifold: check_manifold(&[], false),
         ok: false,
+        validation: SfccValidation::default(),
         phase_feature_ms: 0.0,
         phase_octree_ms: 0.0,
         phase_contour_ms: 0.0,
@@ -364,9 +367,29 @@ pub(crate) fn drop_debris_components(
             main_root = *root;
         }
     }
+    let mut component_triangles: HashMap<usize, Vec<u32>> = HashMap::new();
+    if roots.len() > 1 {
+        for t in tris.chunks_exact(3) {
+            let root = find(&mut parent, t[0]);
+            if root != main_root {
+                component_triangles.entry(root).or_default().extend(t.iter().map(|&v| v as u32));
+            }
+        }
+    }
     let mut drop: std::collections::HashSet<usize> = std::collections::HashSet::new();
     for &root in &roots {
         if root == main_root {
+            continue;
+        }
+        // A closed, oriented component may be an intentional small solid or
+        // cavity. Never discard it based only on size or proximity to a crease.
+        // Distinct provenance ids can collapse to only three physical positions:
+        // such a double-sided triangle is combinatorially closed but encloses no
+        // solid. This exact-coordinate diagnostic does not weld any mesh vertices.
+        let distinct_positions: std::collections::HashSet<_> = members[&root].iter()
+            .map(|&id| (points.x(id).to_bits(), points.y(id).to_bits(), points.z(id).to_bits()))
+            .collect();
+        if distinct_positions.len() >= 4 && check_manifold(&component_triangles[&root], true).ok {
             continue;
         }
         let b = &bounds[&root];
@@ -908,6 +931,8 @@ struct MergedSeparate {
     cell_result: CellMeshResult,
     multi_run_faces: usize,
     boundary_violations: usize,
+    face_audit_failures: usize,
+    faces: usize,
 }
 
 /// Mesh each leaf group into its own separate face map + point table, then merge the
@@ -931,6 +956,7 @@ fn mesh_groups_separate(
     let mut feature_cell_fallbacks = 0usize;
     let mut multi_run_faces = 0usize;
     let mut boundary_violations = 0usize;
+    let mut face_uses: HashMap<(usize, i64, i64, usize, usize), (u32, u32)> = HashMap::new();
 
     for &group in groups {
         // Per-group separate state — mirrors one worker.
@@ -958,6 +984,16 @@ fn mesh_groups_separate(
             };
             local_to_global[id] = gid;
         }
+        for rec in fr.faces.iter().flat_map(|m| m.values()) {
+            for (i, seg) in rec.segments.iter().enumerate() {
+                let uses = face_uses.entry((rec.axis, rec.key, rec.len, local_to_global[seg.a], local_to_global[seg.b])).or_default();
+                uses.0 += rec.consumed_fwd[i];
+                uses.1 += rec.consumed_rev[i];
+            }
+        }
+        for (a, b) in pt.protected_edges() {
+            merged.protect_edge(local_to_global[a], local_to_global[b]);
+        }
         for &t in &cm.tris {
             tris.push(local_to_global[t]);
         }
@@ -969,7 +1005,11 @@ fn mesh_groups_separate(
         feature_cell_fallbacks += cm.feature_cell_fallbacks;
     }
 
+    let faces = face_uses.keys().map(|&(axis, key, len, _, _)| (axis, key, len)).collect::<std::collections::HashSet<_>>().len();
+    let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
     MergedSeparate {
+        faces,
+        face_audit_failures,
         points: merged,
         cell_result: CellMeshResult {
             tris,
@@ -1092,6 +1132,7 @@ fn run_sfcc_pipeline_impl(
     // serial/partitioned wrappers and the native tests pass `None`.
     progress: Option<&dyn Fn(u32, &str, f64)>,
 ) -> SfccPipelineResult {
+    let _numerical_guard = NumericalGuard::new();
     // Phase wall-clock accumulators (populated only when `now` is Some).
     let mut ph_feature = 0.0f64;
     let mut ph_octree = 0.0f64;
@@ -1123,6 +1164,7 @@ fn run_sfcc_pipeline_impl(
     let features = &ctx.features;
     let total_size = ctx.total_size;
     let max_depth = ctx.max_depth;
+    let feature_failures = validation::numerical_failures();
 
     // Forced-split markers accumulate across re-refine rounds.
     let mut forced: Vec<ForcedMarker> = Vec::new();
@@ -1132,9 +1174,11 @@ fn run_sfcc_pipeline_impl(
     let mut face_result: FaceContourResult;
     let mut cell_result: CellMeshResult;
     let mut re_refine_rounds = 0u32;
+    let mut separate_audit = None;
     phase_mark(now, &mut ph_last, &mut ph_feature);
     let mut round = 0u32;
     loop {
+        validation::restore_numerical_failures(feature_failures);
         let forced_snapshot = forced.clone();
         let opts = OctreeBuildOptions {
             depth_min: tuning.depth_min,
@@ -1210,6 +1254,7 @@ fn run_sfcc_pipeline_impl(
                 let ranges = partition_contiguous(oct.leaves.len(), *n);
                 let leaf_groups: Vec<&[SfccCell]> = ranges.iter().map(|r| &oct.leaves[r.clone()]).collect();
                 let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &leaf_groups);
+                separate_audit = Some((merged.faces, merged.face_audit_failures));
                 points = merged.points;
                 cell_result = merged.cell_result;
                 face_result = FaceContourResult {
@@ -1234,6 +1279,7 @@ fn run_sfcc_pipeline_impl(
                 let owned = gather_morton_groups(&oct, *n);
                 let leaf_groups: Vec<&[SfccCell]> = owned.iter().map(|g| g.as_slice()).collect();
                 let merged = mesh_groups_separate(&oct, tree, &fc_opts, &cm_opts, &leaf_groups);
+                separate_audit = Some((merged.faces, merged.face_audit_failures));
                 points = merged.points;
                 cell_result = merged.cell_result;
                 face_result = FaceContourResult {
@@ -1295,18 +1341,22 @@ fn run_sfcc_pipeline_impl(
         }
     }
 
+    if let Some((count, failures)) = separate_audit {
+        face_count = count;
+        face_audit_failures = failures;
+    }
+
     emit(4, "Assembling mesh");
     // S4 cleanups (same call order/args as the oracle so winding/topology match):
     // coincident-pair drop → debris drop → coincident-pair drop → sliver flip.
-    let deduped1 = drop_coincident_triangle_pairs(&cell_result.tris);
+    let ordered = points.ordered_triangles(&cell_result.tris);
+    let deduped1 = drop_coincident_triangle_pairs(&ordered);
     let filtered = drop_debris_components(&points, &deduped1, lat.step * 4.0, features, lat.step * 2.0, 600);
     let deduped2 = drop_coincident_triangle_pairs(&filtered);
     let (flipped, _flips) = flip_sliver_triangles(&points, &deduped2, 4);
 
     let (verts, out_tris) = points.build_mesh(&flipped);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
-    phase_mark(now, &mut ph_last, &mut ph_assemble);
-    emit(SFCC_PHASE_COUNT, "Done");
 
     let stats = SfccStats {
         leaves: oct.leaves.len(),
@@ -1325,10 +1375,19 @@ fn run_sfcc_pipeline_impl(
         feature_cell_fallbacks: cell_result.feature_cell_fallbacks,
         re_refine_rounds,
     };
-    let ok = manifold.ok
-        && face_audit_failures == 0
-        && cell_result.failed_cells.is_empty()
-        && face_result.boundary_violations == 0;
+    let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.face_segments = if !cell_result.failed_cells.is_empty() {
+        AuditStatus::NotChecked
+    } else {
+        AuditStatus::from_passed(face_audit_failures == 0 && face_result.boundary_violations == 0)
+    };
+    validation.unresolved_cells = oct.degenerate_cells + cell_result.failed_cells.iter().filter(|c| !c.degenerate).count();
+    validation.feature_fallback_cells = cell_result.feature_cell_fallbacks;
+    validation.numerical = validation::numerical_failures();
+    validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
+    let ok = validation.ok();
+    phase_mark(now, &mut ph_last, &mut ph_assemble);
+    emit(SFCC_PHASE_COUNT, "Done");
 
     SfccPipelineResult {
         verts,
@@ -1336,6 +1395,7 @@ fn run_sfcc_pipeline_impl(
         stats,
         manifold,
         ok,
+        validation,
         phase_feature_ms: ph_feature,
         phase_octree_ms: ph_octree,
         phase_contour_ms: ph_contour,

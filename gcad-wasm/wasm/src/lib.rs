@@ -244,7 +244,7 @@ pub fn export_sfcc(
     // Compact hand-rolled JSON of the stat fields the TS exporter logs (avoids a
     // serde-Serialize derive on the kernel SfccStats). The phase* ms are appended for
     // the spatial-partition (#3) ceiling measurement.
-    let stats_json = format!(
+    let mut stats_json = format!(
         "{{\"leaves\":{},\"faces\":{},\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"degenerateCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"reRefineRounds\":{},\"faceAuditFailures\":{},\"boundaryViolations\":{},\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}],\"phaseFeatureMs\":{},\"phaseOctreeMs\":{},\"phaseContourMs\":{},\"phaseCellmeshMs\":{},\"phaseAssembleMs\":{},\"phaseOctreeDecideMs\":{},\"phaseOctreeApplyMs\":{},\"octreeRounds\":[{}]}}",
         s.leaves, s.faces, s.cross_points, s.tris, s.failed_cells, s.degenerate_cells, s.feature_curves, s.edge_cells,
         s.corner_cells, s.feature_cell_fallbacks, s.re_refine_rounds, s.face_audit_failures, s.boundary_violations,
@@ -256,6 +256,7 @@ pub fn export_sfcc(
         octree_rounds.join(",")
     );
 
+    append_validation(&mut stats_json, &result.validation, result.manifold.non_manifold_vertices);
     Ok(SfccExportResult {
         cancelled: result.cancelled,
         verts: result.verts,
@@ -263,6 +264,13 @@ pub fn export_sfcc(
         ok: result.ok,
         stats_json,
     })
+}
+
+/// Keep serial and worker validation JSON identical, including explicit
+/// notChecked states. Mesh counters remain backward-compatible at the top level.
+fn append_validation(stats: &mut String, validation: &gcad_kernel::sfcc::validation::SfccValidation, non_manifold_vertices: usize) {
+    assert_eq!(stats.pop(), Some('}'));
+    stats.push_str(&format!(",\"validation\":{},\"nonManifoldVertices\":{}}}", validation.to_json(), non_manifold_vertices));
 }
 
 // --- slice 5 / Stage A: cross-instance worker meshing (prepare / mesh / merge) ---
@@ -429,16 +437,37 @@ pub fn sfcc_worker_merge(
     let m = &merged.manifold;
     let euler: Vec<String> = m.euler_per_component.iter().map(|c| c.to_string()).collect();
     // Same stat shape as export_sfcc minus the octree-side fields prepare owns
-    // (leaves / degenerateCells / reRefineRounds / faceAuditFailures: the worker
-    // path has no shared face map, so faceAuditFailures is 0) and the phase timings.
-    let stats_json = format!(
-        "{{\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"multiLoopCells\":{},\"multiRunFaces\":{},\"boundaryViolations\":{},\"faceAuditFailures\":0,\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}]}}",
+    // (leaf count and phase timings). Merge aggregates face consumption records.
+    let mut stats_json = format!(
+        "{{\"crossPoints\":{},\"tris\":{},\"failedCells\":{},\"featureCurves\":{},\"edgeCells\":{},\"cornerCells\":{},\"featureCellFallbacks\":{},\"multiLoopCells\":{},\"multiRunFaces\":{},\"boundaryViolations\":{},\"faceAuditFailures\":{},\"manifoldOk\":{},\"components\":{},\"openEdges\":{},\"nonManifoldEdges\":{},\"misorientedEdges\":{},\"euler\":[{}]}}",
         merged.cross_points, merged.tris.len() / 3, merged.failed_cells, merged.feature_curves, merged.edge_cells,
         merged.corner_cells, merged.feature_cell_fallbacks, merged.multi_loop_cells, merged.multi_run_faces,
-        merged.boundary_violations, m.ok, m.components, m.open_edges, m.non_manifold_edges, m.misoriented_edges,
+        merged.boundary_violations, merged.face_audit_failures, m.ok, m.components, m.open_edges, m.non_manifold_edges, m.misoriented_edges,
         euler.join(",")
     );
 
+    // Include refinement and recovery diagnostics from the chosen result.
+    stats_json.pop();
+    stats_json.push_str(&format!(",\"degenerateCells\":{},\"reRefineRounds\":{},\"serialRecovery\":{}}}", merged.degenerate_cells, merged.re_refine_rounds, merged.serial_recovery));
+    append_validation(&mut stats_json, &merged.validation, merged.manifold.non_manifold_vertices);
     Ok(SfccExportResult { verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json, cancelled: false })
 }
 
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+    #[test]
+    fn boundary_defaults_enable_links_and_serialize_unchecked_honestly() {
+        let tuning: BridgeTuning = serde_json::from_str("{}").unwrap();
+        assert!(tuning.to_pipeline().check_vertex_links);
+        let tuning: BridgeTuning = serde_json::from_str(r#"{"checkVertexLinks":false}"#).unwrap();
+        assert!(!tuning.to_pipeline().check_vertex_links);
+        let mut json = r#"{"tris":0}"#.to_string();
+        append_validation(&mut json, &Default::default(), 2);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["validation"]["status"], "incomplete");
+        assert_eq!(parsed["validation"]["vertexLinks"], "notChecked");
+        assert_eq!(parsed["nonManifoldVertices"], 2);
+    }
+}

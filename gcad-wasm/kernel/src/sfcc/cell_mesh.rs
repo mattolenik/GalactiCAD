@@ -350,6 +350,11 @@ pub fn mesh_cells_subset(
                     continue;
                 }
                 let cid = corner_point_id(corner, features, points);
+                for pin in &pins {
+                    if incident.contains(&pin.curve_id) && loop_pts.contains(&pin.point_id) {
+                        points.protect_edge(cid, pin.point_id);
+                    }
+                }
                 let m = loop_pts.len();
                 for k in 0..m {
                     tris.push(cid);
@@ -676,6 +681,12 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
         None => return false,
     };
 
+    let mut previous = pin_a.point_id;
+    for &id in interior.iter().chain(std::iter::once(&pin_b.point_id)) {
+        points.protect_edge(previous, id);
+        previous = id;
+    }
+
     // side1 = chain1 (A→…→B) closed by the polyline B→A (reversed interior);
     // side2 = chain2 (B→…→A) closed by the polyline A→B.
     let mut side1 = chain1.clone();
@@ -763,20 +774,58 @@ fn sample_in_cell_arc(
             let ratio = (1.0 - opts.curve_chord_tol / r.max(1e-9)).clamp(-1.0, 1.0);
             let max_step = 2.0 * ratio.acos();
             n = (delta.abs() / max_step.max(1e-6)).ceil().max(1.0) as usize;
-            n = n.min(opts.max_polyline_points_per_cell);
+            if n > opts.max_polyline_points_per_cell {
+                crate::sfcc::validation::chord_budget_exhausted();
+                return None;
+            }
         }
         CurveKind::Traced => {
-            n = (delta.abs().ceil().max(1.0) as usize).min(opts.max_polyline_points_per_cell);
-            n = n.max(1);
+            n = delta.abs().ceil().max(1.0) as usize;
+            if n > opts.max_polyline_points_per_cell {
+                crate::sfcc::validation::chord_budget_exhausted();
+                return None;
+            }
         }
         CurveKind::Segment => {}
+    }
+    // Traced curves have no analytic curvature bound. Subdivide until projected
+    // midpoints meet the requested chord tolerance, or explicitly exhaust the cap.
+    // This is a sampled check, not a bound on the continuous curve between samples.
+    let mut samples = Vec::with_capacity(n + 1);
+    for k in 0..=n {
+        let t = t_a + delta * k as f64 / n as f64;
+        let p = match curve.point_at_checked(t) {
+            Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) => p,
+            _ => { crate::sfcc::validation::curve_projection_failed(); return None; }
+        };
+        samples.push((t, p));
+    }
+    if curve.kind() == CurveKind::Traced {
+        let mut i = 0;
+        while i + 1 < samples.len() {
+            let (ta, a) = samples[i];
+            let (tb, b) = samples[i + 1];
+            let tm = (ta + tb) * 0.5;
+            let m = match curve.point_at_checked(tm) {
+                Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) => p,
+                _ => { crate::sfcc::validation::curve_projection_failed(); return None; }
+            };
+            let error = (m[0] - (a[0] + b[0]) * 0.5)
+                .hypot(m[1] - (a[1] + b[1]) * 0.5)
+                .hypot(m[2] - (a[2] + b[2]) * 0.5);
+            if error > opts.curve_chord_tol {
+                if samples.len() - 1 >= opts.max_polyline_points_per_cell || tm == ta || tm == tb {
+                    crate::sfcc::validation::chord_budget_exhausted();
+                    return None;
+                }
+                samples.insert(i + 1, (tm, m));
+            } else { i += 1; }
+        }
     }
     let sa = features.strata[curve.adjacent_strata[0]];
     let sb = features.strata[curve.adjacent_strata[1]];
     let mut ids: Vec<usize> = Vec::new();
-    for k in 1..n {
-        let t = t_a + (delta * k as f64) / n as f64;
-        let p = curve.point_at(t);
+    for &(_, p) in samples.iter().skip(1).take(samples.len() - 2) {
         let na = sa.normal(p[0], p[1], p[2]);
         let nb = sb.normal(p[0], p[1], p[2]);
         let mut nx = na[0] + nb[0];
@@ -843,5 +892,45 @@ fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
     let c = points.add(px, py, pz, n[0], n[1], n[2]);
     for k in 0..m {
         out_tris.extend_from_slice(&[c, boundary[k], boundary[(k + 1) % m]]);
+    }
+}
+
+#[cfg(test)]
+mod reliability_tests {
+    use super::*;
+    use crate::sfcc::feature_curves::{make_circle_curve, make_traced_curve, TracedRefine};
+    use crate::sfcc::spatial_index::SfccSpatialIndex;
+    use crate::sfcc::validation::{NumericalGuard, numerical_failures};
+    use crate::strata::StratumIdentity;
+    fn ident(id: usize) -> StratumIdentity {
+        StratumIdentity { id, owner_node_id: -1, leaf_index: 0, local_index: id, sign: 1. }
+    }
+    #[test]
+    fn circle_cap_and_traced_midpoint_error_are_enforced() {
+        let _scope = NumericalGuard::new();
+        let sphere = Stratum::sphere(ident(0),0.,0.,0.,1.);
+        let plane = Stratum::plane(ident(1),0.,0.,1.,0.);
+        let features = SfccFeatureSet { strata: vec![sphere,plane], curves: vec![], corners: vec![],
+            index: SfccSpatialIndex::new(1.), run_id: 0 };
+        let mut opts = CellMeshOptions { surface_tol: 0.01, interior_vertex_mode: InteriorVertexMode::Project,
+            project_max_iters: 16, curve_chord_tol: 0.01, max_polyline_points_per_cell: 1, features: Some(&features) };
+        let circle = make_circle_curve(0,-1,[0,1],0.,0.,0.,0.,0.,1.,1.,Some((0., std::f64::consts::FRAC_PI_2)));
+        let bounds = [-2.,-2.,-2.,2.,2.,2.];
+        let mut points = PointTable::new();
+        assert!(sample_in_cell_arc(&circle,0.,std::f64::consts::FRAC_PI_2,&bounds,&mut points,&features,&opts).is_none());
+        assert_eq!(numerical_failures().chord_budget, 1);
+        let traced = make_traced_curve(0,[0,1],vec![1.,0.,0.,0.,1.,0.],false,sphere,plane,
+            TracedRefine { curve_eps: 1e-12, min_cross: 1e-3, max_displacement: 1. },-1);
+        opts.max_polyline_points_per_cell = 64;
+        let ids = sample_in_cell_arc(&traced,0.,1.,&bounds,&mut points,&features,&opts).unwrap();
+        assert!(ids.len() > 1, "two tracer samples alone do not meet the chord tolerance");
+        let mut poly = vec![[1.,0.,0.]];
+        poly.extend(ids.iter().map(|&id| [points.x(id),points.y(id),points.z(id)]));
+        poly.push([0.,1.,0.]);
+        for edge in poly.windows(2) {
+            let m = [(edge[0][0]+edge[1][0])*0.5,(edge[0][1]+edge[1][1])*0.5,0.];
+            assert!(sphere.f(m[0],m[1],m[2]).abs() <= opts.curve_chord_tol);
+        }
+        assert_eq!(numerical_failures().curve_projection, 0);
     }
 }

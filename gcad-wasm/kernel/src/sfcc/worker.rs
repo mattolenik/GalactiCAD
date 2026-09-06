@@ -49,6 +49,8 @@ use crate::sfcc::pipeline::{
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::sliver_flip::flip_sliver_triangles;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use crate::sfcc::validation::{self, AuditStatus, NumericalFailures, NumericalGuard, SfccValidation};
 
 // ---------------------------------------------------------------------------
 // Little-endian primitive readers/writers (no serde; dep-free default build).
@@ -61,9 +63,6 @@ fn put_u64(out: &mut Vec<u8>, v: u64) {
     out.extend_from_slice(&v.to_le_bytes());
 }
 fn put_i64(out: &mut Vec<u8>, v: i64) {
-    out.extend_from_slice(&v.to_le_bytes());
-}
-fn put_f32(out: &mut Vec<u8>, v: f32) {
     out.extend_from_slice(&v.to_le_bytes());
 }
 fn put_f64(out: &mut Vec<u8>, v: f64) {
@@ -93,11 +92,6 @@ impl<'a> Reader<'a> {
         self.pos += 8;
         v
     }
-    fn f32(&mut self) -> f32 {
-        let v = f32::from_le_bytes(self.buf[self.pos..self.pos + 4].try_into().unwrap());
-        self.pos += 4;
-        v
-    }
     fn f64(&mut self) -> f64 {
         let v = f64::from_le_bytes(self.buf[self.pos..self.pos + 8].try_into().unwrap());
         self.pos += 8;
@@ -111,7 +105,7 @@ impl<'a> Reader<'a> {
 }
 
 const LEAVES_MAGIC: u32 = 0x5346_4C45; // "SFLE"
-const PARTIAL_MAGIC: u32 = 0x5346_5052; // "SFPR"
+const PARTIAL_MAGIC: u32 = 0x5346_5032; // "SFP2": f64 payloads + audits + protected edges
 
 // ---------------------------------------------------------------------------
 // Phase 1 — prepare: tagged octree → byte buffer.
@@ -287,20 +281,25 @@ pub fn decide_partition_bytes(
 // ---------------------------------------------------------------------------
 
 /// A worker's partial mesh, serialized. Carries every point in the worker's own
-/// point table (stride-8 f32 vertex + its global [`PointKey`]) and the triangle
+/// point table (stride-8 f64 vertex + its global [`PointKey`]) and the triangle
 /// index list (LOCAL ids into that point list), plus the per-group meshing counters
 /// the merge sums for `ok`/stats. The merge dedups points across partials by key,
 /// remaps tris, and runs the S4 tail — exactly the in-process `mesh_groups_separate`
 /// loop body, decomposed across calls. Layout:
 ///   magic u32
 ///   point_count u64
-///   per point: x,y,z, _pad, nx,ny,nz, _pad  (8 f32, stride-8)   ← matches MeshData
+///   per point: x,y,z, _pad, nx,ny,nz, _pad  (8 f64, stride-8)   ← matches MeshData
 ///   per point: key (tag u8 + payload)
 ///   tri_count u64 | tri*tri_count (u32 local ids)
+///   protected edges + canonical face-segment consumption records
+///   refinement and numerical-failure counters
 ///   counters: failed_cells u64, multi_loop_cells u64, edge_cells u64,
 ///             corner_cells u64, feature_cell_fallbacks u64, multi_run_faces u64,
 ///             boundary_violations u64
+#[derive(Default)]
 struct PartialCounters {
+    degenerate_cells: u64,
+    numerical: NumericalFailures,
     failed_cells: u64,
     multi_loop_cells: u64,
     edge_cells: u64,
@@ -344,21 +343,21 @@ fn get_key(r: &mut Reader) -> PointKey {
 
 /// Serialize a worker partial: the point table (positions+normals+keys), the local
 /// tri list, and the meshing counters.
-fn encode_partial(pt: &PointTable, tris: &[usize], counters: &PartialCounters) -> Vec<u8> {
+fn encode_partial(pt: &PointTable, tris: &[usize], counters: &PartialCounters, faces: &[HashMap<i64, crate::sfcc::face_contour::FaceRecord>; 3]) -> Vec<u8> {
     let n = pt.count();
-    let mut out = Vec::with_capacity(16 + n * (32 + 9) + tris.len() * 4 + 64);
+    let mut out = Vec::with_capacity(16 + n * (64 + 9) + tris.len() * 4 + 64);
     put_u32(&mut out, PARTIAL_MAGIC);
     put_u64(&mut out, n as u64);
-    // Stride-8 f32 vertices (pos, pad, normal, pad) — the MeshData vertex layout.
+    // Stride-8 f64 vertices (pos, pad, normal, pad) — the MeshData vertex layout.
     for id in 0..n {
-        put_f32(&mut out, pt.x(id) as f32);
-        put_f32(&mut out, pt.y(id) as f32);
-        put_f32(&mut out, pt.z(id) as f32);
-        put_f32(&mut out, 0.0);
-        put_f32(&mut out, pt.nx(id) as f32);
-        put_f32(&mut out, pt.ny(id) as f32);
-        put_f32(&mut out, pt.nz(id) as f32);
-        put_f32(&mut out, 0.0);
+        put_f64(&mut out, pt.x(id));
+        put_f64(&mut out, pt.y(id));
+        put_f64(&mut out, pt.z(id));
+        put_f64(&mut out, 0.0);
+        put_f64(&mut out, pt.nx(id));
+        put_f64(&mut out, pt.ny(id));
+        put_f64(&mut out, pt.nz(id));
+        put_f64(&mut out, 0.0);
     }
     for id in 0..n {
         put_key(&mut out, pt.key_at(id));
@@ -367,6 +366,28 @@ fn encode_partial(pt: &PointTable, tris: &[usize], counters: &PartialCounters) -
     for &t in tris {
         put_u32(&mut out, t as u32);
     }
+    let mut protected: Vec<_> = pt.protected_edges().collect();
+    protected.sort_unstable();
+    put_u64(&mut out, protected.len() as u64);
+    for (a, b) in protected { put_u64(&mut out, a as u64); put_u64(&mut out, b as u64); }
+    let mut records: Vec<_> = faces.iter().flat_map(|m| m.values()).collect();
+    records.sort_by_key(|r| (r.axis, r.key, r.len));
+    put_u64(&mut out, records.iter().map(|r| r.segments.len() as u64).sum());
+    for rec in records {
+        for (i, seg) in rec.segments.iter().enumerate() {
+            put_u64(&mut out, rec.axis as u64);
+            put_i64(&mut out, rec.key);
+            put_i64(&mut out, rec.len);
+            put_u64(&mut out, seg.a as u64);
+            put_u64(&mut out, seg.b as u64);
+            put_u64(&mut out, rec.consumed_fwd[i] as u64);
+            put_u64(&mut out, rec.consumed_rev[i] as u64);
+        }
+    }
+    put_u64(&mut out, counters.degenerate_cells);
+    put_u64(&mut out, counters.numerical.curve_projection as u64);
+    put_u64(&mut out, counters.numerical.face_projection as u64);
+    put_u64(&mut out, counters.numerical.chord_budget as u64);
     put_u64(&mut out, counters.failed_cells);
     put_u64(&mut out, counters.multi_loop_cells);
     put_u64(&mut out, counters.edge_cells);
@@ -377,9 +398,11 @@ fn encode_partial(pt: &PointTable, tris: &[usize], counters: &PartialCounters) -
     out
 }
 
-/// A decoded partial: stride-8 f32 verts, parallel keys, local tris, counters.
+/// A decoded partial: stride-8 f64 verts, parallel keys, local tris, counters.
 struct DecodedPartial {
-    verts: Vec<f32>, // stride-8
+    verts: Vec<f64>, // stride-8, rounded only after global cleanup
+    protected: Vec<(usize, usize)>,
+    face_uses: Vec<(u64, i64, i64, usize, usize, u64, u64)>,
     keys: Vec<PointKey>,
     tris: Vec<u32>,
     counters: PartialCounters,
@@ -392,7 +415,7 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     let n = r.u64() as usize;
     let mut verts = Vec::with_capacity(n * 8);
     for _ in 0..n * 8 {
-        verts.push(r.f32());
+        verts.push(r.f64());
     }
     let mut keys = Vec::with_capacity(n);
     for _ in 0..n {
@@ -403,7 +426,13 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     for _ in 0..tn {
         tris.push(r.u32());
     }
+    let n_protected = r.u64();
+    let protected = (0..n_protected).map(|_| (r.u64() as usize, r.u64() as usize)).collect();
+    let n_uses = r.u64();
+    let face_uses = (0..n_uses).map(|_| (r.u64(), r.i64(), r.i64(), r.u64() as usize, r.u64() as usize, r.u64(), r.u64())).collect();
     let counters = PartialCounters {
+        degenerate_cells: r.u64(),
+        numerical: NumericalFailures { curve_projection: r.u64() as usize, face_projection: r.u64() as usize, chord_budget: r.u64() as usize },
         failed_cells: r.u64(),
         multi_loop_cells: r.u64(),
         edge_cells: r.u64(),
@@ -412,7 +441,7 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
         multi_run_faces: r.u64(),
         boundary_violations: r.u64(),
     };
-    DecodedPartial { verts, keys, tris, counters }
+    DecodedPartial { verts, keys, tris, counters, protected, face_uses }
 }
 
 /// Build the face-contour + cell-mesh options exactly as the serial driver's S2/S3
@@ -450,6 +479,7 @@ pub fn mesh_partition(
     group_index: usize,
     group_count: usize,
 ) -> Vec<u8> {
+    let _numerical_guard = NumericalGuard::new();
     assert!(group_index < group_count.max(1), "worker: group_index {group_index} >= group_count {group_count}");
     // Recompute the feature set (cheap ~6% phase) — same context as serial/prepare,
     // so curve/corner/strata ids line up with the tags baked into the leaves.
@@ -475,6 +505,8 @@ pub fn mesh_partition(
     let cm = mesh_cells_subset(&oct, &mut fr.faces, tree, &mut pt, &cm_opts, &group);
 
     let counters = PartialCounters {
+        degenerate_cells: group.iter().filter(|c| c.degenerate).count() as u64,
+        numerical: validation::numerical_failures(),
         failed_cells: cm.failed_cells.len() as u64,
         multi_loop_cells: cm.multi_loop_cells as u64,
         edge_cells: cm.edge_cells as u64,
@@ -483,7 +515,7 @@ pub fn mesh_partition(
         multi_run_faces: fr.multi_run_faces as u64,
         boundary_violations: fr.boundary_violations as u64,
     };
-    encode_partial(&pt, &cm.tris, &counters)
+    encode_partial(&pt, &cm.tris, &counters, &fr.faces)
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +528,11 @@ pub struct MergedMesh {
     pub tris: Vec<u32>,
     pub manifold: ManifoldReport,
     pub ok: bool,
+    pub validation: SfccValidation,
+    pub degenerate_cells: usize,
+    pub face_audit_failures: usize,
+    pub re_refine_rounds: u32,
+    pub serial_recovery: bool,
     pub failed_cells: usize,
     pub boundary_violations: usize,
     pub multi_run_faces: usize,
@@ -513,8 +550,27 @@ pub struct MergedMesh {
 /// only the debris-drop feature-hugging test reads it. The lattice is taken from the
 /// rebuilt context (identical to the one serialized into the leaf buffer).
 pub fn merge(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning, partials: &[Vec<u8>]) -> MergedMesh {
+    let _numerical_guard = NumericalGuard::new();
     let ctx = build_pipeline_context(tree, cube, tuning);
-    merge_partials(&ctx.features, &ctx.lat, tuning.check_vertex_links, partials)
+    let result = merge_partials(tree, &ctx.features, &ctx.lat, tuning, partials);
+    // Use the proven serial recovery coordinator until distributed re-refinement
+    // carries cell markers between rounds. A round-0 partial is never substituted
+    // for the serial driver's repaired result.
+    if result.failed_cells > 0 || result.feature_cell_fallbacks > 0
+        || result.validation.numerical.total() > 0 || result.face_audit_failures > 0 {
+        let r = crate::sfcc::pipeline::run_sfcc_pipeline(tree, cube, tuning);
+        return MergedMesh {
+            verts: r.verts, tris: r.tris, manifold: r.manifold, ok: r.ok, validation: r.validation,
+            degenerate_cells: r.stats.degenerate_cells, face_audit_failures: r.stats.face_audit_failures,
+            re_refine_rounds: r.stats.re_refine_rounds, serial_recovery: true,
+            failed_cells: r.stats.failed_cells, boundary_violations: r.stats.boundary_violations,
+            multi_run_faces: r.stats.multi_run_faces, multi_loop_cells: r.stats.multi_loop_cells,
+            edge_cells: r.stats.edge_cells, corner_cells: r.stats.corner_cells,
+            feature_cell_fallbacks: r.stats.feature_cell_fallbacks, cross_points: r.stats.cross_points,
+            feature_curves: r.stats.feature_curves,
+        };
+    }
+    result
 }
 
 /// Merge the worker partials into one mesh. Dedups points across partials by global
@@ -528,9 +584,10 @@ pub fn merge(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning, part
 /// thresholds) + `check_vertex_links` — the wasm wrapper rebuilds those from the same
 /// scene_json/tuning/cube the prepare step used (see [`merge`]).
 pub fn merge_partials(
+    tree: &CsgNode,
     features: &SfccFeatureSet,
     lat: &SfccLattice,
-    check_vertex_links: bool,
+    tuning: &PipelineTuning,
     partials: &[Vec<u8>],
 ) -> MergedMesh {
     let mut merged = PointTable::new();
@@ -542,6 +599,9 @@ pub fn merge_partials(
     let mut feature_cell_fallbacks = 0usize;
     let mut multi_run_faces = 0usize;
     let mut boundary_violations = 0usize;
+    let mut degenerate_cells = 0usize;
+    let mut numerical = NumericalFailures::default();
+    let mut face_uses: HashMap<(u64, i64, i64, usize, usize), (u64, u64)> = HashMap::new();
 
     for buf in partials {
         let p = decode_partial(buf);
@@ -549,12 +609,12 @@ pub fn merge_partials(
         let mut local_to_global = vec![0usize; n];
         for id in 0..n {
             let o = id * 8;
-            let x = p.verts[o] as f64;
-            let y = p.verts[o + 1] as f64;
-            let z = p.verts[o + 2] as f64;
-            let nx = p.verts[o + 4] as f64;
-            let ny = p.verts[o + 5] as f64;
-            let nz = p.verts[o + 6] as f64;
+            let x = p.verts[o];
+            let y = p.verts[o + 1];
+            let z = p.verts[o + 2];
+            let nx = p.verts[o + 4];
+            let ny = p.verts[o + 5];
+            let nz = p.verts[o + 6];
             let gid = match &p.keys[id] {
                 PointKey::Num(k) => merged.get_or_create(*k, || [x, y, z, nx, ny, nz]),
                 PointKey::Str(s) => merged.get_or_create_str(s, || [x, y, z, nx, ny, nz]),
@@ -562,6 +622,20 @@ pub fn merge_partials(
             };
             local_to_global[id] = gid;
         }
+        for (a, b) in p.protected {
+            merged.protect_edge(local_to_global[a], local_to_global[b]);
+        }
+        for (axis, key, len, a, b, fwd, rev) in p.face_uses {
+            let uses = face_uses.entry((axis, key, len, local_to_global[a], local_to_global[b])).or_default();
+            uses.0 += fwd;
+            uses.1 += rev;
+        }
+        degenerate_cells += p.counters.degenerate_cells as usize;
+        // Compilation runs in every worker; report failure presence conservatively
+        // without claiming that repeated carrier queries are unique events.
+        numerical.curve_projection += p.counters.numerical.curve_projection;
+        numerical.face_projection += p.counters.numerical.face_projection;
+        numerical.chord_budget += p.counters.numerical.chord_budget;
         for &t in &p.tris {
             tris.push(local_to_global[t as usize]);
         }
@@ -575,23 +649,35 @@ pub fn merge_partials(
     }
 
     // S4 cleanups — same call order/args as the serial driver.
-    let deduped1 = drop_coincident_triangle_pairs(&tris);
+    let ordered = merged.ordered_triangles(&tris);
+    let deduped1 = drop_coincident_triangle_pairs(&ordered);
     let filtered = drop_debris_components(&merged, &deduped1, lat.step * 4.0, features, lat.step * 2.0, 600);
     let deduped2 = drop_coincident_triangle_pairs(&filtered);
     let (flipped, _flips) = flip_sliver_triangles(&merged, &deduped2, 4);
 
     let (verts, out_tris) = merged.build_mesh(&flipped);
-    let manifold = check_manifold(&out_tris, check_vertex_links);
+    let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
-    // The separate-table path has no shared face map to audit (face_audit_failures
-    // is 0, as in run_sfcc_pipeline's Separate strategy); `ok` mirrors the driver.
-    let ok = manifold.ok && failed_cells == 0 && boundary_violations == 0;
+    let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
+    let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.face_segments = if failed_cells > 0 { AuditStatus::NotChecked }
+        else { AuditStatus::from_passed(face_audit_failures == 0 && boundary_violations == 0) };
+    validation.unresolved_cells = degenerate_cells + failed_cells;
+    validation.feature_fallback_cells = feature_cell_fallbacks;
+    validation.numerical = numerical;
+    validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
+    let ok = validation.ok();
 
     MergedMesh {
         verts,
         tris: out_tris,
         manifold,
         ok,
+        validation,
+        degenerate_cells,
+        face_audit_failures,
+        re_refine_rounds: 0,
+        serial_recovery: false,
         failed_cells,
         boundary_violations,
         multi_run_faces,
@@ -682,4 +768,26 @@ pub fn octree_session_finish() -> Vec<u8> {
         let oct = build.finish(&tree, &lat);
         encode_tagged_leaves(&oct.lat, &oct.leaves)
     })
+}
+
+#[cfg(test)]
+mod reliability_tests {
+    use super::*;
+    #[test]
+    fn partial_roundtrip_retains_f64_and_crease_locks() {
+        let mut p = PointTable::new();
+        let x = 1.0 + f64::EPSILON * 7.0;
+        let a = p.add(x,0.,0.,0.,1.,0.);
+        let b = p.add(2.,0.,0.,0.,1.,0.);
+        p.protect_edge(a,b);
+        let counters = PartialCounters { degenerate_cells: 3,
+            numerical: NumericalFailures { chord_budget: 2, ..Default::default() }, ..Default::default() };
+        let faces = std::array::from_fn(|_| HashMap::new());
+        let decoded = decode_partial(&encode_partial(&p, &[a,b,a], &counters, &faces));
+        assert_eq!(decoded.verts[0].to_bits(), x.to_bits());
+        assert_ne!(decoded.verts[0], (x as f32) as f64);
+        assert_eq!(decoded.protected, vec![(a,b)]);
+        assert_eq!(decoded.counters.degenerate_cells, 3);
+        assert_eq!(decoded.counters.numerical.chord_budget, 2);
+    }
 }

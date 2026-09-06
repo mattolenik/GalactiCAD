@@ -578,10 +578,26 @@ class SFCC(Scene):
         self.play(LaggedStart(*[GrowFromCenter(d) for d in cands], lag_ratio=0.25), run_time=1.2)
         self.wait(3.6)
 
+        # how the tracer actually marches
+        tr = tracer_inset(P(4.0, 1.4))
+        cap2b = self.caption("how: seed points from a coarse grid over the pair's overlap box",
+                             "are Newton-projected onto the locus, then marched along the",
+                             "carrier-pair tangent ∇f_A × ∇f_B, Newton-corrected every step")
+        self.swap_caption(cap2b, cap2)
+        self.play(FadeIn(tr[0]), FadeIn(tr[1]), Create(tr[2]), FadeIn(tr[3]), run_time=1.0)
+        self.play(LaggedStart(*[FadeIn(s) for s in tr[4]], lag_ratio=0.18), run_time=2.6)
+        self.wait(3.6)
+        cap2c = self.caption("the step adapts to the turn (err ≈ h·θ/8), halves on a failed",
+                             "correction or a sharp turn, and stops at tangency, loop closure,",
+                             "or a hard cap — overshooting past the real solid is fine")
+        self.swap_caption(cap2c, cap2b)
+        self.wait(4.4)
+        self.play(FadeOut(tr), run_time=0.6)
+
         # CSG trim
         cap3 = self.caption("CSG trim — a point is alive iff:  |f_tree| ≤ surface_tol,",
                             "carriers genuinely creased, and both flanks survive probing")
-        self.swap_caption(cap3, cap2)
+        self.swap_caption(cap3, cap2c)
         dead = VGroup(cands[2], cands[3])
         crosses = VGroup(*[Cross(scale_factor=0.14).move_to(d) for d in dead])
         self.play(FadeIn(crosses), run_time=0.5)
@@ -818,8 +834,22 @@ class SFCC(Scene):
             op = {"empty": 0.15, "surf": 0.8, "feat": 1.0}[kind]
             grid.add(cell_square(cx, cy, h, color=color, stroke_width=w,
                                  stroke_opacity=op, fill_opacity=0))
-        cap = self.caption("interval empty-cull: subtrees certified surface-free are never created")
-        self.play(FadeIn(cap), run_time=0.4)
+        cull_cell = Square(side_length=1.7, color=RED_B, stroke_width=2.5).move_to(P(-5.3, 1.9))
+        cull_ball = DashedVMobject(Circle(radius=1.2, color=GREY_A, stroke_width=2)
+                                   .move_to(P(-5.3, 1.9)), num_dashes=32)
+        cull_c = Dot(P(-5.3, 1.9), radius=0.06, color=WHITE)
+        cull_t = Text("|f(c)| = 3.0  >  r = 1.2   ⇒  ✗ empty", font_size=18, color=RED_B)\
+            .next_to(cull_ball, DOWN, buff=0.15)
+        cap0 = self.caption("descent first proves regions empty: an exact SDF is 1-Lipschitz,",
+                            "so |f(center)| > ball radius certifies the whole cell surface-free —",
+                            "cull the subtree, never sample it again")
+        self.play(FadeIn(cap0), Create(cull_cell), Create(cull_ball),
+                  FadeIn(cull_c), FadeIn(cull_t), run_time=1.0)
+        self.wait(4.6)
+
+        cap = self.caption("everything that survives the cull now refines, feature-aware")
+        self.play(FadeOut(VGroup(cull_cell, cull_ball, cull_c, cull_t)),
+                  FadeOut(cap0), FadeIn(cap), run_time=0.6)
         self.play(LaggedStart(*[FadeIn(c) for c in grid], lag_ratio=0.008), run_time=3.0)
         self.wait(1.8)
 
@@ -936,11 +966,28 @@ class SFCC(Scene):
         self.play(GrowFromCenter(cross2), GrowArrow(seg), run_time=0.9)
         self.wait(3.6)
 
+        # the classic ambiguous face, resolved by one extra sample
+        amb = ambiguous_inset(P(4.85, 0.15))
+        cap3b = self.caption("faces can be ambiguous: four crossings admit two legal pairings —",
+                             "exits pair with the nearest unmatched enter, and when two runs",
+                             "remain, ONE face-center sample decides: joined, or separate lobes")
+        self.swap_caption(cap3b, cap3)
+        self.play(FadeIn(amb[0]), Create(amb[1]), FadeIn(amb[2]), FadeIn(amb[3]),
+                  run_time=1.0)
+        self.play(FadeIn(amb[4]), run_time=0.7)
+        self.wait(1.6)
+        self.play(GrowFromCenter(amb[5]),
+                  Flash(amb[5].get_center(), color=BLUE_B, flash_radius=0.35), run_time=0.7)
+        self.play(FadeOut(amb[4][0]),
+                  amb[4][1].animate.set_stroke(WHITE, width=4, opacity=1.0), run_time=0.8)
+        self.wait(3.8)
+        self.play(FadeOut(amb), run_time=0.6)
+
         inset, route = pin_inset(self.leaves, P(4.95, -0.2), side=3.0)
         cap4 = self.caption("near a feature curve: its exact analytic crossings with the face",
                             "become pins — the certified route is  exit → pin → enter,",
                             "one kinked arc through the exact feature point (no QEF)")
-        self.swap_caption(cap4, cap3)
+        self.swap_caption(cap4, cap3b)
         ptr = Arrow(SEAM_RIGHT + RIGHT * 0.15, inset[0].get_left() + LEFT * 0.05,
                     color=GREY_B, stroke_width=2.5, max_tip_length_to_length_ratio=0.08)
         self.play(FadeIn(inset[0]), GrowArrow(ptr), run_time=0.8)
@@ -1046,10 +1093,28 @@ class SFCC(Scene):
         self.swap_caption(cap2, cap)
         self.wait(4.6)
 
+        # loop assembly + interior-vertex projection, mechanically
+        lp = loop_inset(P(4.3, 0.9))
+        cap2b = self.caption("how a cell meshes: its six faces' directed segments must chain",
+                             "head-to-tail into closed loops — one outgoing segment per point,",
+                             "or the WHOLE cell fails into re-refinement (never guess, never patch)")
+        self.swap_caption(cap2b, cap2)
+        self.play(FadeIn(lp[0]), FadeIn(lp[1]), Create(lp[2]), run_time=0.8)
+        self.play(LaggedStart(*[GrowArrow(a) for a in lp[3]], lag_ratio=0.22), run_time=1.8)
+        self.wait(3.2)
+        cap2c = self.caption("≥5-gon loops fan from an interior vertex: start at the centroid,",
+                             "steepest-descend onto the surface, accept only on-surface, in-box,",
+                             "and same-sheet — otherwise fan from the best boundary ear")
+        self.swap_caption(cap2c, cap2b)
+        self.play(FadeIn(lp[4]), FadeIn(lp[6]), run_time=0.8)
+        self.play(LaggedStart(*[Create(l) for l in lp[5]], lag_ratio=0.1), run_time=1.0)
+        self.wait(4.4)
+        self.play(FadeOut(lp), run_time=0.6)
+
         self.play(self.grid.animate.set_stroke(opacity=0.06),
                   solid.animate.set_fill(opacity=0.10),
                   poly.animate.set_stroke(opacity=0.25),
-                  FadeOut(vdots), FadeOut(fdots), FadeOut(cap2), run_time=0.8)
+                  FadeOut(vdots), FadeOut(fdots), FadeOut(cap2c), run_time=0.8)
         left = crease_panel(P(-3.1, -0.4), "ms")
         right = crease_panel(P(3.1, -0.4), "sfcc")
         tl = Text("sampled contouring", font_size=24, color=GREY_A).next_to(left[0], UP, buff=0.2)
@@ -1079,6 +1144,26 @@ class SFCC(Scene):
         self.play(self.grid.animate.set_stroke(opacity=0.0),
                   self.mob_scene.animate.set_fill(opacity=0.0).set_stroke(opacity=0.0),
                   self.mesh_view.animate.shift(UP * 0.35), run_time=0.7)
+
+        # how the audits work: pure counting on shared edges
+        ed_a, ed_b = P(4.1, 0.75), P(5.9, 0.75)
+        tri_top = Polygon(ed_a, ed_b, P(5.0, 2.15), stroke_width=2.5, color=GREY_A)
+        tri_bot = Polygon(ed_b, ed_a, P(5.0, -0.65), stroke_width=2.5, color=GREY_A)
+        fwd = Arrow(ed_a + UP * 0.14, ed_b + UP * 0.14, buff=0.15, stroke_width=3,
+                    max_tip_length_to_length_ratio=0.12, color=GREEN_B)
+        rev = Arrow(ed_b + DOWN * 0.14, ed_a + DOWN * 0.14, buff=0.15, stroke_width=3,
+                    max_tip_length_to_length_ratio=0.12, color=GREEN_B)
+        aud = Text("count 2 · balance 0 ✓", font_size=18, color=GREEN_B)\
+            .move_to(P(5.0, -1.15))
+        audg = VGroup(tri_top, tri_bot, fwd, rev, aud)
+        capA = self.caption("the audits are pure counting: every interior segment consumed once",
+                            "forward + once reversed; every undirected edge used exactly twice,",
+                            "in opposite directions — disagreeing neighbors cannot exist")
+        self.play(FadeIn(capA), Create(tri_top), Create(tri_bot), run_time=0.9)
+        self.play(GrowArrow(fwd), GrowArrow(rev), FadeIn(aud), run_time=0.8)
+        self.wait(4.6)
+        self.play(FadeOut(audg), FadeOut(capA), run_time=0.6)
+
         self.play(LaggedStart(*[FadeIn(l, shift=RIGHT * 0.3) for l in lines],
                               lag_ratio=0.35), run_time=2.8)
         self.wait(4.6)
@@ -1412,6 +1497,92 @@ def narrow_stage(fw, C, half, n, K, nu, nl):
                          stroke_width=1.5, stroke_color=RED,
                          fill_color=RED, fill_opacity=0.5))
     return VGroup(grid, chords, lost)
+
+
+# --------------------------------------------- mechanism insets
+def tracer_inset(center, w=5.9, h=3.4):
+    """Predictor-corrector seam march: tangent step, Newton snap-back."""
+    bg = RoundedRectangle(width=w, height=h, corner_radius=0.15, stroke_width=1.5,
+                          color=GREY_B, fill_color=BLACK, fill_opacity=0.92).move_to(center)
+    title = Text("the tracer: predict along the tangent, correct with Newton",
+                 font_size=16, color=GREY_B).move_to(center + UP * (h / 2 - 0.3))
+
+    def g(x):
+        return center[1] - 0.3 + 0.42 * np.sin(1.5 * (x - center[0] + 2.2))
+
+    def gp(x):
+        return 0.42 * 1.5 * np.cos(1.5 * (x - center[0] + 2.2))
+
+    x0, x1 = center[0] - 2.6, center[0] + 2.6
+    locus = VMobject(color=ORANGE, stroke_width=3).set_points_as_corners(
+        [P(x, g(x)) for x in np.linspace(x0, x1, 140)])
+    xs = [x0 + d for d in (0.2, 1.0, 1.55, 1.95, 2.45, 3.3, 3.9, 4.4, 5.0)]
+    seed = Dot(P(xs[0], g(xs[0])), radius=0.08, color=YELLOW)
+    steps = VGroup()
+    for a, b in zip(xs[:-1], xs[1:]):
+        pa, pb = P(a, g(a)), P(b, g(b))
+        t = np.array([1.0, gp(a), 0.0])
+        t = t / np.linalg.norm(t)
+        pred = pa + t * np.linalg.norm(pb - pa)
+        steps.add(VGroup(
+            DashedLine(pa, pred, stroke_width=2, color=GREY_A, dash_length=0.07),
+            Arrow(pred, pb, buff=0, stroke_width=2.5, color=RED,
+                  max_tip_length_to_length_ratio=0.4),
+            Dot(pb, radius=0.05, color=WHITE)))
+    return VGroup(bg, title, locus, seed, steps)
+
+
+def ambiguous_inset(center):
+    """The MS ambiguous face: 4 crossings, 2 pairings, center sample decides."""
+    bg = RoundedRectangle(width=4.5, height=4.7, corner_radius=0.15, stroke_width=1.5,
+                          color=GREY_B, fill_color=BLACK, fill_opacity=0.92)\
+        .move_to(center + DOWN * 0.05)
+    face = Square(side_length=2.6, color=GREY_B, stroke_width=2.5).move_to(center)
+    title = Text("the ambiguous face", font_size=17, color=GREY_B)\
+        .move_to(center + UP * 1.95)
+    h = 1.3
+    dots = VGroup()
+    for sx, sy, inside in ((-1, 1, True), (1, 1, False), (1, -1, True), (-1, -1, False)):
+        dots.add(Dot(center + np.array([sx * h, sy * h, 0.0]), radius=0.07,
+                     color=BLUE_B if inside else GREY_C))
+    top, bot = center + np.array([0, h, 0.0]), center + np.array([0, -h, 0.0])
+    left, right = center + np.array([-h, 0, 0.0]), center + np.array([h, 0, 0.0])
+    for p in (top, bot, left, right):
+        dots.add(Dot(p, radius=0.07, color=RED))
+    lobes = VGroup(ArcBetweenPoints(left, top, angle=-PI / 2),
+                   ArcBetweenPoints(right, bot, angle=-PI / 2))
+    joined = VGroup(ArcBetweenPoints(top, right, angle=-PI / 2),
+                    ArcBetweenPoints(bot, left, angle=-PI / 2))
+    for arc in (*lobes, *joined):
+        arc.set_stroke(GREY_A, width=2.5, opacity=0.85)
+    opts = VGroup(lobes, joined)
+    cdot = Dot(center, radius=0.09, color=BLUE_B)
+    return VGroup(bg, face, title, dots, opts, cdot)
+
+
+def loop_inset(center):
+    """Directed segments chain into a loop; interior vertex projects on-surface."""
+    bg = RoundedRectangle(width=5.5, height=4.5, corner_radius=0.15, stroke_width=1.5,
+                          color=GREY_B, fill_color=BLACK, fill_opacity=0.92).move_to(center)
+    title = Text("segments → closed loop → projected interior vertex",
+                 font_size=16, color=GREY_B).move_to(center + UP * 1.95)
+    c = center + DOWN * 0.1
+    cellq = Square(side_length=3.0, color=BLUE_C, stroke_width=2).move_to(c)
+    pts = [c + 1.15 * np.array([np.cos(a), np.sin(a), 0.0])
+           for a in np.linspace(0.3, 0.3 + 2 * np.pi, 7)[:-1]]
+    arrows = VGroup(*[Arrow(pts[i], pts[(i + 1) % 6], buff=0.06, stroke_width=3,
+                            max_tip_length_to_length_ratio=0.18, color=RED_B)
+                      for i in range(6)])
+    proj = c + np.array([0.22, 0.18, 0.0])
+    interior = VGroup(Dot(c, radius=0.07, color=GREY_B),
+                      Arrow(c, proj, buff=0, stroke_width=2.5, color=YELLOW,
+                            max_tip_length_to_length_ratio=0.3),
+                      Dot(proj, radius=0.08, color=YELLOW))
+    fan = VGroup(*[Line(proj, q, stroke_width=1.6, color=GREY_B, stroke_opacity=0.8)
+                   for q in pts])
+    form = Text("p ← p − f·∇f/|∇f|²", font_size=18, color=YELLOW)\
+        .move_to(center + DOWN * 1.95)
+    return VGroup(bg, title, cellq, arrows, interior, fan, form)
 
 
 # --------------------------------------------- ch3c: smooth-CSG demo

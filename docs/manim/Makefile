@@ -14,7 +14,7 @@ ifeq ($(NOCACHE),1)
 CACHE_FLAGS := --disable_caching
 endif
 
-.PHONY: all draft intro clean
+.PHONY: all draft intro clean $(OUT)
 
 # Final render: 1080p @ 30fps, copied to $(OUT) next to the script.
 all: $(OUT)

@@ -1,0 +1,35 @@
+# gcad scene source for docs/manim/assets/torture_bracket.png (+ _mesh / _mesh_solid variants).
+# Regenerate: scripts/agentcli render --yaml docs/manim/scenes/torture_bracket.yaml --mode sdf   (or --mode mesh)
+schemaVersion: 1
+source: |-
+  // Torture bracket: plate + bosses + twisted rib + domed intersect + bores
+  let plate = box(22, 3, 14)
+  let boss1 = cylinder.radius(6).height(9).shift(-12, 8, 0)
+  let boss2 = cylinder.radius(6).height(9).shift(12, 8, 0)
+  let body = union(plate, boss1, boss2).round(2.5)
+  let ribProfile = polygon2d([-2.2, -6.5], [2.2, -6.5], [2.2, 6.5], [-2.2, 6.5])
+  let rib = translate(0, 5, 0, rotate(0, 0, 90, extrude.profile(ribProfile).height(12).twist(200)))
+  let ribbed = union(body, rib).chamfer(1.2)
+  let domed = intersect(ribbed, sphere.radius(30).shift(0, -14, 0))
+  let bore1 = cylinder.radius(3.2).height(20).shift(-12, 0, 0)
+  let bore2 = cylinder.radius(3.2).height(20).shift(12, 0, 0)
+  let hole1 = cylinder.radius(1.7).height(10).shift(-18, 0, -10)
+  let hole2 = cylinder.radius(1.7).height(10).shift(18, 0, -10)
+  let hole3 = cylinder.radius(1.7).height(10).shift(-18, 0, 10)
+  let hole4 = cylinder.radius(1.7).height(10).shift(18, 0, 10)
+  let drilled = subtract(domed, bore1, bore2, hole1, hole2, hole3, hole4)
+  let dent = sphere.radius(4).shift(0, 11, 0)
+  return subtract(drilled, dent)
+camera:
+  position: [0, 0, 1]
+  translation: [0, 1.5, 0]
+  dollyDistance: 34
+  rotation: [0.881411388237, 0.280449078075, 0.360577386097, 0.120192462032]
+  pivot: [0, 0, 0]
+viewCenter: [0.5, 0.5]
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 1000
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

@@ -1,0 +1,19 @@
+# gcad scene source for docs/manim/assets/box_twisted.png (+ _mesh / _mesh_solid variants).
+# Regenerate: scripts/agentcli render --yaml docs/manim/scenes/box_twisted.yaml --mode sdf   (or --mode mesh)
+schemaVersion: 1
+source: |-
+  let sq = polygon2d([-10, -10], [10, -10], [10, 10], [-10, 10])
+  return extrude.profile(sq).height(60).twist(800)
+camera:
+  position: [0, 0, 1]
+  translation: [0.013316221742, -0.079007058884, 0.018328206854]
+  dollyDistance: 96.005655525343
+  rotation: [0.941800899656, 0.132361484561, -0.306009662228, -0.043006853357]
+  pivot: [0, 0, 0]
+viewCenter: [0.5, 0.5]
+resolutionScale: 1
+viewportWidth: 900
+viewportHeight: 1200
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

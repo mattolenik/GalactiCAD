@@ -1,0 +1,20 @@
+# gcad scene source for docs/manim/assets/csg_seam.png (+ _mesh / _mesh_solid variants).
+# Regenerate: scripts/agentcli render --yaml docs/manim/scenes/csg_seam.yaml --mode sdf   (or --mode mesh)
+schemaVersion: 1
+source: |-
+  let block = box(15, 15, 15)
+  let bump = sphere.radius(11).shift(15, 15, 15)
+  return union(block, bump)
+camera:
+  position: [0, 0, 1]
+  translation: [3.807946990176, -0.051574902801, 3.764967904508]
+  dollyDistance: 46.466875820808
+  rotation: [0.881411388237, 0.280449078075, 0.360577386097, 0.120192462032]
+  pivot: [0, 0, 0]
+viewCenter: [0.5, 0.5]
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 1000
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

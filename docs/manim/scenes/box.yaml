@@ -1,0 +1,18 @@
+# gcad scene source for docs/manim/assets/box.png (+ _mesh / _mesh_solid variants).
+# Regenerate: scripts/agentcli render --yaml docs/manim/scenes/box.yaml --mode sdf   (or --mode mesh)
+schemaVersion: 1
+source: |-
+  return box(15, 15, 15)
+camera:
+  position: [0, 0, 1]
+  translation: [0.000000000000, 0.000000000000, 0.000000000000]
+  dollyDistance: 45.100203002549
+  rotation: [0.881411388237, 0.280449078075, 0.360577386097, 0.120192462032]
+  pivot: [0, 0, 0]
+viewCenter: [0.5, 0.5]
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 1000
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

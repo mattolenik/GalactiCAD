@@ -1,0 +1,41 @@
+# gcad scene source for docs/manim/assets/torture_mess1.png (+ _mesh / _mesh_solid variants).
+# Regenerate: scripts/agentcli render --yaml docs/manim/scenes/torture_mess1.yaml --mode sdf   (or --mode mesh)
+schemaVersion: 1
+source: |-
+  // Torture mess 1: 10 chaotic primitives, alternating boolean ops, twisted star
+  let a = box(7, 4, 5).shift(0, 0, 0).rotate(25, 40, 10)
+  let b = sphere.radius(6).shift(5, 4, -3)
+  let c = cylinder.radius(3.5).height(9).shift(-5, 2, 4).rotate(70, 15, 30)
+  let d = cone.radius(5).height(11).shift(3, -8, 3).rotate(-35, 0, 50)
+  let ringP = polygon2d([5.6, 0], [7, 1.6], [8.4, 0], [7, -1.6])
+  let e = translate(-2, 5, 2, rotate(55, 20, 0, lathe.profile(ringP)))
+  let star = polygon2d([-3, -3], [3, -3], [4.5, -0.9], [4.5, 0.9], [3, 3], [-3, 3], [-4.5, 0.9], [-4.5, -0.9])
+  let tw = extrude.profile(star).height(7).twist(270).shift(3, 1, 3).rotate(15, 0, -25)
+  let f = cylinder.radius(2.6).height(6).shift(-6, -3, -4).rotate(80, 30, 10)
+  let hexP = polygon2d([4, 0], [2, 3.46], [-2, 3.46], [-4, 0], [-2, -3.46], [2, -3.46])
+  let g = extrude.profile(hexP).height(2.5).shift(6, -2, -5).rotate(35, 55, 5)
+  let h = sphere.radius(5).shift(-4, -7, 3)
+  let i = box(3.5, 9, 3.5).shift(2, 5, -6).rotate(45, 45, 45)
+  let s1 = union(a, b).round(3)
+  let s2 = subtract(s1, c)
+  let s3 = union(s2, d).chamfer(1.6)
+  let s4 = subtract(s3, e).round(1.2)
+  let s5 = union(s4, tw).round(0.9)
+  let s6 = subtract(s5, f).stairs(1.4, 4)
+  let s7 = union(s6, g).round(2.2)
+  let s8 = intersect(s7, sphere.radius(13.5))
+  let s9 = union(s8, h).columns(1.6, 3)
+  return subtract(s9, i).chamfer(1.1)
+camera:
+  position: [0, 0, 1]
+  translation: [1.5, -1.6, -1]
+  dollyDistance: 22
+  rotation: [0.881411388237, 0.280449078075, 0.360577386097, 0.120192462032]
+  pivot: [0, 0, 0]
+viewCenter: [0.5, 0.5]
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 1000
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

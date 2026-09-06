@@ -1,0 +1,32 @@
+# gcad scene source for docs/manim/assets/torture_knob.png (+ _mesh / _mesh_solid variants).
+# Regenerate: scripts/agentcli render --yaml docs/manim/scenes/torture_knob.yaml --mode sdf   (or --mode mesh)
+schemaVersion: 1
+source: |-
+  // Torture knob: lathe body + twisted grip fins + hex socket + ring groove + domed crown
+  let bodyProfile = polygon2d([0.6, -10], [9, -10], [10.5, -6], [8, -1], [8.5, 4], [4.5, 9.5], [0.6, 10])
+  let bodyRaw = lathe.profile(bodyProfile)
+  let star = polygon2d([-8, -8], [8, -8], [13.5, 0], [8, 8], [-8, 8], [-13.5, 0])
+  let fins = extrude.profile(star).height(7).twist(220).shift(0, -2, 0)
+  let finned = union(bodyRaw, fins).round(1.4)
+  let envelope = cylinder.radius(10.8).height(10)
+  let trimmed = intersect(finned, envelope)
+  let ringCut = lathe.profile(polygon2d([9.8, -4], [12.5, -5.8], [12.5, -2.2]))
+  let grooved = subtract(trimmed, ringCut).chamfer(0.7)
+  let hexP = polygon2d([3.4, 0], [1.7, 2.94], [-1.7, 2.94], [-3.4, 0], [-1.7, -2.94], [1.7, -2.94])
+  let hexSocket = extrude.profile(hexP).height(4).shift(0, 9, 0)
+  let socketed = subtract(grooved, hexSocket)
+  let crown = sphere.radius(16).shift(0, -8, 0)
+  return intersect(socketed, crown).round(0.8)
+camera:
+  position: [0, 0, 1]
+  translation: [0, -2.5, 0]
+  dollyDistance: 20
+  rotation: [0.881411388237, 0.280449078075, 0.360577386097, 0.120192462032]
+  pivot: [0, 0, 0]
+viewCenter: [0.5, 0.5]
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 1000
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

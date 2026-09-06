@@ -1,0 +1,36 @@
+# gcad scene source for docs/manim/assets/torture_mess2.png (+ _mesh / _mesh_solid variants).
+# Regenerate: scripts/agentcli render --yaml docs/manim/scenes/torture_mess2.yaml --mode sdf   (or --mode mesh)
+schemaVersion: 1
+source: |-
+  // Torture mess 2: chaotic core chain + lathe vase joined low + cone spike + hard trim + twisted ribbon
+  let c1 = box(5, 3, 4).shift(1, 0, -1).rotate(20, 35, 10)
+  let c2 = sphere.radius(5).shift(4, 3, 2)
+  let c3 = cone.radius(4.5).height(9).shift(-3, -6, 1).rotate(-30, 0, 40)
+  let c4 = cylinder.radius(2.8).height(7).shift(3, -2, -4).rotate(60, 25, 0)
+  let c5 = sphere.radius(4).shift(-4, 4, 3)
+  let c6 = box(2.2, 6, 2.2).shift(0, 3, 4).rotate(45, 10, 30)
+  let vase = lathe.profile(polygon2d([1, -8], [6.5, -8], [5, 0], [1.5, 7.5]))
+  let s1 = union(c1, vase).round(1.8)
+  let s2 = union(s1, c2).round(2.2)
+  let s3 = subtract(s2, c4).stairs(1.3, 3)
+  let s4 = union(s3, c3).chamfer(1.5)
+  let s5 = union(s4, c5)
+  let s6 = subtract(s5, c6)
+  let spike = cone.radius(3.8).height(9).shift(6, 3, -5).rotate(35, 0, 65)
+  let m = union(s6, spike)
+  let trimmed = intersect(m, sphere.radius(13).shift(0, 1, 0))
+  let ribbon = extrude.profile(polygon2d([-4, -1], [4, -1], [4, 1], [-4, 1])).height(9).twist(400).shift(-6, 1, 5).rotate(20, 10, 0)
+  return union(trimmed, ribbon)
+camera:
+  position: [0, 0, 1]
+  translation: [1.7, -3, 0]
+  dollyDistance: 19
+  rotation: [0.881411388237, 0.280449078075, 0.360577386097, 0.120192462032]
+  pivot: [0, 0, 0]
+viewCenter: [0.5, 0.5]
+resolutionScale: 1
+viewportWidth: 1200
+viewportHeight: 1000
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc

@@ -18,6 +18,7 @@ pub mod cancel;
 pub mod cell_mesh;
 pub mod face_contour;
 pub mod feature_curves;
+pub(crate) mod provenance;
 pub mod feature_set;
 pub mod field_branches;
 pub mod manifold_check;

@@ -11,23 +11,42 @@ pub struct FieldRef {
     root: std::sync::Arc<CsgNode>,
     path: Vec<usize>,
     branch: Option<(Vec<usize>, super::branch_surfaces::FieldBranch, f64)>,
+    partners: std::sync::Arc<[usize]>,
 }
 impl FieldRef {
+    pub(crate) fn semantic_identity(&self, context: &mut super::provenance::IdentityContext) -> u64 {
+        use super::provenance::IdentityHash;
+        let source = *context.roots.entry(std::sync::Arc::as_ptr(&self.root) as usize).or_insert_with(|| {
+            let mut hash = IdentityHash::default();
+            hash.include(&self.root);
+            hash.0
+        });
+        let mut hash = IdentityHash::default();
+        hash.include(source);
+        hash.include(&self.path);
+        hash.include(&self.branch);
+        hash.include(&self.partners);
+        hash.0
+    }
     pub fn new(root: std::sync::Arc<CsgNode>, path: Vec<usize>) -> Self {
-        Self { root, path, branch: None }
+        Self { root, path, branch: None, partners: std::sync::Arc::from([]) }
     }
     pub(crate) fn with_branch(
         mut self,
         path: Vec<usize>,
         branch: super::branch_surfaces::FieldBranch,
         native_band: f64,
+        partners: std::sync::Arc<[usize]>,
     ) -> Self {
+        self.partners = partners;
         self.branch = Some((path, branch, native_band));
         self
     }
     pub fn sample(&self, p: [f64; 3]) -> FieldSample {
         match &self.branch {
-            Some((path, branch, _)) => super::branch_surfaces::sample_override(self.node(), path, branch, p),
+            Some((path, branch, _)) => {
+                super::branch_surfaces::sample_override(self.node(), path, branch, &self.partners, p)
+            }
             None => sample_tree(self.node(), p),
         }
     }
@@ -54,7 +73,14 @@ impl FieldRef {
                     _ => unreachable!(),
                 };
             }
-            if !super::branch_surfaces::override_valid(self.node(), path, branch, p, tolerance) {
+            if !super::branch_surfaces::override_valid(
+                self.node(),
+                path,
+                branch,
+                &self.partners,
+                p,
+                tolerance,
+            ) {
                 return false;
             }
             let actual = sample_tree(target, p);

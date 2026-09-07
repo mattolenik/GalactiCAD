@@ -1221,6 +1221,7 @@ mod reliability_tests {
         let sphere = Stratum::sphere(ident(0), 0., 0., 0., 1.);
         let plane = Stratum::plane(ident(1), 0., 0., 1., 0.);
         let features = SfccFeatureSet {
+            unresolved_branch_paths: Vec::new(),
             trace_diagnostics: Default::default(),
             strata: vec![sphere.clone(), plane.clone()],
             curves: vec![],

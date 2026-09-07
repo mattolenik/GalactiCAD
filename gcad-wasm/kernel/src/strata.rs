@@ -134,7 +134,8 @@ fn twisted_eval_local(prm: &TwistedSideParams, lx: f64, ly: f64, lz: f64) -> (f6
     let mut grad = [0.0f64; 3];
     grad[0] = prm.nx2 * ca - prm.nz2 * sa;
     grad[2] = prm.nx2 * sa + prm.nz2 * ca;
-    let k = if t_raw > 0.0 && t_raw < 1.0 && prm.h.abs() > 1e-9 { prm.twist_rad / (2.0 * prm.h) } else { 0.0 };
+    let k =
+        if t_raw > 0.0 && t_raw < 1.0 && prm.h.abs() > 1e-9 { prm.twist_rad / (2.0 * prm.h) } else { 0.0 };
     grad[1] = k * (prm.nx2 * tw2 - prm.nz2 * tw1);
     (g, grad)
 }
@@ -146,7 +147,16 @@ fn twisted_eval_local(prm: &TwistedSideParams, lx: f64, ly: f64, lz: f64) -> (f6
 /// the true polygon SDF inside this edge's Voronoi region. Sign = side of the
 /// supporting line (outward positive), correct through a convex corner.
 #[inline]
-fn seg_signed_dist(qx: f64, qz: f64, x0: f64, z0: f64, x1: f64, z1: f64, nx: f64, nz: f64) -> (f64, f64, f64) {
+fn seg_signed_dist(
+    qx: f64,
+    qz: f64,
+    x0: f64,
+    z0: f64,
+    x1: f64,
+    z1: f64,
+    nx: f64,
+    nz: f64,
+) -> (f64, f64, f64) {
     let line = (qx - x0) * nx + (qz - z0) * nz; // signed line distance (n is unit outward)
     let ex = x1 - x0;
     let ez = z1 - z0;
@@ -203,6 +213,25 @@ struct CompoundCarrier {
 }
 
 impl Stratum {
+    pub(crate) fn semantic_identity(&self, context: &mut crate::sfcc::provenance::IdentityContext) -> u64 {
+        use crate::sfcc::provenance::IdentityHash;
+        let mut hash = IdentityHash::default();
+        hash.include((self.kind, self.sign, self.leaf_index, self.local_index));
+        hash.include(self.carrier);
+        if let Some(compound) = &self.compound {
+            hash.include(compound.offset);
+            for (term, weight) in &compound.terms {
+                hash.include((term.semantic_identity(context), weight));
+            }
+        }
+        hash.include(self.field.as_ref().map(|field| field.semantic_identity(context)));
+        hash.include(
+            self.domain.as_ref().map(|domains| {
+                domains.iter().map(|field| field.semantic_identity(context)).collect::<Vec<_>>()
+            }),
+        );
+        hash.0
+    }
     pub fn same_primitive_field(&self, other: &Self) -> bool {
         self.compound.is_none()
             && other.compound.is_none()
@@ -232,7 +261,9 @@ impl Stratum {
     /// In particular a cutter's zero set must not mask a blend branch that is
     /// strictly inside its own operand. Test the owner's surface independently.
     pub fn domain_contains(&self, p: [f64; 3], tolerance: f64) -> bool {
-        self.domain.as_ref().is_none_or(|domains| domains.iter().any(|domain| domain.surface_live(p, tolerance)))
+        self.domain
+            .as_ref()
+            .is_none_or(|domains| domains.iter().any(|domain| domain.surface_live(p, tolerance)))
     }
     /// Exact operand field, shared by generated feature expressions.
     pub fn field(ident: StratumIdentity, node: FieldRef) -> Self {
@@ -250,7 +281,9 @@ impl Stratum {
         for st in [a, b] {
             if let Some(c) = &st.compound {
                 total_offset += c.offset * st.sign * std::f64::consts::FRAC_1_SQRT_2;
-                terms.extend(c.terms.iter().map(|(s, w)| (s.clone(), w * st.sign * std::f64::consts::FRAC_1_SQRT_2)));
+                terms.extend(
+                    c.terms.iter().map(|(s, w)| (s.clone(), w * st.sign * std::f64::consts::FRAC_1_SQRT_2)),
+                );
             } else {
                 terms.push((st.clone(), std::f64::consts::FRAC_1_SQRT_2));
             }
@@ -338,7 +371,16 @@ impl Stratum {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn cylinder(ident: StratumIdentity, ax: f64, ay: f64, az: f64, ux: f64, uy: f64, uz: f64, r: f64) -> Stratum {
+    pub fn cylinder(
+        ident: StratumIdentity,
+        ax: f64,
+        ay: f64,
+        az: f64,
+        ux: f64,
+        uy: f64,
+        uz: f64,
+        r: f64,
+    ) -> Stratum {
         Stratum::wrap(ident, CarrierKind::Cylinder, Carrier::Cylinder { a: [ax, ay, az], u: [ux, uy, uz], r })
     }
 
@@ -354,7 +396,11 @@ impl Stratum {
         sin_a: f64,
         cos_a: f64,
     ) -> Stratum {
-        Stratum::wrap(ident, CarrierKind::Cone, Carrier::Cone { a: [ax, ay, az], u: [ux, uy, uz], sin_a, cos_a })
+        Stratum::wrap(
+            ident,
+            CarrierKind::Cone,
+            Carrier::Cone { a: [ax, ay, az], u: [ux, uy, uz], sin_a, cos_a },
+        )
     }
 
     pub fn twisted_side(ident: StratumIdentity, prm: TwistedSideParams) -> Stratum {
@@ -546,7 +592,11 @@ impl Stratum {
                     let rho_star = proj * sin_a;
                     let t_star = proj * cos_a;
                     let inv = rho_star / rho;
-                    [a[0] + t_star * u[0] + rx * inv, a[1] + t_star * u[1] + ry * inv, a[2] + t_star * u[2] + rz * inv]
+                    [
+                        a[0] + t_star * u[0] + rx * inv,
+                        a[1] + t_star * u[1] + ry * inv,
+                        a[2] + t_star * u[2] + rz * inv,
+                    ]
                 }
             }
             Carrier::TwistedSide(prm) => {
@@ -605,7 +655,11 @@ impl Stratum {
                     return [s, 0., 0.];
                 }
                 let radial = (rho - r) / rho;
-                [s * (radial * rx + t * u[0]) / d, s * (radial * ry + t * u[1]) / d, s * (radial * rz + t * u[2]) / d]
+                [
+                    s * (radial * rx + t * u[0]) / d,
+                    s * (radial * ry + t * u[1]) / d,
+                    s * (radial * rz + t * u[2]) / d,
+                ]
             }
             Carrier::Cone { a, u, sin_a, cos_a } => {
                 let (rx, ry, rz, t, rho) = cone_decompose(a, u, px, py, pz);
@@ -736,7 +790,8 @@ mod tests {
             let angle = 1.2 * ((local[1] + 2.) / 4.).clamp(0., 1.);
             let raw = -2.5 * (angle.cos() * local[0] + angle.sin() * local[2] - 1.);
             assert!((ruled.raw_field(p[0], p[1], p[2]).value - raw).abs() < 1e-12);
-            let expected = (((raw + plane.f(p[0], p[1], p[2])) / 2f64.sqrt() - 0.7) + raw) / 2f64.sqrt() - 0.3;
+            let expected =
+                (((raw + plane.f(p[0], p[1], p[2])) / 2f64.sqrt() - 0.7) + raw) / 2f64.sqrt() - 0.3;
             assert!((nested.raw_field(p[0], p[1], p[2]).value - expected).abs() < 1e-12);
             for st in [&ruled, &nested] {
                 let actual = st.raw_field(p[0], p[1], p[2]);

@@ -95,6 +95,11 @@ impl SfccFeatureSet {
             for id in &corner.strata {
                 word(*id as u64);
             }
+            word(corner.curve_ends.len() as u64);
+            for (curve, end) in &corner.curve_ends {
+                word(*curve as u64);
+                word(*end as u64);
+            }
         }
         hash
     }
@@ -1784,6 +1789,15 @@ pub fn compile_feature_set(
 mod tests {
     use super::*;
     use crate::sdf::leaf_at;
+
+    #[test]
+    fn worker_fingerprint_includes_junction_incidence() {
+        let tree = leaf_at(Shape::Cuboid { half: [1.; 3] }, [0.; 3]);
+        let mut fs = compile_native_features(&tree);
+        let original = fs.fingerprint();
+        fs.corners[0].curve_ends[0].1 ^= 1;
+        assert_ne!(original, fs.fingerprint(), "same positions with different endpoint incidence must not share worker references");
+    }
 
     #[test]
     fn unit_box_has_12_segments_8_corners() {

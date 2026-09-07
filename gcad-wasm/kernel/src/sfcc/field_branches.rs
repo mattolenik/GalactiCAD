@@ -263,7 +263,7 @@ pub fn sample_pruned(node: &crate::sdf::Pruned<'_>, p: [f64; 3]) -> FieldSample 
     }
 }
 
-fn sample_leaf(l: &Leaf, p: [f64; 3]) -> FieldSample {
+pub(crate) fn sample_leaf(l: &Leaf, p: [f64; 3]) -> FieldSample {
     let local = l.sim.inv_apply_point(p[0], p[1], p[2]);
     let [x, y, z] = std::array::from_fn(|k| local[k] - l.pos[k]);
     let gradient = match &l.shape {
@@ -320,12 +320,15 @@ pub(crate) fn sample_blend(
         SminMode::Chamfer => a.min(b).min(a.add(b).sub(r).scale(q)),
         SminMode::Round => r.max(a.min(b)).sub(r.sub(a).max(c(0.)).hypot(r.sub(b).max(c(0.)))),
         SminMode::Soft => {
-            let e = r.sub(a.sub(b).abs()).max(c(0.));
-            let correction = FieldSample {
-                value: e.value * e.value / (4. * radius),
-                gradient: e.gradient.map(|v| v * e.value / (2. * radius)),
-            };
-            a.min(b).sub(correction)
+            // The polynomial is differentiable at a == b even though this
+            // scalar spelling uses min/abs. Differentiating their independent
+            // tie choices gives inconsistent one-sided derivatives there.
+            let e = (radius - (a.value - b.value).abs()).max(0.);
+            let wa = (0.5 + 0.5 * (b.value - a.value) / radius).clamp(0., 1.);
+            FieldSample {
+                value: a.value.min(b.value) - e * e / (4. * radius),
+                gradient: std::array::from_fn(|k| wa * a.gradient[k] + (1. - wa) * b.gradient[k]),
+            }
         }
         SminMode::Stairs => {
             let s = radius / n;
@@ -401,6 +404,9 @@ mod tests {
                     let regional = sample_pruned(&pruned, p);
                     assert_eq!(sample.value, regional.value);
                     assert_eq!(sample.gradient, regional.gradient);
+                    let expected_normal = sample.normalized_equation().unwrap().gradient;
+                    assert_eq!(tree.grad(p).1, expected_normal, "{mode:?} {kind:?} at {p:?}");
+                    assert_eq!(pruned.grad(p), tree.grad(p));
                     assert!((sample.value - tree.f(p)).abs() < 1e-12, "{mode:?} {kind:?} at {p:?}");
                     for k in 0..3 {
                         let (mut a, mut b) = (p, p);

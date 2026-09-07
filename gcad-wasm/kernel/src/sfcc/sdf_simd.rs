@@ -16,6 +16,7 @@
 
 use crate::primitives::smin::SminMode;
 use crate::sdf::{BlendKind, CsgNode, Leaf, Pruned, Shape};
+use super::field_branches::{sample_blend, sample_leaf, FieldSample};
 use core::arch::wasm32::*;
 
 const IDENTITY_R: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
@@ -42,7 +43,7 @@ fn sgn(x: v128) -> v128 {
     sel(f64x2_lt(x, f64x2_splat(0.0)), f64x2_splat(-1.0), f64x2_splat(1.0))
 }
 
-/// (value, [nx,ny,nz]) for two points, each lane one point.
+/// (value, raw derivative xyz) for two points, each lane one point.
 type GradX2 = (v128, [v128; 3]);
 
 // --- vectorized primitives (local-space, two points) -----------------------
@@ -173,10 +174,10 @@ fn leaf_x2(l: &Leaf, p0: [f64; 3], p1: [f64; 3]) -> GradX2 {
         (val, [f64x2_mul(sign, n[0]), f64x2_mul(sign, n[1]), f64x2_mul(sign, n[2])])
     } else {
         // scalar fallback for both lanes
-        let f0 = l.f(p0);
-        let f1 = l.f(p1);
-        let n0 = l.normal(p0);
-        let n1 = l.normal(p1);
+        let a = sample_leaf(l, p0);
+        let b = sample_leaf(l, p1);
+        let (f0, n0) = (a.value, a.gradient);
+        let (f1, n1) = (b.value, b.gradient);
         (f64x2(f0, f1), [f64x2(n0[0], n1[0]), f64x2(n0[1], n1[1]), f64x2(n0[2], n1[2])])
     }
 }
@@ -243,65 +244,58 @@ fn grad_x2<N: SimdNode>(node: &N, p0: [f64; 3], p1: [f64; 3]) -> GradX2 {
             }
             (bv, bg)
         }
-        View::Blend { kind, mode, r, n: _n, children } => {
+        View::Blend { kind, mode, r, n, children } => {
             let sgn_v = if kind == BlendKind::Smax { f64x2_splat(-1.0) } else { f64x2_splat(1.0) };
             // maintain per-lane nearest two by sgn*value
             let inf = f64x2_splat(f64::INFINITY);
             let (mut va, mut vb) = (inf, inf);
             let mut ga = [f64x2_splat(0.0); 3];
             let mut gb = [f64x2_splat(0.0); 3];
-            for c in children.iter() {
-                let (cv, cg) = grad_x2(c, p0, p1);
-                let v = f64x2_mul(sgn_v, cv);
-                let lt_a = f64x2_lt(v, va);
-                let lt_b = f64x2_lt(v, vb);
-                // shift-in: new b = lt_a ? old a : (lt_b ? v : old b)
-                let nvb = sel(lt_a, va, sel(lt_b, v, vb));
-                let ngb = [
-                    sel(lt_a, ga[0], sel(lt_b, cg[0], gb[0])),
-                    sel(lt_a, ga[1], sel(lt_b, cg[1], gb[1])),
-                    sel(lt_a, ga[2], sel(lt_b, cg[2], gb[2])),
-                ];
-                let nva = sel(lt_a, v, va);
-                let nga = [sel(lt_a, cg[0], ga[0]), sel(lt_a, cg[1], ga[1]), sel(lt_a, cg[2], ga[2])];
-                va = nva;
-                vb = nvb;
-                ga = nga;
-                gb = ngb;
+            if children.len() > 2 {
+                for c in children.iter() {
+                    let (cv, cg) = grad_x2(c, p0, p1);
+                    let v = f64x2_mul(sgn_v, cv);
+                    let lt_a = f64x2_lt(v, va);
+                    let lt_b = f64x2_lt(v, vb);
+                    // shift-in: new b = lt_a ? old a : (lt_b ? v : old b)
+                    let nvb = sel(lt_a, va, sel(lt_b, v, vb));
+                    let ngb = [
+                        sel(lt_a, ga[0], sel(lt_b, cg[0], gb[0])),
+                        sel(lt_a, ga[1], sel(lt_b, cg[1], gb[1])),
+                        sel(lt_a, ga[2], sel(lt_b, cg[2], gb[2])),
+                    ];
+                    let nva = sel(lt_a, v, va);
+                    let nga = [sel(lt_a, cg[0], ga[0]), sel(lt_a, cg[1], ga[1]), sel(lt_a, cg[2], ga[2])];
+                    va = nva;
+                    vb = nvb;
+                    ga = nga;
+                    gb = ngb;
+                }
             }
-            // Round smin weights + value (only Round vectorized; matches mech).
-            let rr = f64x2_splat(r);
-            let (wa, wb, value) = if mode == SminMode::Round {
-                let both_lt = v128_and(f64x2_lt(va, rr), f64x2_lt(vb, rr));
-                let a_le_b = f64x2_le(va, vb);
-                let wa = sel(both_lt, f64x2_sub(rr, va), sel(a_le_b, f64x2_splat(1.0), f64x2_splat(0.0)));
-                let wb = sel(both_lt, f64x2_sub(rr, vb), sel(a_le_b, f64x2_splat(0.0), f64x2_splat(1.0)));
-                // value = sgn * (max(r, min(va,vb)) - hypot(max0(r-va), max0(r-vb)))
-                let mn = f64x2_min(va, vb);
-                let ux = max0(f64x2_sub(rr, va));
-                let uy = max0(f64x2_sub(rr, vb));
-                let hyp = f64x2_sqrt(f64x2_add(f64x2_mul(ux, ux), f64x2_mul(uy, uy)));
-                let sv = f64x2_sub(f64x2_max(rr, mn), hyp);
-                (wa, wb, f64x2_mul(sgn_v, sv))
-            } else {
-                // non-Round: fall back to nearest (Soft etc. rare in CAD); use a-weight 1.
-                (f64x2_splat(1.0), f64x2_splat(0.0), f64x2_mul(sgn_v, va))
+            // Binary periodic formulas are not symmetric under operand swap.
+            // Preserve source order for two children, matching the scalar path.
+            if children.len() == 2 {
+                let a = grad_x2(&children[0], p0, p1);
+                let b = grad_x2(&children[1], p0, p1);
+                va = f64x2_mul(sgn_v, a.0);
+                vb = f64x2_mul(sgn_v, b.0);
+                ga = a.1;
+                gb = b.1;
+            }
+            // Retain raw derivatives through every ancestor. Use the shared
+            // scalar operator differential per lane for all six blend modes;
+            // leaf queries and winner selection remain vectorized.
+            let (a0, a1) = unpack((va, ga));
+            let (b0, b1) = unpack((vb, gb));
+            let sign = if kind == BlendKind::Smax { -1. } else { 1. };
+            let blend = |a: (f64, [f64; 3]), b: (f64, [f64; 3])| {
+                sample_blend(mode,
+                    FieldSample { value: a.0, gradient: a.1.map(|v| v * sign) },
+                    FieldSample { value: b.0, gradient: b.1.map(|v| v * sign) }, r, n).scale(sign)
             };
-            // blended grad = normalize(wa*ga + wb*gb)
-            let mut gx = f64x2_add(f64x2_mul(wa, ga[0]), f64x2_mul(wb, gb[0]));
-            let mut gy = f64x2_add(f64x2_mul(wa, ga[1]), f64x2_mul(wb, gb[1]));
-            let mut gz = f64x2_add(f64x2_mul(wa, ga[2]), f64x2_mul(wb, gb[2]));
-            let l = len3(gx, gy, gz);
-            let ok = f64x2_gt(l, f64x2_splat(1e-12));
-            let inv = sel(ok, f64x2_div(f64x2_splat(1.0), l), f64x2_splat(1.0));
-            gx = f64x2_mul(gx, inv);
-            gy = f64x2_mul(gy, inv);
-            gz = f64x2_mul(gz, inv);
-            // where len too small, fall back to ga
-            gx = sel(ok, gx, ga[0]);
-            gy = sel(ok, gy, ga[1]);
-            gz = sel(ok, gz, ga[2]);
-            (value, [gx, gy, gz])
+            let a = blend(a0, b0);
+            let b = blend(a1, b1);
+            (f64x2(a.value, b.value), std::array::from_fn(|k| f64x2(a.gradient[k], b.gradient[k])))
         }
     }
 }
@@ -309,10 +303,10 @@ fn grad_x2<N: SimdNode>(node: &N, p0: [f64; 3], p1: [f64; 3]) -> GradX2 {
 /// Public entry: value+normal for two points via the f64x2 evaluator, unpacked to
 /// the scalar `(f, [x,y,z])` pair the `SdfQuery::grad_pair` override returns.
 pub fn grad_pair_csg(node: &CsgNode, p0: [f64; 3], p1: [f64; 3]) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
-    unpack(grad_x2(node, p0, p1))
+    unit_pair(grad_x2(node, p0, p1))
 }
 pub fn grad_pair_pruned(node: &Pruned<'_>, p0: [f64; 3], p1: [f64; 3]) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
-    unpack(grad_x2(node, p0, p1))
+    unit_pair(grad_x2(node, p0, p1))
 }
 
 #[inline]
@@ -322,4 +316,13 @@ fn unpack((v, g): GradX2) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
     let g0 = [f64x2_extract_lane::<0>(g[0]), f64x2_extract_lane::<0>(g[1]), f64x2_extract_lane::<0>(g[2])];
     let g1 = [f64x2_extract_lane::<1>(g[0]), f64x2_extract_lane::<1>(g[1]), f64x2_extract_lane::<1>(g[2])];
     ((v0, g0), (v1, g1))
+}
+
+fn unit_pair(raw: GradX2) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
+    let normal = |(value, gradient): (f64, [f64; 3])| {
+        let s = FieldSample { value, gradient };
+        (value, s.normalized_equation().map_or([0.; 3], |s| s.gradient))
+    };
+    let (a, b) = unpack(raw);
+    (normal(a), normal(b))
 }

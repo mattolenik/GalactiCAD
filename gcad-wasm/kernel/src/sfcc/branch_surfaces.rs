@@ -5,7 +5,7 @@ use super::{
     tree::SfccTree,
 };
 use crate::{
-    primitives::{polygon2d::polygon_dist_2d, smin::SminMode},
+    primitives::{polygon2d::{polygon_dist_2d, polygon_edge_dist_2d}, smin::SminMode},
     sdf::{BlendKind, CsgNode, Shape},
     strata::{Stratum, StratumIdentity},
 };
@@ -16,11 +16,19 @@ pub(crate) enum FieldBranch {
     Child(usize),
     Chamfer(usize, usize),
     Pair(usize, usize),
+    BoxFace(u8),
+    CylinderPart(u8),
+    ConePart(u8),
+    LatheEdge(usize),
     /// Exact profile field or either cap supporting field.
     ExtrudePart(u8),
+    /// One finite polygon segment, including its smooth endpoint regions.
+    ExtrudeEdge(usize),
     /// Constant bottom angle, linear angle, constant top angle.
     TwistRegion(u8),
     LoftPart(u8),
+    /// Override one profile's nearest segment in the interpolated side field.
+    LoftEdge(usize, usize),
     /// Bottom clamp, each interpolation segment, top clamp.
     LoftRegion(usize),
 }
@@ -30,6 +38,10 @@ impl FieldBranch {
         let y = l.sim.inv_apply_point(p[0], p[1], p[2])[1] - l.pos[1];
         let tol = tol / l.sim.s;
         match (&l.shape, self) {
+            (Shape::Loft { h, profs, .. }, Self::LoftEdge(profile, _)) => {
+                let t = ((y + h) / (2. * h)).clamp(0., 1.) * (profs.len() - 1) as f64;
+                (t - *profile as f64).abs() < 1.
+            }
             (Shape::Extrude { h, .. }, Self::TwistRegion(region)) => match region {
                 0 => y <= -h + tol,
                 1 => y >= -h - tol && y <= h + tol,
@@ -80,6 +92,37 @@ impl FieldBranch {
                     gradient: [0., if top { 1. } else { -1. }, 0.],
                 };
                 let out = match (&l.shape, self) {
+                    (Shape::Cuboid { half }, Self::BoxFace(face)) => {
+                        let axis = *face as usize / 2;
+                        let sign = if face % 2 == 0 { 1. } else { -1. };
+                        FieldSample { value: sign * [x, y, z][axis] - half[axis],
+                            gradient: std::array::from_fn(|k| if k == axis { sign } else { 0. }) }
+                    }
+                    (Shape::Cylinder { r, .. }, Self::CylinderPart(0)) => {
+                        let rho = x.hypot(z);
+                        FieldSample { value: rho - r, gradient: if rho > 1e-12 { [x / rho, 0., z / rho] } else { [0.; 3] } }
+                    }
+                    (Shape::Cylinder { h, .. }, Self::CylinderPart(part)) => cap(*part == 1).sub(FieldSample::constant(*h)),
+                    (Shape::Cone { r, h }, Self::ConePart(0)) => {
+                        let rho = x.hypot(z);
+                        let length = r.hypot(*h);
+                        FieldSample { value: (rho * h + (y - h) * r) / length,
+                            gradient: if rho > 1e-12 { [x / rho * h / length, r / length, z / rho * h / length] } else { [0., r / length, 0.] } }
+                    }
+                    (Shape::Cone { .. }, Self::ConePart(_)) => cap(false),
+                    (Shape::Lathe { edges }, Self::LatheEdge(edge)) => {
+                        let e = &edges[*edge];
+                        let rho = x.hypot(z);
+                        let (ex, ey) = (e.r1 - e.r0, e.y1 - e.y0);
+                        let (wx, wy) = (rho - e.r0, y - e.y0);
+                        let t = ((wx * ex + wy * ey) / (e.len * e.len)).clamp(0., 1.);
+                        let (dx, dy) = (wx - t * ex, wy - t * ey);
+                        let length = dx.hypot(dy);
+                        let sign = if crate::primitives::shapes::lathe_dist(edges, x, y, z) < 0. { -1. } else { 1. };
+                        let (gr, gy) = if length >= 1e-6 { (sign * dx / length, sign * dy / length) } else { (e.nr, e.ny) };
+                        FieldSample { value: sign * length,
+                            gradient: if rho > 1e-12 { [gr * x / rho, gy, gr * z / rho] } else { [0., gy, 0.] } }
+                    }
                     (Shape::Extrude { h, .. }, Self::ExtrudePart(1))
                     | (Shape::Loft { h, .. }, Self::LoftPart(1)) => cap(true).sub(FieldSample::constant(*h)),
                     (Shape::Extrude { h, .. }, Self::ExtrudePart(2))
@@ -105,7 +148,10 @@ impl FieldBranch {
                         };
                         let (sn, cs) = (twist_rad * t).sin_cos();
                         let (qx, qz) = (cs * x + sn * z, -sn * x + cs * z);
-                        let a = polygon_dist_2d(verts, *wind, qx, qz);
+                        let a = match self {
+                            Self::ExtrudeEdge(edge) => polygon_edge_dist_2d(verts, *wind, qx, qz, *edge),
+                            _ => polygon_dist_2d(verts, *wind, qx, qz),
+                        };
                         let side = FieldSample {
                             value: a.d,
                             gradient: [
@@ -114,7 +160,7 @@ impl FieldBranch {
                                 sn * a.gx + cs * a.gz,
                             ],
                         };
-                        if matches!(self, Self::ExtrudePart(0)) {
+                        if matches!(self, Self::ExtrudePart(0) | Self::ExtrudeEdge(_)) {
                             side
                         } else {
                             side.max(cap(y >= 0.).sub(FieldSample::constant(*h)))
@@ -133,8 +179,13 @@ impl FieldBranch {
                                 (i, t - i as f64, if y > -h && y < *h { n as f64 / (2. * h) } else { 0. })
                             }
                         };
-                        let a = polygon_dist_2d(&profs[i], winds[i], x, z);
-                        let b = polygon_dist_2d(&profs[i + 1], winds[i + 1], x, z);
+                        let profile_sample = |j: usize| match self {
+                            Self::LoftEdge(profile, edge) if *profile == j =>
+                                polygon_edge_dist_2d(&profs[j], winds[j], x, z, *edge),
+                            _ => polygon_dist_2d(&profs[j], winds[j], x, z),
+                        };
+                        let a = profile_sample(i);
+                        let b = profile_sample(i + 1);
                         let side = FieldSample {
                             value: a.d * (1. - t) + b.d * t,
                             gradient: [
@@ -143,7 +194,7 @@ impl FieldBranch {
                                 a.gz * (1. - t) + b.gz * t,
                             ],
                         };
-                        if matches!(self, Self::LoftPart(0)) {
+                        if matches!(self, Self::LoftPart(0) | Self::LoftEdge(_, _)) {
                             side
                         } else {
                             side.max(cap(y >= 0.).sub(FieldSample::constant(*h)))
@@ -293,8 +344,15 @@ pub(crate) fn append_branch_pairs(
             let mut groups: Vec<Vec<FieldBranch>> = Vec::new();
             match node {
                 CsgNode::Leaf(l) => match &l.shape {
-                    Shape::Extrude { twist_rad, .. } => {
+                    Shape::Cuboid { .. } => groups.push((0..6).map(FieldBranch::BoxFace).collect()),
+                    Shape::Cylinder { .. } => groups.push((0..3).map(FieldBranch::CylinderPart).collect()),
+                    Shape::Cone { .. } => groups.push((0..2).map(FieldBranch::ConePart).collect()),
+                    Shape::Lathe { edges } => groups.push(edges.iter().enumerate()
+                        .filter(|(_, e)| e.kind != crate::primitives::shapes::LatheEdgeKind::None)
+                        .map(|(i, _)| FieldBranch::LatheEdge(i)).collect()),
+                    Shape::Extrude { verts, twist_rad, .. } => {
                         groups.push((0..3).map(FieldBranch::ExtrudePart).collect());
+                        groups.push((0..verts.len() / 2).map(FieldBranch::ExtrudeEdge).collect());
                         if *twist_rad != 0. {
                             groups.push((0..3).map(FieldBranch::TwistRegion).collect());
                         }
@@ -302,6 +360,9 @@ pub(crate) fn append_branch_pairs(
                     Shape::Loft { profs, .. } => {
                         groups.push((0..3).map(FieldBranch::LoftPart).collect());
                         groups.push((0..=profs.len()).map(FieldBranch::LoftRegion).collect());
+                        for (profile, verts) in profs.iter().enumerate() {
+                            groups.push((0..verts.len() / 2).map(|edge| FieldBranch::LoftEdge(profile, edge)).collect());
+                        }
                     }
                     _ => {}
                 },

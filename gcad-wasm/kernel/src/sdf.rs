@@ -11,7 +11,7 @@
 
 use crate::math::similarity::Similarity;
 use crate::primitives::shapes;
-use crate::primitives::smin::{smin, smin_columns_interval, smin_grad_weights, SminMode};
+use crate::primitives::smin::{smin, smin_columns_interval, SminMode};
 use crate::strata::Stratum;
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2};
 
@@ -362,74 +362,13 @@ impl CsgNode {
     /// One-sided unit gradient (winner routing for hard combiners; analytic
     /// smin-weighted mix inside blend bands). Returns (f, unit gradient).
     pub fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]) {
-        match self {
-            CsgNode::Leaf(l) => (l.f(p), l.normal(p)),
-            CsgNode::Min(ch) => {
-                let mut bi = 0;
-                let mut best = f64::INFINITY;
-                for (i, c) in ch.iter().enumerate() {
-                    let d = c.f(p);
-                    if d < best {
-                        best = d;
-                        bi = i;
-                    }
-                }
-                ch[bi].grad(p)
-            }
-            CsgNode::Max(ch) => {
-                let mut bi = 0;
-                let mut best = f64::NEG_INFINITY;
-                for (i, c) in ch.iter().enumerate() {
-                    let d = c.f(p);
-                    if d > best {
-                        best = d;
-                        bi = i;
-                    }
-                }
-                ch[bi].grad(p)
-            }
-            CsgNode::Blend { kind, mode, r, n, children } => {
-                let sgn = if *kind == BlendKind::Smax { -1.0 } else { 1.0 };
-                let (ia, ib, va, vb) = if children.len() == 2 {
-                    (0, 1, sgn * children[0].f(p), sgn * children[1].f(p))
-                } else {
-                    let (mut ia, mut ib) = (0usize, 0usize);
-                    let (mut va, mut vb) = (f64::INFINITY, f64::INFINITY);
-                    for (i, c) in children.iter().enumerate() {
-                        let v = sgn * c.f(p);
-                        if v < va {
-                            ib = ia;
-                            vb = va;
-                            ia = i;
-                            va = v;
-                        } else if v < vb {
-                            ib = i;
-                            vb = v;
-                        }
-                    }
-                    (ia, ib, va, vb)
-                };
-                let value = sgn * smin(*mode, va, vb, *r, *n);
-                let [wa, wb] = smin_grad_weights(*mode, va, vb, *r, *n);
-                if wb == 0.0 {
-                    return (value, children[ia].grad(p).1);
-                }
-                if wa == 0.0 {
-                    return (value, children[ib].grad(p).1);
-                }
-                let ga = children[ia].grad(p).1;
-                let gb = children[ib].grad(p).1;
-                let gx = wa * ga[0] + wb * gb[0];
-                let gy = wa * ga[1] + wb * gb[1];
-                let gz = wa * ga[2] + wb * gb[2];
-                let len = (gx * gx + gy * gy + gz * gz).sqrt();
-                if len > 1e-12 {
-                    (value, [gx / len, gy / len, gz / len])
-                } else {
-                    (value, if wa >= wb { ga } else { gb })
-                }
-            }
-        }
+        let sample = crate::sfcc::field_branches::sample_tree(self, p);
+        // Compose raw derivatives first. Normalizing descendants loses their
+        // relative magnitudes and changes the direction of nested blends.
+        // A singular field has no unit normal; preserve zero rather than
+        // inventing a direction that analytical callers could accept.
+        let normal = sample.normalized_equation().map_or([0.; 3], |s| s.gradient);
+        (sample.value, normal)
     }
 
     /// Certified enclosure of f over the ball (center, r). v1 shapes are exact
@@ -887,74 +826,13 @@ impl<'a> Pruned<'a> {
     /// (Min/Max) nor enter the nearest-pair (Blend) at any point in the ball, so the
     /// winner(s) routing `grad` selects are always among the kept children.
     pub fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]) {
-        match self {
-            Pruned::Leaf(l) => (l.f(p), l.normal(p)),
-            Pruned::Min(ch) => {
-                let mut bi = 0;
-                let mut best = f64::INFINITY;
-                for (i, c) in ch.iter().enumerate() {
-                    let d = c.f(p);
-                    if d < best {
-                        best = d;
-                        bi = i;
-                    }
-                }
-                ch[bi].grad(p)
-            }
-            Pruned::Max(ch) => {
-                let mut bi = 0;
-                let mut best = f64::NEG_INFINITY;
-                for (i, c) in ch.iter().enumerate() {
-                    let d = c.f(p);
-                    if d > best {
-                        best = d;
-                        bi = i;
-                    }
-                }
-                ch[bi].grad(p)
-            }
-            Pruned::Blend { kind, mode, r, n, children } => {
-                let sgn = if *kind == BlendKind::Smax { -1.0 } else { 1.0 };
-                let (ia, ib, va, vb) = if children.len() == 2 {
-                    (0, 1, sgn * children[0].f(p), sgn * children[1].f(p))
-                } else {
-                    let (mut ia, mut ib) = (0usize, 0usize);
-                    let (mut va, mut vb) = (f64::INFINITY, f64::INFINITY);
-                    for (i, c) in children.iter().enumerate() {
-                        let v = sgn * c.f(p);
-                        if v < va {
-                            ib = ia;
-                            vb = va;
-                            ia = i;
-                            va = v;
-                        } else if v < vb {
-                            ib = i;
-                            vb = v;
-                        }
-                    }
-                    (ia, ib, va, vb)
-                };
-                let value = sgn * smin(*mode, va, vb, *r, *n);
-                let [wa, wb] = smin_grad_weights(*mode, va, vb, *r, *n);
-                if wb == 0.0 {
-                    return (value, children[ia].grad(p).1);
-                }
-                if wa == 0.0 {
-                    return (value, children[ib].grad(p).1);
-                }
-                let ga = children[ia].grad(p).1;
-                let gb = children[ib].grad(p).1;
-                let gx = wa * ga[0] + wb * gb[0];
-                let gy = wa * ga[1] + wb * gb[1];
-                let gz = wa * ga[2] + wb * gb[2];
-                let len = (gx * gx + gy * gy + gz * gz).sqrt();
-                if len > 1e-12 {
-                    (value, [gx / len, gy / len, gz / len])
-                } else {
-                    (value, if wa >= wb { ga } else { gb })
-                }
-            }
-        }
+        let sample = crate::sfcc::field_branches::sample_pruned(self, p);
+        // Compose raw derivatives first. Normalizing descendants loses their
+        // relative magnitudes and changes the direction of nested blends.
+        // A singular field has no unit normal; preserve zero rather than
+        // inventing a direction that analytical callers could accept.
+        let normal = sample.normalized_equation().map_or([0.; 3], |s| s.gradient);
+        (sample.value, normal)
     }
 
     /// CSG-aware winner set — same fold as [`CsgNode::active_owners_at`], over the

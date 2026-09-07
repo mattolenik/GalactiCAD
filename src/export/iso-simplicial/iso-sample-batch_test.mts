@@ -47,6 +47,71 @@ async function installWebGpuIfNeeded(): Promise<void> {
     })
 }
 
+test("SFCC audit: nested soft blend GPU scalar derivative reference", async (t) => {
+    // Keep the inner radius explicit: outer fluent modifiers can propagate to
+    // descendants. Serialized effective modes are checked below.
+    const source = `
+        const inner = union(sphere.radius(1.2).shift(-0.8,0,0), sphere.radius(1.2).shift(0.8,0,0)).soft(0.8);
+        const outer = union(inner, sphere.radius(1.2).shift(0,1,0)).soft(0.7);
+        inner.radius = 0.8;
+        return outer;
+    `
+    const scene = new SceneInfo(transpileCadSource(source))
+    const { serializeSceneToBridgeJson } = await import("../sfcc-rs/scene-bridge.mjs")
+    t.diagnostic(`effective scene: ${serializeSceneToBridgeJson(scene.root)}`)
+    await installWebGpuIfNeeded()
+    const helper = await GPUHelper.create()
+    if (!helper) {
+        t.skip("WebGPU adapter unavailable; GPU reference not checked")
+        return
+    }
+    const buffers: GPUBuffer[] = []
+    let batcher: IsoSampleBatch | undefined
+    try {
+        const module = new ShaderCompiler(helper.device)
+            .replace("insert", "sceneAuxFast", scene.compileAuxFast())
+            .replace("insert", "sceneAux", scene.compileAux())
+            .replace("insert", "sceneSDF", scene.compile())
+            .compile(expandWgslIncludes(path.join(SHADERS_DIR, "iso_sample_batch.wgsl")), "SFCC derivative audit")
+        const buffer = (size: number, usage: GPUBufferUsageFlags): GPUBuffer => {
+            const b = helper.device.createBuffer({ size, usage })
+            buffers.push(b)
+            return b
+        }
+        const polygon = buffer(8, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST)
+        const face = buffer(32, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST)
+        const params = buffer(SCENE_PARAMS_BYTE_SIZE, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST)
+        helper.device.queue.writeBuffer(params, 0, new Float32Array(scene.packSceneParams()))
+        batcher = new IsoSampleBatch(helper, polygon, face, params)
+        const p = [0.1, 0.4, 1.2651338489240112]
+        const points = [...p]
+        const steps = [0.01, 0.002]
+        for (const h of steps) for (let k = 0; k < 3; k++) for (const sign of [-1, 1]) {
+            points.push(...p.map((v, axis) => v + (axis === k ? sign * h : 0)))
+        }
+        const result = await batcher.run(module, new Float32Array(points), 0.001)
+        const expected = [0.022617093850773214, -0.05698498450323208, 0.8572443030551287]
+        assert.ok(Math.abs(result.sdf[3]!) < 2e-6, "native zero point must lie on the GPU scalar surface")
+        for (let j = 0; j < steps.length; j++) {
+            const derivative = expected.map((_, k) => {
+                const base = 1 + j * 6 + k * 2
+                return (result.sdf[(base + 1) * 4 + 3]! - result.sdf[base * 4 + 3]!) / (2 * steps[j]!)
+            })
+            assert.ok(Math.hypot(...derivative.map((v, k) => v - expected[k]!)) < 1e-4,
+                `GPU scalar derivative differs from native reference: ${derivative}`)
+        }
+        const length = Math.hypot(...expected)
+        const dot = expected.reduce((s, v, k) => s + v / length * result.sdf[k]!, 0)
+        // Report separately: preview normals currently compose unit directions
+        // and g is a stepping estimate, so they are not a derivative oracle.
+        t.diagnostic(`GPU analytical-normal discrepancy: ${Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI} degrees`)
+    } finally {
+        batcher?.destroy()
+        for (const b of buffers) b.destroy()
+        helper.device.destroy()
+    }
+})
+
 test("IsoSampleBatch vs GridSampler (1×1×1) parity on sphere scene", async (t) => {
     const body = transpileCadSource("return sphere.radius(10)")
     const scene = new SceneInfo(body, { bvhEnabled: true })

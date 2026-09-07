@@ -20,6 +20,13 @@ SFCC is a **primal, face-sharing contouring method in the CMS (cubical marching 
 
 The final mesh ships with **explicit validation status**: topology, face consumption, final vertex residuals, and unresolved numerical/refinement work. Bounded re-refinement and heuristic cleanup precede final validation. A returned mesh may be incomplete or fail its audits.
 
+The [analytical-feature audit](plans/sfcc-analytical-feature-completeness-results.md)
+records tested derivative and displaced-branch corrections, along with open
+periodic-operator and feature-chain coverage gaps. Full, pruned and paired WASM
+normal queries now compose raw derivatives before normalizing. Preview shader
+normals still have a separate composition discrepancy and are not a reliable
+independent derivative reference for nested blends.
+
 ### Pipeline diagram
 
 ```mermaid

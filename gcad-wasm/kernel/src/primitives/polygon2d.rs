@@ -42,6 +42,28 @@ pub struct Polygon2DResult {
     pub edge: usize,
 }
 
+/// Supporting signed distance to one finite segment. The clamped endpoint
+/// joins are C1 away from the segment itself; nearest-segment ties can have
+/// distinct gradients and must remain separate displaced-field carriers.
+pub(crate) fn polygon_edge_dist_2d(
+    verts: &[f64], wind: f64, px: f64, pz: f64, edge: usize,
+) -> Polygon2DResult {
+    let actual = polygon_dist_2d(verts, wind, px, pz);
+    let next = (edge + 1) % (verts.len() / 2);
+    let (ex, ez) = (verts[2 * next] - verts[2 * edge], verts[2 * next + 1] - verts[2 * edge + 1]);
+    let (wx, wz) = (px - verts[2 * edge], pz - verts[2 * edge + 1]);
+    let t = ((wx * ex + wz * ez) / (ex * ex + ez * ez).max(1e-12)).clamp(0., 1.);
+    let (dx, dz) = (wx - t * ex, wz - t * ez);
+    let length = dx.hypot(dz);
+    let sign = if actual.d < 0. { -1. } else { 1. };
+    let [gx, gz] = if length >= 1e-6 {
+        [sign * dx / length, sign * dz / length]
+    } else {
+        outward_edge_normal_2d(ex, ez, wind)
+    };
+    Polygon2DResult { d: sign * length, gx, gz, edge }
+}
+
 /// Exact signed distance to a closed polygon. `verts` is flat `[x0,z0,x1,z1,…]`.
 pub fn polygon_dist_2d(verts: &[f64], wind: f64, px: f64, pz: f64) -> Polygon2DResult {
     let n = verts.len() / 2;

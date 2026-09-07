@@ -18,6 +18,42 @@ pub fn version() -> String {
     gcad_kernel::version().to_string()
 }
 
+/// Diagnostic access to the existing kernel evaluator for native/SIMD/GPU
+/// parity audits. This is not a rendering or export sampling backend.
+/// Each point yields 15 f64 values: scalar value, raw derivative xyz,
+/// scalar unit normal xyz, paired value, paired unit normal xyz,
+/// pruned paired value, pruned paired unit normal xyz.
+#[wasm_bindgen]
+pub fn audit_field_samples(scene_json: &str, points: &[f64]) -> Result<Vec<f64>, JsError> {
+    use gcad_kernel::{sdf::SdfQuery, sfcc::field_branches::sample_tree};
+    if points.len() % 3 != 0 || points.iter().any(|v| !v.is_finite()) {
+        return Err(JsError::new("audit points must be finite xyz triples"));
+    }
+    let tree = build_csg_tree_from_json(scene_json).map_err(|e| JsError::new(&format!("{e:?}")))?;
+    let mut out = Vec::with_capacity(points.len() / 3 * 15);
+    for pair in points.chunks(6) {
+        let p = [pair[0], pair[1], pair[2]];
+        let q = if pair.len() == 6 { [pair[3], pair[4], pair[5]] } else { p };
+        let (a, b) = tree.grad_pair(p, q);
+        let center = std::array::from_fn(|k| (p[k] + q[k]) * 0.5);
+        let half = std::array::from_fn(|k| (p[k] - q[k]).abs() * 0.5 + 0.01);
+        let pruned = tree.prune_to_box(center, half);
+        let (pa, pb) = pruned.grad_pair(p, q);
+        for (i, (point, paired, regional)) in [(p, a, pa), (q, b, pb)].into_iter().enumerate() {
+            if i == 1 && pair.len() == 3 { break; }
+            let raw = sample_tree(&tree, point);
+            out.push(tree.f(point));
+            out.extend(raw.gradient);
+            out.extend(tree.grad(point).1);
+            out.push(paired.0);
+            out.extend(paired.1);
+            out.push(regional.0);
+            out.extend(regional.1);
+        }
+    }
+    Ok(out)
+}
+
 /// The SFCC tuning subset the pipeline consumes, deserialized from the TS
 /// `SfccTuning` JSON. Field names are camelCase (the TS object), defaults mirror
 /// `DEFAULT_SFCC_TUNING`; unknown TS-only knobs (jitterRetries, failurePolicy,

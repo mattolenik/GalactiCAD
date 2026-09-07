@@ -10,4 +10,5 @@ pkg-threads/
 fixtures/*.bin
 fixtures/*.txt
 fixtures/*.json
+!fixtures/housing-hole-boundaries.json
 fixtures/.stamp

@@ -36,19 +36,29 @@ fn flank_survives(
     dz: f64,
     tol: &ResolvedTolerances,
 ) -> bool {
-    for sign in [1.0f64, -1.0] {
-        let px = x + sign * tol.probe_delta * dx;
-        let py = y + sign * tol.probe_delta * dy;
-        let pz = z + sign * tol.probe_delta * dz;
-        let proj = stratum.project(px, py, pz);
-        if tree.f(proj[0], proj[1], proj[2]).abs() > tol.probe_delta * 0.2 {
-            continue;
-        }
-        let flank_grad = tree.grad(proj[0], proj[1], proj[2]);
-        let flank_normal = stratum.normal(proj[0], proj[1], proj[2]);
-        let dot = flank_grad[0] * flank_normal[0] + flank_grad[1] * flank_normal[1] + flank_grad[2] * flank_normal[2];
-        if dot >= 0.9 {
-            return true;
+    // A full-size probe can cross another crease near a junction or in a
+    // narrow surviving strip. Reduce the probe and its acceptance tolerance
+    // together; a smaller step must not inherit the larger residual allowance.
+    for scale in [1.0, 0.5, 0.25, 0.125, 0.0625] {
+        let delta = tol.probe_delta * scale;
+        for sign in [1.0f64, -1.0] {
+            let px = x + sign * delta * dx;
+            let py = y + sign * delta * dy;
+            let pz = z + sign * delta * dz;
+            let proj = stratum.project(px, py, pz);
+            if !stratum.domain_contains(proj, tol.curve_eps * 8.) {
+                continue;
+            }
+            if !proj.iter().all(|v| v.is_finite()) || tree.f(proj[0], proj[1], proj[2]).abs() > delta * 0.2 {
+                continue;
+            }
+            let flank_grad = tree.grad(proj[0], proj[1], proj[2]);
+            let flank_normal = stratum.normal(proj[0], proj[1], proj[2]);
+            let dot =
+                flank_grad[0] * flank_normal[0] + flank_grad[1] * flank_normal[1] + flank_grad[2] * flank_normal[2];
+            if dot >= 0.9 {
+                return true;
+            }
         }
     }
     false
@@ -61,13 +71,25 @@ pub fn curve_point_alive(tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64, tol:
     if tree.f(x, y, z).abs() > tol.surface_tol {
         return false;
     }
+    // Trim endpoints can lie exactly on the tolerance boundary. Keep the
+    // eventual f32 payload on its accepted side as well, rather than turning a
+    // valid f64 endpoint into an off-surface exported corner by rounding.
+    if tree.f(x as f32 as f64, y as f32 as f64, z as f32 as f64).abs() > tol.surface_tol {
+        return false;
+    }
     let sa = &tree.strata[curve.adjacent_strata[0]];
     let sb = &tree.strata[curve.adjacent_strata[1]];
+    if !sa.domain_contains(p, tol.curve_eps * 8.) || !sb.domain_contains(p, tol.curve_eps * 8.) {
+        return false;
+    }
     let na = sa.normal(x, y, z);
     let nb = sb.normal(x, y, z);
-    // Crease gate: native modeled curves survive at any angle (only die when
-    // essentially tangent, nativeCreaseCos); boolean seams use minDihedralCos.
-    let crease_gate = if curve.native { tol.native_crease_cos } else { tol.min_dihedral_cos };
+    // Chamfer patch boundaries are modeled features too. The boolean angle
+    // filter otherwise erases the shallow arms approaching a tangent crossing,
+    // leaving mesh triangles free to bridge the two patches. Retain the same
+    // near-tangency floor as native features and the numerical tracer.
+    let modeled = curve.native || sa.leaf_index == usize::MAX || sb.leaf_index == usize::MAX;
+    let crease_gate = if modeled { tol.native_crease_cos } else { tol.min_dihedral_cos };
     if na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2] > crease_gate {
         return false;
     }
@@ -93,19 +115,17 @@ pub struct TrimmedRun {
     pub full_closed: bool,
 }
 
-/// Sample params for aliveness classification, spacing ≈ probeDelta. OPEN curves
-/// are inset by ~2·probeDelta. Port of `classificationParams`.
+/// Sample params for aliveness classification, spacing ≈ probeDelta, including
+/// actual endpoints so capped or otherwise inactive extensions stay trimmed.
 fn classification_params(curve: &FeatureCurve, tol: &ResolvedTolerances) -> Vec<f64> {
     let span = curve.t_max - curve.t_min;
     let arc_len = (curve.param_distance(curve.t_min, curve.t_min + span / 2.0) * 2.0).max(1e-9);
     let n = (8usize).max((2048usize).min((arc_len / tol.probe_delta.max(1e-6)).ceil() as usize));
-    let mut lo = curve.t_min;
-    let mut hi = curve.t_max;
-    if !curve.closed {
-        let inset = (span / 4.0).min(span * ((2.0 * tol.probe_delta) / arc_len));
-        lo += inset;
-        hi -= inset;
-    }
+    // Endpoint insetting must not silently promote an unchecked supporting
+    // extension to a live arc. Classify the actual endpoints as well; ordinary
+    // junction flanks may be dead there and are refined to their triple below.
+    let lo = curve.t_min;
+    let hi = curve.t_max;
     let mut out = Vec::with_capacity(n + 1);
     for i in 0..=n {
         out.push(lo + ((hi - lo) * i as f64) / n as f64);
@@ -134,7 +154,7 @@ fn bisect_transition(
             d = m;
         }
     }
-    (a + d) / 2.0
+    a // retain the known-alive side of the tolerance boundary
 }
 
 /// Classify a curve into alive parameter runs (with transitions bisected). Port
@@ -330,34 +350,35 @@ pub fn trim_and_wire(
 
     // Newton-refine an interior trim transition to the triple point.
     let refine_transition = |tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64| -> [f64; 3] {
-        let mut out = curve.point_at(t);
-        let sa = tree.strata[curve.adjacent_strata[0]];
-        let sb = tree.strata[curve.adjacent_strata[1]];
-        let mut best: Option<Stratum> = None;
-        let mut best_abs = tol.probe_delta * 2.0;
-        for owner in tree.active_owners_at(out[0], out[1], out[2], tol.probe_delta * 2.0) {
-            for st in &owner.leaf.strata {
-                if st.id == sa.id || st.id == sb.id {
-                    continue;
-                }
-                let a = st.f(out[0], out[1], out[2]).abs();
-                if a < best_abs {
-                    best_abs = a;
-                    best = Some(*st);
-                }
+        let seed = curve.point_at(t);
+        let sa = &tree.strata[curve.adjacent_strata[0]];
+        let sb = &tree.strata[curve.adjacent_strata[1]];
+        let mut best = None;
+        let mut best_distance = tol.probe_delta * 4.0;
+        // A cutter can keep the root residual at zero throughout a trim
+        // transition. Search all candidate third surfaces, including generated
+        // fields, and validate their ancestor domains instead of requiring an
+        // improvement in the root residual. Coincident/singular triples fail
+        // the solver and cannot hide a different, well-conditioned junction.
+        for sc in &tree.strata {
+            if sc.id == sa.id || sc.id == sb.id || sc.f(seed[0], seed[1], seed[2]).abs() > tol.probe_delta * 2.0 {
+                continue;
+            }
+            let Some(p) =
+                project_to_triple(sa, sb, sc, seed[0], seed[1], seed[2], tol.curve_eps, tol.probe_delta * 4.0)
+            else {
+                continue;
+            };
+            if ![sa, sb, sc].iter().all(|s| s.domain_contains(p, tol.curve_eps * 8.0)) {
+                continue;
+            }
+            let distance = (p[0] - seed[0]).hypot(p[1] - seed[1]).hypot(p[2] - seed[2]);
+            if distance < best_distance {
+                best_distance = distance;
+                best = Some(p);
             }
         }
-        if let Some(sc) = best {
-            if let Some(refined) =
-                project_to_triple(&sa, &sb, &sc, out[0], out[1], out[2], tol.curve_eps, tol.probe_delta * 4.0)
-            {
-                out = refined;
-            } else {
-                // A retained endpoint seed is best-effort geometry, not a solved triple.
-                crate::sfcc::validation::curve_projection_failed();
-            }
-        }
-        out
+        best.unwrap_or(seed)
     };
 
     // 1. Trim every curve; collect run endpoints as corner candidates.
@@ -370,11 +391,8 @@ pub fn trim_and_wire(
             all_runs.push(run);
             if !run.full_closed {
                 for t in [run.t0, run.t1] {
-                    let end_p = if is_curve_end(curve, t) {
-                        curve.point_at(t)
-                    } else {
-                        refine_transition(tree, curve, t)
-                    };
+                    let end_p =
+                        if is_curve_end(curve, t) { curve.point_at(t) } else { refine_transition(tree, curve, t) };
                     add_candidate(&mut candidates, end_p[0], end_p[1], end_p[2]);
                 }
             }
@@ -480,12 +498,16 @@ pub fn trim_and_wire(
                     t1 = tc;
                 }
             }
-            // Over-trace stubs: drop runs that loop back to one corner or fall
-            // below the trim resolution.
-            if c0 >= 0 && c0 == c1 {
+            // Probe spacing controls classification, not the minimum modeled
+            // feature size. In particular a short arc between a cutter, a blend
+            // transition and a clipping plane is still a real surface boundary.
+            // A substantial loop may legitimately have one corner (for
+            // example the offset boundary of a concave profile). Only discard
+            // a collapsed local stub, not the whole loop sharing that corner.
+            if c0 >= 0 && c0 == c1 && src.param_distance(t0, t1) < snap_radius {
                 continue;
             }
-            if src.param_distance(t0, t1) < snap_radius {
+            if src.param_distance(t0, t1) < tol.corner_merge_tol {
                 continue;
             }
             let mut nc = remake_curve(src, id, t0, t1, false);
@@ -533,7 +555,6 @@ pub fn trim_and_wire(
             -1
         };
     }
-    let final_corners: Vec<SfccCorner> =
-        keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
+    let final_corners: Vec<SfccCorner> = keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
     TrimResult { curves: out, corners: final_corners }
 }

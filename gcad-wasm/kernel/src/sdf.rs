@@ -1078,22 +1078,24 @@ impl<'a> Pruned<'a> {
 pub trait SdfQuery {
     fn f(&self, p: [f64; 3]) -> f64;
     fn grad(&self, p: [f64; 3]) -> (f64, [f64; 3]);
+    /// Geometric value and raw derivative. Keep `grad` for the legacy shading
+    /// normal convention; Newton steps must retain derivative magnitude.
+    fn field_sample(&self, p: [f64; 3]) -> crate::sfcc::field_branches::FieldSample;
     fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64);
     fn active_owners_at(&self, p: [f64; 3], tol: f64) -> Vec<ActiveOwner<'_>>;
     /// Value+unit-normal for TWO points at once — the SIMD hook for the iii-d cone.
     /// Default is two scalar `grad` calls; [`CsgNode`]/[`Pruned`] override it with the
     /// f64x2 evaluator on `wasm32 + simd128` (scalar otherwise). Returns
     /// `((f0,n0),(f1,n1))`, bit-identical to scalar except for ~1 ULP SIMD rounding.
-    fn grad_pair(
-        &self,
-        p0: [f64; 3],
-        p1: [f64; 3],
-    ) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
+    fn grad_pair(&self, p0: [f64; 3], p1: [f64; 3]) -> ((f64, [f64; 3]), (f64, [f64; 3])) {
         (self.grad(p0), self.grad(p1))
     }
 }
 
 impl SdfQuery for CsgNode {
+    fn field_sample(&self, p: [f64; 3]) -> crate::sfcc::field_branches::FieldSample {
+        crate::sfcc::field_branches::sample_tree(self, p)
+    }
     fn f(&self, p: [f64; 3]) -> f64 {
         CsgNode::f(self, p)
     }
@@ -1113,6 +1115,9 @@ impl SdfQuery for CsgNode {
 }
 
 impl SdfQuery for Pruned<'_> {
+    fn field_sample(&self, p: [f64; 3]) -> crate::sfcc::field_branches::FieldSample {
+        crate::sfcc::field_branches::sample_pruned(self, p)
+    }
     fn f(&self, p: [f64; 3]) -> f64 {
         Pruned::f(self, p)
     }

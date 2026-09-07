@@ -80,7 +80,7 @@ enum Geom {
 }
 
 /// Payload of a [`Geom::Traced`]. `sa`/`sb` are the adjacent carriers (the
-/// `tangent`/`refine` callbacks in TS), stored by value (`Stratum: Copy`).
+/// `tangent`/`refine` callbacks in TS), stored by value (compound expressions share immutable storage).
 #[derive(Clone, Debug)]
 struct TracedData {
     samples: Vec<f64>,
@@ -120,7 +120,9 @@ impl FeatureCurve {
     /// Best-effort query used by tracing/trim. Numerical failure is explicit in
     /// the export diagnostics; mesh sampling can require `point_at_checked`.
     pub fn point_at(&self, t: f64) -> [f64; 3] {
-        if let Some(p) = self.point_at_checked(t) { return p; }
+        if let Some(p) = self.point_at_checked(t) {
+            return p;
+        }
         crate::sfcc::validation::curve_projection_failed();
         self.interpolated_point(t)
     }
@@ -130,9 +132,11 @@ impl FeatureCurve {
             Geom::Segment { a, d, .. } => [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t],
             Geom::Circle { c, e1, e2, r, .. } => {
                 let (co, si) = (t.cos(), t.sin());
-                [c[0] + r * (co * e1[0] + si * e2[0]),
-                 c[1] + r * (co * e1[1] + si * e2[1]),
-                 c[2] + r * (co * e1[2] + si * e2[2])]
+                [
+                    c[0] + r * (co * e1[0] + si * e2[0]),
+                    c[1] + r * (co * e1[1] + si * e2[1]),
+                    c[2] + r * (co * e1[2] + si * e2[2]),
+                ]
             }
             Geom::Traced(td) => {
                 let end = (td.n - 1) as f64;
@@ -149,13 +153,23 @@ impl FeatureCurve {
     /// Returns only finite points satisfying both carrier residuals. A failed
     /// projection never masquerades as an on-locus sample.
     pub fn point_at_checked(&self, t: f64) -> Option<[f64; 3]> {
-        if !t.is_finite() { return None; }
+        if !t.is_finite() {
+            return None;
+        }
         let p = self.interpolated_point(t);
-        if !p.iter().all(|v| v.is_finite()) { return None; }
+        if !p.iter().all(|v| v.is_finite()) {
+            return None;
+        }
         match &self.geom {
             Geom::Traced(td) => project_to_carrier_pair(
-                &td.sa, &td.sb, p[0], p[1], p[2], td.refine.curve_eps,
-                td.refine.min_cross, td.refine.max_displacement,
+                &td.sa,
+                &td.sb,
+                p[0],
+                p[1],
+                p[2],
+                td.refine.curve_eps,
+                td.refine.min_cross,
+                td.refine.max_displacement,
             ),
             _ => Some(p),
         }
@@ -226,11 +240,7 @@ impl FeatureCurve {
                     let dy = by - ay;
                     let dz = bz - az;
                     let l2 = dx * dx + dy * dy + dz * dz;
-                    let mut u = if l2 > 0.0 {
-                        ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / l2
-                    } else {
-                        0.0
-                    };
+                    let mut u = if l2 > 0.0 { ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / l2 } else { 0.0 };
                     u = u.clamp(0.0, 1.0);
                     let qx = ax + dx * u;
                     let qy = ay + dy * u;
@@ -241,8 +251,38 @@ impl FeatureCurve {
                         best_t = i as f64 + u;
                     }
                 }
-                let q = self.point_at(best_t);
-                (best_t, ((px - q[0]).powi(2) + (py - q[1]).powi(2) + (pz - q[2]).powi(2)).sqrt())
+                let mut q = self.point_at(best_t);
+                let distance2 = |q: [f64; 3]| (px - q[0]).powi(2) + (py - q[1]).powi(2) + (pz - q[2]).powi(2);
+                let mut best = distance2(q);
+                // Chord projection gives an initial parameter, not necessarily
+                // the nearest point on the reprojected curved locus. Correct its
+                // tangential error while remaining on this traced parameter range.
+                for _ in 0..6 {
+                    if best < td.refine.curve_eps * td.refine.curve_eps {
+                        break;
+                    }
+                    let i = (best_t.floor() as usize).min(*n - 2);
+                    let a = traced_sample(samples, i);
+                    let b = traced_sample(samples, i + 1);
+                    let tangent = self.tangent_at(best_t);
+                    let speed = (b.0 - a.0) * tangent[0] + (b.1 - a.1) * tangent[1] + (b.2 - a.2) * tangent[2];
+                    if !speed.is_finite() || speed.abs() < 1e-12 {
+                        break;
+                    }
+                    let step = ((px - q[0]) * tangent[0] + (py - q[1]) * tangent[1] + (pz - q[2]) * tangent[2]) / speed;
+                    let next = (best_t + step.clamp(-0.5, 0.5)).clamp(0., (*n - 1) as f64);
+                    let Some(candidate) = self.point_at_checked(next) else {
+                        break;
+                    };
+                    let d = distance2(candidate);
+                    if d >= best {
+                        break;
+                    }
+                    best = d;
+                    best_t = next;
+                    q = candidate;
+                }
+                (best_t, best.sqrt())
             }
         }
     }
@@ -251,7 +291,7 @@ impl FeatureCurve {
     /// (used by trim's `remake_curve` to re-emit a sub-range). `None` otherwise.
     pub fn traced_carriers(&self) -> Option<(Stratum, Stratum, TracedRefine)> {
         match &self.geom {
-            Geom::Traced(td) => Some((td.sa, td.sb, td.refine)),
+            Geom::Traced(td) => Some((td.sa.clone(), td.sb.clone(), td.refine)),
             _ => None,
         }
     }
@@ -270,7 +310,13 @@ impl FeatureCurve {
     /// memo is reused across re-refine rounds (same lattice ⇒ same `coord` bits)
     /// yet invalidated across separate exports. Byte-identical to the uncached
     /// call — only the redundant root-find / trig is skipped.
-    pub fn axis_plane_crossings_cached(&self, axis: usize, coord: f64, curve_id: usize, run_id: u64) -> Rc<Vec<CurveFaceCrossing>> {
+    pub fn axis_plane_crossings_cached(
+        &self,
+        axis: usize,
+        coord: f64,
+        curve_id: usize,
+        run_id: u64,
+    ) -> Rc<Vec<CurveFaceCrossing>> {
         let key = (curve_id, axis, coord.to_bits());
         let hit = XPC_CACHE.with(|c| {
             let mut c = c.borrow_mut();
@@ -287,7 +333,9 @@ impl FeatureCurve {
         let v = Rc::new(self.axis_plane_crossings(axis, coord));
         // Do not memoize failed queries: re-refinement resets round-local
         // diagnostics, so a cached fallback would otherwise hide its failure.
-        if crate::sfcc::validation::numerical_failures() != before { return v; }
+        if crate::sfcc::validation::numerical_failures() != before {
+            return v;
+        }
         XPC_CACHE.with(|c| {
             c.borrow_mut().map.insert(key, Rc::clone(&v));
         });
@@ -588,7 +636,7 @@ mod tests {
         assert!((xs[0].t - 0.5).abs() < 1e-12);
         assert!((xs[0].x - 1.0).abs() < 1e-12);
         assert!((xs[0].tangential_dot - 1.0).abs() < 1e-12); // tangent ‖ x
-        // Plane y=1 never crosses (segment is on y=0).
+                                                             // Plane y=1 never crosses (segment is on y=0).
         assert!(s.axis_plane_crossings(1, 1.0).is_empty());
     }
 
@@ -616,20 +664,27 @@ mod tests {
     }
     #[test]
     fn failed_traced_queries_cannot_be_hidden_by_the_crossing_cache() {
+        use crate::sfcc::validation::{numerical_failures, restore_numerical_failures, NumericalGuard};
         use crate::strata::StratumIdentity;
-        use crate::sfcc::validation::{NumericalGuard, numerical_failures, restore_numerical_failures};
         let _scope = NumericalGuard::new();
         let ident = |id| StratumIdentity { id, owner_node_id: -1, leaf_index: 0, local_index: id, sign: 1. };
-        let a = Stratum::plane(ident(0),0.,1.,0.,0.);
-        let b = Stratum::plane(ident(1),0.,1.,0.,-1.);
-        let curve = make_traced_curve(0,[0,1],vec![-1.,0.5,0.,1.,0.5,0.],false,a,b,
-            TracedRefine { curve_eps: 1e-12, min_cross: 1e-3, max_displacement: 1. },-1);
+        let a = Stratum::plane(ident(0), 0., 1., 0., 0.);
+        let b = Stratum::plane(ident(1), 0., 1., 0., -1.);
+        let curve = make_traced_curve(
+            0,
+            [0, 1],
+            vec![-1., 0.5, 0., 1., 0.5, 0.],
+            false,
+            a,
+            b,
+            TracedRefine { curve_eps: 1e-12, min_cross: 1e-3, max_displacement: 1. },
+            -1,
+        );
         assert!(curve.point_at_checked(0.5).is_none());
         for _ in 0..2 {
             restore_numerical_failures(Default::default());
-            curve.axis_plane_crossings_cached(0,0.,0,u64::MAX);
+            curve.axis_plane_crossings_cached(0, 0., 0, u64::MAX);
             assert!(numerical_failures().curve_projection > 0);
         }
     }
-
 }

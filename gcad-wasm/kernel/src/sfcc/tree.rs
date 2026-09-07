@@ -42,7 +42,9 @@ impl<'a> SfccTree<'a> {
 
     /// One-sided unit gradient of the full tree.
     pub fn grad(&self, x: f64, y: f64, z: f64) -> [f64; 3] {
-        self.root.grad([x, y, z]).1
+        super::field_branches::sample_tree(self.root, [x, y, z])
+            .normalized_equation()
+            .map_or([f64::NAN; 3], |v| v.gradient)
     }
 
     /// On-locus seam displacement at the lowest common combiner of leaves a, b
@@ -65,7 +67,8 @@ impl<'a> SfccTree<'a> {
 /// Local-box → world AABB by transforming the 8 corners. Port of
 /// `worldAabbOfLocalBox`.
 fn world_aabb_of_local_box(leaf: &Leaf, c: [f64; 3], h: [f64; 3]) -> [f64; 6] {
-    let mut out = [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    let mut out =
+        [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
     for i in 0..8 {
         let p = leaf.sim.apply_point(
             c[0] + if i & 1 != 0 { h[0] } else { -h[0] },
@@ -154,11 +157,17 @@ fn build_seam_displacement(root: &CsgNode, leaf_count: usize, leaf_index_of: &dy
     map
 }
 
-fn visit_seam(node: &CsgNode, map: &mut [f64], leaf_count: usize, leaf_index_of: &dyn Fn(&Leaf) -> usize) -> Vec<usize> {
+fn visit_seam(
+    node: &CsgNode,
+    map: &mut [f64],
+    leaf_count: usize,
+    leaf_index_of: &dyn Fn(&Leaf) -> usize,
+) -> Vec<usize> {
     match node {
         CsgNode::Leaf(l) => vec![leaf_index_of(l)],
         CsgNode::Min(ch) | CsgNode::Max(ch) => {
-            let child_sets: Vec<Vec<usize>> = ch.iter().map(|c| visit_seam(c, map, leaf_count, leaf_index_of)).collect();
+            let child_sets: Vec<Vec<usize>> =
+                ch.iter().map(|c| visit_seam(c, map, leaf_count, leaf_index_of)).collect();
             // Hard combiner: displacement 0 (matrix already zero).
             child_sets.into_iter().flatten().collect()
         }
@@ -211,9 +220,8 @@ pub fn build_tree<'a>(
 
     // Map each leaf reference to its traversal index (by pointer identity in the
     // same left-to-right order collect_leaves produced).
-    let leaf_index_of = |target: &Leaf| -> usize {
-        leaf_refs.iter().position(|l| std::ptr::eq(*l, target)).expect("leaf in tree")
-    };
+    let leaf_index_of =
+        |target: &Leaf| -> usize { leaf_refs.iter().position(|l| std::ptr::eq(*l, target)).expect("leaf in tree") };
     let seam_disp = build_seam_displacement(root, leaf_count, &leaf_index_of);
 
     SfccTree { root, leaves, strata, seam_disp, leaf_count }

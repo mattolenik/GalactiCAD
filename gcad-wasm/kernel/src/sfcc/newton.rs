@@ -4,8 +4,8 @@
 //!
 //! The 2-constraint minimum-norm step `dp = −Jᵀ(JJᵀ)⁻¹r` projects onto the
 //! carrier-pair locus {fA = fB = 0}; the 3×3 Cramer solve refines a triple
-//! point {fA = fB = fC = 0}. Carrier fields are unit-gradient, so the J rows
-//! are the unit normals and JJᵀ = [[1,c],[c,1]] with c = ∇A·∇B.
+//! point {fA = fB = fC = 0}. Raw equations and their Jacobian rows are
+//! scaled together by the gradient magnitude before each linear solve.
 
 use crate::strata::Stratum;
 
@@ -28,15 +28,19 @@ pub fn project_to_carrier_pair(
     let mut y = py;
     let mut z = pz;
     for _ in 0..24 {
-        let fa = sa.f(x, y, z);
-        let fb = sb.f(x, y, z);
-        if !fa.is_finite() || !fb.is_finite() { return None; }
+        let a = sa.raw_field(x, y, z).normalized_equation()?;
+        let b = sb.raw_field(x, y, z).normalized_equation()?;
+        let fa = a.value;
+        let fb = b.value;
+        if !fa.is_finite() || !fb.is_finite() {
+            return None;
+        }
         if fa.abs() <= eps && fb.abs() <= eps {
             return Some([x, y, z]);
         }
-        let ga = sa.normal(x, y, z);
-        let gb = sb.normal(x, y, z);
-        // Carrier fields are unit-gradient: J rows are the unit normals.
+        let ga = a.gradient;
+        let gb = b.gradient;
+        // Scale each raw residual and Jacobian row by the same magnitude.
         let c = ga[0] * gb[0] + ga[1] * gb[1] + ga[2] * gb[2];
         let det = 1.0 - c * c; // = ‖∇A×∇B‖²
         if !det.is_finite() || det <= min_cross * min_cross {
@@ -55,8 +59,8 @@ pub fn project_to_carrier_pair(
             let q = [x - alpha * delta[0], y - alpha * delta[1], z - alpha * delta[2]];
             let drift = (q[0] - px).hypot(q[1] - py).hypot(q[2] - pz);
             if drift <= max_displacement {
-                let qa = sa.f(q[0], q[1], q[2]).abs();
-                let qb = sb.f(q[0], q[1], q[2]).abs();
+                let qa = sa.raw_field(q[0], q[1], q[2]).normalized_equation().map_or(f64::INFINITY, |v| v.value.abs());
+                let qb = sb.raw_field(q[0], q[1], q[2]).normalized_equation().map_or(f64::INFINITY, |v| v.value.abs());
                 if qa.is_finite() && qb.is_finite() && qa.max(qb) < before {
                     accepted = Some(q);
                     break;
@@ -88,15 +92,18 @@ pub fn project_to_triple(
     let mut y = py;
     let mut z = pz;
     for _ in 0..16 {
-        let fa = sa.f(x, y, z);
-        let fb = sb.f(x, y, z);
-        let fc = sc.f(x, y, z);
+        let a = sa.raw_field(x, y, z).normalized_equation()?;
+        let b = sb.raw_field(x, y, z).normalized_equation()?;
+        let fa = a.value;
+        let fb = b.value;
+        let c = sc.raw_field(x, y, z).normalized_equation()?;
+        let fc = c.value;
         if fa.abs() <= eps && fb.abs() <= eps && fc.abs() <= eps {
             return Some([x, y, z]);
         }
-        let ga = sa.normal(x, y, z);
-        let gb = sb.normal(x, y, z);
-        let gc = sc.normal(x, y, z);
+        let ga = a.gradient;
+        let gb = b.gradient;
+        let gc = c.gradient;
         // Solve J·dp = r by Cramer (J rows = unit normals).
         let det = ga[0] * (gb[1] * gc[2] - gb[2] * gc[1]) - ga[1] * (gb[0] * gc[2] - gb[2] * gc[0])
             + ga[2] * (gb[0] * gc[1] - gb[1] * gc[0]);
@@ -112,12 +119,27 @@ pub fn project_to_triple(
         let dz = (ga[0] * (gb[1] * fc - fb * gc[1]) - ga[1] * (gb[0] * fc - fb * gc[0])
             + fa * (gb[0] * gc[1] - gb[1] * gc[0]))
             / det;
-        x -= dx;
-        y -= dy;
-        z -= dz;
-        if ((x - px).powi(2) + (y - py).powi(2) + (z - pz).powi(2)).sqrt() > max_displacement {
-            return None;
+        let before = fa.abs().max(fb.abs()).max(fc.abs());
+        let mut alpha = 1.;
+        let mut accepted = None;
+        for _ in 0..8 {
+            let q = [x - alpha * dx, y - alpha * dy, z - alpha * dz];
+            let drift = (q[0] - px).hypot(q[1] - py).hypot(q[2] - pz);
+            if drift <= max_displacement {
+                let residual = [sa, sb, sc]
+                    .iter()
+                    .map(|st| {
+                        st.raw_field(q[0], q[1], q[2]).normalized_equation().map_or(f64::INFINITY, |v| v.value.abs())
+                    })
+                    .fold(0.0_f64, f64::max);
+                if residual < before {
+                    accepted = Some(q);
+                    break;
+                }
+            }
+            alpha *= 0.5;
         }
+        [x, y, z] = accepted?;
     }
     None
 }
@@ -190,14 +212,13 @@ mod tests {
     }
     #[test]
     fn backtracking_recovers_overshoot_and_obeys_displacement() {
-        let sphere = Stratum::sphere(ident(0),0.,0.,0.,1.);
-        let plane = Stratum::plane(ident(1),0.,0.,1.,-0.9);
+        let sphere = Stratum::sphere(ident(0), 0., 0., 0., 1.);
+        let plane = Stratum::plane(ident(1), 0., 0., 1., -0.9);
         // The first full step overshoots the small sphere-plane intersection.
-        let q = project_to_carrier_pair(&sphere,&plane,0.05,0.,0.9,1e-12,1e-3,0.5).unwrap();
-        assert!(sphere.f(q[0],q[1],q[2]).abs() <= 1e-12);
-        assert!(plane.f(q[0],q[1],q[2]).abs() <= 1e-12);
-        assert!(project_to_carrier_pair(&sphere,&plane,0.05,0.,0.9,1e-12,1e-3,0.01).is_none());
-        assert!(project_to_carrier_pair(&sphere,&plane,f64::NAN,0.,0.9,1e-12,1e-3,0.5).is_none());
+        let q = project_to_carrier_pair(&sphere, &plane, 0.05, 0., 0.9, 1e-12, 1e-3, 0.5).unwrap();
+        assert!(sphere.f(q[0], q[1], q[2]).abs() <= 1e-12);
+        assert!(plane.f(q[0], q[1], q[2]).abs() <= 1e-12);
+        assert!(project_to_carrier_pair(&sphere, &plane, 0.05, 0., 0.9, 1e-12, 1e-3, 0.01).is_none());
+        assert!(project_to_carrier_pair(&sphere, &plane, f64::NAN, 0., 0.9, 1e-12, 1e-3, 0.5).is_none());
     }
-
 }

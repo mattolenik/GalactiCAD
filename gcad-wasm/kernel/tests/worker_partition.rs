@@ -91,6 +91,16 @@ fn tuning() -> PipelineTuning {
     PipelineTuning { depth_min: 4, depth_max: 7, ..PipelineTuning::default() }
 }
 
+#[test]
+#[should_panic(expected = "feature graph differs from prepared cell references")]
+fn worker_rejects_mismatched_feature_fingerprint() {
+    let tree = sdf::leaf_at(Shape::Cuboid { half: [1.; 3] }, [0.; 3]);
+    let cube = SfccWorldCube { min_x: -2., min_y: -2., min_z: -2., size: 4. };
+    let mut bytes = prepare(&tree, &cube, &tuning());
+    bytes[4] ^= 1; // Fingerprint follows the versioned magic.
+    mesh_partition(&tree, &cube, &tuning(), &bytes, 0, 1);
+}
+
 /// Assert the {prepare → mesh each of N partitions → merge} mesh is canonically
 /// equivalent (pos_eps = 0) to the serial single pass, for several N.
 fn assert_worker_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
@@ -104,13 +114,14 @@ fn assert_worker_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
     for &n in &[1usize, 2, 4, 8] {
         // Each "worker" meshes ONE Morton group into its own partial. Independent
         // calls — exactly what separate wasm instances will do.
-        let partials: Vec<Vec<u8>> =
-            (0..n).map(|i| mesh_partition(tree, c, &tuning(), &leaves_bytes, i, n)).collect();
+        let partials: Vec<Vec<u8>> = (0..n).map(|i| mesh_partition(tree, c, &tuning(), &leaves_bytes, i, n)).collect();
 
         // The "main thread" merges the partials by global key + runs the S4 tail.
         let merged = merge(tree, c, &tuning(), &partials);
         assert_eq!(merged.validation, serial.validation, "{name}: validation parity at N={n}");
-        if name == "box" { assert!(!merged.serial_recovery, "box must exercise the actual worker merge"); }
+        if name == "box" {
+            assert!(!merged.serial_recovery, "box must exercise the actual worker merge");
+        }
         eprintln!("{name} N={n} recovery={} rounds={}", merged.serial_recovery, merged.re_refine_rounds);
 
         assert!(
@@ -173,13 +184,13 @@ fn worker_recovery_and_reversed_completion_order_match_serial() {
     t.curve_chord_tol_mm = 1e-8;
     let serial = run_sfcc_pipeline(&tree, &c, &t);
     let leaves = prepare(&tree, &c, &t);
-    let mut partials: Vec<_> = (0..2).map(|i| mesh_partition(&tree,&c,&t,&leaves,i,2)).collect();
-    let forward = merge(&tree,&c,&t,&partials);
+    let mut partials: Vec<_> = (0..2).map(|i| mesh_partition(&tree, &c, &t, &leaves, i, 2)).collect();
+    let forward = merge(&tree, &c, &t, &partials);
     assert!(forward.serial_recovery, "fixture must exercise recovery, not vacuous round-zero parity");
     assert!(forward.re_refine_rounds > 0);
     assert!(serial.validation.numerical.chord_budget > 0);
     partials.reverse();
-    let reversed = merge(&tree,&c,&t,&partials);
+    let reversed = merge(&tree, &c, &t, &partials);
     assert_eq!(forward.verts, serial.verts);
     assert_eq!(forward.tris, serial.tris);
     assert_eq!(reversed.verts, forward.verts);

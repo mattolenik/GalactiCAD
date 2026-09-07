@@ -79,6 +79,9 @@ pub fn chord_budget_exhausted() {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SfccValidation {
+    /// Raw candidate tracing outcomes, including hidden carrier extensions.
+    /// These counters alone do not establish exposed feature completeness.
+    pub feature_trace: crate::sfcc::seam_trace::SeamTraceDiagnostics,
     pub edge_incidence: AuditStatus,
     pub vertex_links: AuditStatus,
     pub face_segments: AuditStatus,
@@ -143,7 +146,9 @@ impl SfccValidation {
                 "{{\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
                 "\"faceSegments\":\"{}\",\"vertexResiduals\":\"{}\",\"unresolvedCells\":{},",
                 "\"featureFallbackCells\":{},\"curveProjectionFailures\":{},\"faceProjectionFailures\":{},",
-                "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{}}}"
+                "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{},",
+                "\"featureTrace\":{{\"pairsConsidered\":{},\"seedsFound\":{},\"curvesTraced\":{},",
+                "\"tangencyBails\":{},\"tangentReversals\":{},\"correctionBails\":{},\"stepCapHits\":{}}}}}"
             ),
             self.status(),
             self.edge_incidence.as_str(),
@@ -156,7 +161,14 @@ impl SfccValidation {
             self.numerical.face_projection,
             self.numerical.chord_budget,
             self.off_surface_vertices,
-            self.max_vertex_residual
+            self.max_vertex_residual,
+            self.feature_trace.pairs_considered,
+            self.feature_trace.seeds_found,
+            self.feature_trace.curves_traced,
+            self.feature_trace.tangency_bails,
+            self.feature_trace.tangent_reversals,
+            self.feature_trace.correction_bails,
+            self.feature_trace.step_cap_hits
         )
     }
 }

@@ -68,6 +68,16 @@ export interface MeshSfccValidation {
     chordBudgetFailures: number
     offSurfaceVertices: number
     maxVertexResidual: number
+    /** Candidate tracing includes hidden supporting extensions; these counts do not certify coverage. */
+    featureTrace: {
+        pairsConsidered: number
+        seedsFound: number
+        curvesTraced: number
+        tangencyBails: number
+        tangentReversals: number
+        correctionBails: number
+        stepCapHits: number
+    }
 }
 
 /** SFCC topology, numerical-budget, and final vertex-residual diagnostics. */

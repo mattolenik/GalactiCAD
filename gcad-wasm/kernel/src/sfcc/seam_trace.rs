@@ -17,19 +17,32 @@ use crate::sfcc::tree::SfccTree;
 use crate::strata::Stratum;
 use crate::tolerances::ResolvedTolerances;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SeamTraceDiagnostics {
     pub pairs_considered: usize,
     pub seeds_found: usize,
     pub curves_traced: usize,
     pub tangency_bails: usize,
     pub step_cap_hits: usize,
+    pub correction_bails: usize,
+    pub tangent_reversals: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TraceEnd {
+    Bounds,
+    Closed,
+    Tangency,
+    Reversal,
+    Correction,
+    Budget,
 }
 
 struct TraceResult {
     samples: Vec<f64>,
     closed: bool,
     hit_cap: bool,
+    end: TraceEnd,
 }
 
 /// A raw traced seam piece: its samples, closed flag, and adjacent carriers.
@@ -63,15 +76,18 @@ fn trace_direction(
     let mut have_prev_tangent = false;
     let mut closed = false;
     let mut hit_cap = true;
+    let mut end = TraceEnd::Budget;
     for _ in 0..tol.max_trace_steps {
         let mag = carrier_pair_tangent(sa, sb, x, y, z, &mut t);
         if mag < tol.min_tangency_sin {
             hit_cap = false;
+            end = TraceEnd::Tangency;
             break; // tangency bail — diagnostic, never loops
         }
         if have_prev_tangent && t[0] * px + t[1] * py + t[2] * pz < 0.0 {
             // Tangent flipped — passed a singular point; stop.
             hit_cap = false;
+            end = TraceEnd::Reversal;
             break;
         }
         px = t[0];
@@ -82,9 +98,11 @@ fn trace_direction(
         // Predictor + corrector with step control.
         let mut accepted = false;
         for _ in 0..10 {
-            let cx = x + dir * h * t[0];
-            let cy = y + dir * h * t[1];
-            let cz = z + dir * h * t[2];
+            // Retry from the original tangent. `t` is overwritten below by
+            // the rejected candidate's tangent and must not steer the retry.
+            let cx = x + dir * h * px;
+            let cy = y + dir * h * py;
+            let cz = z + dir * h * pz;
             let q = match project_to_carrier_pair(sa, sb, cx, cy, cz, tol.curve_eps, tol.min_tangency_sin, h) {
                 Some(q) => q,
                 None => {
@@ -114,19 +132,22 @@ fn trace_direction(
             // Chord-error step adaptation: err ≈ h·θ/8.
             let theta = cos_turn.clamp(-1.0, 1.0).acos();
             let err = (h * theta) / 8.0;
+            if err > tol.max_chord_error {
+                h = h_min.max(h * 0.5);
+                continue;
+            }
             accepted = true;
             x = q[0];
             y = q[1];
             z = q[2];
-            if err > tol.max_chord_error {
-                h = h_min.max(h * 0.6);
-            } else if err < tol.max_chord_error / 4.0 {
+            if err < tol.max_chord_error / 4.0 {
                 h = h_max.min(h * 1.4);
             }
             break;
         }
         if !accepted {
             hit_cap = false;
+            end = TraceEnd::Correction;
             break;
         }
         samples.push(x);
@@ -136,18 +157,35 @@ fn trace_direction(
         // Exit / closed-loop checks.
         if x < bounds[0] || y < bounds[1] || z < bounds[2] || x > bounds[3] || y > bounds[4] || z > bounds[5] {
             hit_cap = false;
+            end = TraceEnd::Bounds;
             break;
         }
         if samples.len() / 3 > 3 {
             let d0 = ((x - seed[0]).powi(2) + (y - seed[1]).powi(2) + (z - seed[2]).powi(2)).sqrt();
-            if d0 < h * 0.9 {
+            // The final seed-to-end chord must obey the same geometric budget
+            // as the traced segments. A full-size closing step can cut off an
+            // entire rounded corner after a long flat run increased `h`.
+            if d0 < (h * 0.9).min(tol.max_chord_error * 2.) {
                 closed = true;
                 hit_cap = false;
+                end = TraceEnd::Closed;
                 break;
+            }
+            if d0 < h * 2. {
+                h = h_min.max(h.min(d0 * 0.5));
             }
         }
     }
-    TraceResult { samples, closed, hit_cap }
+    TraceResult { samples, closed, hit_cap, end }
+}
+
+fn record_end(diag: &mut SeamTraceDiagnostics, end: TraceEnd) {
+    match end {
+        TraceEnd::Tangency => diag.tangency_bails += 1,
+        TraceEnd::Reversal => diag.tangent_reversals += 1,
+        TraceEnd::Correction => diag.correction_bails += 1,
+        _ => {}
+    }
 }
 
 /// Trace all seam pieces between two strata carriers within an overlap box.
@@ -194,8 +232,16 @@ pub fn trace_carrier_pair(
                 if sa.f(x, y, z).abs() > seed_cell || sb.f(x, y, z).abs() > seed_cell {
                     continue;
                 }
-                let q = match project_to_carrier_pair(sa, sb, x, y, z, tol.curve_eps, tol.min_tangency_sin, seed_cell * 2.0)
-                {
+                let q = match project_to_carrier_pair(
+                    sa,
+                    sb,
+                    x,
+                    y,
+                    z,
+                    tol.curve_eps,
+                    tol.min_tangency_sin,
+                    seed_cell * 2.0,
+                ) {
                     Some(q) => q,
                     None => continue,
                 };
@@ -211,7 +257,8 @@ pub fn trace_carrier_pair(
                 let mut dup = false;
                 let mut s = 0;
                 while s < seeds.len() && !dup {
-                    if ((q[0] - seeds[s]).powi(2) + (q[1] - seeds[s + 1]).powi(2) + (q[2] - seeds[s + 2]).powi(2)).sqrt()
+                    if ((q[0] - seeds[s]).powi(2) + (q[1] - seeds[s + 1]).powi(2) + (q[2] - seeds[s + 2]).powi(2))
+                        .sqrt()
                         < seed_dedup
                     {
                         dup = true;
@@ -243,6 +290,7 @@ pub fn trace_carrier_pair(
         consumed[s] = true;
         let seed = [seeds[s * 3], seeds[s * 3 + 1], seeds[s * 3 + 2]];
         let fwd = trace_direction(sa, sb, seed, 1.0, &bounds, tol, h_init);
+        record_end(diag, fwd.end);
         if fwd.hit_cap {
             diag.step_cap_hits += 1;
         }
@@ -257,6 +305,7 @@ pub fn trace_carrier_pair(
             p
         } else {
             let back = trace_direction(sa, sb, seed, -1.0, &bounds, tol, h_init);
+            record_end(diag, back.end);
             if back.hit_cap {
                 diag.step_cap_hits += 1;
             }
@@ -379,8 +428,8 @@ pub fn trace_all_seams(
                             [sa.id, sb.id],
                             samples,
                             closed,
-                            *sa,
-                            *sb,
+                            sa.clone(),
+                            sb.clone(),
                             refine,
                             -1,
                         ));
@@ -392,10 +441,10 @@ pub fn trace_all_seams(
     (curves, diagnostics)
 }
 
-/// Trace generated planar blend patches against primitive and earlier blend
+/// Trace generated chamfer patches against primitive and earlier blend
 /// carriers. Full-tree residual and both flank tests in trim_and_wire decide
-/// which portions are exposed; supporting planes alone do not define a patch.
-pub fn trace_blend_plane_seams(
+/// which portions are exposed; supporting carriers alone do not define a patch.
+pub fn trace_chamfer_seams(
     tree: &SfccTree<'_>,
     patches: &[(usize, [f64; 6])],
     tol: &ResolvedTolerances,
@@ -415,10 +464,10 @@ pub fn trace_blend_plane_seams(
         max_displacement: tol.max_chord_error * 4.0,
     };
     for &(id, bounds) in patches {
-        let sa = tree.strata[id];
+        let sa = &tree.strata[id];
         for &(other, ob) in &carriers {
-            let sb = tree.strata[other];
-            if sb.kind == crate::strata::CarrierKind::Plane {
+            let sb = &tree.strata[other];
+            if sa.kind == crate::strata::CarrierKind::Plane && sb.kind == crate::strata::CarrierKind::Plane {
                 let a = sa.normal(0., 0., 0.);
                 let b = sb.normal(0., 0., 0.);
                 if (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]).abs() > 1. - 1e-10 {
@@ -440,8 +489,8 @@ pub fn trace_blend_plane_seams(
                     [id, other],
                     samples,
                     closed,
-                    sa,
-                    sb,
+                    sa.clone(),
+                    sb.clone(),
                     refine,
                     -1,
                 ));

@@ -19,6 +19,7 @@ pub mod cell_mesh;
 pub mod face_contour;
 pub mod feature_curves;
 pub mod feature_set;
+pub mod field_branches;
 pub mod manifold_check;
 pub mod newton;
 pub mod octree;
@@ -35,4 +36,4 @@ pub mod worker;
 
 pub mod validation;
 
-mod blend_planes;
+mod blend_surfaces;

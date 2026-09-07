@@ -595,8 +595,8 @@ class SFCC(Scene):
         self.play(FadeOut(tr), run_time=0.6)
 
         # CSG trim
-        cap3 = self.caption("CSG trim — a point is alive iff:  |f_tree| ≤ surface_tol,",
-                            "carriers genuinely creased, and both flanks survive probing")
+        cap3 = self.caption("CSG trim requires surface survival through the CSG ancestry,",
+                            "creased carriers, and both flanks surviving local probes")
         self.swap_caption(cap3, cap2c)
         dead = VGroup(cands[2], cands[3])
         crosses = VGroup(*[Cross(scale_factor=0.14).move_to(d) for d in dead])
@@ -652,12 +652,12 @@ class SFCC(Scene):
 
         card_pos = P(3.95, 0.45)
         c1 = make_card("STRATA — smooth patches on carriers", TEAL_B, [
-            "one stratum = one smooth patch of one primitive,",
+            "one stratum = a primitive or generated blend patch,",
             "carried by an unbounded analytic surface:",
             "box → 6 planes      cylinder → mantle + 2 caps",
             "sphere → 1      cone → mantle + base",
             "twisted extrude / loft sides → ruled sheets",
-            "carriers expose f(p), normals, projection, and curvature support",
+            "raw fields + derivatives compose blends; projection is separate",
         ]).move_to(card_pos)
         cap = self.caption("in this flat demo: 4 line carriers + 1 circle carrier,",
                            "each colored patch is one stratum", pos=DOWN * 3.35)
@@ -1088,7 +1088,7 @@ class SFCC(Scene):
         self.wait(4.2)
 
         cap2 = self.caption("edge cells split their loop at the two pins into two disks, one per",
-                            "stratum; corner cells fan from their corner vertex; big smooth",
+                            "stratum; simple corner cells fan from their corner; big smooth",
                             "loops fan from an interior vertex Newton-projected onto the surface")
         self.swap_caption(cap2, cap)
         self.wait(4.6)

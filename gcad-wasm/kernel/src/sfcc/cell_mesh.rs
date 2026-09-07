@@ -17,10 +17,10 @@
 
 use crate::math::grid::{cell_aabb, face_axes, pack_point, stride_at_level, SfccLattice};
 use crate::sdf::{CsgNode, Pruned, SdfQuery};
-use crate::sfcc::octree::LEVER1_MIN_LEAVES;
+use crate::sfcc::face_contour::{FacePin, FaceRecord};
 use crate::sfcc::feature_curves::{CurveKind, FeatureCurve};
 use crate::sfcc::feature_set::{SfccCorner, SfccFeatureSet};
-use crate::sfcc::face_contour::{FacePin, FaceRecord};
+use crate::sfcc::octree::LEVER1_MIN_LEAVES;
 use crate::sfcc::octree::{SfccCell, SfccOctree};
 use crate::sfcc::point_table::PointTable;
 use crate::strata::Stratum;
@@ -336,6 +336,28 @@ pub fn mesh_cells_subset(
 
         let mut meshed_loops: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
+        // The depth ceiling can leave several modeled junctions in one cell.
+        // Such a cell cannot be represented by a fan from whichever corner the
+        // classifier encountered last. Build the local feature graph instead.
+        if let Some(features) = opts.features {
+            let corners: Vec<_> = features
+                .index
+                .corners_in_box([cbox[0], cbox[1], cbox[2]], [cbox[3], cbox[4], cbox[5]])
+                .into_iter()
+                .filter(|&id| {
+                    let c = &features.corners[id];
+                    !c.curve_ends.is_empty() && in_box(&cbox, c.x, c.y, c.z, 0.)
+                })
+                .collect();
+            let distinct_curves: std::collections::HashSet<_> = pins.iter().map(|p| p.curve_id).collect();
+            if corners.len() > 1 || (cell.degenerate && distinct_curves.len() > 1) {
+                if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris) {
+                    corner_cells += 1;
+                    continue;
+                }
+            }
+        }
+
         if let (true, Some(features)) = (cell.feature_corner >= 0, opts.features) {
             // Corner cells: every loop touching an incident-curve pin is fanned
             // from the EXACT corner point — arbitrary valence. A valence-0 corner
@@ -380,7 +402,8 @@ pub fn mesh_cells_subset(
                 }
             }
             if my_pins.len() == 2 {
-                let idx = loops.iter().position(|l| l.contains(&my_pins[0].point_id) && l.contains(&my_pins[1].point_id));
+                let idx =
+                    loops.iter().position(|l| l.contains(&my_pins[0].point_id) && l.contains(&my_pins[1].point_id));
                 if let Some(idx) = idx {
                     let did = mesh_edge_cell(
                         &loops[idx],
@@ -479,13 +502,17 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
     if o.interior_vertex_mode == InteriorVertexMode::Project {
         let margin = (cell_box[3] - cell_box[0]) * 0.1;
         for _ in 0..o.project_max_iters {
-            let fv = tree.f([px, py, pz]);
+            let sample = tree.field_sample([px, py, pz]);
+            let fv = sample.value;
+            if !fv.is_finite() {
+                break;
+            }
             if fv.abs() <= o.surface_tol * 0.25 {
                 break;
             }
-            let (_, g) = tree.grad([px, py, pz]);
+            let g = sample.gradient;
             let g2 = g[0] * g[0] + g[1] * g[1] + g[2] * g[2];
-            if g2 < 1e-20 {
+            if !g2.is_finite() || g2 < 1e-20 {
                 break;
             }
             let k = fv / g2;
@@ -580,6 +607,196 @@ fn dist2(pts: &PointTable, a: usize, b: usize) -> f64 {
     let dy = pts.y(a) - pts.y(b);
     let dz = pts.z(a) - pts.z(b);
     dx * dx + dy * dy + dz * dz
+}
+
+/// Split the boundary disk by every in-cell feature path, then mesh each patch
+/// separately. The rotation order around each vertex supplies the local surface
+/// embedding; boundary orientation and edge incidence are checked before commit.
+#[allow(clippy::too_many_arguments)]
+fn mesh_feature_graph<T: SdfQuery + ?Sized>(
+    loops: &[Vec<usize>],
+    pins: &[FacePin],
+    corners: &[usize],
+    cell_box: &[f64; 6],
+    tree: &T,
+    points: &mut PointTable,
+    opts: &CellMeshOptions,
+    features: &SfccFeatureSet,
+    out: &mut Vec<usize>,
+) -> bool {
+    use std::collections::{BTreeMap, BTreeSet};
+    if loops.len() != 1 {
+        return false;
+    }
+    let boundary = &loops[0];
+    let key = |a: usize, b: usize| if a < b { (a, b) } else { (b, a) };
+    let mut edges: BTreeMap<(usize, usize), Option<[usize; 2]>> = BTreeMap::new();
+    let mut boundary_forward = BTreeSet::new();
+    for i in 0..boundary.len() {
+        let (a, b) = (boundary[i], boundary[(i + 1) % boundary.len()]);
+        edges.insert(key(a, b), None);
+        boundary_forward.insert((a, b));
+    }
+    let mut paths: BTreeMap<usize, Vec<(f64, usize)>> = BTreeMap::new();
+    for pin in pins {
+        if boundary.contains(&pin.point_id) {
+            paths.entry(pin.curve_id).or_default().push((pin.t, pin.point_id));
+        }
+    }
+    for &id in corners {
+        let corner = &features.corners[id];
+        let point = corner_point_id(corner, features, points);
+        for &(curve, end) in &corner.curve_ends {
+            let c = &features.curves[curve];
+            paths.entry(curve).or_default().push((if end == 0 { c.t_min } else { c.t_max }, point));
+        }
+    }
+    for (id, mut nodes) in paths {
+        let curve = &features.curves[id];
+        nodes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        nodes.dedup_by(|a, b| a.1 == b.1);
+        if nodes.len() < 2 {
+            continue;
+        }
+        if curve.closed {
+            let (t, p) = nodes[0];
+            nodes.push((t + curve.param_wrap.unwrap(), p));
+        }
+        for pair in nodes.windows(2) {
+            let ((ta, a), (tb, b)) = (pair[0], pair[1]);
+            if a == b {
+                continue;
+            }
+            let Some(mid) = curve.point_at_checked((ta + tb) * 0.5) else {
+                return false;
+            };
+            if !in_box(cell_box, mid[0], mid[1], mid[2], 1e-9) {
+                continue;
+            }
+            let Some(interior) = sample_in_cell_arc(curve, ta, tb, cell_box, points, features, opts) else {
+                return false;
+            };
+            let mut previous = a;
+            for next in interior.into_iter().chain(std::iter::once(b)) {
+                let k = key(previous, next);
+                if edges.contains_key(&k) {
+                    return false;
+                }
+                edges.insert(k, Some(curve.adjacent_strata));
+                previous = next;
+            }
+        }
+    }
+    let mut around: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for &(a, b) in edges.keys() {
+        around.entry(a).or_default().push(b);
+        around.entry(b).or_default().push(a);
+    }
+    for (&id, neighbors) in &mut around {
+        if neighbors.len() < 2 {
+            return false;
+        }
+        let p = [points.x(id), points.y(id), points.z(id)];
+        let mut n = [points.nx(id), points.ny(id), points.nz(id)];
+        let len = n[0].hypot(n[1]).hypot(n[2]);
+        if !len.is_finite() || len < 1e-12 {
+            return false;
+        }
+        n = n.map(|v| v / len);
+        let axis = if n[0].abs() < 0.8 { [1., 0., 0.] } else { [0., 1., 0.] };
+        let u = [n[1] * axis[2] - n[2] * axis[1], n[2] * axis[0] - n[0] * axis[2], n[0] * axis[1] - n[1] * axis[0]];
+        let v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+        let angle = |other: usize| {
+            let d = [points.x(other) - p[0], points.y(other) - p[1], points.z(other) - p[2]];
+            let dot = |a: [f64; 3]| (0..3).map(|k| d[k] * a[k]).sum::<f64>();
+            dot(v).atan2(dot(u))
+        };
+        neighbors.sort_by(|&a, &b| angle(a).total_cmp(&angle(b)).then(a.cmp(&b)));
+    }
+    let mut visited = BTreeSet::new();
+    let mut patches = Vec::new();
+    let mut used_boundary = BTreeSet::new();
+    let mut used_features: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    for &(a, b) in edges.keys() {
+        for first in [(a, b), (b, a)] {
+            if visited.contains(&first) {
+                continue;
+            }
+            let mut edge = first;
+            let mut polygon = Vec::new();
+            let mut backward = false;
+            let mut forward = false;
+            let mut candidates: Option<BTreeSet<usize>> = None;
+            loop {
+                if !visited.insert(edge) {
+                    return false;
+                }
+                polygon.push(edge.0);
+                forward |= boundary_forward.contains(&edge);
+                backward |= boundary_forward.contains(&(edge.1, edge.0));
+                if let Some(ids) = edges[&key(edge.0, edge.1)] {
+                    let ids: BTreeSet<_> = ids.into_iter().collect();
+                    candidates = Some(match candidates {
+                        None => ids,
+                        Some(old) => old.intersection(&ids).copied().collect(),
+                    });
+                }
+                let ns = &around[&edge.1];
+                let i = ns.iter().position(|&p| p == edge.0).unwrap();
+                edge = (edge.1, ns[(i + ns.len() - 1) % ns.len()]);
+                if edge == first {
+                    break;
+                }
+                if polygon.len() > edges.len() * 2 {
+                    return false;
+                }
+            }
+            if backward {
+                if forward {
+                    return false;
+                }
+                continue;
+            }
+            if polygon.len() < 3 {
+                return false;
+            }
+            let Some(candidates) = candidates else {
+                return false;
+            };
+            if candidates.is_empty() {
+                return false;
+            }
+            let score = |id: usize| {
+                polygon.iter().map(|&p| features.strata[id].f(points.x(p), points.y(p), points.z(p)).abs()).sum::<f64>()
+            };
+            let stratum = *candidates.iter().min_by(|&&a, &&b| score(a).total_cmp(&score(b))).unwrap();
+            for i in 0..polygon.len() {
+                let e = (polygon[i], polygon[(i + 1) % polygon.len()]);
+                if boundary_forward.contains(&e) {
+                    used_boundary.insert(e);
+                } else {
+                    *used_features.entry(key(e.0, e.1)).or_default() += 1;
+                }
+            }
+            patches.push((stratum, polygon));
+        }
+    }
+    if used_boundary != boundary_forward
+        || edges.iter().any(|(edge, ids)| ids.is_some() && used_features.get(edge) != Some(&2))
+    {
+        return false;
+    }
+    let mut triangles = Vec::new();
+    for (id, polygon) in patches {
+        fan_from_stratum_vertex(&polygon, &features.strata[id], cell_box, tree, points, opts, &mut triangles);
+    }
+    for (&(a, b), ids) in &edges {
+        if ids.is_some() {
+            points.protect_edge(a, b);
+        }
+    }
+    out.extend(triangles);
+    true
 }
 
 /// Shared, exact corner mesh vertex (keyed; averaged incident-strata normal).
@@ -696,8 +913,8 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
 
     // Assign strata to sides by aggregate NORMAL-AGREEMENT margin over all non-pin
     // chain vertices. Score both assignments and take the better — never reject.
-    let sa = features.strata[curve.adjacent_strata[0]];
-    let sb = features.strata[curve.adjacent_strata[1]];
+    let sa = &features.strata[curve.adjacent_strata[0]];
+    let sb = &features.strata[curve.adjacent_strata[1]];
     let agree = |pts: &PointTable, vid: usize, st: &Stratum| -> f64 {
         let x = pts.x(vid);
         let y = pts.y(vid);
@@ -741,6 +958,8 @@ fn sample_in_cell_arc(
     features: &SfccFeatureSet,
     opts: &CellMeshOptions,
 ) -> Option<Vec<usize>> {
+    let live =
+        |p: [f64; 3]| curve.adjacent_strata.iter().all(|&id| features.strata[id].domain_contains(p, opts.surface_tol));
     let margin = (cell_box[3] - cell_box[0]) * 0.25;
     let delta: f64;
     if let (true, Some(wrap)) = (curve.closed, curve.param_wrap) {
@@ -795,8 +1014,11 @@ fn sample_in_cell_arc(
     for k in 0..=n {
         let t = t_a + delta * k as f64 / n as f64;
         let p = match curve.point_at_checked(t) {
-            Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) => p,
-            _ => { crate::sfcc::validation::curve_projection_failed(); return None; }
+            Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) && live(p) => p,
+            _ => {
+                crate::sfcc::validation::curve_projection_failed();
+                return None;
+            }
         };
         samples.push((t, p));
     }
@@ -807,23 +1029,27 @@ fn sample_in_cell_arc(
             let (tb, b) = samples[i + 1];
             let tm = (ta + tb) * 0.5;
             let m = match curve.point_at_checked(tm) {
-                Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) => p,
-                _ => { crate::sfcc::validation::curve_projection_failed(); return None; }
+                Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) && live(p) => p,
+                _ => {
+                    crate::sfcc::validation::curve_projection_failed();
+                    return None;
+                }
             };
-            let error = (m[0] - (a[0] + b[0]) * 0.5)
-                .hypot(m[1] - (a[1] + b[1]) * 0.5)
-                .hypot(m[2] - (a[2] + b[2]) * 0.5);
+            let error =
+                (m[0] - (a[0] + b[0]) * 0.5).hypot(m[1] - (a[1] + b[1]) * 0.5).hypot(m[2] - (a[2] + b[2]) * 0.5);
             if error > opts.curve_chord_tol {
                 if samples.len() - 1 >= opts.max_polyline_points_per_cell || tm == ta || tm == tb {
                     crate::sfcc::validation::chord_budget_exhausted();
                     return None;
                 }
                 samples.insert(i + 1, (tm, m));
-            } else { i += 1; }
+            } else {
+                i += 1;
+            }
         }
     }
-    let sa = features.strata[curve.adjacent_strata[0]];
-    let sb = features.strata[curve.adjacent_strata[1]];
+    let sa = &features.strata[curve.adjacent_strata[0]];
+    let sb = &features.strata[curve.adjacent_strata[1]];
     let mut ids: Vec<usize> = Vec::new();
     for &(_, p) in samples.iter().skip(1).take(samples.len() - 2) {
         let na = sa.normal(p[0], p[1], p[2]);
@@ -900,7 +1126,7 @@ mod reliability_tests {
     use super::*;
     use crate::sfcc::feature_curves::{make_circle_curve, make_traced_curve, TracedRefine};
     use crate::sfcc::spatial_index::SfccSpatialIndex;
-    use crate::sfcc::validation::{NumericalGuard, numerical_failures};
+    use crate::sfcc::validation::{numerical_failures, NumericalGuard};
     use crate::strata::StratumIdentity;
     fn ident(id: usize) -> StratumIdentity {
         StratumIdentity { id, owner_node_id: -1, leaf_index: 0, local_index: id, sign: 1. }
@@ -908,28 +1134,50 @@ mod reliability_tests {
     #[test]
     fn circle_cap_and_traced_midpoint_error_are_enforced() {
         let _scope = NumericalGuard::new();
-        let sphere = Stratum::sphere(ident(0),0.,0.,0.,1.);
-        let plane = Stratum::plane(ident(1),0.,0.,1.,0.);
-        let features = SfccFeatureSet { strata: vec![sphere,plane], curves: vec![], corners: vec![],
-            index: SfccSpatialIndex::new(1.), run_id: 0 };
-        let mut opts = CellMeshOptions { surface_tol: 0.01, interior_vertex_mode: InteriorVertexMode::Project,
-            project_max_iters: 16, curve_chord_tol: 0.01, max_polyline_points_per_cell: 1, features: Some(&features) };
-        let circle = make_circle_curve(0,-1,[0,1],0.,0.,0.,0.,0.,1.,1.,Some((0., std::f64::consts::FRAC_PI_2)));
-        let bounds = [-2.,-2.,-2.,2.,2.,2.];
+        let sphere = Stratum::sphere(ident(0), 0., 0., 0., 1.);
+        let plane = Stratum::plane(ident(1), 0., 0., 1., 0.);
+        let features = SfccFeatureSet {
+            trace_diagnostics: Default::default(),
+            strata: vec![sphere.clone(), plane.clone()],
+            curves: vec![],
+            corners: vec![],
+            index: SfccSpatialIndex::new(1.),
+            run_id: 0,
+        };
+        let mut opts = CellMeshOptions {
+            surface_tol: 0.01,
+            interior_vertex_mode: InteriorVertexMode::Project,
+            project_max_iters: 16,
+            curve_chord_tol: 0.01,
+            max_polyline_points_per_cell: 1,
+            features: Some(&features),
+        };
+        let circle =
+            make_circle_curve(0, -1, [0, 1], 0., 0., 0., 0., 0., 1., 1., Some((0., std::f64::consts::FRAC_PI_2)));
+        let bounds = [-2., -2., -2., 2., 2., 2.];
         let mut points = PointTable::new();
-        assert!(sample_in_cell_arc(&circle,0.,std::f64::consts::FRAC_PI_2,&bounds,&mut points,&features,&opts).is_none());
+        assert!(sample_in_cell_arc(&circle, 0., std::f64::consts::FRAC_PI_2, &bounds, &mut points, &features, &opts)
+            .is_none());
         assert_eq!(numerical_failures().chord_budget, 1);
-        let traced = make_traced_curve(0,[0,1],vec![1.,0.,0.,0.,1.,0.],false,sphere,plane,
-            TracedRefine { curve_eps: 1e-12, min_cross: 1e-3, max_displacement: 1. },-1);
+        let traced = make_traced_curve(
+            0,
+            [0, 1],
+            vec![1., 0., 0., 0., 1., 0.],
+            false,
+            sphere.clone(),
+            plane,
+            TracedRefine { curve_eps: 1e-12, min_cross: 1e-3, max_displacement: 1. },
+            -1,
+        );
         opts.max_polyline_points_per_cell = 64;
-        let ids = sample_in_cell_arc(&traced,0.,1.,&bounds,&mut points,&features,&opts).unwrap();
+        let ids = sample_in_cell_arc(&traced, 0., 1., &bounds, &mut points, &features, &opts).unwrap();
         assert!(ids.len() > 1, "two tracer samples alone do not meet the chord tolerance");
-        let mut poly = vec![[1.,0.,0.]];
-        poly.extend(ids.iter().map(|&id| [points.x(id),points.y(id),points.z(id)]));
-        poly.push([0.,1.,0.]);
+        let mut poly = vec![[1., 0., 0.]];
+        poly.extend(ids.iter().map(|&id| [points.x(id), points.y(id), points.z(id)]));
+        poly.push([0., 1., 0.]);
         for edge in poly.windows(2) {
-            let m = [(edge[0][0]+edge[1][0])*0.5,(edge[0][1]+edge[1][1])*0.5,0.];
-            assert!(sphere.f(m[0],m[1],m[2]).abs() <= opts.curve_chord_tol);
+            let m = [(edge[0][0] + edge[1][0]) * 0.5, (edge[0][1] + edge[1][1]) * 0.5, 0.];
+            assert!(sphere.f(m[0], m[1], m[2]).abs() <= opts.curve_chord_tol);
         }
         assert_eq!(numerical_failures().curve_projection, 0);
     }

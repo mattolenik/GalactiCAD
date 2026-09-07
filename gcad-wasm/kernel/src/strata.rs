@@ -15,20 +15,24 @@
 //! FINAL solid (outward normal, negative inside).
 
 use crate::math::similarity::Similarity;
+use crate::sfcc::field_branches::{FieldRef, FieldSample};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CarrierKind {
     Plane,
     Sphere,
     Cylinder,
+    CylinderRim,
     Cone,
     TwistedSide,
     LoftSide,
+    Compound,
+    Field,
 }
 
 /// A smooth analytic carrier patch. Identity fields mirror `SfccStratum`'s
 /// (`id`, `owner_node_id`, `leaf_index`, `local_index`, `sign`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Stratum {
     /// Dense global stratum id (index into the tree's stratum list).
     pub id: usize,
@@ -42,10 +46,13 @@ pub struct Stratum {
     pub sign: f64,
     pub kind: CarrierKind,
     carrier: Carrier,
+    compound: Option<std::sync::Arc<CompoundCarrier>>,
+    field: Option<FieldRef>,
+    domain: Option<Vec<FieldRef>>,
 }
 
 /// Carrier geometry (world space). The owning [`Stratum`] applies `sign`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Carrier {
     /// f = n·p + offset, ‖n‖ = 1.
     Plane { n: [f64; 3], offset: f64 },
@@ -53,6 +60,8 @@ enum Carrier {
     Sphere { c: [f64; 3], r: f64 },
     /// f = dist(p, axis) − r; axis through `a` with unit dir `u`.
     Cylinder { a: [f64; 3], u: [f64; 3], r: f64 },
+    /// Distance to a cylinder rim; the exterior cap/mantle corner field.
+    CylinderRim { c: [f64; 3], u: [f64; 3], r: f64 },
     /// Mantle: apex `a`, unit axis `u` (apex→base), half-angle (sin_a, cos_a).
     Cone { a: [f64; 3], u: [f64; 3], sin_a: f64, cos_a: f64 },
     /// Twisted-extrude side: ruled helicoidal sheet swept by one polygon edge's
@@ -65,7 +74,7 @@ enum Carrier {
 
 /// Parameters of a twisted-extrude side carrier. Mirrors `TwistedSideParams`
 /// (`strata.mts`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TwistedSideParams {
     pub sim: Similarity,
     pub pos_x: f64,
@@ -80,7 +89,7 @@ pub struct TwistedSideParams {
 }
 
 /// Parameters of a loft side carrier. Mirrors `LoftSideParams` (`strata.mts`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LoftSideParams {
     pub sim: Similarity,
     pub pos_x: f64,
@@ -187,9 +196,141 @@ pub struct StratumIdentity {
     pub sign: f64,
 }
 
+#[derive(Clone, Debug)]
+struct CompoundCarrier {
+    terms: Vec<(Stratum, f64)>,
+    offset: f64,
+}
+
 impl Stratum {
+    pub fn same_primitive_field(&self, other: &Self) -> bool {
+        self.compound.is_none()
+            && other.compound.is_none()
+            && self.field.is_none()
+            && other.field.is_none()
+            && self.sign == other.sign
+            && self.carrier == other.carrier
+    }
+    pub fn with_domain(mut self, domain: FieldRef) -> Self {
+        self.domain = Some(vec![domain]);
+        self
+    }
+
+    pub(crate) fn with_domain_of(mut self, other: &Self) -> Self {
+        self.domain = other.domain.clone();
+        self
+    }
+
+    pub(crate) fn merge_domains(&mut self, other: &Self) {
+        match (&mut self.domain, &other.domain) {
+            (Some(a), Some(b)) => a.extend(b.iter().cloned()),
+            _ => self.domain = None,
+        }
+    }
+
+    /// Supporting extensions are not automatically exposed operand patches.
+    /// In particular a cutter's zero set must not mask a blend branch that is
+    /// strictly inside its own operand. Test the owner's surface independently.
+    pub fn domain_contains(&self, p: [f64; 3], tolerance: f64) -> bool {
+        self.domain.as_ref().is_none_or(|domains| domains.iter().any(|domain| domain.surface_live(p, tolerance)))
+    }
+    /// Exact operand field, shared by generated feature expressions.
+    pub fn field(ident: StratumIdentity, node: FieldRef) -> Self {
+        let mut st = Self::plane(ident, 0., 1., 0., 0.);
+        st.kind = CarrierKind::Field;
+        st.field = Some(node);
+        st
+    }
+
+    /// Affine combination of analytic fields. Preserve raw coefficients through
+    /// nesting; the normalized residual is used only by projection/tracing.
+    pub fn combination(ident: StratumIdentity, a: &Stratum, b: &Stratum, offset: f64) -> Self {
+        let mut terms = Vec::new();
+        let mut total_offset = offset;
+        for st in [a, b] {
+            if let Some(c) = &st.compound {
+                total_offset += c.offset * st.sign * std::f64::consts::FRAC_1_SQRT_2;
+                terms.extend(c.terms.iter().map(|(s, w)| (s.clone(), w * st.sign * std::f64::consts::FRAC_1_SQRT_2)));
+            } else {
+                terms.push((st.clone(), std::f64::consts::FRAC_1_SQRT_2));
+            }
+        }
+        let mut st = Self::plane(ident, 0., 1., 0., 0.);
+        st.kind = CarrierKind::Compound;
+        st.compound = Some(std::sync::Arc::new(CompoundCarrier { terms, offset: total_offset }));
+        st
+    }
+
+    /// Raw affine coefficients when this expression contains only planes.
+    pub fn planar_coefficients(&self) -> Option<[f64; 4]> {
+        if self.field.is_some() {
+            return None;
+        }
+        if let Some(c) = &self.compound {
+            let mut out = [0., 0., 0., c.offset];
+            for (st, w) in &c.terms {
+                let f = st.planar_coefficients()?;
+                for k in 0..4 {
+                    out[k] += w * f[k];
+                }
+            }
+            Some(out.map(|v| self.sign * v))
+        } else if let Carrier::Plane { n, offset } = self.carrier {
+            Some([self.sign * n[0], self.sign * n[1], self.sign * n[2], self.sign * offset])
+        } else {
+            None
+        }
+    }
+
+    fn compound_field(&self, x: f64, y: f64, z: f64) -> (f64, [f64; 3]) {
+        let c = self.compound.as_ref().expect("compound carrier");
+        let mut value = c.offset;
+        let mut grad = [0.; 3];
+        for (st, weight) in &c.terms {
+            let sample = st.raw_field(x, y, z);
+            value += weight * sample.value;
+            for k in 0..3 {
+                grad[k] += weight * sample.gradient[k];
+            }
+        }
+        (self.sign * value, grad.map(|v| self.sign * v))
+    }
+
+    /// Unnormalized field and its actual derivative. Unlike `f`, this is safe
+    /// to compose with another field, including ruled and nested blend fields.
+    pub fn raw_field(&self, x: f64, y: f64, z: f64) -> FieldSample {
+        if let Some(node) = &self.field {
+            let v = crate::sfcc::field_branches::sample_tree(node.node(), [x, y, z]);
+            return FieldSample { value: self.sign * v.value, gradient: v.gradient.map(|g| self.sign * g) };
+        }
+        if self.compound.is_some() {
+            let (value, gradient) = self.compound_field(x, y, z);
+            return FieldSample { value, gradient };
+        }
+        let (sim, value, grad) = match self.carrier {
+            Carrier::TwistedSide(prm) => {
+                let p = prm.sim.inv_apply_point(x, y, z);
+                let (f, g) = twisted_eval_local(&prm, p[0], p[1], p[2]);
+                (prm.sim, f, g)
+            }
+            Carrier::LoftSide(prm) => {
+                let p = prm.sim.inv_apply_point(x, y, z);
+                let (f, g) = loft_eval_local(&prm, p[0], p[1], p[2]);
+                (prm.sim, f, g)
+            }
+            _ => return FieldSample { value: self.f(x, y, z), gradient: self.normal(x, y, z) },
+        };
+        FieldSample {
+            value: self.sign * sim.s * value,
+            gradient: sim.rotate_vector(grad[0], grad[1], grad[2]).map(|v| self.sign * v),
+        }
+    }
     pub fn plane(ident: StratumIdentity, nx: f64, ny: f64, nz: f64, offset: f64) -> Stratum {
         Stratum::wrap(ident, CarrierKind::Plane, Carrier::Plane { n: [nx, ny, nz], offset })
+    }
+
+    pub fn cylinder_rim(ident: StratumIdentity, c: [f64; 3], u: [f64; 3], r: f64) -> Stratum {
+        Stratum::wrap(ident, CarrierKind::CylinderRim, Carrier::CylinderRim { c, u, r })
     }
 
     pub fn sphere(ident: StratumIdentity, cx: f64, cy: f64, cz: f64, r: f64) -> Stratum {
@@ -213,11 +354,7 @@ impl Stratum {
         sin_a: f64,
         cos_a: f64,
     ) -> Stratum {
-        Stratum::wrap(
-            ident,
-            CarrierKind::Cone,
-            Carrier::Cone { a: [ax, ay, az], u: [ux, uy, uz], sin_a, cos_a },
-        )
+        Stratum::wrap(ident, CarrierKind::Cone, Carrier::Cone { a: [ax, ay, az], u: [ux, uy, uz], sin_a, cos_a })
     }
 
     pub fn twisted_side(ident: StratumIdentity, prm: TwistedSideParams) -> Stratum {
@@ -237,6 +374,9 @@ impl Stratum {
             sign: ident.sign,
             kind,
             carrier,
+            compound: None,
+            field: None,
+            domain: None,
         }
     }
 
@@ -248,6 +388,9 @@ impl Stratum {
     /// per-stratum smoothCrit (iii-b) cert can then split iff `κ·cell_size > θ`,
     /// replacing the O(k²) sampled normal cone with one closed-form comparison.
     pub fn curvature_bound(&self, pts: &[f64; 27], cell_size: f64) -> Option<f64> {
+        if self.compound.is_some() || self.field.is_some() {
+            return None;
+        }
         match self.carrier {
             Carrier::Plane { .. } => Some(0.0),
             Carrier::Sphere { r, .. } => Some(1.0 / r.abs().max(1e-12)),
@@ -257,7 +400,7 @@ impl Stratum {
             // sampled ∇f cone here. Sphere (exact 1/R, ~4× fewer cells) and cone
             // (neutral) keep the analytic path. Revisit if a net-positive cylinder
             // formulation is found.
-            Carrier::Cylinder { .. } => None,
+            Carrier::Cylinder { .. } | Carrier::CylinderRim { .. } => None,
             // Cone: circumferential normal curvature is cos(α)/ρ (meridian = 0), so
             // κ_max = cos(α)/ρ_min over the cell. ρ_min(box) ≥ (min ρ over probes) −
             // ½·√3·cell_size (the box can reach ½·diagonal closer to the axis than any
@@ -286,6 +429,9 @@ impl Stratum {
     /// Signed distance to the carrier, sign-adjusted (negative on the final
     /// solid's inside of this patch).
     pub fn f(&self, px: f64, py: f64, pz: f64) -> f64 {
+        if self.compound.is_some() || self.field.is_some() {
+            return self.raw_field(px, py, pz).normalized_equation().map_or(f64::NAN, |v| v.value);
+        }
         let s = self.sign;
         match self.carrier {
             Carrier::Plane { n, offset } => s * (n[0] * px + n[1] * py + n[2] * pz + offset),
@@ -293,6 +439,10 @@ impl Stratum {
             Carrier::Cylinder { a, u, r } => {
                 let (rx, ry, rz, _t) = cyl_radial(a, u, px, py, pz);
                 s * (hypot3(rx, ry, rz) - r)
+            }
+            Carrier::CylinderRim { c, u, r } => {
+                let (rx, ry, rz, t) = cyl_radial(c, u, px, py, pz);
+                s * (hypot3(rx, ry, rz) - r).hypot(t)
             }
             Carrier::Cone { a, u, sin_a, cos_a } => {
                 let (_rx, _ry, _rz, t, rho) = cone_decompose(a, u, px, py, pz);
@@ -322,6 +472,35 @@ impl Stratum {
     /// Closest point on the carrier surface (sign-independent geometric
     /// projection). Port of `SfccStratum.project`.
     pub fn project(&self, px: f64, py: f64, pz: f64) -> [f64; 3] {
+        if self.compound.is_some() || self.field.is_some() {
+            let mut p = [px, py, pz];
+            for _ in 0..32 {
+                let FieldSample { value: f, gradient: g } = self.raw_field(p[0], p[1], p[2]);
+                let gg = g.iter().map(|v| v * v).sum::<f64>();
+                if f.abs() < 1e-10 {
+                    return p;
+                }
+                if !f.is_finite() || gg < 1e-24 {
+                    break;
+                }
+                let mut step = 1.;
+                let mut accepted = false;
+                for _ in 0..12 {
+                    let q = std::array::from_fn(|k| p[k] - step * f * g[k] / gg);
+                    let fq = self.raw_field(q[0], q[1], q[2]).value;
+                    if fq.abs() < f.abs() {
+                        p = q;
+                        accepted = true;
+                        break;
+                    }
+                    step *= 0.5;
+                }
+                if !accepted {
+                    break;
+                }
+            }
+            return [f64::NAN; 3];
+        }
         match self.carrier {
             Carrier::Plane { n, offset } => {
                 let d = n[0] * px + n[1] * py + n[2] * pz + offset;
@@ -348,6 +527,14 @@ impl Stratum {
                 } else {
                     [a[0] + t * u[0] + r, a[1] + t * u[1], a[2] + t * u[2]]
                 }
+            }
+            Carrier::CylinderRim { c, u, r } => {
+                let (rx, ry, rz, _) = cyl_radial(c, u, px, py, pz);
+                let len = hypot3(rx, ry, rz);
+                if len < 1e-30 {
+                    return [f64::NAN; 3];
+                }
+                [c[0] + r * rx / len, c[1] + r * ry / len, c[2] + r * rz / len]
             }
             Carrier::Cone { a, u, sin_a, cos_a } => {
                 let (rx, ry, rz, t, rho) = cone_decompose(a, u, px, py, pz);
@@ -377,6 +564,9 @@ impl Stratum {
 
     /// Exact unit outward normal of the final solid on this patch.
     pub fn normal(&self, px: f64, py: f64, pz: f64) -> [f64; 3] {
+        if self.compound.is_some() || self.field.is_some() {
+            return self.raw_field(px, py, pz).normalized_equation().map_or([f64::NAN; 3], |v| v.gradient);
+        }
         let s = self.sign;
         match self.carrier {
             Carrier::Plane { n, .. } => [s * n[0], s * n[1], s * n[2]],
@@ -406,6 +596,16 @@ impl Stratum {
                     let cl = hypot3(cxv, cyv, czv);
                     [s * cxv / cl, s * cyv / cl, s * czv / cl]
                 }
+            }
+            Carrier::CylinderRim { c, u, r } => {
+                let (rx, ry, rz, t) = cyl_radial(c, u, px, py, pz);
+                let rho = hypot3(rx, ry, rz);
+                let d = (rho - r).hypot(t);
+                if rho < 1e-30 || d < 1e-30 {
+                    return [s, 0., 0.];
+                }
+                let radial = (rho - r) / rho;
+                [s * (radial * rx + t * u[0]) / d, s * (radial * ry + t * u[1]) / d, s * (radial * rz + t * u[2]) / d]
             }
             Carrier::Cone { a, u, sin_a, cos_a } => {
                 let (rx, ry, rz, t, rho) = cone_decompose(a, u, px, py, pz);
@@ -505,6 +705,74 @@ mod tests {
 
     fn ident() -> StratumIdentity {
         StratumIdentity { id: 0, owner_node_id: -1, leaf_index: 0, local_index: 0, sign: 1.0 }
+    }
+
+    #[test]
+    fn ruled_chamfer_retains_raw_derivative_under_transform_and_nesting() {
+        let mut sim = Similarity::identity();
+        sim.s = 2.5;
+        sim.r = [0., -1., 0., 1., 0., 0., 0., 0., 1.];
+        sim.t = [4., -3., 2.];
+        let ruled = Stratum::twisted_side(
+            StratumIdentity { sign: -1., ..ident() },
+            TwistedSideParams {
+                sim,
+                pos_x: 0.,
+                pos_y: 0.,
+                pos_z: 0.,
+                h: 2.,
+                twist_rad: 1.2,
+                v0x: 1.,
+                v0z: 0.,
+                nx2: 1.,
+                nz2: 0.,
+            },
+        );
+        let plane = Stratum::plane(ident(), 0., 0., 1., -2.);
+        let c = Stratum::combination(ident(), &ruled, &plane, -0.7);
+        let nested = Stratum::combination(ident(), &c, &ruled, -0.3);
+        for local in [[1.4, 0.3, 0.7], [1.4, -3., 0.7], [1.4, 3., 0.7]] {
+            let p = sim.apply_point(local[0], local[1], local[2]);
+            let angle = 1.2 * ((local[1] + 2.) / 4.).clamp(0., 1.);
+            let raw = -2.5 * (angle.cos() * local[0] + angle.sin() * local[2] - 1.);
+            assert!((ruled.raw_field(p[0], p[1], p[2]).value - raw).abs() < 1e-12);
+            let expected = (((raw + plane.f(p[0], p[1], p[2])) / 2f64.sqrt() - 0.7) + raw) / 2f64.sqrt() - 0.3;
+            assert!((nested.raw_field(p[0], p[1], p[2]).value - expected).abs() < 1e-12);
+            for st in [&ruled, &nested] {
+                let actual = st.raw_field(p[0], p[1], p[2]);
+                for k in 0..3 {
+                    let (mut a, mut b) = (p, p);
+                    a[k] -= 1e-5;
+                    b[k] += 1e-5;
+                    let numerical =
+                        (st.raw_field(b[0], b[1], b[2]).value - st.raw_field(a[0], a[1], a[2]).value) / 2e-5;
+                    assert!((actual.gradient[k] - numerical).abs() < 1e-8);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn curved_chamfer_carrier_has_analytic_normal_and_projection() {
+        let a = Stratum::cylinder(ident(), 0., 0., 0., 0., 1., 0., 8.);
+        let b = Stratum::cylinder(ident(), 0., 0., 0., 0., 0., 1., 6.5);
+        let c = Stratum::combination(ident(), &a, &b, -1.5 * std::f64::consts::FRAC_1_SQRT_2);
+        assert!(c.f(0., 8., 8.).abs() < 1e-12);
+        let n = c.normal(0., 8., 8.);
+        assert!(n[0].abs() < 1e-12);
+        assert!((n[1] - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-12);
+        assert!((n[2] - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-12);
+        let p = c.project(0., 8.2, 8.2);
+        assert!((p[1] - 8.).abs() < 1e-9 && (p[2] - 8.).abs() < 1e-9);
+        assert!(c.planar_coefficients().is_none());
+        // Nested combinations must retain the raw field gradient magnitude.
+        let d = Stratum::combination(ident(), &c, &b, -1.5 * std::f64::consts::FRAC_1_SQRT_2);
+        let q = d.project(2., 8., 8.);
+        let f = ((a.f(q[0], q[1], q[2]) + b.f(q[0], q[1], q[2]) - 1.5) * std::f64::consts::FRAC_1_SQRT_2
+            + b.f(q[0], q[1], q[2])
+            - 1.5)
+            * std::f64::consts::FRAC_1_SQRT_2;
+        assert!(f.abs() < 1e-9, "raw nested chamfer residual {f}");
     }
 
     #[test]

@@ -13,8 +13,8 @@
 //! feature-hugging debris drop, and the forced-split re-refinement of failed +
 //! (round-0) fallback cells.
 
-use crate::math::grid::{cell_aabb, cell_size_at_level, make_lattice, stride_at_level, SfccLattice};
 use crate::math::grid::point_to_world;
+use crate::math::grid::{make_lattice, stride_at_level, SfccLattice};
 use crate::sdf::CsgNode;
 use crate::sfcc::cell_mesh::{
     mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult,
@@ -328,9 +328,14 @@ pub(crate) fn drop_debris_components(
     let mut members: HashMap<usize, std::collections::HashSet<usize>> = HashMap::new();
     for &v in tris {
         let root = find(&mut parent, v);
-        let b = bounds
-            .entry(root)
-            .or_insert([f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY]);
+        let b = bounds.entry(root).or_insert([
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ]);
         members.entry(root).or_default().insert(v);
         let x = points.x(v);
         let y = points.y(v);
@@ -386,7 +391,8 @@ pub(crate) fn drop_debris_components(
         // Distinct provenance ids can collapse to only three physical positions:
         // such a double-sided triangle is combinatorially closed but encloses no
         // solid. This exact-coordinate diagnostic does not weld any mesh vertices.
-        let distinct_positions: std::collections::HashSet<_> = members[&root].iter()
+        let distinct_positions: std::collections::HashSet<_> = members[&root]
+            .iter()
             .map(|&id| (points.x(id).to_bits(), points.y(id).to_bits(), points.z(id).to_bits()))
             .collect();
         if distinct_positions.len() >= 4 && check_manifold(&component_triangles[&root], true).ok {
@@ -537,36 +543,12 @@ impl<'a> PipelineContext<'a> {
     ) -> CellDecision {
         let lat = &self.lat;
         let features = &self.features;
-        let cls =
-            classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
+        let cls = classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
         if cls.split {
-            let mut feature_corner = cls.corner;
-            if cell.level >= self.max_depth && cls.corner < 0 {
-                // Multi-curve cell that can never split apart: claim a nearby corner
-                // if one exists (curves CONVERGE at corners).
-                let claim = cell_aabb(lat, cell.level, cell.ix, cell.iy, cell.iz);
-                let cell_size = cell_size_at_level(lat, cell.level);
-                let reach = cell_size * 1.25;
-                let mut best_corner: i64 = -1;
-                let mut best_d = f64::INFINITY;
-                let qmin = [claim[0] - reach, claim[1] - reach, claim[2] - reach];
-                let qmax = [claim[3] + reach, claim[4] + reach, claim[5] + reach];
-                for corner_id in features.index.corners_in_box(qmin, qmax) {
-                    let c = &features.corners[corner_id];
-                    let dx = (claim[0] - c.x).max(0.0).max(c.x - claim[3]);
-                    let dy = (claim[1] - c.y).max(0.0).max(c.y - claim[4]);
-                    let dz = (claim[2] - c.z).max(0.0).max(c.z - claim[5]);
-                    let d = (dx * dx + dy * dy + dz * dz).sqrt();
-                    if d < best_d {
-                        best_d = d;
-                        best_corner = corner_id as i64;
-                    }
-                }
-                if best_corner >= 0 && best_d <= reach {
-                    feature_corner = best_corner;
-                }
-            }
-            return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
+            // Only a cell containing the corner may fan from it. Claiming a
+            // nearby external corner at the depth ceiling creates overlapping
+            // fans and four-way edges when neighboring cells make the same claim.
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         if forced_split(forced, cell, lat, self.total_size) {
             // Forced split discards the cell (tags unused below max_depth; a
@@ -725,13 +707,8 @@ pub(crate) fn build_pipeline_context<'a>(
     let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
     let jy = (3.0f64.sqrt() - 1.0) * 0.25 * step;
     let jz = (5.0f64.sqrt() - 2.0) * 0.25 * step;
-    let lat: SfccLattice = make_lattice(
-        tuning.depth_max,
-        cube.min_x - pad - jx,
-        cube.min_y - pad - jy,
-        cube.min_z - pad - jz,
-        total_size,
-    );
+    let lat: SfccLattice =
+        make_lattice(tuning.depth_max, cube.min_x - pad - jx, cube.min_y - pad - jy, cube.min_z - pad - jz, total_size);
 
     let scene_diag = hypot3(cube.size, cube.size, cube.size);
     let sfcc_tuning = SfccTuning {
@@ -755,7 +732,7 @@ pub(crate) fn build_pipeline_context<'a>(
         max_trace_steps: tuning.max_trace_steps,
     };
     let tol = resolve_tolerances(&sfcc_tuning, scene_diag);
-    let (features, _diag) = compile_feature_set(tree, &tol);
+    let (features, _) = compile_feature_set(tree, &tol);
 
     let grad_bound = tree.grad_bound();
     let has_blend = tree.has_blend();
@@ -917,8 +894,7 @@ pub fn run_sfcc_pipeline_separate_partitioned_morton(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy =
-        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
+    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -986,7 +962,9 @@ fn mesh_groups_separate(
         }
         for rec in fr.faces.iter().flat_map(|m| m.values()) {
             for (i, seg) in rec.segments.iter().enumerate() {
-                let uses = face_uses.entry((rec.axis, rec.key, rec.len, local_to_global[seg.a], local_to_global[seg.b])).or_default();
+                let uses = face_uses
+                    .entry((rec.axis, rec.key, rec.len, local_to_global[seg.a], local_to_global[seg.b]))
+                    .or_default();
                 uses.0 += rec.consumed_fwd[i];
                 uses.1 += rec.consumed_rev[i];
             }
@@ -1005,7 +983,11 @@ fn mesh_groups_separate(
         feature_cell_fallbacks += cm.feature_cell_fallbacks;
     }
 
-    let faces = face_uses.keys().map(|&(axis, key, len, _, _)| (axis, key, len)).collect::<std::collections::HashSet<_>>().len();
+    let faces = face_uses
+        .keys()
+        .map(|&(axis, key, len, _, _)| (axis, key, len))
+        .collect::<std::collections::HashSet<_>>()
+        .len();
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
     MergedSeparate {
         faces,
@@ -1097,10 +1079,7 @@ pub fn morton_partition_indices(oct: &SfccOctree, k: usize) -> Vec<Vec<usize>> {
 /// `SfccCell` is `Copy` and tiny, so this is a cheap gather; the caller borrows these
 /// as `&[&[SfccCell]]` for the shared- or separate-table meshers.
 fn gather_morton_groups(oct: &SfccOctree, k: usize) -> Vec<Vec<SfccCell>> {
-    partition_morton(oct, k)
-        .into_iter()
-        .map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect())
-        .collect()
+    partition_morton(oct, k).into_iter().map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect()).collect()
 }
 
 /// Accumulate `now() - *last` into `bucket` and advance `*last` to `now()`, but only
@@ -1191,10 +1170,9 @@ fn run_sfcc_pipeline_impl(
         // never drift between serial and partitioned exports. Pure read over the
         // immutable feature set + the pre-populated sample cache, so the octree
         // driver runs it over the round's frontier with a deterministic collect.
-        let decide_cb =
-            |cell: &SfccCell, sampler: &crate::sfcc::octree::SampleView<'_>| {
-                ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot)
-            };
+        let decide_cb = |cell: &SfccCell, sampler: &crate::sfcc::octree::SampleView<'_>| {
+            ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot)
+        };
         emit(1, "Building octree");
         oct = match now {
             // Profiled: time each round's decide vs apply, then fold the split in.
@@ -1242,7 +1220,8 @@ fn run_sfcc_pipeline_impl(
                 // ONE face map + point table. Byte-identical to the serial path.
                 let groups = partition_contiguous(oct.leaves.len(), *n);
                 face_result = contour_faces_partitioned(&oct, tree, &mut points, &fc_opts, &groups);
-                cell_result = mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
+                cell_result =
+                    mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
             }
             MeshStrategy::Separate(n) => {
                 // #3 slice 3: mesh each contiguous group into its OWN separate face map
@@ -1376,12 +1355,14 @@ fn run_sfcc_pipeline_impl(
         re_refine_rounds,
     };
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.feature_trace = features.trace_diagnostics;
     validation.face_segments = if !cell_result.failed_cells.is_empty() {
         AuditStatus::NotChecked
     } else {
         AuditStatus::from_passed(face_audit_failures == 0 && face_result.boundary_violations == 0)
     };
-    validation.unresolved_cells = oct.degenerate_cells + cell_result.failed_cells.iter().filter(|c| !c.degenerate).count();
+    validation.unresolved_cells =
+        oct.degenerate_cells + cell_result.failed_cells.iter().filter(|c| !c.degenerate).count();
     validation.feature_fallback_cells = cell_result.feature_cell_fallbacks;
     validation.numerical = validation::numerical_failures();
     validation.check_vertices(tree, &verts, tuning.surface_tol_mm);

@@ -263,10 +263,9 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
         return hit.clone();
     }
 
-    let edge_len = ((b_world[0] - a_world[0]).powi(2)
-        + (b_world[1] - a_world[1]).powi(2)
-        + (b_world[2] - a_world[2]).powi(2))
-    .sqrt();
+    let edge_len =
+        ((b_world[0] - a_world[0]).powi(2) + (b_world[1] - a_world[1]).powi(2) + (b_world[2] - a_world[2]).powi(2))
+            .sqrt();
     let inflate = edge_len * 2.0;
     let mut out: Vec<RecoveredCrossing> = Vec::new();
     let qmin = [
@@ -479,10 +478,9 @@ fn stratum_tag_for<T: SdfQuery + ?Sized>(
     if let Some(&hit) = cache.get(&id) {
         return hit;
     }
-    let edge_len = ((b_world[0] - a_world[0]).powi(2)
-        + (b_world[1] - a_world[1]).powi(2)
-        + (b_world[2] - a_world[2]).powi(2))
-    .sqrt();
+    let edge_len =
+        ((b_world[0] - a_world[0]).powi(2) + (b_world[1] - a_world[1]).powi(2) + (b_world[2] - a_world[2]).powi(2))
+            .sqrt();
     let inflate = edge_len * 2.0;
     let qmin = [
         a_world[0].min(b_world[0]) - inflate,
@@ -638,7 +636,17 @@ fn contour_face(
                 let wb = point_to_world(lat, p1[0], p1[1], p1[2]);
                 let id = points.get_or_create(sub_key, || {
                     canonical_edge_root(
-                        q, wa[0], wa[1], wa[2], wb[0], wb[1], wb[2], f0, f1, opts.root_tol, &mut scratch,
+                        q,
+                        wa[0],
+                        wa[1],
+                        wa[2],
+                        wb[0],
+                        wb[1],
+                        wb[2],
+                        f0,
+                        f1,
+                        opts.root_tol,
+                        &mut scratch,
                     );
                     scratch
                 });
@@ -743,8 +751,8 @@ fn contour_face(
                 }
                 let pkey = format!("F{}:{}:{}:{:.12}", axis, key, curve_id, cr.t);
                 let (crx, cry, crz) = (cr.x, cr.y, cr.z);
-                let sa = features.strata[curve.adjacent_strata[0]];
-                let sb = features.strata[curve.adjacent_strata[1]];
+                let sa = &features.strata[curve.adjacent_strata[0]];
+                let sb = &features.strata[curve.adjacent_strata[1]];
                 let pid = points.get_or_create_str(&pkey, || {
                     let na = sa.normal(crx, cry, crz);
                     let nb = sb.normal(crx, cry, crz);
@@ -986,11 +994,7 @@ fn point_segment_dist(points: &PointTable, px: f64, py: f64, pz: f64, a: usize, 
     let dy = points.y(b) - ay;
     let dz = points.z(b) - az;
     let len2 = dx * dx + dy * dy + dz * dz;
-    let t = if len2 > 0.0 {
-        (((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / len2).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
+    let t = if len2 > 0.0 { (((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / len2).clamp(0.0, 1.0) } else { 0.0 };
     ((px - (ax + t * dx)).powi(2) + (py - (ay + t * dy)).powi(2) + (pz - (az + t * dz)).powi(2)).sqrt()
 }
 
@@ -1035,11 +1039,16 @@ fn split_midpoint<T: SdfQuery + ?Sized>(
     .sqrt();
     let mut q = [mx, my, mz];
     for _ in 0..16 {
-        let fv = tree.f(q);
-        if !fv.is_finite() || fv.abs() <= root_tol { break; }
-        let (_, grad) = tree.grad(q);
+        let sample = tree.field_sample(q);
+        let fv = sample.value;
+        if !fv.is_finite() || fv.abs() <= root_tol {
+            break;
+        }
+        let grad = sample.gradient;
         let g2 = grad.iter().map(|v| v * v).sum::<f64>();
-        if !g2.is_finite() || g2 < 1e-20 { break; }
+        if !g2.is_finite() || g2 < 1e-20 {
+            break;
+        }
         let mut alpha = fv / g2;
         let mut accepted = None;
         for _ in 0..8 {
@@ -1052,11 +1061,17 @@ fn split_midpoint<T: SdfQuery + ?Sized>(
             }
             alpha *= 0.5;
         }
-        match accepted { Some(next) => q = next, None => break }
+        match accepted {
+            Some(next) => q = next,
+            None => break,
+        }
     }
     let drift = ((q[0] - mx).powi(2) + (q[1] - my).powi(2) + (q[2] - mz).powi(2)).sqrt();
-    if !q.iter().all(|v| v.is_finite()) || drift > seg_len + root_tol * 8.0
-        || !tree.f(q).is_finite() || tree.f(q).abs() > root_tol * 8.0 {
+    if !q.iter().all(|v| v.is_finite())
+        || drift > seg_len + root_tol * 8.0
+        || !tree.f(q).is_finite()
+        || tree.f(q).abs() > root_tol * 8.0
+    {
         crate::sfcc::validation::face_projection_failed();
         q = [mx, my, mz]; // partial mesh only; validation reports the failed recovery
     }
@@ -1121,9 +1136,7 @@ pub fn contour_subset_separate(
     // Each separate partial owns its caches: `stratum_tags` is keyed by point id,
     // which is table-local, so it cannot be shared across partials. Pure memoization
     // (values are geometry-derived), so per-partial caches only forgo reuse.
-    let mut caches = opts
-        .features
-        .map(|_| FeatureCaches { recovered: HashMap::new(), stratum_tags: HashMap::new() });
+    let mut caches = opts.features.map(|_| FeatureCaches { recovered: HashMap::new(), stratum_tags: HashMap::new() });
 
     // 1. The group's own faces (skips faces internal toward a finer region).
     let (mut multi_run_faces, mut boundary_violations, key_collisions) =
@@ -1219,22 +1232,10 @@ pub(crate) fn contour_faces_for(
 
     // Shared sub-edge recovery + stratum-tag caches for the WHOLE pass (shared
     // across groups — pure memoization, so sharing only saves recomputation).
-    let mut caches = opts
-        .features
-        .map(|_| FeatureCaches { recovered: HashMap::new(), stratum_tags: HashMap::new() });
+    let mut caches = opts.features.map(|_| FeatureCaches { recovered: HashMap::new(), stratum_tags: HashMap::new() });
 
     for &group in groups {
-        let (mr, bv, kc) = contour_into(
-            oct,
-            tree,
-            grad_bound,
-            prune,
-            points,
-            opts,
-            group,
-            &mut faces,
-            caches.as_mut(),
-        );
+        let (mr, bv, kc) = contour_into(oct, tree, grad_bound, prune, points, opts, group, &mut faces, caches.as_mut());
         multi_run_faces += mr;
         boundary_violations += bv;
         key_collisions += kc;
@@ -1429,16 +1430,16 @@ fn repair_face_duplicates(
 mod projection_tests {
     use super::*;
     use crate::sdf::{leaf_at, Shape};
-    use crate::sfcc::validation::{NumericalGuard, numerical_failures};
+    use crate::sfcc::validation::{numerical_failures, NumericalGuard};
     #[test]
     fn midpoint_projection_respects_displacement_budget() {
         let _scope = NumericalGuard::new();
-        let tree = leaf_at(Shape::Sphere { r: 1. },[0.;3]);
+        let tree = leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
         let mut p = PointTable::new();
-        let a = p.add(-0.01,0.,0.,-1.,0.,0.);
-        let b = p.add(0.01,0.,0.,1.,0.,0.);
-        let mid = split_midpoint(&tree,&mut p,a,b,1e-9,"singular-midpoint");
+        let a = p.add(-0.01, 0., 0., -1., 0., 0.);
+        let b = p.add(0.01, 0., 0., 1., 0., 0.);
+        let mid = split_midpoint(&tree, &mut p, a, b, 1e-9, "singular-midpoint");
         assert_eq!(numerical_failures().face_projection, 1);
-        assert_eq!(tree.f([p.x(mid),p.y(mid),p.z(mid)]), -1.);
+        assert_eq!(tree.f([p.x(mid), p.y(mid), p.z(mid)]), -1.);
     }
 }

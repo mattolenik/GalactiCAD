@@ -48,9 +48,9 @@ use crate::sfcc::pipeline::{
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::sliver_flip::flip_sliver_triangles;
+use crate::sfcc::validation::{self, AuditStatus, NumericalFailures, NumericalGuard, SfccValidation};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::sfcc::validation::{self, AuditStatus, NumericalFailures, NumericalGuard, SfccValidation};
 
 // ---------------------------------------------------------------------------
 // Little-endian primitive readers/writers (no serde; dep-free default build).
@@ -104,7 +104,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-const LEAVES_MAGIC: u32 = 0x5346_4C45; // "SFLE"
+const LEAVES_MAGIC: u32 = 0x5346_4C32; // "SFL2": feature graph fingerprint
 const PARTIAL_MAGIC: u32 = 0x5346_5032; // "SFP2": f64 payloads + audits + protected edges
 
 // ---------------------------------------------------------------------------
@@ -157,10 +157,11 @@ fn get_leaf(r: &mut Reader, lat: &SfccLattice) -> SfccCell {
 
 /// Serialize a tagged leaf set + its lattice to a compact byte buffer. The output
 /// of [`prepare`] and the worker-facing payload. Layout:
-///   magic u32 | lattice | leaf_count u64 | leaf*leaf_count
-pub fn encode_tagged_leaves(lat: &SfccLattice, leaves: &[SfccCell]) -> Vec<u8> {
+///   magic u32 | feature fingerprint u64 | lattice | leaf_count u64 | leaf*leaf_count
+pub fn encode_tagged_leaves(lat: &SfccLattice, leaves: &[SfccCell], fingerprint: u64) -> Vec<u8> {
     let mut out = Vec::with_capacity(16 + 36 + leaves.len() * 44);
     put_u32(&mut out, LEAVES_MAGIC);
+    put_u64(&mut out, fingerprint);
     put_lattice(&mut out, lat);
     put_u64(&mut out, leaves.len() as u64);
     for c in leaves {
@@ -174,6 +175,7 @@ pub fn decode_tagged_leaves(buf: &[u8]) -> (SfccLattice, Vec<SfccCell>) {
     let mut r = Reader::new(buf);
     let magic = r.u32();
     assert_eq!(magic, LEAVES_MAGIC, "worker: bad tagged-leaves buffer magic");
+    let _fingerprint = r.u64();
     let lat = get_lattice(&mut r);
     let n = r.u64() as usize;
     let mut leaves = Vec::with_capacity(n);
@@ -181,6 +183,12 @@ pub fn decode_tagged_leaves(buf: &[u8]) -> (SfccLattice, Vec<SfccCell>) {
         leaves.push(get_leaf(&mut r, &lat));
     }
     (lat, leaves)
+}
+
+fn verify_feature_fingerprint(buf: &[u8], features: &SfccFeatureSet) {
+    let mut r = Reader::new(buf);
+    assert_eq!(r.u32(), LEAVES_MAGIC, "worker: incompatible tagged-leaves version");
+    assert_eq!(r.u64(), features.fingerprint(), "worker: feature graph differs from prepared cell references");
 }
 
 /// Phase 1 (the serial ~60%): compile the feature set + build the tagged octree
@@ -195,7 +203,7 @@ pub fn decode_tagged_leaves(buf: &[u8]) -> (SfccLattice, Vec<SfccCell>) {
 pub fn prepare(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> Vec<u8> {
     let ctx = build_pipeline_context(tree, cube, tuning);
     let oct = ctx.build_tagged_octree(tuning);
-    encode_tagged_leaves(&oct.lat, &oct.leaves)
+    encode_tagged_leaves(&oct.lat, &oct.leaves, ctx.features.fingerprint())
 }
 
 /// Slice 5b stage B gate / reference: drive the RESUMABLE per-round octree build to
@@ -210,7 +218,7 @@ pub fn prepare(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) ->
 pub fn build_octree_resumable_inprocess(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> Vec<u8> {
     let ctx = build_pipeline_context(tree, cube, tuning);
     let oct = ctx.build_tagged_octree_resumable(tuning);
-    encode_tagged_leaves(&oct.lat, &oct.leaves)
+    encode_tagged_leaves(&oct.lat, &oct.leaves, ctx.features.fingerprint())
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +279,7 @@ pub fn decide_partition_bytes(
     end: usize,
 ) -> Vec<u8> {
     let ctx = build_pipeline_context(tree, cube, tuning);
+    verify_feature_fingerprint(frontier_bytes, &ctx.features);
     let (_lat, frontier) = decode_tagged_leaves(frontier_bytes);
     let decisions = ctx.decide_partition(&frontier, start, end);
     encode_decisions(&decisions)
@@ -343,7 +352,12 @@ fn get_key(r: &mut Reader) -> PointKey {
 
 /// Serialize a worker partial: the point table (positions+normals+keys), the local
 /// tri list, and the meshing counters.
-fn encode_partial(pt: &PointTable, tris: &[usize], counters: &PartialCounters, faces: &[HashMap<i64, crate::sfcc::face_contour::FaceRecord>; 3]) -> Vec<u8> {
+fn encode_partial(
+    pt: &PointTable,
+    tris: &[usize],
+    counters: &PartialCounters,
+    faces: &[HashMap<i64, crate::sfcc::face_contour::FaceRecord>; 3],
+) -> Vec<u8> {
     let n = pt.count();
     let mut out = Vec::with_capacity(16 + n * (64 + 9) + tris.len() * 4 + 64);
     put_u32(&mut out, PARTIAL_MAGIC);
@@ -369,7 +383,10 @@ fn encode_partial(pt: &PointTable, tris: &[usize], counters: &PartialCounters, f
     let mut protected: Vec<_> = pt.protected_edges().collect();
     protected.sort_unstable();
     put_u64(&mut out, protected.len() as u64);
-    for (a, b) in protected { put_u64(&mut out, a as u64); put_u64(&mut out, b as u64); }
+    for (a, b) in protected {
+        put_u64(&mut out, a as u64);
+        put_u64(&mut out, b as u64);
+    }
     let mut records: Vec<_> = faces.iter().flat_map(|m| m.values()).collect();
     records.sort_by_key(|r| (r.axis, r.key, r.len));
     put_u64(&mut out, records.iter().map(|r| r.segments.len() as u64).sum());
@@ -429,10 +446,16 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     let n_protected = r.u64();
     let protected = (0..n_protected).map(|_| (r.u64() as usize, r.u64() as usize)).collect();
     let n_uses = r.u64();
-    let face_uses = (0..n_uses).map(|_| (r.u64(), r.i64(), r.i64(), r.u64() as usize, r.u64() as usize, r.u64(), r.u64())).collect();
+    let face_uses = (0..n_uses)
+        .map(|_| (r.u64(), r.i64(), r.i64(), r.u64() as usize, r.u64() as usize, r.u64(), r.u64()))
+        .collect();
     let counters = PartialCounters {
         degenerate_cells: r.u64(),
-        numerical: NumericalFailures { curve_projection: r.u64() as usize, face_projection: r.u64() as usize, chord_budget: r.u64() as usize },
+        numerical: NumericalFailures {
+            curve_projection: r.u64() as usize,
+            face_projection: r.u64() as usize,
+            chord_budget: r.u64() as usize,
+        },
         failed_cells: r.u64(),
         multi_loop_cells: r.u64(),
         edge_cells: r.u64(),
@@ -485,6 +508,7 @@ pub fn mesh_partition(
     // so curve/corner/strata ids line up with the tags baked into the leaves.
     let ctx = build_pipeline_context(tree, cube, tuning);
     let features = &ctx.features;
+    verify_feature_fingerprint(leaves_bytes, features);
     let (lat, leaves) = decode_tagged_leaves(leaves_bytes);
 
     // Reconstruct a usable octree from the tagged leaves (cheap — re-derives the
@@ -556,17 +580,30 @@ pub fn merge(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning, part
     // Use the proven serial recovery coordinator until distributed re-refinement
     // carries cell markers between rounds. A round-0 partial is never substituted
     // for the serial driver's repaired result.
-    if result.failed_cells > 0 || result.feature_cell_fallbacks > 0
-        || result.validation.numerical.total() > 0 || result.face_audit_failures > 0 {
+    if result.failed_cells > 0
+        || result.feature_cell_fallbacks > 0
+        || result.validation.numerical.total() > 0
+        || result.face_audit_failures > 0
+    {
         let r = crate::sfcc::pipeline::run_sfcc_pipeline(tree, cube, tuning);
         return MergedMesh {
-            verts: r.verts, tris: r.tris, manifold: r.manifold, ok: r.ok, validation: r.validation,
-            degenerate_cells: r.stats.degenerate_cells, face_audit_failures: r.stats.face_audit_failures,
-            re_refine_rounds: r.stats.re_refine_rounds, serial_recovery: true,
-            failed_cells: r.stats.failed_cells, boundary_violations: r.stats.boundary_violations,
-            multi_run_faces: r.stats.multi_run_faces, multi_loop_cells: r.stats.multi_loop_cells,
-            edge_cells: r.stats.edge_cells, corner_cells: r.stats.corner_cells,
-            feature_cell_fallbacks: r.stats.feature_cell_fallbacks, cross_points: r.stats.cross_points,
+            verts: r.verts,
+            tris: r.tris,
+            manifold: r.manifold,
+            ok: r.ok,
+            validation: r.validation,
+            degenerate_cells: r.stats.degenerate_cells,
+            face_audit_failures: r.stats.face_audit_failures,
+            re_refine_rounds: r.stats.re_refine_rounds,
+            serial_recovery: true,
+            failed_cells: r.stats.failed_cells,
+            boundary_violations: r.stats.boundary_violations,
+            multi_run_faces: r.stats.multi_run_faces,
+            multi_loop_cells: r.stats.multi_loop_cells,
+            edge_cells: r.stats.edge_cells,
+            corner_cells: r.stats.corner_cells,
+            feature_cell_fallbacks: r.stats.feature_cell_fallbacks,
+            cross_points: r.stats.cross_points,
             feature_curves: r.stats.feature_curves,
         };
     }
@@ -660,8 +697,12 @@ pub fn merge_partials(
 
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
-    validation.face_segments = if failed_cells > 0 { AuditStatus::NotChecked }
-        else { AuditStatus::from_passed(face_audit_failures == 0 && boundary_violations == 0) };
+    validation.feature_trace = features.trace_diagnostics;
+    validation.face_segments = if failed_cells > 0 {
+        AuditStatus::NotChecked
+    } else {
+        AuditStatus::from_passed(face_audit_failures == 0 && boundary_violations == 0)
+    };
     validation.unresolved_cells = degenerate_cells + failed_cells;
     validation.feature_fallback_cells = feature_cell_fallbacks;
     validation.numerical = numerical;
@@ -705,6 +746,7 @@ pub fn merge_partials(
 // overwrites any prior slot, so a panicked/abandoned session can't poison the next.
 
 struct OctreeSession {
+    fingerprint: u64,
     tree: CsgNode,
     lat: SfccLattice,
     build: ResumableOctreeBuild,
@@ -723,11 +765,11 @@ pub fn octree_session_begin(tree: CsgNode, cube: &SfccWorldCube, tuning: &Pipeli
     // Build the context transiently (borrows `&tree`) to derive the lattice + opts and
     // begin the borrow-free build; both outputs are owned/Copy, so the `&tree` borrow
     // is released before `tree` is moved into the session.
-    let (lat, build) = {
+    let (lat, build, fingerprint) = {
         let ctx = build_pipeline_context(&tree, cube, tuning);
-        (ctx.lat, ctx.begin_resumable_octree(tuning))
+        (ctx.lat, ctx.begin_resumable_octree(tuning), ctx.features.fingerprint())
     };
-    OCTREE_SESSION.with(|s| *s.borrow_mut() = Some(OctreeSession { tree, lat, build }));
+    OCTREE_SESSION.with(|s| *s.borrow_mut() = Some(OctreeSession { tree, lat, build, fingerprint }));
 }
 
 /// The current round's frontier — the cells to DECIDE — in the [`encode_tagged_leaves`]
@@ -737,7 +779,7 @@ pub fn octree_session_current_frontier() -> Vec<u8> {
     OCTREE_SESSION.with(|s| {
         let g = s.borrow();
         let session = g.as_ref().expect("octree session: current_frontier with no active session");
-        encode_tagged_leaves(&session.lat, session.build.current_frontier())
+        encode_tagged_leaves(&session.lat, session.build.current_frontier(), session.fingerprint)
     })
 }
 
@@ -762,11 +804,11 @@ pub fn octree_session_apply_decisions(decisions_bytes: &[u8]) -> bool {
 pub fn octree_session_finish() -> Vec<u8> {
     OCTREE_SESSION.with(|s| {
         let session = s.borrow_mut().take().expect("octree session: finish with no active session");
-        let OctreeSession { tree, lat, build } = session;
+        let OctreeSession { tree, lat, build, fingerprint } = session;
         // `tree`/`lat` are locals here; the borrowed `SfccOctree` is consumed by the
         // encode before they drop at end of scope.
         let oct = build.finish(&tree, &lat);
-        encode_tagged_leaves(&oct.lat, &oct.leaves)
+        encode_tagged_leaves(&oct.lat, &oct.leaves, fingerprint)
     })
 }
 
@@ -777,16 +819,19 @@ mod reliability_tests {
     fn partial_roundtrip_retains_f64_and_crease_locks() {
         let mut p = PointTable::new();
         let x = 1.0 + f64::EPSILON * 7.0;
-        let a = p.add(x,0.,0.,0.,1.,0.);
-        let b = p.add(2.,0.,0.,0.,1.,0.);
-        p.protect_edge(a,b);
-        let counters = PartialCounters { degenerate_cells: 3,
-            numerical: NumericalFailures { chord_budget: 2, ..Default::default() }, ..Default::default() };
+        let a = p.add(x, 0., 0., 0., 1., 0.);
+        let b = p.add(2., 0., 0., 0., 1., 0.);
+        p.protect_edge(a, b);
+        let counters = PartialCounters {
+            degenerate_cells: 3,
+            numerical: NumericalFailures { chord_budget: 2, ..Default::default() },
+            ..Default::default()
+        };
         let faces = std::array::from_fn(|_| HashMap::new());
-        let decoded = decode_partial(&encode_partial(&p, &[a,b,a], &counters, &faces));
+        let decoded = decode_partial(&encode_partial(&p, &[a, b, a], &counters, &faces));
         assert_eq!(decoded.verts[0].to_bits(), x.to_bits());
         assert_ne!(decoded.verts[0], (x as f32) as f64);
-        assert_eq!(decoded.protected, vec![(a,b)]);
+        assert_eq!(decoded.protected, vec![(a, b)]);
         assert_eq!(decoded.counters.degenerate_cells, 3);
         assert_eq!(decoded.counters.numerical.chord_budget, 2);
     }

@@ -692,7 +692,9 @@ pub fn merge_partials(
     let deduped2 = drop_coincident_triangle_pairs(&filtered);
     let (flipped, _flips) = flip_sliver_triangles(&merged, &deduped2, 4);
 
-    let (verts, out_tris) = merged.build_mesh(&flipped);
+    let (refined, unresolved_triangles) =
+        super::surface_refine::refine_surface(tree, features, &mut merged, &flipped, tuning.curve_chord_tol_mm);
+    let (verts, out_tris) = merged.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
@@ -706,6 +708,7 @@ pub fn merge_partials(
     validation.unresolved_cells = degenerate_cells + failed_cells;
     validation.feature_fallback_cells = feature_cell_fallbacks;
     validation.numerical = numerical;
+    validation.numerical.chord_budget += unresolved_triangles;
     validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
     let ok = validation.ok();
 

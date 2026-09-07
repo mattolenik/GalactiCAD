@@ -25,6 +25,7 @@ export class WelcomeScreen extends HTMLElement {
     #shadow: ShadowRoot
     /** Stops sample thumbnail fetches when the welcome overlay is removed (avoids racing the live preview). */
     #thumbAbort = new AbortController()
+    #thumbnailTasks = new Set<Promise<void>>()
 
     constructor(callbacks: WelcomeScreenCallbacks) {
         super()
@@ -35,22 +36,38 @@ export class WelcomeScreen extends HTMLElement {
         this.#samplesBrowser = this.#shadow.querySelector(".samples-browser")!
         this.#renderMainPanel()
         this.#renderSamplesGrid()
-        void this.#loadThumbnails()
-        void this.#initRecentDocuments()
+        void this.#trackThumbnails(this.#loadThumbnails())
+        void this.#trackThumbnails(this.#initRecentDocuments())
     }
 
     disconnectedCallback(): void {
         this.#thumbAbort.abort()
     }
 
+    /** Agent captures must not share the scene worker with thumbnail builds. */
+    async stopThumbnails(): Promise<void> {
+        this.#thumbAbort.abort()
+        await Promise.allSettled([...this.#thumbnailTasks])
+    }
+
+    async #trackThumbnails(task: Promise<void>): Promise<void> {
+        this.#thumbnailTasks.add(task)
+        try {
+            await task
+        } finally {
+            this.#thumbnailTasks.delete(task)
+        }
+    }
+
     async #initRecentDocuments(): Promise<void> {
+        if (this.#thumbAbort.signal.aborted) return
         await this.#renderRecentDocuments()
         await this.#loadRecentThumbnails()
     }
 
     /** Refresh recent documents list (e.g. after clearing history). */
     async refreshRecentDocuments(): Promise<void> {
-        await this.#initRecentDocuments()
+        await this.#trackThumbnails(this.#initRecentDocuments())
     }
 
     #getStyles(): string {
@@ -702,7 +719,9 @@ export class WelcomeScreen extends HTMLElement {
                 const res = await fetch(`/assets/samples/${name}`, { signal })
                 if (!res.ok) continue
                 const content = await res.text()
+                if (signal.aborted) return
                 const imageData = await getThumbnail(content)
+                if (signal.aborted) return
                 const canvas = document.createElement("canvas")
                 canvas.width = imageData.width
                 canvas.height = imageData.height
@@ -723,13 +742,16 @@ export class WelcomeScreen extends HTMLElement {
 
         const items = this.#samplesBrowser.querySelectorAll(".recent-item")
         for (const item of items) {
+            if (this.#thumbAbort.signal.aborted) return
             const name = item.getAttribute("data-doc-name")
             if (!name) continue
             const thumbDiv = item.querySelector(".recent-thumb")!
             try {
                 const content = await getContent(name)
+                if (this.#thumbAbort.signal.aborted) return
                 if (!content) continue
                 const imageData = await getThumbnail(content)
+                if (this.#thumbAbort.signal.aborted) return
                 const canvas = document.createElement("canvas")
                 canvas.width = imageData.width
                 canvas.height = imageData.height

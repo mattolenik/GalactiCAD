@@ -1735,6 +1735,29 @@ pub fn compile_feature_set(
             id
         },
     ));
+    let branch_pairs = super::branch_surfaces::append_branch_pairs(&mut tree, tol.curve_eps * 8.);
+    for (a, b, bounds) in branch_pairs {
+        diagnostics.pairs_considered += 1;
+        for (samples, closed) in
+            super::seam_trace::trace_carrier_pair(&tree.strata[a], &tree.strata[b], &bounds, tol, &mut diagnostics)
+        {
+            seam_curves.push(make_traced_curve(
+                next_id,
+                [a, b],
+                samples,
+                closed,
+                tree.strata[a].clone(),
+                tree.strata[b].clone(),
+                TracedRefine {
+                    curve_eps: tol.curve_eps,
+                    min_cross: tol.min_tangency_sin,
+                    max_displacement: tol.max_chord_error * 4.,
+                },
+                -1,
+            ));
+            next_id += 1;
+        }
+    }
     let mut raw = native_curves;
     raw.extend(seam_curves);
     let trimmed = trim_and_wire(&tree, &raw, &native.corners, tol);

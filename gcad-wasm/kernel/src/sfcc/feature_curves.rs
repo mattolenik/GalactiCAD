@@ -240,7 +240,8 @@ impl FeatureCurve {
                     let dy = by - ay;
                     let dz = bz - az;
                     let l2 = dx * dx + dy * dy + dz * dz;
-                    let mut u = if l2 > 0.0 { ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / l2 } else { 0.0 };
+                    let mut u =
+                        if l2 > 0.0 { ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / l2 } else { 0.0 };
                     u = u.clamp(0.0, 1.0);
                     let qx = ax + dx * u;
                     let qy = ay + dy * u;
@@ -257,7 +258,7 @@ impl FeatureCurve {
                 // Chord projection gives an initial parameter, not necessarily
                 // the nearest point on the reprojected curved locus. Correct its
                 // tangential error while remaining on this traced parameter range.
-                for _ in 0..6 {
+                for _ in 0..24 {
                     if best < td.refine.curve_eps * td.refine.curve_eps {
                         break;
                     }
@@ -265,19 +266,30 @@ impl FeatureCurve {
                     let a = traced_sample(samples, i);
                     let b = traced_sample(samples, i + 1);
                     let tangent = self.tangent_at(best_t);
-                    let speed = (b.0 - a.0) * tangent[0] + (b.1 - a.1) * tangent[1] + (b.2 - a.2) * tangent[2];
+                    let speed =
+                        (b.0 - a.0) * tangent[0] + (b.1 - a.1) * tangent[1] + (b.2 - a.2) * tangent[2];
                     if !speed.is_finite() || speed.abs() < 1e-12 {
                         break;
                     }
-                    let step = ((px - q[0]) * tangent[0] + (py - q[1]) * tangent[1] + (pz - q[2]) * tangent[2]) / speed;
-                    let next = (best_t + step.clamp(-0.5, 0.5)).clamp(0., (*n - 1) as f64);
-                    let Some(candidate) = self.point_at_checked(next) else {
+                    let step =
+                        ((px - q[0]) * tangent[0] + (py - q[1]) * tangent[1] + (pz - q[2]) * tangent[2])
+                            / speed;
+                    let mut accepted = None;
+                    let mut alpha = 1.;
+                    for _ in 0..8 {
+                        let next = (best_t + alpha * step.clamp(-0.5, 0.5)).clamp(0., (*n - 1) as f64);
+                        if let Some(candidate) = self.point_at_checked(next) {
+                            let d = distance2(candidate);
+                            if d < best {
+                                accepted = Some((next, candidate, d));
+                                break;
+                            }
+                        }
+                        alpha *= 0.5;
+                    }
+                    let Some((next, candidate, d)) = accepted else {
                         break;
                     };
-                    let d = distance2(candidate);
-                    if d >= best {
-                        break;
-                    }
                     best = d;
                     best_t = next;
                     q = candidate;
@@ -435,7 +447,13 @@ impl FeatureCurve {
                     let p = self.point_at(t);
                     let mut tg = [0.0; 3];
                     carrier_pair_tangent(sa, sb, p[0], p[1], p[2], &mut tg);
-                    out.push(CurveFaceCrossing { t, x: p[0], y: p[1], z: p[2], tangential_dot: tg[axis].abs() });
+                    out.push(CurveFaceCrossing {
+                        t,
+                        x: p[0],
+                        y: p[1],
+                        z: p[2],
+                        tangential_dot: tg[axis].abs(),
+                    });
                 }
                 out
             }

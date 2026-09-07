@@ -12,7 +12,9 @@
 //! candidates. Candidates merge by distance, curves split at on-curve corners,
 //! and corner records are wired with incident curve ends.
 
-use crate::sfcc::feature_curves::{make_circle_curve, make_segment_curve, make_traced_curve, CurveKind, FeatureCurve};
+use crate::sfcc::feature_curves::{
+    make_circle_curve, make_segment_curve, make_traced_curve, CurveKind, FeatureCurve,
+};
 use crate::sfcc::feature_set::SfccCorner;
 use crate::sfcc::newton::project_to_triple;
 use crate::sfcc::tree::SfccTree;
@@ -52,10 +54,15 @@ fn flank_survives(
             if !proj.iter().all(|v| v.is_finite()) || tree.f(proj[0], proj[1], proj[2]).abs() > delta * 0.2 {
                 continue;
             }
-            let flank_grad = tree.grad(proj[0], proj[1], proj[2]);
+            let Some(sample) = super::field_branches::sample_tree(tree.root, proj).normalized_equation()
+            else {
+                continue;
+            };
+            let flank_grad = sample.gradient;
             let flank_normal = stratum.normal(proj[0], proj[1], proj[2]);
-            let dot =
-                flank_grad[0] * flank_normal[0] + flank_grad[1] * flank_normal[1] + flank_grad[2] * flank_normal[2];
+            let dot = flank_grad[0] * flank_normal[0]
+                + flank_grad[1] * flank_normal[1]
+                + flank_grad[2] * flank_normal[2];
             if dot >= 0.9 {
                 return true;
             }
@@ -65,7 +72,12 @@ fn flank_survives(
 }
 
 /// Aliveness of a single on-curve point. Port of `curvePointAlive`.
-pub fn curve_point_alive(tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64, tol: &ResolvedTolerances) -> bool {
+pub fn curve_point_alive(
+    tree: &SfccTree<'_>,
+    curve: &FeatureCurve,
+    t: f64,
+    tol: &ResolvedTolerances,
+) -> bool {
     let p = curve.point_at(t);
     let (x, y, z) = (p[0], p[1], p[2]);
     if tree.f(x, y, z).abs() > tol.surface_tol {
@@ -217,12 +229,17 @@ struct Candidate {
     z: f64,
 }
 
-fn nearest_candidate(candidates: &[Candidate], p: [f64; 3], tol: f64) -> i64 {
+fn nearest_candidate(
+    candidates: &[Candidate],
+    p: [f64; 3],
+    tol: f64,
+    accept: impl Fn(&Candidate) -> bool,
+) -> i64 {
     let mut best = -1i64;
     let mut best_d = tol;
     for (i, c) in candidates.iter().enumerate() {
         let d = ((c.x - p[0]).powi(2) + (c.y - p[1]).powi(2) + (c.z - p[2]).powi(2)).sqrt();
-        if d < best_d {
+        if d < best_d && accept(c) {
             best_d = d;
             best = i as i64;
         }
@@ -237,7 +254,14 @@ fn near_alive_surface(tree: &SfccTree<'_>, c: &SfccCorner, tol: &ResolvedToleran
 
 /// Re-emit a parameter sub-range of a curve as a standalone curve. Port of
 /// `remakeCurve`.
-fn remake_curve(src: &FeatureCurve, id: usize, t0: f64, t1: f64, full_closed: bool) -> FeatureCurve {
+fn remake_curve(
+    src: &FeatureCurve,
+    id: usize,
+    t0: f64,
+    t1: f64,
+    full_closed: bool,
+    endpoints: [Option<[f64; 3]>; 2],
+) -> FeatureCurve {
     if full_closed {
         let mut c = src.clone();
         c.id = id;
@@ -253,15 +277,28 @@ fn remake_curve(src: &FeatureCurve, id: usize, t0: f64, t1: f64, full_closed: bo
         }
         CurveKind::Circle => circle_from_source(src, id, t0, t1),
         CurveKind::Traced => {
-            // Re-sample the sub-range from the source polyline density.
-            let span = t1 - t0;
-            let n = (2usize).max(span.abs().ceil() as usize + 1);
-            let mut samples = vec![0.0f64; n * 3];
-            for i in 0..n {
-                let p = src.point_at(t0 + (span * i as f64) / (n - 1) as f64);
-                samples[i * 3] = p[0];
-                samples[i * 3 + 1] = p[1];
-                samples[i * 3 + 2] = p[2];
+            // Preserve the source's adaptive knots, including branch junctions.
+            // Uniform resampling can erase a tiny step at a sharp transition.
+            let mut params = vec![t0];
+            let mut t = t0.floor() + 1.;
+            while t < t1 {
+                params.push(t);
+                t += 1.;
+            }
+            params.push(t1);
+            let mut samples = Vec::with_capacity(params.len() * 3);
+            for t in params {
+                samples.extend_from_slice(&src.point_at(t));
+            }
+            // The graph and curve geometry must share the refined endpoint.
+            // Projection onto a finite source polyline clamps its parameter and
+            // cannot extend a trace that stopped just short of the junction.
+            if let Some(p) = endpoints[0] {
+                samples[..3].copy_from_slice(&p);
+            }
+            if let Some(p) = endpoints[1] {
+                let n = samples.len();
+                samples[n - 3..].copy_from_slice(&p);
             }
             let (sa, sb, refine) = src.traced_carriers().expect("traced curve carries its carriers");
             make_traced_curve(id, src.adjacent_strata, samples, false, sa, sb, refine, src.owner_node_id)
@@ -297,8 +334,19 @@ fn circle_from_source(src: &FeatureCurve, id: usize, t0: f64, t1: f64) -> Featur
     let cz = a[2] + (t1z + t2z) / (2.0 * n2);
     let r = ((a[0] - cx).powi(2) + (a[1] - cy).powi(2) + (a[2] - cz).powi(2)).sqrt();
     let nl = n2.sqrt();
-    let arc_curve =
-        make_circle_curve(id, src.owner_node_id, src.adjacent_strata, cx, cy, cz, nx / nl, ny / nl, nz / nl, r, None);
+    let arc_curve = make_circle_curve(
+        id,
+        src.owner_node_id,
+        src.adjacent_strata,
+        cx,
+        cy,
+        cz,
+        nx / nl,
+        ny / nl,
+        nz / nl,
+        r,
+        None,
+    );
     let p0 = src.point_at(t0);
     let p1 = src.point_at(t1);
     let mut a0 = arc_curve.project(p0[0], p0[1], p0[2]).0;
@@ -349,37 +397,89 @@ pub fn trim_and_wire(
     };
 
     // Newton-refine an interior trim transition to the triple point.
-    let refine_transition = |tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64| -> [f64; 3] {
-        let seed = curve.point_at(t);
-        let sa = &tree.strata[curve.adjacent_strata[0]];
-        let sb = &tree.strata[curve.adjacent_strata[1]];
-        let mut best = None;
-        let mut best_distance = tol.probe_delta * 4.0;
-        // A cutter can keep the root residual at zero throughout a trim
-        // transition. Search all candidate third surfaces, including generated
-        // fields, and validate their ancestor domains instead of requiring an
-        // improvement in the root residual. Coincident/singular triples fail
-        // the solver and cannot hide a different, well-conditioned junction.
-        for sc in &tree.strata {
-            if sc.id == sa.id || sc.id == sb.id || sc.f(seed[0], seed[1], seed[2]).abs() > tol.probe_delta * 2.0 {
-                continue;
+    let refine_transition =
+        |tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64, max_distance: f64| -> [f64; 3] {
+            let seed = curve.point_at(t);
+            let sa = &tree.strata[curve.adjacent_strata[0]];
+            let sb = &tree.strata[curve.adjacent_strata[1]];
+            let mut best = None;
+            let mut best_distance = max_distance;
+            // A cutter can keep the root residual at zero throughout a trim
+            // transition. Search all candidate third surfaces, including generated
+            // fields, and validate their ancestor domains instead of requiring an
+            // improvement in the root residual. Coincident/singular triples fail
+            // the solver and cannot hide a different, well-conditioned junction.
+            for sc in &tree.strata {
+                if sc.id == sa.id
+                    || sc.id == sb.id
+                    || sc.f(seed[0], seed[1], seed[2]).abs() > tol.probe_delta * 2.0
+                {
+                    continue;
+                }
+                let Some(p) =
+                    project_to_triple(sa, sb, sc, seed[0], seed[1], seed[2], tol.curve_eps, max_distance)
+                else {
+                    continue;
+                };
+                if ![sa, sb, sc].iter().all(|s| s.domain_contains(p, tol.curve_eps * 8.0)) {
+                    continue;
+                }
+                let distance = (p[0] - seed[0]).hypot(p[1] - seed[1]).hypot(p[2] - seed[2]);
+                if distance < best_distance {
+                    best_distance = distance;
+                    best = Some(p);
+                }
             }
-            let Some(p) =
-                project_to_triple(sa, sb, sc, seed[0], seed[1], seed[2], tol.curve_eps, tol.probe_delta * 4.0)
-            else {
-                continue;
-            };
-            if ![sa, sb, sc].iter().all(|s| s.domain_contains(p, tol.curve_eps * 8.0)) {
-                continue;
+            if best.is_none() {
+                // At a branch junction the composite carrier may select the same
+                // one-sided derivative as the third patch, making that triple
+                // singular exactly at its solution. Use the explicit incident
+                // branches as an independent basis, then validate the original
+                // curve's equations too. Never accept a singular zero as a corner.
+                let nearby: Vec<_> = tree
+                    .strata
+                    .iter()
+                    .filter(|sc| {
+                        sc.id != sa.id
+                            && sc.id != sb.id
+                            && sc.f(seed[0], seed[1], seed[2]).abs() <= max_distance * 2.
+                            && sc.domain_contains(seed, max_distance * 2.)
+                    })
+                    .collect();
+                for anchor in [sa, sb] {
+                    for i in 0..nearby.len() {
+                        for j in i + 1..nearby.len() {
+                            let Some(p) = project_to_triple(
+                                anchor,
+                                nearby[i],
+                                nearby[j],
+                                seed[0],
+                                seed[1],
+                                seed[2],
+                                tol.curve_eps,
+                                max_distance,
+                            ) else {
+                                continue;
+                            };
+                            if ![sa, sb, nearby[i], nearby[j]].iter().all(|s| {
+                                s.raw_field(p[0], p[1], p[2])
+                                    .normalized_equation()
+                                    .is_some_and(|v| v.value.abs() <= tol.curve_eps * 8.)
+                                    && s.domain_contains(p, tol.curve_eps * 8.)
+                            }) {
+                                continue;
+                            }
+                            let distance = (p[0] - seed[0]).hypot(p[1] - seed[1]).hypot(p[2] - seed[2]);
+                            if distance < best_distance {
+                                best_distance = distance;
+                                best = Some(p);
+                            }
+                        }
+                    }
+                }
             }
-            let distance = (p[0] - seed[0]).hypot(p[1] - seed[1]).hypot(p[2] - seed[2]);
-            if distance < best_distance {
-                best_distance = distance;
-                best = Some(p);
-            }
-        }
-        best.unwrap_or(seed)
-    };
+            best.unwrap_or(seed)
+        };
 
     // 1. Trim every curve; collect run endpoints as corner candidates.
     let mut all_runs: Vec<TrimmedRun> = Vec::new();
@@ -391,8 +491,18 @@ pub fn trim_and_wire(
             all_runs.push(run);
             if !run.full_closed {
                 for t in [run.t0, run.t1] {
-                    let end_p =
-                        if is_curve_end(curve, t) { curve.point_at(t) } else { refine_transition(tree, curve, t) };
+                    // Numerical trace stops are not authoritative junctions.
+                    // Refine their small endpoint uncertainty too, so separate
+                    // incoming traces wire to the same analytical triple.
+                    let end_p = if is_curve_end(curve, t) {
+                        if curve.native {
+                            curve.point_at(t)
+                        } else {
+                            refine_transition(tree, curve, t, tol.max_chord_error * 0.1)
+                        }
+                    } else {
+                        refine_transition(tree, curve, t, tol.probe_delta * 4.)
+                    };
                     add_candidate(&mut candidates, end_p[0], end_p[1], end_p[2]);
                 }
             }
@@ -412,7 +522,32 @@ pub fn trim_and_wire(
         let mut cuts: Vec<f64> = Vec::new();
         for c in &candidates {
             let pr = curve.project(c.x, c.y, c.z);
-            if pr.1 > tol.corner_merge_tol * 2.0 {
+            let proximity = if curve.kind() == CurveKind::Traced {
+                tol.max_chord_error
+            } else {
+                tol.corner_merge_tol * 2.
+            };
+            if pr.1 > proximity {
+                continue;
+            }
+            // A traced parameterization can miss a sharp branch junction by
+            // its chord error even when the corner solves the exact carriers.
+            // Split at that junction and insert its exact position on remaking
+            // the arc; do not confuse parameterization error with a different
+            // feature component. Oppositely oriented nearby sheets stay apart.
+            let q = curve.point_at(pr.0);
+            let on_branch = curve.adjacent_strata.iter().all(|&id| {
+                let st = &tree.strata[id];
+                let a = st.normal(c.x, c.y, c.z);
+                let b = st.normal(q[0], q[1], q[2]);
+                (0..3).map(|k| a[k] * b[k]).sum::<f64>() > 0.
+                    && st
+                        .raw_field(c.x, c.y, c.z)
+                        .normalized_equation()
+                        .is_some_and(|v| v.value.abs() <= tol.curve_eps * 8.)
+                    && st.domain_contains([c.x, c.y, c.z], tol.curve_eps * 8.)
+            });
+            if !on_branch {
                 continue;
             }
             let mut t = pr.0;
@@ -445,7 +580,12 @@ pub fn trim_and_wire(
                 split_runs.push(TrimmedRun { curve_idx: run.curve_idx, t0: prev, t1: t, full_closed: false });
                 prev = t;
             }
-            split_runs.push(TrimmedRun { curve_idx: run.curve_idx, t0: prev, t1: run.t1, full_closed: false });
+            split_runs.push(TrimmedRun {
+                curve_idx: run.curve_idx,
+                t0: prev,
+                t1: run.t1,
+                full_closed: false,
+            });
         } else {
             split_runs.push(*run);
         }
@@ -455,7 +595,14 @@ pub fn trim_and_wire(
     let mut corners: Vec<SfccCorner> = candidates
         .iter()
         .enumerate()
-        .map(|(i, c)| SfccCorner { id: i, x: c.x, y: c.y, z: c.z, strata: Vec::new(), curve_ends: Vec::new() })
+        .map(|(i, c)| SfccCorner {
+            id: i,
+            x: c.x,
+            y: c.y,
+            z: c.z,
+            strata: Vec::new(),
+            curve_ends: Vec::new(),
+        })
         .collect();
     let mut out: Vec<FeatureCurve> = Vec::new();
     let snap_radius = (tol.corner_merge_tol * 2.0).max(tol.probe_delta * 2.5);
@@ -464,12 +611,20 @@ pub fn trim_and_wire(
         let id = out.len();
         let next: FeatureCurve;
         if run.full_closed {
-            next = remake_curve(src, id, run.t0, run.t1, true);
+            next = remake_curve(src, id, run.t0, run.t1, true, [None, None]);
         } else {
             let q0 = src.point_at(run.t0);
             let q1 = src.point_at(run.t1);
-            let c0 = nearest_candidate(&candidates, q0, snap_radius);
-            let c1 = nearest_candidate(&candidates, q1, snap_radius);
+            let on_carriers = |c: &Candidate| {
+                src.adjacent_strata.iter().all(|&id| {
+                    tree.strata[id]
+                        .raw_field(c.x, c.y, c.z)
+                        .normalized_equation()
+                        .is_some_and(|v| v.value.abs() <= tol.curve_eps * 8.)
+                })
+            };
+            let c0 = nearest_candidate(&candidates, q0, snap_radius, on_carriers);
+            let c1 = nearest_candidate(&candidates, q1, snap_radius, on_carriers);
             let mut t0 = run.t0;
             let mut t1 = run.t1;
             if c0 >= 0 {
@@ -510,7 +665,15 @@ pub fn trim_and_wire(
             if src.param_distance(t0, t1) < tol.corner_merge_tol {
                 continue;
             }
-            let mut nc = remake_curve(src, id, t0, t1, false);
+            let endpoints = [c0, c1].map(|id| {
+                if id >= 0 {
+                    let c = candidates[id as usize];
+                    Some([c.x, c.y, c.z])
+                } else {
+                    None
+                }
+            });
+            let mut nc = remake_curve(src, id, t0, t1, false, endpoints);
             if c0 >= 0 {
                 let c0u = c0 as usize;
                 nc.corner_start = c0;
@@ -536,9 +699,60 @@ pub fn trim_and_wire(
         out.push(next);
     }
 
+    // Independent seeds may recover overlapping portions of the same locus.
+    // Once all endpoints have split the runs, duplicate arcs have the same
+    // corner pair AND carrier pair. Compare their interiors as well: two sides
+    // of a loop can share both endpoints without being the same arc.
+    let mut unique: Vec<FeatureCurve> = Vec::new();
+    for mut curve in out {
+        let duplicate = unique.iter().any(|prev| {
+            if curve.adjacent_strata != prev.adjacent_strata || curve.closed != prev.closed {
+                return false;
+            }
+            let endpoints = (curve.corner_start, curve.corner_end);
+            if endpoints != (prev.corner_start, prev.corner_end)
+                && endpoints != (prev.corner_end, prev.corner_start)
+            {
+                return false;
+            }
+            let covered = |a: &FeatureCurve, b: &FeatureCurve| {
+                let n = ((a.t_max - a.t_min).ceil() as usize).clamp(16, 2048);
+                (0..=n).all(|i| {
+                    let p = a.point_at(a.t_min + (a.t_max - a.t_min) * i as f64 / n as f64);
+                    b.project(p[0], p[1], p[2]).1 <= tol.corner_merge_tol * 2.
+                })
+            };
+            covered(&curve, prev) && covered(prev, &curve)
+        });
+        if !duplicate {
+            curve.id = unique.len();
+            unique.push(curve);
+        }
+    }
+    let mut out = unique;
+    for corner in &mut corners {
+        corner.curve_ends.clear();
+        corner.strata.clear();
+    }
+    for curve in &out {
+        for (end, id) in [(0, curve.corner_start), (1, curve.corner_end)] {
+            if id >= 0 {
+                let corner = &mut corners[id as usize];
+                corner.curve_ends.push((curve.id, end));
+                for &sid in &curve.adjacent_strata {
+                    if !corner.strata.contains(&sid) {
+                        corner.strata.push(sid);
+                    }
+                }
+            }
+        }
+    }
+
     // Keep only wired corners (or valence-0 on-surface), compacting ids.
-    let keep: Vec<SfccCorner> =
-        corners.into_iter().filter(|c| !c.curve_ends.is_empty() || near_alive_surface(tree, c, tol)).collect();
+    let keep: Vec<SfccCorner> = corners
+        .into_iter()
+        .filter(|c| !c.curve_ends.is_empty() || near_alive_surface(tree, c, tol))
+        .collect();
     let mut remap: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     for (i, c) in keep.iter().enumerate() {
         remap.insert(c.id, i);
@@ -555,6 +769,7 @@ pub fn trim_and_wire(
             -1
         };
     }
-    let final_corners: Vec<SfccCorner> = keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
+    let final_corners: Vec<SfccCorner> =
+        keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
     TrimResult { curves: out, corners: final_corners }
 }

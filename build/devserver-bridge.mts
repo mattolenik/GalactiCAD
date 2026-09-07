@@ -106,7 +106,9 @@ export type DevServerFromBrowserMessage =
 
 const DEFAULT_TIMEOUT_MS = 5000
 const AGENT_TESTCASE_TIMEOUT_MS = 60_000
-const AGENT_RENDER_TIMEOUT_MS = 120_000
+// Detailed SFCC torture scenes can exceed two minutes. Stay below agentcli's
+// ten-minute HTTP deadline so the bridge can still return a structured error.
+const AGENT_RENDER_TIMEOUT_MS = 540_000
 const SCREENSHOT_TIMEOUT_MS = 30_000
 
 /** `ws` WebSocket.OPEN — ready to send. */

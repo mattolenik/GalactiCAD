@@ -35,9 +35,6 @@ pub fn project_to_carrier_pair(
         if !fa.is_finite() || !fb.is_finite() {
             return None;
         }
-        if fa.abs() <= eps && fb.abs() <= eps {
-            return Some([x, y, z]);
-        }
         let ga = a.gradient;
         let gb = b.gradient;
         // Scale each raw residual and Jacobian row by the same magnitude.
@@ -45,6 +42,9 @@ pub fn project_to_carrier_pair(
         let det = 1.0 - c * c; // = ‖∇A×∇B‖²
         if !det.is_finite() || det <= min_cross * min_cross {
             return None;
+        }
+        if fa.abs() <= eps && fb.abs() <= eps {
+            return Some([x, y, z]);
         }
         // Solve [[1, c], [c, 1]] [a, b]ᵀ = [fa, fb]ᵀ.
         let a = (fa - c * fb) / det;

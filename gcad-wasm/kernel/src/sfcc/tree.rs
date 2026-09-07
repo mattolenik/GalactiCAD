@@ -66,7 +66,7 @@ impl<'a> SfccTree<'a> {
 
 /// Local-box → world AABB by transforming the 8 corners. Port of
 /// `worldAabbOfLocalBox`.
-fn world_aabb_of_local_box(leaf: &Leaf, c: [f64; 3], h: [f64; 3]) -> [f64; 6] {
+pub(crate) fn world_aabb_of_local_box(leaf: &Leaf, c: [f64; 3], h: [f64; 3]) -> [f64; 6] {
     let mut out =
         [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
     for i in 0..8 {

@@ -103,15 +103,28 @@ fn trace_direction(
             let cx = x + dir * h * px;
             let cy = y + dir * h * py;
             let cz = z + dir * h * pz;
-            let q = match project_to_carrier_pair(sa, sb, cx, cy, cz, tol.curve_eps, tol.min_tangency_sin, h) {
+            let q = match project_to_carrier_pair(sa, sb, cx, cy, cz, tol.curve_eps, tol.min_tangency_sin, h)
+            {
                 Some(q) => q,
                 None => {
                     h = h_min.max(h / 2.0);
                     continue;
                 }
             };
+            // A corrector can return to the current point at a branch cusp.
+            // Require forward progress; otherwise tiny retries can bounce at
+            // the same junction until the trace budget is exhausted.
+            let advance = dir * ((q[0] - x) * px + (q[1] - y) * py + (q[2] - z) * pz);
+            if advance < h * 0.05 {
+                h = h_min.max(h / 2.0);
+                continue;
+            }
             let corr = ((q[0] - cx).powi(2) + (q[1] - cy).powi(2) + (q[2] - cz).powi(2)).sqrt();
-            if corr > h / 2.0 {
+            if corr > h / 2.0
+                && (h > tol.max_chord_error * 0.1
+                    || !sa.domain_contains(q, tol.curve_eps * 8.)
+                    || !sb.domain_contains(q, tol.curve_eps * 8.))
+            {
                 // Branch-jump guard.
                 h = h_min.max(h / 2.0);
                 continue;
@@ -126,8 +139,60 @@ fn trace_direction(
             }
             let cos_turn = dir * (t[0] * px + t[1] * py + t[2] * pz) * dir;
             if cos_turn < 0.35f64.cos() {
-                h = h_min.max(h / 2.0);
-                continue;
+                // A piecewise operand can have a finite tangent jump. First
+                // bound the entire crossing step, then locate the junction;
+                // shrinking forever cannot turn a corner into a smooth arc.
+                if cos_turn <= 0.
+                    || h > tol.max_chord_error * 0.1
+                    || !sa.domain_contains(q, tol.curve_eps * 8.)
+                    || !sb.domain_contains(q, tol.curve_eps * 8.)
+                {
+                    h = h_min.max(h / 2.0);
+                    continue;
+                }
+                let start = [x, y, z];
+                let mut lo = 0.;
+                let mut hi = 1.;
+                let mut junction = start;
+                let mut valid = true;
+                for _ in 0..24 {
+                    let u = (lo + hi) * 0.5;
+                    let seed: [f64; 3] = std::array::from_fn(|k| start[k] * (1. - u) + q[k] * u);
+                    let Some(p) = project_to_carrier_pair(
+                        sa,
+                        sb,
+                        seed[0],
+                        seed[1],
+                        seed[2],
+                        tol.curve_eps,
+                        tol.min_tangency_sin,
+                        h,
+                    ) else {
+                        valid = false;
+                        break;
+                    };
+                    // Do not use this route to jump to a distant component.
+                    if (p[0] - seed[0]).hypot(p[1] - seed[1]).hypot(p[2] - seed[2])
+                        > tol.max_chord_error * 0.1
+                    {
+                        valid = false;
+                        break;
+                    }
+                    let mut tangent = [0.; 3];
+                    carrier_pair_tangent(sa, sb, p[0], p[1], p[2], &mut tangent);
+                    if tangent[0] * px + tangent[1] * py + tangent[2] * pz >= 0.35f64.cos() {
+                        lo = u;
+                        junction = p;
+                    } else {
+                        hi = u;
+                    }
+                }
+                if !valid {
+                    h = h_min.max(h / 2.);
+                    continue;
+                }
+                samples.extend_from_slice(&junction);
+                samples.extend_from_slice(&junction); // explicit junction marker
             }
             // Chord-error step adaptation: err ≈ h·θ/8.
             let theta = cos_turn.clamp(-1.0, 1.0).acos();
@@ -155,7 +220,8 @@ fn trace_direction(
         samples.push(z);
 
         // Exit / closed-loop checks.
-        if x < bounds[0] || y < bounds[1] || z < bounds[2] || x > bounds[3] || y > bounds[4] || z > bounds[5] {
+        if x < bounds[0] || y < bounds[1] || z < bounds[2] || x > bounds[3] || y > bounds[4] || z > bounds[5]
+        {
             hit_cap = false;
             end = TraceEnd::Bounds;
             break;
@@ -221,7 +287,7 @@ pub fn trace_carrier_pair(
     let nx = (2usize).max((size_x / seed_cell).ceil() as usize);
     let ny = (2usize).max((size_y / seed_cell).ceil() as usize);
     let nz = (2usize).max((size_z / seed_cell).ceil() as usize);
-    let seed_dedup = seed_cell / 2.0;
+    let seed_dedup = tol.curve_eps * 8.0;
     for i in 0..=nx {
         for j in 0..=ny {
             for k in 0..=nz {
@@ -257,8 +323,10 @@ pub fn trace_carrier_pair(
                 let mut dup = false;
                 let mut s = 0;
                 while s < seeds.len() && !dup {
-                    if ((q[0] - seeds[s]).powi(2) + (q[1] - seeds[s + 1]).powi(2) + (q[2] - seeds[s + 2]).powi(2))
-                        .sqrt()
+                    if ((q[0] - seeds[s]).powi(2)
+                        + (q[1] - seeds[s + 1]).powi(2)
+                        + (q[2] - seeds[s + 2]).powi(2))
+                    .sqrt()
                         < seed_dedup
                     {
                         dup = true;
@@ -327,52 +395,114 @@ pub fn trace_carrier_pair(
             continue;
         }
         let samples = pts;
-        // Consume seeds near this curve.
-        let consume_radius = h_init * 4.0;
+        // Consume only seeds covered by actual segments. A scene-scale ball
+        // around a sample can erase a distinct nearby component or a continuation
+        // beyond an endpoint. The radius here is the tracing accuracy budget.
+        let consume_radius = tol.max_chord_error;
         for o in (s + 1)..n_seeds {
-            if consumed[o] {
-                continue;
-            }
-            let ox = seeds[o * 3];
-            let oy = seeds[o * 3 + 1];
-            let oz = seeds[o * 3 + 2];
-            let mut i = 0;
-            while i < samples.len() {
-                if ((ox - samples[i]).powi(2) + (oy - samples[i + 1]).powi(2) + (oz - samples[i + 2]).powi(2)).sqrt()
-                    < consume_radius
-                {
-                    consumed[o] = true;
-                    break;
-                }
-                i += 3;
+            if !consumed[o]
+                && polyline_covers(sa, sb, &samples, &seeds[o * 3..o * 3 + 3], consume_radius, tol.curve_eps)
+            {
+                consumed[o] = true;
             }
         }
-        // Duplicate guard: if this piece's midpoint lies on an already-traced
-        // piece of the same pair, it's the same locus re-traced — drop it.
-        let mi = 3 * (samples.len() / 6);
-        let mut dup = false;
-        'outer: for prev in &out {
-            let mut i = 0;
-            while i < prev.0.len() {
-                if ((samples[mi] - prev.0[i]).powi(2)
-                    + (samples[mi + 1] - prev.0[i + 1]).powi(2)
-                    + (samples[mi + 2] - prev.0[i + 2]).powi(2))
-                .sqrt()
-                    < consume_radius
-                {
-                    dup = true;
-                    break 'outer;
-                }
-                i += 3;
-            }
-        }
-        if dup {
+        // A midpoint overlap does not establish that the whole arc was traced.
+        // Keep any piece with an uncovered sample, especially either endpoint.
+        if samples.chunks_exact(3).all(|p| {
+            out.iter().any(|prev| polyline_covers(sa, sb, &prev.0, p, consume_radius, tol.curve_eps))
+        }) {
             continue;
         }
-        out.push((samples, closed));
-        diag.curves_traced += 1;
+        // Predictor-corrector junction markers split a nonsmooth carrier
+        // intersection into arcs sharing an explicit endpoint. No tangent
+        // inference from coarse polylines is needed downstream.
+        let mut pieces = Vec::new();
+        let mut start = 0;
+        for i in 1..samples.len() / 3 {
+            if samples[(i - 1) * 3..i * 3] == samples[i * 3..(i + 1) * 3] {
+                if i * 3 - start >= 6 {
+                    pieces.push(samples[start..i * 3].to_vec());
+                }
+                start = i * 3;
+            }
+        }
+        if start == 0 {
+            out.push((samples, closed));
+            diag.curves_traced += 1;
+        } else {
+            if samples.len() - start >= 6 {
+                pieces.push(samples[start..].to_vec());
+            }
+            if closed && pieces.len() > 1 {
+                let mut last = pieces.pop().unwrap();
+                last.extend_from_slice(&pieces.remove(0)[3..]);
+                pieces.insert(0, last);
+            }
+            diag.curves_traced += pieces.len();
+            out.extend(pieces.into_iter().map(|p| (p, false)));
+        }
     }
     out
+}
+
+/// Distance to finite segments, including endpoint bounds.
+fn polyline_covers(sa: &Stratum, sb: &Stratum, samples: &[f64], p: &[f64], radius: f64, eps: f64) -> bool {
+    samples.windows(6).step_by(3).any(|edge| {
+        let d: [f64; 3] = std::array::from_fn(|k| edge[k + 3] - edge[k]);
+        let l2 = d.iter().map(|v| v * v).sum::<f64>();
+        let t = if l2 > 0. {
+            ((0..3).map(|k| (p[k] - edge[k]) * d[k]).sum::<f64>() / l2).clamp(0., 1.)
+        } else {
+            0.
+        };
+        if (0..3).map(|k| (p[k] - edge[k] - t * d[k]).powi(2)).sum::<f64>() > radius * radius {
+            return false;
+        }
+        let distance = |q: &[f64]| (0..3).map(|k| (p[k] - q[k]).powi(2)).sum::<f64>().sqrt();
+        if distance(&edge[..3]) <= eps * 8. || distance(&edge[3..]) <= eps * 8. {
+            return true;
+        }
+        if t <= 0. || t >= 1. {
+            return false;
+        } // never consume beyond an endpoint
+          // Nearness is only a broad phase. Establish the same local carrier
+          // branch and intersect it with the normal plane through the seed.
+          // This distinguishes components even when separated by less than the
+          // chord budget (e.g. the two rims of a thin spherical shell).
+        for carrier in [sa, sb] {
+            let a = carrier.normal(edge[0], edge[1], edge[2]);
+            let b = carrier.normal(p[0], p[1], p[2]);
+            if (0..3).map(|k| a[k] * b[k]).sum::<f64>() < 0.35f64.cos() {
+                return false;
+            }
+        }
+        let mut tangent = [0.; 3];
+        carrier_pair_tangent(sa, sb, p[0], p[1], p[2], &mut tangent);
+        let plane = Stratum::plane(
+            crate::strata::StratumIdentity {
+                id: usize::MAX,
+                owner_node_id: -1,
+                leaf_index: usize::MAX,
+                local_index: 0,
+                sign: 1.,
+            },
+            tangent[0],
+            tangent[1],
+            tangent[2],
+            -(0..3).map(|k| tangent[k] * p[k]).sum::<f64>(),
+        );
+        let q = super::newton::project_to_triple(
+            sa,
+            sb,
+            &plane,
+            edge[0],
+            edge[1],
+            edge[2],
+            eps,
+            l2.sqrt() + radius,
+        );
+        q.is_some_and(|q| distance(&q) <= eps * 8.)
+    })
 }
 
 /// Enumerate AABB-overlapping leaf pairs and trace every stratum-carrier pair.

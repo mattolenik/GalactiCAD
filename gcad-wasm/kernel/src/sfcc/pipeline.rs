@@ -1334,7 +1334,9 @@ fn run_sfcc_pipeline_impl(
     let deduped2 = drop_coincident_triangle_pairs(&filtered);
     let (flipped, _flips) = flip_sliver_triangles(&points, &deduped2, 4);
 
-    let (verts, out_tris) = points.build_mesh(&flipped);
+    let (refined, unresolved_triangles) =
+        super::surface_refine::refine_surface(tree, features, &mut points, &flipped, tuning.curve_chord_tol_mm);
+    let (verts, out_tris) = points.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
     let stats = SfccStats {
@@ -1365,6 +1367,7 @@ fn run_sfcc_pipeline_impl(
         oct.degenerate_cells + cell_result.failed_cells.iter().filter(|c| !c.degenerate).count();
     validation.feature_fallback_cells = cell_result.feature_cell_fallbacks;
     validation.numerical = validation::numerical_failures();
+    validation.numerical.chord_budget += unresolved_triangles;
     validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
     let ok = validation.ok();
     phase_mark(now, &mut ph_last, &mut ph_assemble);

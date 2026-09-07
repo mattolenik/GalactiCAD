@@ -1605,7 +1605,7 @@ class App {
         }
 
         registerAgentTestcaseCapture(() => this.#captureAgentTestcase())
-        registerAgentRenderBridge(this.renderer)
+        registerAgentRenderBridge(this.renderer, () => this.#welcomeScreen?.stopThumbnails())
 
         // Literal-screenshot bridge: PNG of the on-screen viewable area (excludes the editor overlay),
         // captured from the live frame — distinct from the testcase render path which rebuilds the scene.

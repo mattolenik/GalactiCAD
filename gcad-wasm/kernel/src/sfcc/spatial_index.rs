@@ -68,7 +68,11 @@ impl SfccSpatialIndex {
                 out.extend(set.iter().copied());
             }
         }
-        out.into_iter().collect()
+        // Candidate order breaks ties in carrier recovery and face tagging.
+        // Never let the hash seed choose which coincident branch owns a point.
+        let mut ids: Vec<_> = out.into_iter().collect();
+        ids.sort_unstable();
+        ids
     }
 
     pub fn corners_in_box(&self, min: [f64; 3], max: [f64; 3]) -> Vec<usize> {
@@ -99,5 +103,17 @@ mod tests {
         // Corner query.
         assert_eq!(idx.corners_in_box([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]), vec![3]);
         assert!(idx.corners_in_box([10.0, 10.0, 10.0], [11.0, 11.0, 11.0]).is_empty());
+    }
+
+    #[test]
+    fn coincident_curve_candidates_have_stable_order() {
+        for reverse in [false, true] {
+            let mut idx = SfccSpatialIndex::new(1.0);
+            for i in 0..16 {
+                let id = if reverse { 15 - i } else { i };
+                idx.insert_curve_polyline(id, &[0., 0., 0., 5., 0., 0.]);
+            }
+            assert_eq!(idx.curves_in_box([0.; 3], [5., 0., 0.]), (0..16).collect::<Vec<_>>());
+        }
     }
 }

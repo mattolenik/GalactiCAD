@@ -335,6 +335,7 @@ pub fn mesh_cells_subset(
         };
 
         let mut meshed_loops: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut feature_graph_failed = false;
 
         // The depth ceiling can leave several modeled junctions in one cell.
         // Such a cell cannot be represented by a fan from whichever corner the
@@ -350,11 +351,25 @@ pub fn mesh_cells_subset(
                 })
                 .collect();
             let distinct_curves: std::collections::HashSet<_> = pins.iter().map(|p| p.curve_id).collect();
-            if corners.len() > 1 || (cell.degenerate && distinct_curves.len() > 1) {
+            // Straight native corner fans already preserve their exact edges.
+            // Curved incident arcs require explicit sampling even when there
+            // is only one corner; multiple junctions require the full graph.
+            let curved_corner = corners.iter().any(|&id| {
+                features.corners[id]
+                    .curve_ends
+                    .iter()
+                    .any(|&(curve, _)| features.curves[curve].kind() != CurveKind::Segment)
+            });
+            if corners.len() > 1 || (cell.degenerate && distinct_curves.len() > 1) || curved_corner {
                 if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris) {
-                    corner_cells += 1;
+                    if corners.is_empty() {
+                        edge_cells += 1;
+                    } else {
+                        corner_cells += 1;
+                    }
                     continue;
                 }
+                feature_graph_failed = true;
             }
         }
 
@@ -391,19 +406,23 @@ pub fn mesh_cells_subset(
             } else {
                 feature_cell_fallbacks += 1;
                 fallback_cells.push(*cell);
+                feature_graph_failed = false;
             }
         } else if let (true, Some(features)) = (cell.feature_curve >= 0, opts.features) {
             // Edge cells: split the loop containing the two pinned feature points
             // and mesh each stratum side against the sampled analytic curve.
             let mut my_pins: Vec<FacePin> = Vec::new();
             for p in &pins {
-                if p.curve_id == cell.feature_curve as usize && !my_pins.iter().any(|q| q.point_id == p.point_id) {
+                if p.curve_id == cell.feature_curve as usize
+                    && !my_pins.iter().any(|q| q.point_id == p.point_id)
+                {
                     my_pins.push(*p);
                 }
             }
             if my_pins.len() == 2 {
-                let idx =
-                    loops.iter().position(|l| l.contains(&my_pins[0].point_id) && l.contains(&my_pins[1].point_id));
+                let idx = loops
+                    .iter()
+                    .position(|l| l.contains(&my_pins[0].point_id) && l.contains(&my_pins[1].point_id));
                 if let Some(idx) = idx {
                     let did = mesh_edge_cell(
                         &loops[idx],
@@ -427,7 +446,15 @@ pub fn mesh_cells_subset(
             } else {
                 feature_cell_fallbacks += 1;
                 fallback_cells.push(*cell);
+                feature_graph_failed = false;
             }
+        }
+
+        // A successful single-corner fan is not a successful multi-curve graph.
+        // Retain the unresolved constraint report even when it yields a disk.
+        if feature_graph_failed {
+            feature_cell_fallbacks += 1;
+            fallback_cells.push(*cell);
         }
 
         for (li, loop_pts) in loops.iter().enumerate() {
@@ -470,9 +497,23 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
         let d02 = dist2(points, loop_pts[0], loop_pts[2]);
         let d13 = dist2(points, loop_pts[1], loop_pts[3]);
         if d02 <= d13 {
-            out_tris.extend_from_slice(&[loop_pts[0], loop_pts[1], loop_pts[2], loop_pts[0], loop_pts[2], loop_pts[3]]);
+            out_tris.extend_from_slice(&[
+                loop_pts[0],
+                loop_pts[1],
+                loop_pts[2],
+                loop_pts[0],
+                loop_pts[2],
+                loop_pts[3],
+            ]);
         } else {
-            out_tris.extend_from_slice(&[loop_pts[1], loop_pts[2], loop_pts[3], loop_pts[1], loop_pts[3], loop_pts[0]]);
+            out_tris.extend_from_slice(&[
+                loop_pts[1],
+                loop_pts[2],
+                loop_pts[3],
+                loop_pts[1],
+                loop_pts[3],
+                loop_pts[0],
+            ]);
         }
         return;
     }
@@ -542,7 +583,8 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
             let (_, g) = tree.grad([px, py, pz]);
             same_sheet = ax * g[0] + ay * g[1] + az * g[2] > 0.0;
         }
-        if tree.f([px, py, pz]).abs() > o.surface_tol || !in_box(cell_box, px, py, pz, margin) || !same_sheet {
+        if tree.f([px, py, pz]).abs() > o.surface_tol || !in_box(cell_box, px, py, pz, margin) || !same_sheet
+        {
             let k = best_fan_apex(points, loop_pts);
             for i in 1..m - 1 {
                 out_tris.extend_from_slice(&[loop_pts[k], loop_pts[(k + i) % m], loop_pts[(k + i + 1) % m]]);
@@ -656,7 +698,7 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
         nodes.sort_by(|a, b| a.0.total_cmp(&b.0));
         nodes.dedup_by(|a, b| a.1 == b.1);
         if nodes.len() < 2 {
-            continue;
+            return false; // an incident arc cannot silently disappear
         }
         if curve.closed {
             let (t, p) = nodes[0];
@@ -704,7 +746,11 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
         }
         n = n.map(|v| v / len);
         let axis = if n[0].abs() < 0.8 { [1., 0., 0.] } else { [0., 1., 0.] };
-        let u = [n[1] * axis[2] - n[2] * axis[1], n[2] * axis[0] - n[0] * axis[2], n[0] * axis[1] - n[1] * axis[0]];
+        let u = [
+            n[1] * axis[2] - n[2] * axis[1],
+            n[2] * axis[0] - n[0] * axis[2],
+            n[0] * axis[1] - n[1] * axis[0],
+        ];
         let v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
         let angle = |other: usize| {
             let d = [points.x(other) - p[0], points.y(other) - p[1], points.z(other) - p[2]];
@@ -738,7 +784,9 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
                     let ids: BTreeSet<_> = ids.into_iter().collect();
                     candidates = Some(match candidates {
                         None => ids,
-                        Some(old) => old.intersection(&ids).copied().collect(),
+                        // Lifted and native carriers can describe the same patch with
+                        // different ids. Select by geometric agreement below.
+                        Some(old) => old.union(&ids).copied().collect(),
                     });
                 }
                 let ns = &around[&edge.1];
@@ -767,7 +815,10 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
                 return false;
             }
             let score = |id: usize| {
-                polygon.iter().map(|&p| features.strata[id].f(points.x(p), points.y(p), points.z(p)).abs()).sum::<f64>()
+                polygon
+                    .iter()
+                    .map(|&p| features.strata[id].f(points.x(p), points.y(p), points.z(p)).abs())
+                    .sum::<f64>()
             };
             let stratum = *candidates.iter().min_by(|&&a, &&b| score(a).total_cmp(&score(b))).unwrap();
             for i in 0..polygon.len() {
@@ -958,8 +1009,9 @@ fn sample_in_cell_arc(
     features: &SfccFeatureSet,
     opts: &CellMeshOptions,
 ) -> Option<Vec<usize>> {
-    let live =
-        |p: [f64; 3]| curve.adjacent_strata.iter().all(|&id| features.strata[id].domain_contains(p, opts.surface_tol));
+    let live = |p: [f64; 3]| {
+        curve.adjacent_strata.iter().all(|&id| features.strata[id].domain_contains(p, opts.surface_tol))
+    };
     let margin = (cell_box[3] - cell_box[0]) * 0.25;
     let delta: f64;
     if let (true, Some(wrap)) = (curve.closed, curve.param_wrap) {
@@ -968,7 +1020,9 @@ fn sample_in_cell_arc(
         let mut chosen: Option<f64> = None;
         for d in candidates {
             let p = curve.point_at(t_a + d / 2.0);
-            if in_box(cell_box, p[0], p[1], p[2], margin) && (chosen.is_none() || d.abs() < chosen.unwrap().abs()) {
+            if in_box(cell_box, p[0], p[1], p[2], margin)
+                && (chosen.is_none() || d.abs() < chosen.unwrap().abs())
+            {
                 chosen = Some(d);
             }
         }
@@ -1010,9 +1064,25 @@ fn sample_in_cell_arc(
     // Traced curves have no analytic curvature bound. Subdivide until projected
     // midpoints meet the requested chord tolerance, or explicitly exhaust the cap.
     // This is a sampled check, not a bound on the continuous curve between samples.
-    let mut samples = Vec::with_capacity(n + 1);
-    for k in 0..=n {
-        let t = t_a + delta * k as f64 / n as f64;
+    let params: Vec<f64> = if curve.kind() == CurveKind::Traced {
+        // Integer parameters are the original adaptive trace knots. Uniform
+        // resampling can straddle and erase a localized turn or inflection.
+        let end = t_a + delta;
+        let mut params = vec![t_a];
+        params
+            .extend(((t_a.min(end).floor() as i64 + 1)..=(t_a.max(end).ceil() as i64 - 1)).map(|k| k as f64));
+        params.push(end);
+        params.sort_by(|a, b| if delta >= 0. { a.total_cmp(b) } else { b.total_cmp(a) });
+        params
+    } else {
+        (0..=n).map(|k| t_a + delta * k as f64 / n as f64).collect()
+    };
+    if params.len() - 1 > opts.max_polyline_points_per_cell {
+        crate::sfcc::validation::chord_budget_exhausted();
+        return None;
+    }
+    let mut samples = Vec::with_capacity(params.len());
+    for t in params {
         let p = match curve.point_at_checked(t) {
             Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) && live(p) => p,
             _ => {
@@ -1027,17 +1097,31 @@ fn sample_in_cell_arc(
         while i + 1 < samples.len() {
             let (ta, a) = samples[i];
             let (tb, b) = samples[i + 1];
-            let tm = (ta + tb) * 0.5;
-            let m = match curve.point_at_checked(tm) {
-                Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) && live(p) => p,
-                _ => {
-                    crate::sfcc::validation::curve_projection_failed();
-                    return None;
+            // A midpoint alone misses S-shaped spans. Check both quarters
+            // as well, inserting the worst offending sample before retrying.
+            let mut error = 0f64;
+            let mut tm = ta;
+            let mut m = a;
+            for u in [0.25, 0.5, 0.75] {
+                let t = ta + (tb - ta) * u;
+                let p = match curve.point_at_checked(t) {
+                    Some(p) if in_box(cell_box, p[0], p[1], p[2], margin) && live(p) => p,
+                    _ => {
+                        crate::sfcc::validation::curve_projection_failed();
+                        return None;
+                    }
+                };
+                let e = (0..3).map(|k| (p[k] - (a[k] * (1. - u) + b[k] * u)).powi(2)).sum::<f64>().sqrt();
+                if e > error {
+                    error = e;
+                    tm = t;
+                    m = p;
                 }
-            };
-            let error =
-                (m[0] - (a[0] + b[0]) * 0.5).hypot(m[1] - (a[1] + b[1]) * 0.5).hypot(m[2] - (a[2] + b[2]) * 0.5);
-            if error > opts.curve_chord_tol {
+            }
+            // Sampled errors are estimates, unlike the circle's exact sagitta.
+            // Reserve half the budget for extrema between these probes and
+            // the small endpoint adjustments made when wiring junctions.
+            if error > opts.curve_chord_tol * 0.5 {
                 if samples.len() - 1 >= opts.max_polyline_points_per_cell || tm == ta || tm == tb {
                     crate::sfcc::validation::chord_budget_exhausted();
                     return None;
@@ -1152,12 +1236,31 @@ mod reliability_tests {
             max_polyline_points_per_cell: 1,
             features: Some(&features),
         };
-        let circle =
-            make_circle_curve(0, -1, [0, 1], 0., 0., 0., 0., 0., 1., 1., Some((0., std::f64::consts::FRAC_PI_2)));
+        let circle = make_circle_curve(
+            0,
+            -1,
+            [0, 1],
+            0.,
+            0.,
+            0.,
+            0.,
+            0.,
+            1.,
+            1.,
+            Some((0., std::f64::consts::FRAC_PI_2)),
+        );
         let bounds = [-2., -2., -2., 2., 2., 2.];
         let mut points = PointTable::new();
-        assert!(sample_in_cell_arc(&circle, 0., std::f64::consts::FRAC_PI_2, &bounds, &mut points, &features, &opts)
-            .is_none());
+        assert!(sample_in_cell_arc(
+            &circle,
+            0.,
+            std::f64::consts::FRAC_PI_2,
+            &bounds,
+            &mut points,
+            &features,
+            &opts
+        )
+        .is_none());
         assert_eq!(numerical_failures().chord_budget, 1);
         let traced = make_traced_curve(
             0,

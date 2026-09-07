@@ -47,7 +47,12 @@ pngs:
 	trap 'rm -rf -- "$$stage"' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; \
 	mkdir "$$stage/raw" "$$stage/assets"; \
-	scripts/agentcli server refresh; \
+	ready=false; \
+	for attempt in {1..15}; do \
+		if scripts/agentcli server refresh; then ready=true; break; fi; \
+		sleep 2; \
+	done; \
+	[[ "$$ready" == true ]] || { echo "Agent browser bridge did not become ready" >&2; exit 1; }; \
 	count=0; \
 	for scene in docs/manim/scenes/*.yaml; do \
 		test -f "$$scene"; \

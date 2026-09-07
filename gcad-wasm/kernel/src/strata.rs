@@ -300,7 +300,7 @@ impl Stratum {
     /// to compose with another field, including ruled and nested blend fields.
     pub fn raw_field(&self, x: f64, y: f64, z: f64) -> FieldSample {
         if let Some(node) = &self.field {
-            let v = crate::sfcc::field_branches::sample_tree(node.node(), [x, y, z]);
+            let v = node.sample([x, y, z]);
             return FieldSample { value: self.sign * v.value, gradient: v.gradient.map(|g| self.sign * g) };
         }
         if self.compound.is_some() {

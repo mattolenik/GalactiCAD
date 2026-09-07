@@ -1409,7 +1409,9 @@ fn repair_face_duplicates(
     for k in dup_keys {
         let mut list = pair_owners.remove(&k).unwrap();
         // Split later occurrences first so stored indices stay valid per record.
-        list.sort_by_key(|x| std::cmp::Reverse(x.2));
+        // Equal segment indices on different faces must not inherit HashMap
+        // traversal order: allocated point ids feed the feature graph mesher.
+        list.sort_by_key(|&(axis, face, index)| (std::cmp::Reverse(index), axis, face));
         for (axis, fkey, idx) in list {
             let s = faces[axis].get(&fkey).unwrap().segments[idx];
             let ta = point_merge_token(points, s.a);

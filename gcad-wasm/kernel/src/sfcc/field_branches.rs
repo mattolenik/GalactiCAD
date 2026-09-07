@@ -10,10 +10,26 @@ use crate::sdf::{BlendKind, CsgNode, Leaf, Shape};
 pub struct FieldRef {
     root: std::sync::Arc<CsgNode>,
     path: Vec<usize>,
+    branch: Option<(Vec<usize>, super::branch_surfaces::FieldBranch, f64)>,
 }
 impl FieldRef {
     pub fn new(root: std::sync::Arc<CsgNode>, path: Vec<usize>) -> Self {
-        Self { root, path }
+        Self { root, path, branch: None }
+    }
+    pub(crate) fn with_branch(
+        mut self,
+        path: Vec<usize>,
+        branch: super::branch_surfaces::FieldBranch,
+        native_band: f64,
+    ) -> Self {
+        self.branch = Some((path, branch, native_band));
+        self
+    }
+    pub fn sample(&self, p: [f64; 3]) -> FieldSample {
+        match &self.branch {
+            Some((path, branch, _)) => super::branch_surfaces::sample_override(self.node(), path, branch, p),
+            None => sample_tree(self.node(), p),
+        }
     }
     pub fn node(&self) -> &CsgNode {
         let mut node = self.root.as_ref();
@@ -30,6 +46,38 @@ impl FieldRef {
     /// union hid this surface. Require survival at every ancestor, not just at
     /// the leaf and final root.
     pub fn surface_live(&self, p: [f64; 3], tolerance: f64) -> bool {
+        if let Some((path, branch, native_band)) = &self.branch {
+            let mut target = self.node();
+            for &i in path {
+                target = match target {
+                    CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => &c[i],
+                    _ => unreachable!(),
+                };
+            }
+            if !super::branch_surfaces::override_valid(self.node(), path, branch, p, tolerance) {
+                return false;
+            }
+            let actual = sample_tree(target, p);
+            // Zero-surface seams already have native/operator carriers. Lift
+            // only displaced field boundaries, avoiding duplicate curve graphs.
+            // Ownership uses a fixed numerical band: a looser position query
+            // must not erase a feature previously accepted by a tighter query.
+            if !path.is_empty() && actual.value.abs() <= *native_band {
+                return false;
+            }
+            let selected = branch.sample(target, p);
+            let magnitude = actual
+                .gradient
+                .iter()
+                .chain(selected.gradient.iter())
+                .map(|x| x * x)
+                .sum::<f64>()
+                .sqrt()
+                .max(1.);
+            if (actual.value - selected.value).abs() > tolerance * magnitude {
+                return false;
+            }
+        }
         let mut node = self.root.as_ref();
         for step in 0..=self.path.len() {
             if !sample_tree(node, p).normalized_equation().is_some_and(|s| s.value.abs() <= tolerance) {
@@ -37,7 +85,9 @@ impl FieldRef {
             }
             if step < self.path.len() {
                 node = match node {
-                    CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => &c[self.path[step]],
+                    CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => {
+                        &c[self.path[step]]
+                    }
                     CsgNode::Leaf(_) => unreachable!("field path descends through leaf"),
                 };
             }
@@ -53,26 +103,29 @@ pub struct FieldSample {
 }
 
 impl FieldSample {
-    fn constant(value: f64) -> Self {
+    pub(crate) fn constant(value: f64) -> Self {
         Self { value, gradient: [0.; 3] }
     }
-    fn scale(self, s: f64) -> Self {
+    pub(crate) fn scale(self, s: f64) -> Self {
         Self { value: self.value * s, gradient: self.gradient.map(|v| v * s) }
     }
-    fn add(self, b: Self) -> Self {
-        Self { value: self.value + b.value, gradient: std::array::from_fn(|k| self.gradient[k] + b.gradient[k]) }
+    pub(crate) fn add(self, b: Self) -> Self {
+        Self {
+            value: self.value + b.value,
+            gradient: std::array::from_fn(|k| self.gradient[k] + b.gradient[k]),
+        }
     }
-    fn sub(self, b: Self) -> Self {
+    pub(crate) fn sub(self, b: Self) -> Self {
         self.add(b.scale(-1.))
     }
-    fn min(self, b: Self) -> Self {
+    pub(crate) fn min(self, b: Self) -> Self {
         if self.value <= b.value {
             self
         } else {
             b
         }
     }
-    fn max(self, b: Self) -> Self {
+    pub(crate) fn max(self, b: Self) -> Self {
         if self.value >= b.value {
             self
         } else {
@@ -238,7 +291,8 @@ fn sample_leaf(l: &Leaf, p: [f64; 3]) -> FieldSample {
             let a = polygon_dist_2d(&profs[i], winds[i], x, z);
             let b = polygon_dist_2d(&profs[i + 1], winds[i + 1], x, z);
             if a.d * (1. - t) + b.d * t > y.abs() - h {
-                let gy = if y > -*h && y < *h { (b.d - a.d) * (profs.len() - 1) as f64 / (2. * h) } else { 0. };
+                let gy =
+                    if y > -*h && y < *h { (b.d - a.d) * (profs.len() - 1) as f64 / (2. * h) } else { 0. };
                 [a.gx * (1. - t) + b.gx * t, gy, a.gz * (1. - t) + b.gz * t]
             } else {
                 [0., if y < 0. { -1. } else { 1. }, 0.]
@@ -252,7 +306,13 @@ fn sample_leaf(l: &Leaf, p: [f64; 3]) -> FieldSample {
     }
 }
 
-fn sample_blend(mode: SminMode, a: FieldSample, b: FieldSample, radius: f64, n: f64) -> FieldSample {
+pub(crate) fn sample_blend(
+    mode: SminMode,
+    a: FieldSample,
+    b: FieldSample,
+    radius: f64,
+    n: f64,
+) -> FieldSample {
     let c = FieldSample::constant;
     let r = c(radius);
     let q = std::f64::consts::FRAC_1_SQRT_2;

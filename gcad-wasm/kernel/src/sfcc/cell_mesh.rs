@@ -22,7 +22,7 @@ use crate::sfcc::feature_curves::{CurveKind, FeatureCurve};
 use crate::sfcc::feature_set::{SfccCorner, SfccFeatureSet};
 use crate::sfcc::octree::LEVER1_MIN_LEAVES;
 use crate::sfcc::octree::{SfccCell, SfccOctree};
-use crate::sfcc::point_table::PointTable;
+use crate::sfcc::point_table::{CurveInterval, PointTable};
 use crate::strata::Stratum;
 use std::collections::HashMap;
 
@@ -389,7 +389,20 @@ pub fn mesh_cells_subset(
                 let cid = corner_point_id(corner, features, points);
                 for pin in &pins {
                     if incident.contains(&pin.curve_id) && loop_pts.contains(&pin.point_id) {
-                        points.protect_edge(cid, pin.point_id);
+                        let curve = &features.curves[pin.curve_id];
+                        for &(id, end) in &corner.curve_ends {
+                            if id == pin.curve_id {
+                                points.protect_curve_edge(
+                                    cid,
+                                    pin.point_id,
+                                    CurveInterval {
+                                        curve_id: id,
+                                        start: if end == 0 { curve.t_min } else { curve.t_max },
+                                        end: pin.t,
+                                    },
+                                );
+                            }
+                        }
                     }
                 }
                 let m = loop_pts.len();
@@ -673,6 +686,7 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
     let boundary = &loops[0];
     let key = |a: usize, b: usize| if a < b { (a, b) } else { (b, a) };
     let mut edges: BTreeMap<(usize, usize), Option<[usize; 2]>> = BTreeMap::new();
+    let mut memberships = Vec::new();
     let mut boundary_forward = BTreeSet::new();
     for i in 0..boundary.len() {
         let (a, b) = (boundary[i], boundary[(i + 1) % boundary.len()]);
@@ -719,12 +733,19 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
                 return false;
             };
             let mut previous = a;
-            for next in interior.into_iter().chain(std::iter::once(b)) {
+            for (span, next) in
+                interior.parameters.windows(2).zip(interior.points.iter().copied().chain(std::iter::once(b)))
+            {
                 let k = key(previous, next);
                 if edges.contains_key(&k) {
                     return false;
                 }
                 edges.insert(k, Some(curve.adjacent_strata));
+                memberships.push((
+                    previous,
+                    next,
+                    CurveInterval { curve_id: id, start: span[0], end: span[1] },
+                ));
                 previous = next;
             }
         }
@@ -841,10 +862,8 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
     for (id, polygon) in patches {
         fan_from_stratum_vertex(&polygon, &features.strata[id], cell_box, tree, points, opts, &mut triangles);
     }
-    for (&(a, b), ids) in &edges {
-        if ids.is_some() {
-            points.protect_edge(a, b);
-        }
+    for (a, b, interval) in memberships {
+        points.protect_curve_edge(a, b, interval);
     }
     out.extend(triangles);
     true
@@ -950,17 +969,23 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
     };
 
     let mut previous = pin_a.point_id;
-    for &id in interior.iter().chain(std::iter::once(&pin_b.point_id)) {
-        points.protect_edge(previous, id);
+    for (span, &id) in
+        interior.parameters.windows(2).zip(interior.points.iter().chain(std::iter::once(&pin_b.point_id)))
+    {
+        points.protect_curve_edge(
+            previous,
+            id,
+            CurveInterval { curve_id: curve.id, start: span[0], end: span[1] },
+        );
         previous = id;
     }
 
     // side1 = chain1 (A→…→B) closed by the polyline B→A (reversed interior);
     // side2 = chain2 (B→…→A) closed by the polyline A→B.
     let mut side1 = chain1.clone();
-    side1.extend(interior.iter().rev().copied());
+    side1.extend(interior.points.iter().rev().copied());
     let mut side2 = chain2.clone();
-    side2.extend(interior.iter().copied());
+    side2.extend(interior.points.iter().copied());
 
     // Assign strata to sides by aggregate NORMAL-AGREEMENT margin over all non-pin
     // chain vertices. Score both assignments and take the better — never reject.
@@ -997,6 +1022,12 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
     true
 }
 
+struct SampledArc {
+    points: Vec<usize>,
+    /// Includes both endpoints and retains the chosen unwrapped arc.
+    parameters: Vec<f64>,
+}
+
 /// Interior polyline points along the curve between two parameters, choosing the
 /// in-cell arc for closed curves. Returns point ids (exactly on the analytic
 /// curve), or None when no arc stays in the cell. Port of `sampleInCellArc`.
@@ -1008,7 +1039,7 @@ fn sample_in_cell_arc(
     points: &mut PointTable,
     features: &SfccFeatureSet,
     opts: &CellMeshOptions,
-) -> Option<Vec<usize>> {
+) -> Option<SampledArc> {
     let live = |p: [f64; 3]| {
         curve.adjacent_strata.iter().all(|&id| features.strata[id].domain_contains(p, opts.surface_tol))
     };
@@ -1153,7 +1184,7 @@ fn sample_in_cell_arc(
         }
         ids.push(points.add(p[0], p[1], p[2], nx, ny, nz));
     }
-    Some(ids)
+    Some(SampledArc { points: ids, parameters: samples.iter().map(|s| s.0).collect() })
 }
 
 /// Fan a disk from an interior vertex projected onto the side's smooth carrier.
@@ -1275,9 +1306,9 @@ mod reliability_tests {
         );
         opts.max_polyline_points_per_cell = 64;
         let ids = sample_in_cell_arc(&traced, 0., 1., &bounds, &mut points, &features, &opts).unwrap();
-        assert!(ids.len() > 1, "two tracer samples alone do not meet the chord tolerance");
+        assert!(ids.points.len() > 1, "two tracer samples alone do not meet the chord tolerance");
         let mut poly = vec![[1., 0., 0.]];
-        poly.extend(ids.iter().map(|&id| [points.x(id), points.y(id), points.z(id)]));
+        poly.extend(ids.points.iter().map(|&id| [points.x(id), points.y(id), points.z(id)]));
         poly.push([0., 1., 0.]);
         for edge in poly.windows(2) {
             let m = [(edge[0][0] + edge[1][0]) * 0.5, (edge[0][1] + edge[1][1]) * 0.5, 0.];

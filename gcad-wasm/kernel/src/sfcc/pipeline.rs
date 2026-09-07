@@ -17,17 +17,18 @@ use crate::math::grid::point_to_world;
 use crate::math::grid::{make_lattice, stride_at_level, SfccLattice};
 use crate::sdf::CsgNode;
 use crate::sfcc::cell_mesh::{
-    mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult,
-    InteriorVertexMode,
+    mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions,
+    CellMeshResult, InteriorVertexMode,
 };
 use crate::sfcc::face_contour::{
-    contour_all_faces, contour_faces_for, contour_faces_partitioned, contour_subset_separate, FaceContourOptions,
-    FaceContourResult,
+    contour_all_faces, contour_faces_for, contour_faces_partitioned, contour_subset_separate,
+    FaceContourOptions, FaceContourResult,
 };
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{
-    build_octree, build_octree_profiled, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell, SfccOctree,
+    build_octree, build_octree_profiled, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell,
+    SfccOctree,
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::refine_criteria::{
@@ -143,6 +144,7 @@ pub struct SfccStats {
 /// The assembled smooth-mesh result.
 pub struct SfccPipelineResult {
     /// Stride-8 vertex buffer (pos, pad, normal, pad) as f32.
+    pub feature_edges: Vec<super::point_table::MeshCurveEdge>,
     pub verts: Vec<f32>,
     pub tris: Vec<u32>,
     pub stats: SfccStats,
@@ -177,6 +179,7 @@ pub struct SfccPipelineResult {
 /// fires at a pipeline checkpoint. The mesh is empty; callers key off `cancelled`.
 fn cancelled_pipeline_result() -> SfccPipelineResult {
     SfccPipelineResult {
+        feature_edges: Vec::new(),
         verts: Vec::new(),
         tris: Vec::new(),
         stats: SfccStats {
@@ -543,7 +546,8 @@ impl<'a> PipelineContext<'a> {
     ) -> CellDecision {
         let lat = &self.lat;
         let features = &self.features;
-        let cls = classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
+        let cls =
+            classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
         if cls.split {
             // Only a cell containing the corner may fan from it. Claiming a
             // nearby external corner at the depth ceiling creates overlapping
@@ -575,10 +579,13 @@ impl<'a> PipelineContext<'a> {
             None
         };
         let q: &dyn crate::sdf::SdfQuery = match &coarse_view {
-            Some(m) => m.get(&octree_coarse_key(cell)).map(|p| p as &dyn crate::sdf::SdfQuery).unwrap_or(self.tree),
+            Some(m) => {
+                m.get(&octree_coarse_key(cell)).map(|p| p as &dyn crate::sdf::SdfQuery).unwrap_or(self.tree)
+            }
             None => self.tree,
         };
-        let probe = make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
+        let probe =
+            make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
         if cls.corner >= 0 {
             // Corner cells exempt from per-stratum + sign-change gates.
             return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
@@ -619,7 +626,12 @@ impl<'a> PipelineContext<'a> {
     /// Pure per cell: `decisions[i]` depends only on `frontier[start + i]`, so
     /// concatenating N disjoint slices equals deciding the whole frontier — the
     /// cross-worker split is exact by construction.
-    pub(crate) fn decide_partition(&self, frontier: &[SfccCell], start: usize, end: usize) -> Vec<CellDecision> {
+    pub(crate) fn decide_partition(
+        &self,
+        frontier: &[SfccCell],
+        start: usize,
+        end: usize,
+    ) -> Vec<CellDecision> {
         let forced: Vec<ForcedMarker> = Vec::new();
         let sample = |gx: i64, gy: i64, gz: i64| {
             let w = crate::math::grid::point_to_world(&self.lat, gx, gy, gz);
@@ -707,8 +719,13 @@ pub(crate) fn build_pipeline_context<'a>(
     let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
     let jy = (3.0f64.sqrt() - 1.0) * 0.25 * step;
     let jz = (5.0f64.sqrt() - 2.0) * 0.25 * step;
-    let lat: SfccLattice =
-        make_lattice(tuning.depth_max, cube.min_x - pad - jx, cube.min_y - pad - jy, cube.min_z - pad - jz, total_size);
+    let lat: SfccLattice = make_lattice(
+        tuning.depth_max,
+        cube.min_x - pad - jx,
+        cube.min_y - pad - jy,
+        cube.min_z - pad - jz,
+        total_size,
+    );
 
     let scene_diag = hypot3(cube.size, cube.size, cube.size);
     let sfcc_tuning = SfccTuning {
@@ -798,7 +815,11 @@ enum MeshStrategy {
     SeparateMorton(usize),
 }
 
-pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
+pub fn run_sfcc_pipeline(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+) -> SfccPipelineResult {
     run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, None, None)
 }
 
@@ -845,7 +866,8 @@ pub fn run_sfcc_pipeline_partitioned(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Shared(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Shared(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -864,7 +886,8 @@ pub fn run_sfcc_pipeline_separate_partitioned(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Separate(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Separate(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -879,7 +902,8 @@ pub fn run_sfcc_pipeline_partitioned_morton(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SharedMorton(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SharedMorton(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -894,7 +918,8 @@ pub fn run_sfcc_pipeline_separate_partitioned_morton(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -971,6 +996,11 @@ fn mesh_groups_separate(
         }
         for (a, b) in pt.protected_edges() {
             merged.protect_edge(local_to_global[a], local_to_global[b]);
+        }
+        for ((a, b), intervals) in pt.identified_edges() {
+            for &interval in intervals {
+                merged.protect_curve_edge(local_to_global[a], local_to_global[b], interval);
+            }
         }
         for &t in &cm.tris {
             tris.push(local_to_global[t]);
@@ -1079,7 +1109,10 @@ pub fn morton_partition_indices(oct: &SfccOctree, k: usize) -> Vec<Vec<usize>> {
 /// `SfccCell` is `Copy` and tiny, so this is a cheap gather; the caller borrows these
 /// as `&[&[SfccCell]]` for the shared- or separate-table meshers.
 fn gather_morton_groups(oct: &SfccOctree, k: usize) -> Vec<Vec<SfccCell>> {
-    partition_morton(oct, k).into_iter().map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect()).collect()
+    partition_morton(oct, k)
+        .into_iter()
+        .map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect())
+        .collect()
 }
 
 /// Accumulate `now() - *last` into `bucket` and advance `*last` to `now()`, but only
@@ -1192,7 +1225,8 @@ fn run_sfcc_pipeline_impl(
         }
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
-        let fc_opts = FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
+        let fc_opts =
+            FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
         let cm_opts = CellMeshOptions {
             surface_tol: tuning.surface_tol_mm,
             interior_vertex_mode: tuning.interior_vertex_mode,
@@ -1220,8 +1254,14 @@ fn run_sfcc_pipeline_impl(
                 // ONE face map + point table. Byte-identical to the serial path.
                 let groups = partition_contiguous(oct.leaves.len(), *n);
                 face_result = contour_faces_partitioned(&oct, tree, &mut points, &fc_opts, &groups);
-                cell_result =
-                    mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
+                cell_result = mesh_cells_partitioned(
+                    &oct,
+                    &mut face_result.faces,
+                    tree,
+                    &mut points,
+                    &cm_opts,
+                    &groups,
+                );
             }
             MeshStrategy::Separate(n) => {
                 // #3 slice 3: mesh each contiguous group into its OWN separate face map
@@ -1250,7 +1290,8 @@ fn run_sfcc_pipeline_impl(
                 let owned = gather_morton_groups(&oct, *n);
                 let leaf_groups: Vec<&[SfccCell]> = owned.iter().map(|g| g.as_slice()).collect();
                 face_result = contour_faces_for(&oct, tree, &mut points, &fc_opts, &leaf_groups);
-                cell_result = mesh_cells_for(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &leaf_groups);
+                cell_result =
+                    mesh_cells_for(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &leaf_groups);
             }
             MeshStrategy::SeparateMorton(n) => {
                 // #3 slice 2 over the slice-3 separate-table view: Morton/Z-order groups,
@@ -1334,8 +1375,13 @@ fn run_sfcc_pipeline_impl(
     let deduped2 = drop_coincident_triangle_pairs(&filtered);
     let (flipped, _flips) = flip_sliver_triangles(&points, &deduped2, 4);
 
-    let (refined, unresolved_triangles) =
-        super::surface_refine::refine_surface(tree, features, &mut points, &flipped, tuning.curve_chord_tol_mm);
+    let (refined, unresolved_triangles) = super::surface_refine::refine_surface(
+        tree,
+        features,
+        &mut points,
+        &flipped,
+        tuning.curve_chord_tol_mm,
+    );
     let (verts, out_tris) = points.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
@@ -1357,6 +1403,13 @@ fn run_sfcc_pipeline_impl(
         re_refine_rounds,
     };
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
+        &points,
+        &refined,
+        &features,
+        tuning.curve_chord_tol_mm,
+    ));
+    validation.unresolved_branch_paths = features.unresolved_branch_paths.clone();
     validation.feature_trace = features.trace_diagnostics;
     validation.face_segments = if !cell_result.failed_cells.is_empty() {
         AuditStatus::NotChecked
@@ -1374,6 +1427,7 @@ fn run_sfcc_pipeline_impl(
     emit(SFCC_PHASE_COUNT, "Done");
 
     SfccPipelineResult {
+        feature_edges: points.compacted_curve_edges(&refined),
         verts,
         tris: out_tris,
         stats,

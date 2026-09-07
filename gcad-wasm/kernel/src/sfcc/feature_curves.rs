@@ -109,6 +109,48 @@ pub struct FeatureCurve {
 }
 
 impl FeatureCurve {
+    /// Closest sampled projection restricted to one recorded, unwrapped arc.
+    /// Trace parameters index adaptive knots, so their midpoint need not be
+    /// near the geometric midpoint. Search only this interval's knot spans.
+    pub fn project_interval(&self, p: [f64; 3], start: f64, end: f64) -> Option<(f64, [f64; 3])> {
+        let (lo, hi) = (start.min(end), start.max(end));
+        if !lo.is_finite() || !hi.is_finite() {
+            return None;
+        }
+        let distance = |q: [f64; 3]| (0..3).map(|k| (q[k] - p[k]).powi(2)).sum::<f64>();
+        if self.kind() != CurveKind::Traced {
+            let (mut t, _) = self.project(p[0], p[1], p[2]);
+            if let Some(wrap) = self.param_wrap {
+                t += ((0.5 * (lo + hi) - t) / wrap).round() * wrap;
+            }
+            let t = t.clamp(lo, hi);
+            return self.point_at_checked(t).map(|q| (t, q));
+        }
+        let mut knots = vec![lo];
+        knots.extend(((lo.floor() as i64 + 1)..=(hi.ceil() as i64 - 1)).map(|i| i as f64));
+        knots.push(hi);
+        let mut best = None;
+        let mut best_distance = f64::INFINITY;
+        for span in knots.windows(2) {
+            let a = self.point_at_checked(span[0])?;
+            let b = self.point_at_checked(span[1])?;
+            let d: [f64; 3] = std::array::from_fn(|k| b[k] - a[k]);
+            let length2 = d.iter().map(|v| v * v).sum::<f64>();
+            let u = if length2 > 0. {
+                ((0..3).map(|k| (p[k] - a[k]) * d[k]).sum::<f64>() / length2).clamp(0., 1.)
+            } else {
+                0.
+            };
+            let t = span[0] + u * (span[1] - span[0]);
+            let q = self.point_at_checked(t)?;
+            let error = distance(q);
+            if error < best_distance {
+                best_distance = error;
+                best = Some((t, q));
+            }
+        }
+        best
+    }
     pub fn kind(&self) -> CurveKind {
         match self.geom {
             Geom::Segment { .. } => CurveKind::Segment,

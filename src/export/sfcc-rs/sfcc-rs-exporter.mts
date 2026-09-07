@@ -138,6 +138,7 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
     // ArrayBuffers (the MeshData contract), then release the wasm result.
     const verts = new Float32Array(result.verts)
     const tris = new Uint32Array(result.tris)
+    const featureEdges = new Float64Array(result.feature_edges)
     const ok = result.ok
     result.free()
 
@@ -153,6 +154,7 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
     const mesh: MeshData = { verts, tris }
     mesh.debug = {
         sfcc: {
+            featureEdges,
             stats,
             validation: stats.validation as MeshSfccValidation | undefined,
             // The wasm boundary doesn't surface failed-cell overlays (debug-only);

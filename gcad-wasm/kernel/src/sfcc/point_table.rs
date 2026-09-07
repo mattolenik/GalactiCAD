@@ -17,6 +17,33 @@ use std::collections::{HashMap, HashSet};
 
 pub const POINT_KEY_INTERIOR: i64 = 3;
 
+/// An oriented interval on a compiled curve. Closed-curve parameters remain
+/// unwrapped, so crossing the parameter seam does not choose the other arc.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CurveInterval {
+    pub curve_id: usize,
+    pub start: f64,
+    pub end: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeshCurveEdge {
+    pub vertices: [u32; 2],
+    pub interval: CurveInterval,
+}
+
+impl CurveInterval {
+    pub fn reversed(self) -> Self {
+        Self { start: self.end, end: self.start, ..self }
+    }
+    pub fn midpoint(self) -> f64 {
+        self.start + (self.end - self.start) * 0.5
+    }
+    pub fn split(self) -> [Self; 2] {
+        [Self { end: self.midpoint(), ..self }, Self { start: self.midpoint(), ..self }]
+    }
+}
+
 /// The provenance key of a point — what the spatial-partition separate-table merge
 /// dedups on. `Num`/`Str` keys are GLOBAL (lattice/feature-derived), so the same
 /// boundary crossing or feature pin created independently in two partitions collapses
@@ -51,12 +78,66 @@ pub struct PointTable {
     /// merge key for the separate-table spatial partition.
     keys: Vec<PointKey>,
     protected_edges: HashSet<(usize, usize)>,
+    /// Stored in ascending vertex-id orientation; an edge may belong to more
+    /// than one equivalent carrier pair at a junction.
+    curve_edges: HashMap<(usize, usize), Vec<CurveInterval>>,
 }
 
 impl PointTable {
+    pub fn protect_curve_edge(&mut self, a: usize, b: usize, interval: CurveInterval) {
+        assert!(interval.start.is_finite() && interval.end.is_finite());
+        if a == b {
+            return;
+        }
+        self.protect_edge(a, b);
+        let interval = if a < b { interval } else { interval.reversed() };
+        let memberships = self.curve_edges.entry((a.min(b), a.max(b))).or_default();
+        if !memberships.contains(&interval) {
+            memberships.push(interval);
+            memberships.sort_by(|a, b| {
+                a.curve_id.cmp(&b.curve_id).then(a.start.total_cmp(&b.start)).then(a.end.total_cmp(&b.end))
+            });
+        }
+    }
+    pub fn curve_intervals(&self, a: usize, b: usize) -> Vec<CurveInterval> {
+        self.curve_edges
+            .get(&(a.min(b), a.max(b)))
+            .into_iter()
+            .flatten()
+            .map(|&interval| if a < b { interval } else { interval.reversed() })
+            .collect()
+    }
+    pub fn identified_edges(&self) -> impl Iterator<Item = ((usize, usize), &[CurveInterval])> {
+        self.curve_edges.iter().map(|(&edge, intervals)| (edge, intervals.as_slice()))
+    }
+    /// Retire a subdivided parent; keeping it would report a fictitious missing
+    /// edge after compaction. Children retain the complete parameter interval.
+    pub fn split_curve_edge(&mut self, a: usize, b: usize, mid: usize) {
+        let parameters: Vec<_> = self.curve_intervals(a, b).iter().map(|i| i.midpoint()).collect();
+        self.split_curve_edge_at(a, b, mid, &parameters);
+    }
+    pub fn split_curve_edge_at(&mut self, a: usize, b: usize, mid: usize, parameters: &[f64]) {
+        let intervals = self.curve_intervals(a, b);
+        assert_eq!(parameters.len(), intervals.len());
+        if self.edge_is_protected(a, b) {
+            self.protect_edge(a, mid);
+            self.protect_edge(mid, b);
+        }
+        for (interval, &t) in intervals.into_iter().zip(parameters) {
+            assert!(t >= interval.start.min(interval.end) && t <= interval.start.max(interval.end));
+            let [left, right] =
+                [CurveInterval { end: t, ..interval }, CurveInterval { start: t, ..interval }];
+            self.protect_curve_edge(a, mid, left);
+            self.protect_curve_edge(mid, b, right);
+        }
+        self.curve_edges.remove(&(a.min(b), a.max(b)));
+        self.protected_edges.remove(&(a.min(b), a.max(b)));
+    }
     /// Feature edges must survive quality-improving diagonal flips.
     pub fn protect_edge(&mut self, a: usize, b: usize) {
-        if a != b { self.protected_edges.insert((a.min(b), a.max(b))); }
+        if a != b {
+            self.protected_edges.insert((a.min(b), a.max(b)));
+        }
     }
     pub fn edge_is_protected(&self, a: usize, b: usize) -> bool {
         self.protected_edges.contains(&(a.min(b), a.max(b)))
@@ -161,20 +242,30 @@ impl PointTable {
     pub fn ordered_triangles(&self, tris: &[usize]) -> Vec<usize> {
         let mut ids: Vec<usize> = (0..self.count()).collect();
         let cmp = |&a: &usize, &b: &usize| {
-            for (x, y) in self.pos[a*3..a*3+3].iter().chain(&self.normal[a*3..a*3+3])
-                .zip(self.pos[b*3..b*3+3].iter().chain(&self.normal[b*3..b*3+3])) {
+            for (x, y) in self.pos[a * 3..a * 3 + 3]
+                .iter()
+                .chain(&self.normal[a * 3..a * 3 + 3])
+                .zip(self.pos[b * 3..b * 3 + 3].iter().chain(&self.normal[b * 3..b * 3 + 3]))
+            {
                 let c = x.total_cmp(y);
-                if !c.is_eq() { return c; }
+                if !c.is_eq() {
+                    return c;
+                }
             }
             self.keys[a].cmp(&self.keys[b])
         };
         ids.sort_by(cmp);
         let mut ranks = vec![0usize; ids.len()];
-        for (rank, &id) in ids.iter().enumerate() { ranks[id] = rank; }
-        let mut triangles: Vec<[usize; 3]> = tris.chunks_exact(3).map(|t| {
-            let k = (0..3).min_by_key(|&k| ranks[t[k]]).unwrap();
-            [t[k], t[(k+1)%3], t[(k+2)%3]]
-        }).collect();
+        for (rank, &id) in ids.iter().enumerate() {
+            ranks[id] = rank;
+        }
+        let mut triangles: Vec<[usize; 3]> = tris
+            .chunks_exact(3)
+            .map(|t| {
+                let k = (0..3).min_by_key(|&k| ranks[t[k]]).unwrap();
+                [t[k], t[(k + 1) % 3], t[(k + 2) % 3]]
+            })
+            .collect();
         triangles.sort_by_key(|t| [ranks[t[0]], ranks[t[1]], ranks[t[2]]]);
         triangles.into_iter().flatten().collect()
     }
@@ -206,11 +297,71 @@ impl PointTable {
         let out_tris: Vec<u32> = tris.iter().map(|&id| remap[&id] as u32).collect();
         (verts, out_tris)
     }
+
+    /// Use exactly the same first-reference compaction as build_mesh. Removed
+    /// edges are diagnosed before this step, never relabeled onto a survivor.
+    pub fn compacted_curve_edges(&self, tris: &[usize]) -> Vec<MeshCurveEdge> {
+        let mut remap = HashMap::new();
+        for &id in tris {
+            let next = remap.len() as u32;
+            remap.entry(id).or_insert(next);
+        }
+        let edges: HashSet<_> = tris
+            .chunks_exact(3)
+            .flat_map(|t| (0..3).map(move |i| (t[i].min(t[(i + 1) % 3]), t[i].max(t[(i + 1) % 3]))))
+            .collect();
+        let mut out = Vec::new();
+        for (&(a, b), intervals) in &self.curve_edges {
+            if !edges.contains(&(a, b)) {
+                continue;
+            }
+            let (a, b) = (remap[&a], remap[&b]);
+            for &interval in intervals {
+                out.push(if a < b {
+                    MeshCurveEdge { vertices: [a, b], interval }
+                } else {
+                    MeshCurveEdge { vertices: [b, a], interval: interval.reversed() }
+                });
+            }
+        }
+        out.sort_by(|a, b| {
+            a.vertices
+                .cmp(&b.vertices)
+                .then(a.interval.curve_id.cmp(&b.interval.curve_id))
+                .then(a.interval.start.total_cmp(&b.interval.start))
+                .then(a.interval.end.total_cmp(&b.interval.end))
+        });
+        out
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oriented_closed_intervals_split_without_losing_memberships() {
+        let mut p = PointTable::new();
+        let a = p.add(0., 0., 0., 0., 1., 0.);
+        let b = p.add(1., 0., 0., 0., 1., 0.);
+        let m = p.add(0.5, 0., 0., 0., 1., 0.);
+        let wrap = std::f64::consts::TAU;
+        let interval = CurveInterval { curve_id: 2, start: wrap - 0.1, end: wrap + 0.1 };
+        p.protect_curve_edge(b, a, interval);
+        p.protect_curve_edge(b, a, CurveInterval { curve_id: 3, ..interval });
+        p.protect_curve_edge(a, b, interval.reversed());
+        assert_eq!(p.curve_intervals(b, a).len(), 2);
+        p.split_curve_edge(b, a, m);
+        assert!(!p.edge_is_protected(a, b));
+        let left = p.curve_intervals(b, m);
+        let right = p.curve_intervals(m, a);
+        assert_eq!(left.len(), 2);
+        assert_eq!(right.len(), 2);
+        assert_eq!(left[0].start, interval.start);
+        assert_eq!(left[0].end, wrap);
+        assert_eq!(right[0].start, wrap);
+        assert_eq!(right[0].end, interval.end);
+    }
 
     #[test]
     fn provenance_keys_are_distinct() {

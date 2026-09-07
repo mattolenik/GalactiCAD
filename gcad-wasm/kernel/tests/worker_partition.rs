@@ -83,7 +83,8 @@ fn twisted_l_scene() -> (CsgNode, SfccWorldCube) {
     let verts: Vec<f64> = l_poly.iter().flat_map(|v| [v[0], v[1]]).collect();
     let wind = winding_sign(&l_poly);
     let twist_rad = 90.0_f64 * std::f64::consts::PI / 180.0;
-    let tree = prepared_tree(sdf::leaf_at(Shape::Extrude { verts, wind, h: 5.0, twist_rad }, [0.0, 0.0, 0.0]));
+    let tree =
+        prepared_tree(sdf::leaf_at(Shape::Extrude { verts, wind, h: 5.0, twist_rad }, [0.0, 0.0, 0.0]));
     (tree, SfccWorldCube { min_x: -6.0, min_y: -6.0, min_z: -6.0, size: 12.0 })
 }
 
@@ -114,7 +115,8 @@ fn assert_worker_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
     for &n in &[1usize, 2, 4, 8] {
         // Each "worker" meshes ONE Morton group into its own partial. Independent
         // calls — exactly what separate wasm instances will do.
-        let partials: Vec<Vec<u8>> = (0..n).map(|i| mesh_partition(tree, c, &tuning(), &leaves_bytes, i, n)).collect();
+        let partials: Vec<Vec<u8>> =
+            (0..n).map(|i| mesh_partition(tree, c, &tuning(), &leaves_bytes, i, n)).collect();
 
         // The "main thread" merges the partials by global key + runs the S4 tail.
         let merged = merge(tree, c, &tuning(), &partials);
@@ -145,9 +147,11 @@ fn assert_worker_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
 
         let sv: Vec<f64> = serial.verts.iter().map(|&f| f as f64).collect();
         let wv: Vec<f64> = merged.verts.iter().map(|&f| f as f64).collect();
-        let exact = CanonicalizeOptions { pos_eps: 0.0, compare_normals: true, ..CanonicalizeOptions::default() };
-        meshes_equivalent(&sv, &serial.tris, &wv, &merged.tris, &exact)
-            .unwrap_or_else(|e| panic!("{name}: worker partitions={n} NOT canonically identical to serial: {e}"));
+        let exact =
+            CanonicalizeOptions { pos_eps: 0.0, compare_normals: true, ..CanonicalizeOptions::default() };
+        meshes_equivalent(&sv, &serial.tris, &wv, &merged.tris, &exact).unwrap_or_else(|e| {
+            panic!("{name}: worker partitions={n} NOT canonically identical to serial: {e}")
+        });
     }
     println!(
         "[worker-partition] {name}: prepare→mesh(1,2,4,8)→merge == serial (canonical, pos_eps=0); leaf buffer = {} bytes",
@@ -197,4 +201,51 @@ fn worker_recovery_and_reversed_completion_order_match_serial() {
     assert_eq!(reversed.tris, forward.tris);
     assert_eq!(forward.validation, serial.validation);
     assert!(!forward.ok);
+}
+
+#[test]
+fn curved_feature_intervals_survive_real_merges_and_reversed_completion() {
+    let tree = prepared_tree(sdf::leaf_at(Shape::Cylinder { r: 1., h: 1. }, [0.; 3]));
+    let cube = SfccWorldCube { min_x: -2., min_y: -2., min_z: -2., size: 4. };
+    let tuning = PipelineTuning { depth_min: 3, depth_max: 5, ..Default::default() };
+    let serial = run_sfcc_pipeline(&tree, &cube, &tuning);
+    assert!(
+        serial.validation.feature_chains.as_ref().unwrap().passed(),
+        "{:?}",
+        serial.validation.feature_chains
+    );
+    let leaves = prepare(&tree, &cube, &tuning);
+    let canonical = |verts: &[f32], edges: &[gcad_kernel::sfcc::point_table::MeshCurveEdge]| {
+        let mut records: Vec<_> = edges
+            .iter()
+            .map(|e| {
+                let p = |id: u32| {
+                    [
+                        verts[id as usize * 8].to_bits(),
+                        verts[id as usize * 8 + 1].to_bits(),
+                        verts[id as usize * 8 + 2].to_bits(),
+                    ]
+                };
+                let (a, b) = (p(e.vertices[0]), p(e.vertices[1]));
+                let interval = if a < b { e.interval } else { e.interval.reversed() };
+                (a.min(b), a.max(b), interval.curve_id, interval.start.to_bits(), interval.end.to_bits())
+            })
+            .collect();
+        records.sort_unstable();
+        records
+    };
+    let expected = canonical(&serial.verts, &serial.feature_edges);
+    for n in [1, 2, 4, 8] {
+        let mut partials: Vec<_> =
+            (0..n).map(|i| mesh_partition(&tree, &cube, &tuning, &leaves, i, n)).collect();
+        for reverse in [false, true] {
+            if reverse {
+                partials.reverse();
+            }
+            let merged = merge(&tree, &cube, &tuning, &partials);
+            assert!(!merged.serial_recovery, "N={n} reverse={reverse} recovered serially");
+            assert!(merged.validation.feature_chains.as_ref().unwrap().passed());
+            assert_eq!(canonical(&merged.verts, &merged.feature_edges), expected);
+        }
+    }
 }

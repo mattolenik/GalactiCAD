@@ -56,6 +56,20 @@ export interface MeshMdcDebugData {
 }
 
 export interface MeshSfccValidation {
+    unresolvedBranchPaths: number[][]
+    /** Checks compiled curves only; omitted analytical features require independent coverage tests. */
+    featureChains: { status: "notChecked" } | {
+        status: "passed" | "failed"
+        scope: "compiledCurves"
+        missingEdges: number
+        missingCurves: number
+        disconnectedCurves: number
+        intervalGaps: number
+        offCurveEdges: number
+        invalidMemberships: number
+        unidentifiedEdges: number
+        issues: { curveId: number; kind: string; range: [number, number] }[]
+    }
     status: "passed" | "failed" | "incomplete"
     edgeIncidence: "passed" | "failed" | "notChecked"
     vertexLinks: "passed" | "failed" | "notChecked"
@@ -82,6 +96,8 @@ export interface MeshSfccValidation {
 
 /** SFCC topology, numerical-budget, and final vertex-residual diagnostics. */
 export interface MeshSfccDebugData {
+    /** Final vertex IDs and analytical interval: [a,b,curveId,start,end], f64 stride 5. */
+    featureEdges?: Float64Array<ArrayBuffer>
     /** Pipeline stats blob (cell/face counts, audits, fallback counters). */
     stats: Record<string, unknown>
     validation?: MeshSfccValidation

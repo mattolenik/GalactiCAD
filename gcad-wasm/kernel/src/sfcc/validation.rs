@@ -79,6 +79,10 @@ pub fn chord_budget_exhausted() {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SfccValidation {
+    /// Compiled-curve preservation only; independent representation coverage
+    /// remains a separate question even when this report passes.
+    pub feature_chains: Option<super::feature_chain::FeatureChainReport>,
+    pub unresolved_branch_paths: Vec<Vec<usize>>,
     /// Raw candidate tracing outcomes, including hidden carrier extensions.
     /// These counters alone do not establish exposed feature completeness.
     pub feature_trace: crate::sfcc::seam_trace::SeamTraceDiagnostics,
@@ -130,6 +134,8 @@ impl SfccValidation {
             || self.unresolved_cells > 0
             || self.feature_fallback_cells > 0
             || self.numerical.total() > 0
+            || !self.unresolved_branch_paths.is_empty()
+            || self.feature_chains.as_ref().is_some_and(|report| !report.passed())
         {
             "incomplete"
         } else {
@@ -143,13 +149,15 @@ impl SfccValidation {
     pub fn to_json(&self) -> String {
         format!(
             concat!(
-                "{{\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
+                "{{\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
                 "\"faceSegments\":\"{}\",\"vertexResiduals\":\"{}\",\"unresolvedCells\":{},",
                 "\"featureFallbackCells\":{},\"curveProjectionFailures\":{},\"faceProjectionFailures\":{},",
                 "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{},",
                 "\"featureTrace\":{{\"pairsConsidered\":{},\"seedsFound\":{},\"curvesTraced\":{},",
                 "\"tangencyBails\":{},\"tangentReversals\":{},\"correctionBails\":{},\"stepCapHits\":{}}}}}"
             ),
+            self.unresolved_branch_paths,
+            self.feature_chains.as_ref().map_or_else(|| "{\"status\":\"notChecked\"}".into(), |r| r.to_json()),
             self.status(),
             self.edge_incidence.as_str(),
             self.vertex_links.as_str(),

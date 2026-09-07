@@ -168,6 +168,7 @@ impl BridgeTuning {
 /// memory views). Stats are exposed individually as a small JSON string.
 #[wasm_bindgen]
 pub struct SfccExportResult {
+    feature_edges: Vec<gcad_kernel::sfcc::point_table::MeshCurveEdge>,
     verts: Vec<f32>,
     tris: Vec<u32>,
     ok: bool,
@@ -177,6 +178,13 @@ pub struct SfccExportResult {
 
 #[wasm_bindgen]
 impl SfccExportResult {
+    /// Final vertex IDs, curve ID and unwrapped parameters: [a,b,curve,start,end].
+    /// Curve IDs are local to this export's compiled feature set.
+    #[wasm_bindgen(getter)]
+    pub fn feature_edges(&self) -> Vec<f64> {
+        self.feature_edges.iter().flat_map(|e| [e.vertices[0] as f64,e.vertices[1] as f64,e.interval.curve_id as f64,e.interval.start,e.interval.end]).collect()
+    }
+
     /// Stride-8 vertex buffer (pos, pad, normal, pad), f32. Copied into JS.
     #[wasm_bindgen(getter)]
     pub fn verts(&self) -> Vec<f32> {
@@ -294,6 +302,7 @@ pub fn export_sfcc(
 
     append_validation(&mut stats_json, &result.validation, result.manifold.non_manifold_vertices);
     Ok(SfccExportResult {
+        feature_edges: result.feature_edges,
         cancelled: result.cancelled,
         verts: result.verts,
         tris: result.tris,
@@ -486,7 +495,7 @@ pub fn sfcc_worker_merge(
     stats_json.pop();
     stats_json.push_str(&format!(",\"degenerateCells\":{},\"reRefineRounds\":{},\"serialRecovery\":{}}}", merged.degenerate_cells, merged.re_refine_rounds, merged.serial_recovery));
     append_validation(&mut stats_json, &merged.validation, merged.manifold.non_manifold_vertices);
-    Ok(SfccExportResult { verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json, cancelled: false })
+    Ok(SfccExportResult { feature_edges: merged.feature_edges, verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json, cancelled: false })
 }
 
 

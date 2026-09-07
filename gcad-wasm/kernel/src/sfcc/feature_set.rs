@@ -1267,27 +1267,36 @@ fn emit_loft_features_general(
         let np = profs[pi].len() / 2;
         for e in 0..np {
             let e2 = (e + 1) % np;
-            let pos = if use_b {
-                carriers[seg].iter().position(|car| car.b_edge == e)
-            } else {
-                carriers[seg].iter().position(|car| car.a_edge == e)
-            };
-            let Some(cc) = pos else { continue };
-            let s_side = side_id(seg, cc);
-            let v0x = profs[pi][e * 2];
-            let v0z = profs[pi][e * 2 + 1];
-            let v1x = profs[pi][e2 * 2];
-            let v1z = profs[pi][e2 * 2 + 1];
-            let curve_id = curves.len();
-            let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
-            let bpt = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
-            let mut rim = make_segment_curve(curve_id, -1, [s_side, cap], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
-            rim.native = true;
-            rim.corner_start = corner_idx[pi][e] as i64;
-            rim.corner_end = corner_idx[pi][e2] as i64;
-            corners[rim.corner_start as usize].curve_ends.push((curve_id, 0));
-            corners[rim.corner_end as usize].curve_ends.push((curve_id, 1));
-            curves.push(rim);
+            // A cap edge can border several side patches as the closest
+            // feature of the opposite profile changes along it. Keep every
+            // candidate; domain/flank trimming selects its exposed interval.
+            for (cc, _) in
+                carriers[seg].iter().enumerate().filter(
+                    |(_, car)| {
+                        if use_b {
+                            car.b_edge == e
+                        } else {
+                            car.a_edge == e
+                        }
+                    },
+                )
+            {
+                let s_side = side_id(seg, cc);
+                let v0x = profs[pi][e * 2];
+                let v0z = profs[pi][e * 2 + 1];
+                let v1x = profs[pi][e2 * 2];
+                let v1z = profs[pi][e2 * 2 + 1];
+                let curve_id = curves.len();
+                let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
+                let bpt = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
+                let mut rim = make_segment_curve(curve_id, -1, [s_side, cap], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
+                rim.native = true;
+                rim.corner_start = corner_idx[pi][e] as i64;
+                rim.corner_end = corner_idx[pi][e2] as i64;
+                corners[rim.corner_start as usize].curve_ends.push((curve_id, 0));
+                corners[rim.corner_end as usize].curve_ends.push((curve_id, 1));
+                curves.push(rim);
+            }
         }
     }
 }

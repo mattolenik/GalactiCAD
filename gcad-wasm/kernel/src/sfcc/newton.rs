@@ -98,9 +98,6 @@ pub fn project_to_triple(
         let fb = b.value;
         let c = sc.raw_field(x, y, z).normalized_equation()?;
         let fc = c.value;
-        if fa.abs() <= eps && fb.abs() <= eps && fc.abs() <= eps {
-            return Some([x, y, z]);
-        }
         let ga = a.gradient;
         let gb = b.gradient;
         let gc = c.gradient;
@@ -109,6 +106,11 @@ pub fn project_to_triple(
             + ga[2] * (gb[0] * gc[1] - gb[1] * gc[0]);
         if det.abs() < 1e-6 {
             return None;
+        }
+        // Three zero residuals may still describe a whole curve (for example
+        // two loft patches coincident along a cap rim), not a unique corner.
+        if fa.abs() <= eps && fb.abs() <= eps && fc.abs() <= eps {
+            return Some([x, y, z]);
         }
         let dx = (fa * (gb[1] * gc[2] - gb[2] * gc[1]) - ga[1] * (fb * gc[2] - gb[2] * fc)
             + ga[2] * (fb * gc[1] - gb[1] * fc))
@@ -209,6 +211,13 @@ mod tests {
         let c = Stratum::plane(ident(2), 0.0, 0.0, 1.0, -3.0); // z=3
         let p = project_to_triple(&a, &b, &c, 0.0, 0.0, 0.0, 1e-12, 100.0).unwrap();
         assert!((p[0] - 1.0).abs() < 1e-10 && (p[1] - 2.0).abs() < 1e-10 && (p[2] - 3.0).abs() < 1e-10);
+    }
+    #[test]
+    fn redundant_zero_constraints_do_not_define_a_corner() {
+        let a = Stratum::plane(ident(0), 1., 0., 0., 0.);
+        let b = Stratum::plane(ident(1), 0., 1., 0., 0.);
+        let c = Stratum::plane(ident(2), 1., 0., 0., 0.);
+        assert!(project_to_triple(&a, &b, &c, 0., 0., 3., 1e-12, 1.).is_none());
     }
     #[test]
     fn backtracking_recovers_overshoot_and_obeys_displacement() {

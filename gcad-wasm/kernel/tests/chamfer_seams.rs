@@ -93,6 +93,19 @@ fn holes_through_loft_chamfer_preserve_both_flange_faces() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 
+    // The square cap rim spans multiple closest-edge regions of the opposite
+    // dodecagon profile. No region may disappear merely because the first
+    // supporting side patch stops being active along this straight edge.
+    for sign in [-1., 1.] {
+        for i in 0..=100 {
+            for p in [[sign * 10., -7.3 + 17.3 * i as f64 / 100., 19.], [-10. + 20. * i as f64 / 100., 10., 19.]] {
+                assert!(tree.f(p).abs() < 1e-10);
+                let gap = features.curves.iter().map(|c| c.project(p[0], p[1], p[2]).1).fold(f64::INFINITY, f64::min);
+                assert!(gap < 1e-5, "square flange rim missing at {p:?}: {gap}");
+            }
+        }
+    }
+
     // At the default depth ceiling some cells contain the hole/loft/blend
     // junction AND the base-clip junction. All of their curves must constrain
     // the triangles, even though refinement cannot separate the corners.

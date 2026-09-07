@@ -21,6 +21,26 @@ test("housing mesh preserves the flange rim and chamfer seams through the tee cr
         assert.equal(stats.validation.faceSegments, "passed")
         const verts = result.verts
         const tris = result.tris
+        const rimEdges: [number, number][] = []
+        for (let i = 0; i < tris.length; i += 3) {
+            for (let k = 0; k < 3; k++) {
+                const a = tris[i+k]! * 8, b = tris[i+(k+1)%3]! * 8
+                if (Math.abs(verts[a+2]! - 19) < 1e-5 && Math.abs(verts[b+2]! - 19) < 1e-5) rimEdges.push([a,b])
+            }
+        }
+        for (let i = 0; i <= 100; i++) {
+            for (const p of [[-10, -7.3+i*17.3/100, 19], [10, -7.3+i*17.3/100, 19], [-10+i*20/100, 10, 19]]) {
+                let gap = Infinity
+                for (const [a,b] of rimEdges) {
+                    const d = [0,1,2].map(k => verts[b+k]! - verts[a+k]!)
+                    const q = p.map((v,k) => v - verts[a+k]!)
+                    const length2 = d.reduce((sum,v) => sum+v*v, 0)
+                    const t = length2 ? Math.max(0,Math.min(1,q.reduce((sum,v,k) => sum+v*d[k]!,0)/length2)) : 0
+                    gap = Math.min(gap,Math.hypot(...q.map((v,k) => v-t*d[k]!)))
+                }
+                assert.ok(gap < 1e-5, `square flange rim at ${p} is beveled: mesh edge gap ${gap}`)
+            }
+        }
         // Reference roots of the uncut housing body on each cutter's cylinder,
         // on both flange faces. The source digest prevents stale geometry from
         // silently validating an edited demo. These are geometric samples, not

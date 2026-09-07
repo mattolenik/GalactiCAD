@@ -31,17 +31,155 @@ const MID_LATHE_MANTLE_NORMAL_COUNT: u32 = 5u;
 
 // SDFResult carries both the distance value and a gradient-magnitude estimate.
 // - d: The distance value (may not be true Euclidean distance for non-SDF operators)
-// - g: Gradient magnitude estimate of the field itself.
+// - g: Legacy projection/blend heuristic, not the raw derivative magnitude.
+// - gradient: Raw derivative of d in caller coordinates; derivativeStatus describes validity.
 //
 // IMPORTANT:
 // g is not the same thing as the safe march multiplier used by the fast path.
 // Those are tracked separately in FastSDFResult so the code no longer overloads
 // one number with two meanings.
+// Raw derivatives are independent of g (legacy projection heuristic).
+// Status is a bitmask: exact=0; flags conservatively follow contributing operands.
+const DERIVATIVE_EXACT: u32 = 0u;
+const DERIVATIVE_ONE_SIDED: u32 = 1u;
+const DERIVATIVE_APPROXIMATE: u32 = 2u;
+const DERIVATIVE_SINGULAR: u32 = 4u;
+const DERIVATIVE_UNAVAILABLE: u32 = 8u;
+
+fn sdfDerivativeNormal(gradient: vec3f) -> vec3f {
+    // Scale before normalizing: small regular derivatives are not stationary.
+    let scale = max(abs(gradient.x), max(abs(gradient.y), abs(gradient.z)));
+    if (scale > 0.0 && scale <= 3.402823e38) {
+        return normalize(gradient / scale);
+    }
+    return vec3f(0.0, 1.0, 0.0);
+}
+fn sdfWithGradient(r: SDFResult, gradient: vec3f, status: u32) -> SDFResult {
+    var out = r;
+    out.gradient = gradient;
+    out.derivativeStatus = status;
+    // A stationary derivative stays zero. Only the consumer direction falls back.
+    out.n = sdfDerivativeNormal(gradient);
+    return out;
+}
+// Feature payloads can deliberately use a primary face normal near an edge.
+// Keep that convention separate from the derivative consumed by parent CSG.
+fn sdfWithFeatureGradientMid(r: SDFResultMid, gradient: vec3f, status: u32) -> SDFResultMid {
+    var out = r;
+    out.gradient = gradient;
+    out.derivativeStatus = status;
+    return out;
+}
+fn sdfWithGradientMid(r: SDFResultMid, gradient: vec3f, status: u32) -> SDFResultMid {
+    var out = r;
+    out.gradient = gradient;
+    out.derivativeStatus = status;
+    out.n = sdfDerivativeNormal(gradient);
+    return out;
+}
+fn sdfExact(d: f32, g: f32, id: u32, gradient: vec3f) -> SDFResult {
+    return sdfWithGradient(sdfShadingPayload(d, g, id, vec3f(0.0)), gradient, DERIVATIVE_EXACT);
+}
+fn sdfApproximate(d: f32, g: f32, id: u32, gradient: vec3f) -> SDFResult {
+    return sdfWithGradient(sdfShadingPayload(d, g, id, vec3f(0.0)), gradient, DERIVATIVE_APPROXIMATE);
+}
+
+// Scalar dual with partials with respect to the two input distances.
+struct SdfPartials { d: f32, w: vec2f, status: u32 }
+fn dpA(d: f32) -> SdfPartials { return SdfPartials(d, vec2f(1.0, 0.0), 0u); }
+fn dpB(d: f32) -> SdfPartials { return SdfPartials(d, vec2f(0.0, 1.0), 0u); }
+fn dpConst(d: f32) -> SdfPartials { return SdfPartials(d, vec2f(0.0), 0u); }
+fn dpAdd(a: SdfPartials, b: SdfPartials) -> SdfPartials { return SdfPartials(a.d+b.d, a.w+b.w, a.status|b.status); }
+fn dpScale(a: SdfPartials, k: f32) -> SdfPartials { return SdfPartials(a.d*k, a.w*k, a.status); }
+fn dpMin(a: SdfPartials, b: SdfPartials) -> SdfPartials {
+    if (a.d < b.d) { return a; }
+    if (b.d < a.d) { return b; }
+    return SdfPartials(a.d, a.w, a.status|DERIVATIVE_ONE_SIDED);
+}
+fn dpMax(a: SdfPartials, b: SdfPartials) -> SdfPartials { return dpScale(dpMin(dpScale(a,-1.0),dpScale(b,-1.0)),-1.0); }
+fn dpAbs(a: SdfPartials) -> SdfPartials { return dpMax(a, dpScale(a,-1.0)); }
+fn dpLength(a: SdfPartials, b: SdfPartials) -> SdfPartials {
+    let l = length(vec2f(a.d,b.d));
+    if (l == 0.0) { return SdfPartials(0.0, vec2f(0.0), DERIVATIVE_SINGULAR); }
+    return SdfPartials(l, (a.d*a.w+b.d*b.w)/l, a.status|b.status);
+}
+fn dpMod(a: SdfPartials, period: f32) -> SdfPartials {
+    let d = modF(a.d,period);
+    return SdfPartials(d,a.w,a.status|select(0u,DERIVATIVE_ONE_SIDED,d==0.0));
+}
+fn partialUnion(a: f32, b: f32) -> SdfPartials { return dpMin(dpA(a),dpB(b)); }
+fn partialIntersection(a: f32, b: f32) -> SdfPartials { return dpMax(dpA(a),dpB(b)); }
+fn partialUnionSoft(a: f32, b: f32, r: f32) -> SdfPartials {
+    if (r <= 0.0) { return partialUnion(a,b); }
+    let h = clamp(0.5+(b-a)/(2.0*r),0.0,1.0);
+    let e = max(r-abs(a-b),0.0);
+    return SdfPartials(min(a,b)-e*e*0.25/r,vec2f(h,1.0-h),0u);
+}
+fn partialUnionRound(a: f32, b: f32, r: f32) -> SdfPartials {
+    // Outside the joint active region the complete max/min/length formula
+    // reduces exactly to the ordinary winning operand.
+    if (a >= r || b >= r) { return partialUnion(a, b); }
+    let u = vec2f(r - a, r - b);
+    let magnitude = length(u);
+    return SdfPartials(r - magnitude, u / magnitude, DERIVATIVE_EXACT);
+}
+fn partialIntersectionRound(a: f32,b: f32,r: f32) -> SdfPartials {
+    let q = partialUnionRound(-a,-b,r);
+    return SdfPartials(-q.d,q.w,q.status);
+}
+fn partialUnionChamfer(a: f32,b: f32,r: f32) -> SdfPartials {
+    return dpMin(partialUnion(a,b), SdfPartials((a+b-r)*INVERSESQRT2,vec2f(INVERSESQRT2),0u));
+}
+fn partialIntersectionChamfer(a: f32,b: f32,r: f32) -> SdfPartials {
+    let q = partialUnionChamfer(-a,-b,r);
+    return SdfPartials(-q.d,q.w,q.status);
+}
+fn partialPipe(a: f32,b: f32,r: f32) -> SdfPartials { return dpAdd(dpLength(dpA(a),dpB(b)),dpConst(-r)); }
+fn partialEngrave(a: f32,b: f32,r: f32) -> SdfPartials { return dpMax(dpA(a),dpScale(dpAdd(dpAdd(dpA(a),dpConst(r)),dpScale(dpAbs(dpB(b)),-1.0)),INVERSESQRT2)); }
+fn partialGroove(a: f32,b: f32,ra: f32,rb: f32) -> SdfPartials { return dpMax(dpA(a),dpMin(dpAdd(dpA(a),dpConst(ra)),dpAdd(dpConst(rb),dpScale(dpAbs(dpB(b)),-1.0)))); }
+fn partialTongue(a: f32,b: f32,ra: f32,rb: f32) -> SdfPartials { return dpMin(dpA(a),dpMax(dpAdd(dpA(a),dpConst(-ra)),dpAdd(dpAbs(dpB(b)),dpConst(-rb)))); }
+fn partialUnionStairs(a: f32,b: f32,r: f32,n: f32) -> SdfPartials {
+    let s=r/n;
+    let u=dpAdd(dpB(b),dpConst(-r));
+    let stair=dpScale(dpAdd(dpAdd(u,dpA(a)),dpAbs(dpAdd(dpMod(dpAdd(dpAdd(u,dpScale(dpA(a),-1.0)),dpConst(s)),2.0*s),dpConst(-s)))),0.5);
+    return dpMin(partialUnion(a,b),stair);
+}
+fn partialUnionColumns(a: f32,b: f32,r: f32,n: f32) -> SdfPartials {
+    if (a>=r || b>=r) { return partialUnion(a,b); }
+    let cr=r*sqrt(2.0)/((n-1.0)*2.0+sqrt(2.0));
+    let x=dpAdd(dpScale(dpAdd(dpA(a),dpB(b)),INVERSESQRT2),dpConst(-INVERSESQRT2*r+cr*sqrt(2.0)));
+    let y=dpMod(dpAdd(dpScale(dpAdd(dpB(b),dpScale(dpA(a),-1.0)),INVERSESQRT2),dpConst(select(0.0,cr,n%2.0!=0.0))),2.0*cr);
+    return dpMin(dpMin(dpAdd(dpLength(x,y),dpConst(-cr)),x),partialUnion(a,b));
+}
+fn partialDifferenceColumns(a: f32,b: f32,r: f32,n: f32) -> SdfPartials {
+    let na=dpScale(dpA(a),-1.0);
+    if (-a>=r || b>=r) { return dpMax(dpA(a),dpScale(dpB(b),-1.0)); }
+    let cr=r*sqrt(2.0)/((n-1.0)*2.0+sqrt(2.0));
+    let x=dpAdd(dpScale(dpAdd(na,dpB(b)),INVERSESQRT2),dpConst(-INVERSESQRT2*r-cr*INVERSESQRT2));
+    let y=dpMod(dpAdd(dpScale(dpAdd(dpB(b),dpScale(na,-1.0)),INVERSESQRT2),dpConst(cr+select(0.0,cr,n%2.0!=0.0))),2.0*cr);
+    return dpScale(dpMin(dpMin(dpMax(dpAdd(dpScale(dpLength(x,y),-1.0),dpConst(cr)),x),na),dpB(b)),-1.0);
+}
+fn composeStatus(q: SdfPartials, a: u32,b: u32) -> u32 {
+    return q.status|select(0u,a,q.w.x!=0.0)|select(0u,b,q.w.y!=0.0);
+}
+fn composeDerivative(payload: SDFResult,a: SDFResult,b: SDFResult,q: SdfPartials) -> SDFResult {
+    var out=sdfWithGradient(payload,q.w.x*a.gradient+q.w.y*b.gradient,composeStatus(q,a.derivativeStatus,b.derivativeStatus));
+    out.d=q.d;
+    return out;
+}
+fn composeDerivativeMid(payload: SDFResultMid,a: SDFResultMid,b: SDFResultMid,q: SdfPartials) -> SDFResultMid {
+    var out=sdfWithGradientMid(payload,q.w.x*a.gradient+q.w.y*b.gradient,composeStatus(q,a.derivativeStatus,b.derivativeStatus));
+    out.d=q.d;
+    return out;
+}
+
 struct SDFResult {
     d: f32,
     g: f32,
     id: u32,
     n: vec3<f32>,
+    gradient: vec3f,
+    derivativeStatus: u32,
     id2: u32,     // secondary ID for smooth blend color interpolation
     blend: f32,   // blend weight: 0 = fully id, 1 = fully id2
     seamA: u32,   // operand ID at nearest hard CSG seam
@@ -59,12 +197,12 @@ struct SDFResult {
     seamSdfB: f32,
 }
 
-fn sdfR(d: f32, g: f32, id: u32, n: vec3f) -> SDFResult {
-    return SDFResult(d, g, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0, 0.0);
+fn sdfShadingPayload(d: f32, g: f32, id: u32, n: vec3f) -> SDFResult {
+    return SDFResult(d, g, id, n, vec3f(0.0), DERIVATIVE_UNAVAILABLE, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0, 0.0);
 }
 
-fn sdfTrue(d: f32, id: u32, n: vec3<f32>) -> SDFResult {
-    return SDFResult(d, 1.0, id, n, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0, 0.0);
+fn sdfTrue(d: f32, id: u32, gradient: vec3<f32>) -> SDFResult {
+    return SDFResult(d, 1.0, id, sdfDerivativeNormal(gradient), gradient, DERIVATIVE_EXACT, id, 0.0, id, id, 0u, 1e9, vec3f(0.0, 0.0, 1.0), 0.0, 0.0);
 }
 
 fn sdfNeg(r: SDFResult) -> SDFResult {
@@ -73,7 +211,7 @@ fn sdfNeg(r: SDFResult) -> SDFResult {
     // depends on the surrounding op (e.g. opDifference computes
     // `intersection(a, neg(b))`, so the inner `b` is what gets negated).
     // We negate `seamSdfA` to keep semantics consistent for the caller.
-    return SDFResult(-r.d, r.g, r.id, -r.n, r.id2, r.blend, r.seamA, r.seamB, r.seamOp, r.seamGap, r.seamTangent, -r.seamSdfA, -r.seamSdfB);
+    return SDFResult(-r.d, r.g, r.id, -r.n, -r.gradient, r.derivativeStatus, r.id2, r.blend, r.seamA, r.seamB, r.seamOp, r.seamGap, r.seamTangent, -r.seamSdfA, -r.seamSdfB);
 }
 
 fn bestSeam(a: SDFResult, b: SDFResult, outerGap: f32, outerOp: u32, outerTangent: vec3f) -> SDFResult {
@@ -126,6 +264,8 @@ struct SDFResultMid {
     d: f32,
     g: f32,
     n: vec3f,
+    gradient: vec3f,
+    derivativeStatus: u32,
     featureKind: u32,
     featureDist: f32,
     featureIdA: u32,
@@ -138,37 +278,37 @@ struct SDFResultMid {
     featureAxisCenter: vec3f,
 }
 
-fn sdfRMidNoFeature(d: f32, g: f32, n: vec3f) -> SDFResultMid {
+fn sdfRMidNoFeature(d: f32, g: f32, gradient: vec3f) -> SDFResultMid {
     return SDFResultMid(
-        d, g, n,
+        d, g, sdfDerivativeNormal(gradient), gradient, DERIVATIVE_EXACT,
         MID_FEATURE_NONE, 1e9, 0u, 0u, 0u,
         vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
     );
 }
 
-fn sdfRMidLine(d: f32, g: f32, n: vec3f, featurePoint: vec3f, tangent: vec3f, n1: vec3f, featureDist: f32) -> SDFResultMid {
+fn sdfRMidLine(d: f32, g: f32, gradient: vec3f, featurePoint: vec3f, tangent: vec3f, n1: vec3f, featureDist: f32) -> SDFResultMid {
     return SDFResultMid(
-        d, g, n,
+        d, g, sdfDerivativeNormal(gradient), gradient, DERIVATIVE_EXACT,
         MID_FEATURE_LINE, featureDist, 0u, 0u, 2u,
         featurePoint, tangent, n1, vec3f(0.0), vec3f(0.0),
     );
 }
 
-fn sdfRMidCorner(d: f32, g: f32, n: vec3f, featurePoint: vec3f, n1: vec3f, n2: vec3f, featureDist: f32) -> SDFResultMid {
+fn sdfRMidCorner(d: f32, g: f32, gradient: vec3f, featurePoint: vec3f, n1: vec3f, n2: vec3f, featureDist: f32) -> SDFResultMid {
     return SDFResultMid(
-        d, g, n,
+        d, g, sdfDerivativeNormal(gradient), gradient, DERIVATIVE_EXACT,
         MID_FEATURE_CORNER, featureDist, 0u, 0u, 3u,
         featurePoint, vec3f(0.0), n1, n2, vec3f(0.0),
     );
 }
 
 fn sdfRMidRing(
-    d: f32, g: f32, n: vec3f,
+    d: f32, g: f32, gradient: vec3f,
     featurePoint: vec3f, tangent: vec3f, n1: vec3f,
     axisCenter: vec3f, featureDist: f32,
 ) -> SDFResultMid {
     return SDFResultMid(
-        d, g, n,
+        d, g, sdfDerivativeNormal(gradient), gradient, DERIVATIVE_EXACT,
         MID_FEATURE_RING, featureDist, 0u, 0u, 2u,
         featurePoint, tangent, n1, vec3f(0.0), axisCenter,
     );
@@ -182,10 +322,10 @@ fn orderedOwnerPair(ownerA: u32, ownerB: u32) -> vec2u {
     return vec2u(ownerB, ownerA);
 }
 
-fn sdfRMidSeam(d: f32, g: f32, n: vec3f, seamIdA: u32, seamIdB: u32, seamN0: vec3f, seamN1: vec3f, featureDist: f32) -> SDFResultMid {
+fn sdfRMidSeam(d: f32, g: f32, gradient: vec3f, seamIdA: u32, seamIdB: u32, seamN0: vec3f, seamN1: vec3f, featureDist: f32) -> SDFResultMid {
     let owners = orderedOwnerPair(seamIdA, seamIdB);
     return SDFResultMid(
-        d, g, n,
+        d, g, sdfDerivativeNormal(gradient), gradient, DERIVATIVE_EXACT,
         MID_FEATURE_BOOLEAN_SEAM, featureDist, owners.x, owners.y, 2u,
         vec3f(0.0), vec3f(0.0), seamN0, seamN1, vec3f(0.0),
     );
@@ -204,21 +344,21 @@ fn clearMidFeature(r: SDFResultMid) -> SDFResultMid {
     return out;
 }
 
-fn sdfRMidOwned(d: f32, g: f32, n: vec3f, ownerA: u32, ownerB: u32) -> SDFResultMid {
-    var out = sdfRMidNoFeature(d, g, n);
+fn sdfRMidOwned(d: f32, g: f32, gradient: vec3f, ownerA: u32, ownerB: u32) -> SDFResultMid {
+    var out = sdfRMidNoFeature(d, g, gradient);
     let owners = orderedOwnerPair(ownerA, ownerB);
     out.featureIdA = owners.x;
     out.featureIdB = owners.y;
     return out;
 }
 
-fn sdfRMid(d: f32, g: f32, n: vec3f) -> SDFResultMid {
-    return sdfRMidNoFeature(d, g, n);
+fn sdfRMid(d: f32, g: f32, gradient: vec3f) -> SDFResultMid {
+    return sdfRMidNoFeature(d, g, gradient);
 }
 
-fn sdfRMidLatheMantle(d: f32, g: f32, n: vec3f) -> SDFResultMid {
+fn sdfRMidLatheMantle(d: f32, g: f32, gradient: vec3f) -> SDFResultMid {
     return SDFResultMid(
-        d, g, n,
+        d, g, sdfDerivativeNormal(gradient), gradient, DERIVATIVE_EXACT,
         MID_FEATURE_NONE, 1e9, 0u, 0u, MID_LATHE_MANTLE_NORMAL_COUNT,
         vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0),
     );
@@ -228,6 +368,7 @@ fn sdfNegMid(r: SDFResultMid) -> SDFResultMid {
     var out = r;
     out.d = -r.d;
     out.n = -r.n;
+    out.gradient = -r.gradient;
     out.featureN1 = -r.featureN1;
     out.featureN2 = -r.featureN2;
     return out;
@@ -630,8 +771,8 @@ fn fBox(p: vec3<f32>, b: vec3<f32>) -> f32 {
 
 fn fSphereEx(p: vec3<f32>, r: f32, id: u32) -> SDFResult {
     let d = length(p) - r;
-    let n = normalize(p);
-    return sdfTrue(d, id, n);
+    let n = sdfDerivativeNormal(p);
+    return sdfWithGradient(sdfTrue(d, id, n), select(n,vec3f(0.0),length(p)==0.0), select(DERIVATIVE_EXACT,DERIVATIVE_SINGULAR,length(p)==0.0));
 }
 
 fn fBoxEx(p: vec3<f32>, b: vec3<f32>, id: u32) -> SDFResult {
@@ -650,7 +791,7 @@ fn fBoxEx(p: vec3<f32>, b: vec3<f32>, id: u32) -> SDFResult {
             n = vec3<f32>(0.0, 0.0, sgn(p.z));
         }
     }
-    return sdfTrue(length(outside) + vmax3(min(d, vec3<f32>(0.0))), id, n);
+    return sdfWithGradient(sdfTrue(length(outside) + vmax3(min(d, vec3<f32>(0.0))), id, n), n, boxDerivativeStatus(p, b));
 }
 
 // Cylinder meridian (ρ, y): distance to revolution profile [0,r]×[-h,h] with optional
@@ -719,14 +860,14 @@ fn fCylinderMeridianNormal3(
     let nz = dr * p.z * inv;
     let nn = vec3f(nx, dy, nz);
     let l = length(nn);
-    return select(safeNormalize(vec3f(0.0, sign(dy), 0.0), vec3f(0.0, 1.0, 0.0)), nn / l, l > 1e-6);
+    return nn;
 }
 
 fn fCylinderEx(p: vec3<f32>, r: f32, height: f32, filletTop: f32, filletBot: f32, chamferTop: f32, chamferBot: f32, id: u32) -> SDFResult {
     let rho = length(p.xz);
     let d = fCylinderMeridianEdge(rho, p.y, r, height, filletTop, filletBot, chamferTop, chamferBot);
     let n = fCylinderMeridianNormal3(p, rho, r, height, filletTop, filletBot, chamferTop, chamferBot);
-    return sdfTrue(d, id, n);
+    return sdfApproximate(d, 1.0, id, n);
 }
 
 // FDM threaded rod: sinusoidal helical radius (smooth, prints reliably).
@@ -892,7 +1033,7 @@ fn fBlobEx(pIn: vec3<f32>, id: u32) -> SDFResult {
     let ny = fBlob(pIn + vec3f(0.0, eps, 0.0)) - fBlob(pIn - vec3f(0.0, eps, 0.0));
     let nz = fBlob(pIn + vec3f(0.0, 0.0, eps)) - fBlob(pIn - vec3f(0.0, 0.0, eps));
     let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
-    return sdfTrue(d, id, n);
+    return sdfApproximate(d, 1.0, id, vec3f(nx, ny, nz) / (2.0 * eps));
 }
 
 ////////////////////////////////////////
@@ -901,8 +1042,8 @@ fn fBlobEx(pIn: vec3<f32>, id: u32) -> SDFResult {
 
 fn fSphereMid(p: vec3<f32>, r: f32) -> SDFResultMid {
     let d = length(p) - r;
-    let n = normalize(p);
-    return sdfRMid(d, 1.0, n);
+    let n = sdfDerivativeNormal(p);
+    return sdfWithGradientMid(sdfRMid(d, 1.0, n), select(n,vec3f(0.0),length(p)==0.0), select(DERIVATIVE_EXACT,DERIVATIVE_SINGULAR,length(p)==0.0));
 }
 
 fn fBoxMid(p: vec3<f32>, b: vec3<f32>) -> SDFResultMid {
@@ -933,52 +1074,52 @@ fn fBoxMid(p: vec3<f32>, b: vec3<f32>) -> SDFResultMid {
 
     if (contactCount >= 3u) {
         let cp = vec3f(sx * b.x, sy * b.y, sz * b.z);
-        return sdfRMidCorner(
+        return sdfWithFeatureGradientMid(sdfRMidCorner(
             dist, 1.0, vec3f(sx, 0.0, 0.0), cp,
             vec3f(0.0, sy, 0.0), vec3f(0.0, 0.0, sz),
             length(p - cp),
-        );
+        ), n, boxDerivativeStatus(p, b));
     }
 
     if (contactCount >= 2u) {
         if (closeX && closeY) {
             let cp = vec3f(sx * b.x, sy * b.y, clamp(p.z, -b.z, b.z));
-            return sdfRMidLine(
+            return sdfWithFeatureGradientMid(sdfRMidLine(
                 dist, 1.0,
                 vec3f(sx, 0.0, 0.0),
                 cp, vec3f(0.0, 0.0, 1.0),
                 vec3f(0.0, sy, 0.0),
                 length(p - cp),
-            );
+            ), n, boxDerivativeStatus(p, b));
         }
         if (closeX && closeZ) {
             let cp = vec3f(sx * b.x, clamp(p.y, -b.y, b.y), sz * b.z);
-            return sdfRMidLine(
+            return sdfWithFeatureGradientMid(sdfRMidLine(
                 dist, 1.0,
                 vec3f(sx, 0.0, 0.0),
                 cp, vec3f(0.0, 1.0, 0.0),
                 vec3f(0.0, 0.0, sz),
                 length(p - cp),
-            );
+            ), n, boxDerivativeStatus(p, b));
         }
         let cp = vec3f(clamp(p.x, -b.x, b.x), sy * b.y, sz * b.z);
-        return sdfRMidLine(
+        return sdfWithFeatureGradientMid(sdfRMidLine(
             dist, 1.0,
             vec3f(0.0, sy, 0.0),
             cp, vec3f(1.0, 0.0, 0.0),
             vec3f(0.0, 0.0, sz),
             length(p - cp),
-        );
+        ), n, boxDerivativeStatus(p, b));
     }
 
-    return sdfRMid(dist, 1.0, n);
+    return sdfWithGradientMid(sdfRMid(dist, 1.0, n), n, boxDerivativeStatus(p, b));
 }
 
 fn fCylinderMid(p: vec3<f32>, r: f32, height: f32, filletTop: f32, filletBot: f32, chamferTop: f32, chamferBot: f32) -> SDFResultMid {
     let rho = length(p.xz);
     let d = fCylinderMeridianEdge(rho, p.y, r, height, filletTop, filletBot, chamferTop, chamferBot);
     let n = fCylinderMeridianNormal3(p, rho, r, height, filletTop, filletBot, chamferTop, chamferBot);
-    return sdfRMid(d, 1.0, n);
+    return sdfWithGradientMid(sdfRMid(d, 1.0, n), n, DERIVATIVE_APPROXIMATE);
 }
 
 fn fConeMid(p: vec3<f32>, radius: f32, height: f32) -> SDFResultMid {
@@ -1099,7 +1240,7 @@ fn fBlobMid(pIn: vec3<f32>) -> SDFResultMid {
     let ny = fBlob(pIn + vec3f(0.0, eps, 0.0)) - fBlob(pIn - vec3f(0.0, eps, 0.0));
     let nz = fBlob(pIn + vec3f(0.0, 0.0, eps)) - fBlob(pIn - vec3f(0.0, 0.0, eps));
     let n = safeNormalize(vec3f(nx, ny, nz), vec3f(0.0, 1.0, 0.0));
-    return sdfRMid(d, 1.0, n);
+    return sdfWithGradientMid(sdfRMid(d, 1.0, n), vec3f(nx, ny, nz) / (2.0 * eps), DERIVATIVE_APPROXIMATE);
 }
 
 // 2D boxes
@@ -1425,6 +1566,7 @@ fn fOpUnionRound(a: f32, b: f32, r: f32) -> f32 {
     return max(r, min(a, b)) - length(u);
 }
 fn fOpUnionSoft(a:f32, b:f32, r:f32) -> f32 {
+    if (r <= 0.0) { return min(a,b); }
 	let e = max(r - abs(a - b), 0);
 	return min(a, b) - e*e*0.25/r;
 }
@@ -1595,6 +1737,7 @@ fn fOpUnionRoundFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResul
 // This means |∇d| ≤ max(|∇a|, |∇b|) ≤ 1 — it is Lipschitz-1, so g can be the
 // operand gradient (no additional reduction needed).
 fn fOpUnionSoftFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
+    if (r <= 0.0) { return opUnionFast(a,b); }
     let e = max(r - abs(a.d - b.d), 0.0);
     let d = min(a.d, b.d) - e * e * 0.25 / r;
     let inBlend = e > 0.0;
@@ -1760,60 +1903,56 @@ fn fOpTongueFast(a: FastSDFResult, b: FastSDFResult, ra: f32, rb: f32) -> FastSD
 
 // Hard union Mid: pick by distance, blend normals when coplanar
 fn opUnionMid(a: SDFResultMid, b: SDFResultMid) -> SDFResultMid {
+    let partials = partialUnion(a.d, b.d);
     if (abs(a.d - b.d) < SURF_DIST) {
         let n = safeNormalize(a.n + b.n, a.n);
         if (dot(a.n, b.n) < MID_FEATURE_SEAM_COS_THRESH) {
-            return sdfRMidSeam(min(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b), a.n, b.n, abs(a.d - b.d));
+            return composeDerivativeMid(sdfRMidSeam(min(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b), a.n, b.n, abs(a.d - b.d)), a, b, partials);
         }
-        return sdfRMidOwned(min(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(min(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d < b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d < b.d), a, b, partials);
 }
 
 // Hard intersection Mid
 fn opIntersectionMid(a: SDFResultMid, b: SDFResultMid) -> SDFResultMid {
+    let partials = partialIntersection(a.d, b.d);
     if (abs(a.d - b.d) < SURF_DIST) {
         let n = safeNormalize(a.n + b.n, a.n);
         if (dot(a.n, b.n) < MID_FEATURE_SEAM_COS_THRESH) {
-            return sdfRMidSeam(max(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b), a.n, b.n, abs(a.d - b.d));
+            return composeDerivativeMid(sdfRMidSeam(max(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b), a.n, b.n, abs(a.d - b.d)), a, b, partials);
         }
-        return sdfRMidOwned(max(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(max(a.d, b.d), min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d > b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d > b.d), a, b, partials);
 }
 
 // Hard difference Mid
 fn opDifferenceMid(a: SDFResultMid, b: SDFResultMid) -> SDFResultMid {
-    let negB = sdfNegMid(b);
-    if (abs(a.d - negB.d) < SURF_DIST) {
-        let n = safeNormalize(a.n + negB.n, a.n);
-        if (dot(a.n, negB.n) < MID_FEATURE_SEAM_COS_THRESH) {
-            return sdfRMidSeam(max(a.d, negB.d), min(a.g, negB.g), n, midPrimaryOwner(a), midPrimaryOwner(negB), a.n, negB.n, abs(a.d - negB.d));
-        }
-        return sdfRMidOwned(max(a.d, negB.d), min(a.g, negB.g), n, midPrimaryOwner(a), midPrimaryOwner(negB));
-    }
-    return selectMid(negB, a, a.d > negB.d);
+    return opIntersectionMid(a, sdfNegMid(b));
 }
 
 // Chamfer union Mid
 fn fOpUnionChamferMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let partials = partialUnionChamfer(a.d, b.d, r);
     let chamferD = (a.d - r + b.d) * sqrt(0.5);
     let d = min(min(a.d, b.d), chamferD);
     if (chamferD < a.d && chamferD < b.d) {
         let n = normalize(a.n + b.n);
-        return sdfRMidOwned(d, 1.0, n, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d < b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d < b.d), a, b, partials);
 }
 
 fn fOpIntersectionChamferMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let partials = partialIntersectionChamfer(a.d, b.d, r);
     let chamferD = (a.d + r + b.d) * sqrt(0.5);
     let d = max(max(a.d, b.d), chamferD);
     if (chamferD > a.d && chamferD > b.d) {
         let n = normalize(a.n + b.n);
-        return sdfRMidOwned(d, 1.0, n, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d > b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d > b.d), a, b, partials);
 }
 
 fn fOpDifferenceChamferMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
@@ -1822,33 +1961,37 @@ fn fOpDifferenceChamferMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResul
 
 // Round union Mid
 fn fOpUnionRoundMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let partials = partialUnionRound(a.d, b.d, r);
     let u = max(vec2f(r - a.d, r - b.d), vec2f(0.0));
     let d = max(r, min(a.d, b.d)) - length(u);
     if (a.d < r && b.d < r) {
         let n = normalize(a.n * u.x + b.n * u.y);
-        return sdfRMidOwned(d, INVERSESQRT2 * min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, INVERSESQRT2 * min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d < b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d < b.d), a, b, partials);
 }
 
 fn fOpUnionSoftMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    if (r <= 0.0) { return opUnionMid(a,b); }
+    let partials = partialUnionSoft(a.d, b.d, r);
     let e = max(r - abs(a.d - b.d), 0.0);
     let d = min(a.d, b.d) - e * e * 0.25 / r;
     if (e > 0.0) {
         let n = normalize(a.n * (r - a.d) + b.n * (r - b.d));
-        return sdfRMidOwned(d, min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d < b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d < b.d), a, b, partials);
 }
 
 fn fOpIntersectionRoundMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let partials = partialIntersectionRound(a.d, b.d, r);
     let u = max(vec2f(r + a.d, r + b.d), vec2f(0.0));
     let d = min(-r, max(a.d, b.d)) + length(u);
     if (a.d > -r && b.d > -r) {
         let n = normalize(a.n * u.x + b.n * u.y);
-        return sdfRMidOwned(d, INVERSESQRT2 * min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, INVERSESQRT2 * min(a.g, b.g), n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d > b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d > b.d), a, b, partials);
 }
 
 fn fOpDifferenceRoundMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
@@ -1857,6 +2000,7 @@ fn fOpDifferenceRoundMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultM
 
 // Columns union Mid
 fn fOpUnionColumnsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    let partials = partialUnionColumns(a.d, b.d, r, n);
     if (a.d < r) && (b.d < r) {
         var p = vec2f(a.d, b.d);
         let columnradius = r * sqrt(2.0) / ((n - 1.0) * 2.0 + sqrt(2.0));
@@ -1873,12 +2017,13 @@ fn fOpUnionColumnsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFRe
         let wa = r - a.d;
         let wb = r - b.d;
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d < b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d < b.d), a, b, partials);
 }
 
 fn fOpDifferenceColumnsMid(aIn: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    let partials = partialDifferenceColumns(aIn.d, b.d, r, n);
     let aD = -aIn.d;
     if (aD < r) && (b.d < r) {
         var p = vec2f(aD, b.d);
@@ -1896,14 +2041,14 @@ fn fOpDifferenceColumnsMid(aIn: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -
         let wa = r + aIn.d;
         let wb = r - b.d;
         let blendN = safeNormalize(aIn.n * wa - b.n * wb, aIn.n);
-        return sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(aIn), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(aIn), midPrimaryOwner(b)), aIn, b, partials);
     }
     let d = max(aIn.d, -b.d);
-    return selectMid(
+    return composeDerivativeMid(selectMid(
         sdfRMidOwned(d, b.g, -b.n, b.featureIdA, b.featureIdB),
         sdfRMidOwned(d, aIn.g, aIn.n, aIn.featureIdA, aIn.featureIdB),
         aIn.d > -b.d
-    );
+    ), aIn, b, partials);
 }
 
 fn fOpIntersectionColumnsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
@@ -1912,6 +2057,7 @@ fn fOpIntersectionColumnsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -
 
 // Stairs union Mid
 fn fOpUnionStairsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
+    let partials = partialUnionStairs(a.d, b.d, r, n);
     let s = r / n;
     let u = b.d - r;
     let stairD = 0.5 * (u + a.d + abs(modF(u - a.d + s, 2.0 * s) - s));
@@ -1920,15 +2066,16 @@ fn fOpUnionStairsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFRes
         let wa = r - a.d;
         let wb = r - b.d;
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return selectMid(b, a, a.d < b.d);
+    return composeDerivativeMid(selectMid(b, a, a.d < b.d), a, b, partials);
 }
 
 fn fOpIntersectionStairsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> SDFResultMid {
     var result = fOpUnionStairsMid(sdfNegMid(a), sdfNegMid(b), r, n);
     result.d = -result.d;
     result.n = -result.n;
+    result.gradient = -result.gradient;
     return clearMidFeature(result);
 }
 
@@ -1936,59 +2083,64 @@ fn fOpDifferenceStairsMid(a: SDFResultMid, b: SDFResultMid, r: f32, n: f32) -> S
     var result = fOpUnionStairsMid(sdfNegMid(a), b, r, n);
     result.d = -result.d;
     result.n = -result.n;
+    result.gradient = -result.gradient;
     return clearMidFeature(result);
 }
 
 // Pipe Mid
 fn fOpPipeMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let partials = partialPipe(a.d, b.d, r);
     let pipeLen = length(vec2f(a.d, b.d));
     let d = pipeLen - r;
     var blendN = a.n;
     if (pipeLen > 1e-6) {
         blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
     }
-    return sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b));
+    return composeDerivativeMid(sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
 }
 
 // Engrave Mid
 fn fOpEngraveMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let partials = partialEngrave(a.d, b.d, r);
     let engraveD = (a.d + r - abs(b.d)) * sqrt(0.5);
     let d = max(a.d, engraveD);
     if (engraveD > a.d) {
         let blendN = safeNormalize(a.n - sgn(b.d) * b.n, a.n);
-        return sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return sdfRMidOwned(d, a.g, a.n, a.featureIdA, a.featureIdB);
+    return composeDerivativeMid(sdfRMidOwned(d, a.g, a.n, a.featureIdA, a.featureIdB), a, b, partials);
 }
 
 // Groove Mid
 fn fOpGrooveMid(a: SDFResultMid, b: SDFResultMid, ra: f32, rb: f32) -> SDFResultMid {
+    let partials = partialGroove(a.d, b.d, ra, rb);
     let depthD = a.d + ra;
     let widthD = rb - abs(b.d);
     let grooveD = min(depthD, widthD);
     let d = max(a.d, grooveD);
     if (grooveD > a.d) {
         if (depthD < widthD) {
-            return sdfRMidOwned(d, 1.0, a.n, a.featureIdA, a.featureIdB);
+            return composeDerivativeMid(sdfRMidOwned(d, 1.0, a.n, a.featureIdA, a.featureIdB), a, b, partials);
         }
-        return sdfRMidOwned(d, 1.0, -sgn(b.d) * b.n, b.featureIdA, b.featureIdB);
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, -sgn(b.d) * b.n, b.featureIdA, b.featureIdB), a, b, partials);
     }
-    return sdfRMidOwned(d, a.g, a.n, a.featureIdA, a.featureIdB);
+    return composeDerivativeMid(sdfRMidOwned(d, a.g, a.n, a.featureIdA, a.featureIdB), a, b, partials);
 }
 
 // Tongue Mid
 fn fOpTongueMid(a: SDFResultMid, b: SDFResultMid, ra: f32, rb: f32) -> SDFResultMid {
+    let partials = partialTongue(a.d, b.d, ra, rb);
     let depthD = a.d - ra;
     let widthD = abs(b.d) - rb;
     let tongueD = max(depthD, widthD);
     let d = min(a.d, tongueD);
     if (tongueD < a.d) {
         if (depthD > widthD) {
-            return sdfRMidOwned(d, 1.0, a.n, a.featureIdA, a.featureIdB);
+            return composeDerivativeMid(sdfRMidOwned(d, 1.0, a.n, a.featureIdA, a.featureIdB), a, b, partials);
         }
-        return sdfRMidOwned(d, 1.0, sgn(b.d) * b.n, b.featureIdA, b.featureIdB);
+        return composeDerivativeMid(sdfRMidOwned(d, 1.0, sgn(b.d) * b.n, b.featureIdA, b.featureIdB), a, b, partials);
     }
-    return sdfRMidOwned(d, a.g, a.n, a.featureIdA, a.featureIdB);
+    return composeDerivativeMid(sdfRMidOwned(d, a.g, a.n, a.featureIdA, a.featureIdB), a, b, partials);
 }
 
 ////////////////////////////////////////////////////
@@ -1999,14 +2151,16 @@ fn fOpTongueMid(a: SDFResultMid, b: SDFResultMid, ra: f32, rb: f32) -> SDFResult
 // Used after evaluating a child SDF in a rotated coordinate system.
 fn sdfRotateNormal(r: SDFResult, m: mat3x3f) -> SDFResult {
     var out = r;
-    out.n = safeNormalize(m * out.n, out.n);
+    out.gradient = m * r.gradient;
+    out.n = sdfDerivativeNormal(out.gradient);
     return out;
 }
 
 // Rotate the normal of an SDFResultMid by a forward rotation matrix.
 fn sdfRotateNormalMid(r: SDFResultMid, m: mat3x3f) -> SDFResultMid {
     var out = r;
-    out.n = safeNormalize(m * out.n, out.n);
+    out.gradient = m * r.gradient;
+    out.n = sdfDerivativeNormal(out.gradient);
     return sdfRotateFeatureMid(out, m);
 }
 
@@ -2022,7 +2176,8 @@ fn sdfScaleNormal(r: SDFResult, s: vec3f) -> SDFResult {
     out.d = r.d * m;
     let invs = vec3f(1.0 / s.x, 1.0 / s.y, 1.0 / s.z);
     let scaledN = r.n * invs;
-    out.n = safeNormalize(scaledN, r.n);
+    out.gradient = m * r.gradient * invs;
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = r.g * m * length(scaledN);
     return out;
 }
@@ -2033,7 +2188,8 @@ fn sdfScaleNormalMid(r: SDFResultMid, s: vec3f) -> SDFResultMid {
     out.d = r.d * m;
     let invs = vec3f(1.0 / s.x, 1.0 / s.y, 1.0 / s.z);
     let scaledN = r.n * invs;
-    out.n = safeNormalize(scaledN, r.n);
+    out.gradient = m * r.gradient * invs;
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = r.g * m * length(scaledN);
     return sdfScaleFeatureMid(out, s);
 }
@@ -2051,8 +2207,10 @@ fn sdfShellFast(a: FastSDFResult, thickness: f32) -> FastSDFResult {
 fn sdfShellEx(a: SDFResult, thickness: f32) -> SDFResult {
     var out = a;
     out.d = abs(a.d) - thickness;
+    if (a.d == 0.0) { out.derivativeStatus |= DERIVATIVE_ONE_SIDED; }
     if (a.d < 0.0) {
         out.n = -out.n;
+        out.gradient = -out.gradient;
     }
     return out;
 }
@@ -2073,9 +2231,11 @@ fn sdfOffsetEx(a: SDFResult, amount: f32) -> SDFResult {
 fn sdfShellMid(a: SDFResultMid, p: vec3f, thickness: f32) -> SDFResultMid {
     var out = a;
     out.d = abs(a.d) - thickness;
+    if (a.d == 0.0) { out.derivativeStatus |= DERIVATIVE_ONE_SIDED; }
     let inner = a.d < 0.0;
     if (inner) {
         out.n = -out.n;
+        out.gradient = -out.gradient;
         out.featureN1 = -out.featureN1;
         out.featureN2 = -out.featureN2;
     }
@@ -2162,12 +2322,14 @@ fn sdfTwistNormal(r: SDFResult, p: vec3f, rate: f32) -> SDFResult {
     let s = sin(a);
     let qx = c * p.x - s * p.z;
     let qz = s * p.x + c * p.z;
-    let nxw = c * out.n.x + s * out.n.z;
-    let nyw = out.n.y + rate * (qz * out.n.x - qx * out.n.z);
-    let nzw = -s * out.n.x + c * out.n.z;
+    let nxw = c * r.gradient.x + s * r.gradient.z;
+    let nyw = r.gradient.y + rate * (qz * r.gradient.x - qx * r.gradient.z);
+    let nzw = -s * r.gradient.x + c * r.gradient.z;
     let rho = length(p.xz);
     let stretch = sqrt(1.0 + rate * rate * rho * rho);
-    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
+    out.d = r.d / stretch;
+    out.gradient = vec3f(nxw, nyw, nzw) / stretch -r.d * rate * rate * vec3f(p.x, 0.0, p.z) / (stretch * stretch * stretch);
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = out.g * stretch;
     return out;
 }
@@ -2180,12 +2342,14 @@ fn sdfTwistNormalMid(r: SDFResultMid, p: vec3f, rate: f32) -> SDFResultMid {
     let s = sin(a);
     let qx = c * p.x - s * p.z;
     let qz = s * p.x + c * p.z;
-    let nxw = c * out.n.x + s * out.n.z;
-    let nyw = out.n.y + rate * (qz * out.n.x - qx * out.n.z);
-    let nzw = -s * out.n.x + c * out.n.z;
+    let nxw = c * r.gradient.x + s * r.gradient.z;
+    let nyw = r.gradient.y + rate * (qz * r.gradient.x - qx * r.gradient.z);
+    let nzw = -s * r.gradient.x + c * r.gradient.z;
     let rho = length(p.xz);
     let stretch = sqrt(1.0 + rate * rate * rho * rho);
-    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
+    out.d = r.d / stretch;
+    out.gradient = vec3f(nxw, nyw, nzw) / stretch -r.d * rate * rate * vec3f(p.x, 0.0, p.z) / (stretch * stretch * stretch);
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = out.g * stretch;
     return sdfTwistFeatureMid(out, p, rate);
 }
@@ -2216,11 +2380,13 @@ fn sdfBendNormal(r: SDFResult, p: vec3f, amount: f32) -> SDFResult {
     let s = sin(a);
     let qx = c * p.x + s * p.y;
     let qy = -s * p.x + c * p.y;
-    let nxw = c * out.n.x - s * out.n.y + amount * (qx * out.n.y - qy * out.n.x);
-    let nyw = s * out.n.x + c * out.n.y;
-    let nzw = out.n.z;
+    let nxw = c * r.gradient.x - s * r.gradient.y + amount * (qx * r.gradient.y - qy * r.gradient.x);
+    let nyw = s * r.gradient.x + c * r.gradient.y;
+    let nzw = r.gradient.z;
     let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
-    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
+    out.d = r.d / stretch;
+    out.gradient = vec3f(nxw, nyw, nzw) / stretch -r.d * amount * amount * vec3f(0.0, p.y, 0.0) / (stretch * stretch * stretch);
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = out.g * stretch;
     return out;
 }
@@ -2233,11 +2399,13 @@ fn sdfBendNormalMid(r: SDFResultMid, p: vec3f, amount: f32) -> SDFResultMid {
     let s = sin(a);
     let qx = c * p.x + s * p.y;
     let qy = -s * p.x + c * p.y;
-    let nxw = c * out.n.x - s * out.n.y + amount * (qx * out.n.y - qy * out.n.x);
-    let nyw = s * out.n.x + c * out.n.y;
-    let nzw = out.n.z;
+    let nxw = c * r.gradient.x - s * r.gradient.y + amount * (qx * r.gradient.y - qy * r.gradient.x);
+    let nyw = s * r.gradient.x + c * r.gradient.y;
+    let nzw = r.gradient.z;
     let stretch = sqrt(1.0 + amount * amount * p.y * p.y);
-    out.n = safeNormalize(vec3f(nxw, nyw, nzw), out.n);
+    out.d = r.d / stretch;
+    out.gradient = vec3f(nxw, nyw, nzw) / stretch -r.d * amount * amount * vec3f(0.0, p.y, 0.0) / (stretch * stretch * stretch);
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = out.g * stretch;
     return clearMidFeature(out);
 }
@@ -2271,10 +2439,13 @@ fn sdfTaperNormal(r: SDFResult, p: vec3f, ratio: f32, height: f32) -> SDFResult 
     let t = clamp(p.y / height, 0.0, 1.0);
     let s = 1.0 + (ratio - 1.0) * t;
     let correction = min(s, 1.0);
-    let inActive = p.y > 0.0 && p.y < height;
-    let dsdy = select(0.0, (ratio - 1.0) / max(height, 1e-6), inActive);
-    let nyCross = -(p.x * out.n.x + p.z * out.n.z) / (s * s) * dsdy;
-    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y + nyCross, out.n.z / s), out.n);
+    let inActive = p.y / height > 0.0 && p.y / height < 1.0;
+    let dsdy = select(0.0, (ratio - 1.0) / height, inActive);
+    let nyCross = -(p.x * r.gradient.x + p.z * r.gradient.z) / (s * s) * dsdy;
+    out.d = r.d * correction;
+    out.gradient = correction * vec3f(r.gradient.x / s, r.gradient.y + nyCross, r.gradient.z / s) + vec3f(0.0, r.d * select(0.0, dsdy, s < 1.0), 0.0);
+    if (p.y == 0.0 || p.y == height || s == 1.0) { out.derivativeStatus |= DERIVATIVE_ONE_SIDED; }
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = out.g / correction;
     return out;
 }
@@ -2285,10 +2456,13 @@ fn sdfTaperNormalMid(r: SDFResultMid, p: vec3f, ratio: f32, height: f32) -> SDFR
     let t = clamp(p.y / height, 0.0, 1.0);
     let s = 1.0 + (ratio - 1.0) * t;
     let correction = min(s, 1.0);
-    let inActive = p.y > 0.0 && p.y < height;
-    let dsdy = select(0.0, (ratio - 1.0) / max(height, 1e-6), inActive);
-    let nyCross = -(p.x * out.n.x + p.z * out.n.z) / (s * s) * dsdy;
-    out.n = safeNormalize(vec3f(out.n.x / s, out.n.y + nyCross, out.n.z / s), out.n);
+    let inActive = p.y / height > 0.0 && p.y / height < 1.0;
+    let dsdy = select(0.0, (ratio - 1.0) / height, inActive);
+    let nyCross = -(p.x * r.gradient.x + p.z * r.gradient.z) / (s * s) * dsdy;
+    out.d = r.d * correction;
+    out.gradient = correction * vec3f(r.gradient.x / s, r.gradient.y + nyCross, r.gradient.z / s) + vec3f(0.0, r.d * select(0.0, dsdy, s < 1.0), 0.0);
+    if (p.y == 0.0 || p.y == height || s == 1.0) { out.derivativeStatus |= DERIVATIVE_ONE_SIDED; }
+    out.n = sdfDerivativeNormal(out.gradient);
     out.g = out.g / correction;
     return sdfTaperFeatureMid(out, p, ratio, height);
 }
@@ -2308,14 +2482,15 @@ fn sdfMorphFast(a: FastSDFResult, b: FastSDFResult, t: f32) -> FastSDFResult {
 
 // Morph Ex: interpolate distance, blend normals, use id/id2 for color
 fn sdfMorphEx(a: SDFResult, b: SDFResult, t: f32) -> SDFResult {
+    let partials = SdfPartials(a.d*(1.0-t)+b.d*t,vec2f(1.0-t,t),0u);
     let d = a.d * (1.0 - t) + b.d * t;
     let g = a.g * (1.0 - t) + b.g * t;
     let n = safeNormalize(a.n * (1.0 - t) + b.n * t, a.n);
     let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     if (t < 0.5) {
-        return SDFResult(d, g, a.id, n, b.id, t, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+        return composeDerivative(SDFResult(d, g, a.id, n, vec3f(0.0), DERIVATIVE_UNAVAILABLE, b.id, t, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0), a, b, partials);
     }
-    return SDFResult(d, g, b.id, n, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+    return composeDerivative(SDFResult(d, g, b.id, n, vec3f(0.0), DERIVATIVE_UNAVAILABLE, a.id, 1.0 - t, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0), a, b, partials);
 }
 
 // Seam Fast: union of both shapes plus a pipe tube at their intersection (weld bead).
@@ -2331,44 +2506,47 @@ fn sdfSeamFast(a: FastSDFResult, b: FastSDFResult, r: f32) -> FastSDFResult {
 
 // Seam Ex: union + pipe tube with proper normals
 fn sdfSeamEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let partials = dpMin(partialUnion(a.d,b.d),dpScale(partialPipe(a.d,b.d,r),INVERSESQRT2));
     // Compute union
     let unionResult = opUnionEx(a, b);
     // Compute pipe
     let pipeLen = length(vec2f(a.d, b.d));
-    let pipeD = pipeLen - r;
+    let pipeD = (pipeLen - r) * INVERSESQRT2;
     // If pipe surface is closer than union, use pipe
     if (pipeD < unionResult.d) {
         var blendN = a.n;
         if (pipeLen > 1e-6) {
             blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
         }
-        if (a.id <= b.id) { return sdfR(pipeD, 1.0, a.id, blendN); }
-        return sdfR(pipeD, 1.0, b.id, blendN);
+        if (a.id <= b.id) { return composeDerivative(sdfShadingPayload(pipeD, 1.0, a.id, blendN), a, b, partials); }
+        return composeDerivative(sdfShadingPayload(pipeD, 1.0, b.id, blendN), a, b, partials);
     }
-    return unionResult;
+    return composeDerivative(unionResult, a, b, partials);
 }
 
 // Morph Mid: interpolate distance and normals
 fn sdfMorphMid(a: SDFResultMid, b: SDFResultMid, t: f32) -> SDFResultMid {
+    let partials = SdfPartials(a.d*(1.0-t)+b.d*t,vec2f(1.0-t,t),0u);
     let d = a.d * (1.0 - t) + b.d * t;
     let g = a.g * (1.0 - t) + b.g * t;
     let n = safeNormalize(a.n * (1.0 - t) + b.n * t, a.n);
-    return sdfRMidOwned(d, g, n, midPrimaryOwner(a), midPrimaryOwner(b));
+    return composeDerivativeMid(sdfRMidOwned(d, g, n, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
 }
 
 // Seam Mid: union + pipe tube with proper normals
 fn sdfSeamMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
+    let partials = dpMin(partialUnion(a.d,b.d),dpScale(partialPipe(a.d,b.d,r),INVERSESQRT2));
     let unionResult = opUnionMid(a, b);
     let pipeLen = length(vec2f(a.d, b.d));
-    let pipeD = pipeLen - r;
+    let pipeD = (pipeLen - r) * INVERSESQRT2;
     if (pipeD < unionResult.d) {
         var blendN = a.n;
         if (pipeLen > 1e-6) {
             blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
         }
-        return sdfRMidOwned(pipeD, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b));
+        return composeDerivativeMid(sdfRMidOwned(pipeD, 1.0, blendN, midPrimaryOwner(a), midPrimaryOwner(b)), a, b, partials);
     }
-    return unionResult;
+    return composeDerivativeMid(unionResult, a, b, partials);
 }
 
 ////////////////////////////////////////////////////
@@ -2378,34 +2556,36 @@ fn sdfSeamMid(a: SDFResultMid, b: SDFResultMid, r: f32) -> SDFResultMid {
 
 // Hard union: pick the closer operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opUnionEx(a: SDFResult, b: SDFResult) -> SDFResult {
+    let partials = partialUnion(a.d, b.d);
     let gap = abs(a.d - b.d);
     let seamTangent = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     let seam = bestSeam(a, b, gap, 1u, seamTangent);
     if (gap < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        var out = selectSDF(sdfR(b.d, b.g, b.id, n), sdfR(a.d, a.g, a.id, n), a.id <= b.id);
+        var out = selectSDF(sdfShadingPayload(b.d, b.g, b.id, n), sdfShadingPayload(a.d, a.g, a.id, n), a.id <= b.id);
         applySeam(&out, seam);
-        return out;
+        return composeDerivative(out, a, b, partials);
     }
     var out = selectSDF(b, a, a.d < b.d);
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 // Hard intersection: pick the farther operand (ID tiebreaker + normal blend for coplanar surfaces)
 fn opIntersectionEx(a: SDFResult, b: SDFResult) -> SDFResult {
+    let partials = partialIntersection(a.d, b.d);
     let gap = abs(a.d - b.d);
     let seamTangent = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     let seam = bestSeam(a, b, gap, 2u, seamTangent);
     if (gap < SURF_DIST) {
         let n = normalize(a.n + b.n);
-        var out = selectSDF(sdfR(b.d, b.g, b.id, n), sdfR(a.d, a.g, a.id, n), a.id <= b.id);
+        var out = selectSDF(sdfShadingPayload(b.d, b.g, b.id, n), sdfShadingPayload(a.d, a.g, a.id, n), a.id <= b.id);
         applySeam(&out, seam);
-        return out;
+        return composeDerivative(out, a, b, partials);
     }
     var out = selectSDF(b, a, a.d > b.d);
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 // Hard difference: intersection with complement of b
@@ -2419,6 +2599,7 @@ fn opDifferenceEx(a: SDFResult, b: SDFResult) -> SDFResult {
 
 // Chamfer union - 45° bevel between operands
 fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let partials = partialUnionChamfer(a.d, b.d, r);
     let chamferD = (a.d - r + b.d) * sqrt(0.5);
     let d = min(min(a.d, b.d), chamferD);
     let diff = abs(a.d - b.d);
@@ -2429,20 +2610,21 @@ fn fOpUnionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     var out: SDFResult;
     if (chamferD < a.d && chamferD < b.d) {
         if (coplanar || a.d < b.d) {
-            out = selectSDF(sdfR(d, 1.0, b.id, n), sdfR(d, 1.0, a.id, n), coplanar && b.id < a.id);
+            out = selectSDF(sdfShadingPayload(d, 1.0, b.id, n), sdfShadingPayload(d, 1.0, a.id, n), coplanar && b.id < a.id);
         } else {
-            out = sdfR(d, 1.0, b.id, n);
+            out = sdfShadingPayload(d, 1.0, b.id, n);
         }
     } else if (coplanar) {
-        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), a.id <= b.id);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, n), sdfShadingPayload(d, a.g, a.id, n), a.id <= b.id);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), a.d < b.d);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, b.n), sdfShadingPayload(d, a.g, a.id, a.n), a.d < b.d);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let partials = partialIntersectionChamfer(a.d, b.d, r);
     let chamferD = (a.d + r + b.d) * sqrt(0.5);
     let d = max(max(a.d, b.d), chamferD);
     let diff = abs(a.d - b.d);
@@ -2453,17 +2635,17 @@ fn fOpIntersectionChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     var out: SDFResult;
     if (chamferD > a.d && chamferD > b.d) {
         if (coplanar || a.d > b.d) {
-            out = selectSDF(sdfR(d, 1.0, b.id, n), sdfR(d, 1.0, a.id, n), coplanar && b.id < a.id);
+            out = selectSDF(sdfShadingPayload(d, 1.0, b.id, n), sdfShadingPayload(d, 1.0, a.id, n), coplanar && b.id < a.id);
         } else {
-            out = sdfR(d, 1.0, b.id, n);
+            out = sdfShadingPayload(d, 1.0, b.id, n);
         }
     } else if (coplanar) {
-        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), a.id <= b.id);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, n), sdfShadingPayload(d, a.g, a.id, n), a.id <= b.id);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), a.d > b.d);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, b.n), sdfShadingPayload(d, a.g, a.id, a.n), a.d > b.d);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -2472,6 +2654,7 @@ fn fOpDifferenceChamferEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
 
 // Round union - g=0.5 signals blend region to MDC
 fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let partials = partialUnionRound(a.d, b.d, r);
     let u = max(vec2<f32>(r - a.d, r - b.d), vec2<f32>(0.0, 0.0));
     let d = max(r, min(a.d, b.d)) - length(u);
     let coplanar = abs(a.d - b.d) < SURF_DIST;
@@ -2481,20 +2664,22 @@ fn fOpUnionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (a.d < r && b.d < r) {
         let n = normalize(a.n * u.x + b.n * u.y);
         let w = u.y / (u.x + u.y);
-        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+        return composeDerivative(SDFResult(d, 0.5, a.id, n, vec3f(0.0), DERIVATIVE_UNAVAILABLE, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0), a, b, partials);
     }
     var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), aWins);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, n), sdfShadingPayload(d, a.g, a.id, n), aWins);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), aWins);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, b.n), sdfShadingPayload(d, a.g, a.id, a.n), aWins);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    if (r <= 0.0) { return opUnionEx(a,b); }
+    let partials = partialUnionSoft(a.d, b.d, r);
     let e = max(r - abs(a.d - b.d), 0.0);
     let d = min(a.d, b.d) - e * e * 0.25 / r;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
@@ -2505,21 +2690,22 @@ fn fOpUnionSoftEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
         let n = normalize(a.n * (r - a.d) + b.n * (r - b.d));
         let wa = max(r - a.d, 0.0);
         let wb = max(r - b.d, 0.0);
-        let w = wb / (wa + wb);
-        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+        let w = wb / max(wa + wb, 1e-20);
+        return composeDerivative(SDFResult(d, 0.5, a.id, n, vec3f(0.0), DERIVATIVE_UNAVAILABLE, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0), a, b, partials);
     }
     var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), aWins);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, n), sdfShadingPayload(d, a.g, a.id, n), aWins);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), aWins);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, b.n), sdfShadingPayload(d, a.g, a.id, a.n), aWins);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let partials = partialIntersectionRound(a.d, b.d, r);
     let u = max(vec2<f32>(r + a.d, r + b.d), vec2<f32>(0.0, 0.0));
     let d = min(-r, max(a.d, b.d)) + length(u);
     let coplanar = abs(a.d - b.d) < SURF_DIST;
@@ -2529,17 +2715,17 @@ fn fOpIntersectionRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (a.d > -r && b.d > -r) {
         let n = normalize(a.n * u.x + b.n * u.y);
         let w = u.y / (u.x + u.y);
-        return SDFResult(d, 0.5, a.id, n, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+        return composeDerivative(SDFResult(d, 0.5, a.id, n, vec3f(0.0), DERIVATIVE_UNAVAILABLE, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0), a, b, partials);
     }
     var out: SDFResult;
     if (coplanar) {
         let n = normalize(a.n + b.n);
-        out = selectSDF(sdfR(d, b.g, b.id, n), sdfR(d, a.g, a.id, n), aWins);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, n), sdfShadingPayload(d, a.g, a.id, n), aWins);
     } else {
-        out = selectSDF(sdfR(d, b.g, b.id, b.n), sdfR(d, a.g, a.id, a.n), aWins);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, b.n), sdfShadingPayload(d, a.g, a.id, a.n), aWins);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
@@ -2548,6 +2734,7 @@ fn fOpDifferenceRoundEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
 
 // Columns union Ex — cylindrical columns decorate the blend between operands
 fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
+    let partials = partialUnionColumns(a.d, b.d, r, n);
     let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     let seam = bestSeam(a, b, abs(a.d - b.d), 1u, seamT);
     if (a.d < r) && (b.d < r) {
@@ -2565,30 +2752,29 @@ fn fOpUnionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
         let d = min(res, b.d);
         let wa = r - a.d;
         let wb = r - b.d;
-        let w = wb / (wa + wb);
+        let w = wb / max(wa + wb, 1e-20);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+        return composeDerivative(SDFResult(d, 1.0, a.id, blendN, vec3f(0.0), DERIVATIVE_UNAVAILABLE, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0), a, b, partials);
     }
     var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(a.n + b.n, a.n);
-        out = selectSDF(sdfR(min(a.d, b.d), b.g, b.id, cn), sdfR(min(a.d, b.d), a.g, a.id, cn), a.id <= b.id);
+        out = selectSDF(sdfShadingPayload(min(a.d, b.d), b.g, b.id, cn), sdfShadingPayload(min(a.d, b.d), a.g, a.id, cn), a.id <= b.id);
     } else if (a.d < b.d) {
-        out = sdfR(a.d, a.g, a.id, a.n);
+        out = sdfShadingPayload(a.d, a.g, a.id, a.n);
     } else {
-        out = sdfR(b.d, b.g, b.id, b.n);
+        out = sdfShadingPayload(b.d, b.g, b.id, b.n);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 // Columns difference Ex — columns decorate the carved boundary
 // Distance follows the scalar fOpDifferenceColumns exactly.
-// Normals: mirrors the union's weight scheme in the complement space, then negates.
-//   wa = r + aIn.d (= r - aD), wb = r - b.d — both guaranteed positive in blend zone.
-//   Difference normal = normalize(aIn.n * wa - b.n * wb).
+// Scalar partials select the branch-local derivative; color weights are separate.
 fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
+    let partials = partialDifferenceColumns(aIn.d, b.d, r, n);
     let seamT = safeNormalize(cross(aIn.n, b.n), vec3f(0.0, 0.0, 1.0));
     let seam = bestSeam(aIn, b, abs(aIn.d + b.d), 3u, seamT);
     let aD = -aIn.d;
@@ -2608,24 +2794,24 @@ fn fOpDifferenceColumnsEx(aIn: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
         let wa = r + aIn.d;
         let wb = r - b.d;
         let blendN = safeNormalize(aIn.n * wa - b.n * wb, aIn.n);
-        let w = wb / (wa + wb);
-        var out = SDFResult(d, 1.0, aIn.id, blendN, b.id, w, aIn.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+        let w = wb / max(wa + wb, 1e-20);
+        var out = SDFResult(d, 1.0, aIn.id, blendN, vec3f(0.0), DERIVATIVE_UNAVAILABLE, b.id, w, aIn.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
         applySeam(&out, seam);
-        return out;
+        return composeDerivative(out, aIn, b, partials);
     }
     let d = max(aIn.d, -b.d);
     var out: SDFResult;
     let coplanar = abs(aIn.d + b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(aIn.n - b.n, aIn.n);
-        out = selectSDF(sdfR(d, b.g, b.id, cn), sdfR(d, aIn.g, aIn.id, cn), aIn.id <= b.id);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, cn), sdfShadingPayload(d, aIn.g, aIn.id, cn), aIn.id <= b.id);
     } else if (aIn.d > -b.d) {
-        out = sdfR(d, aIn.g, aIn.id, aIn.n);
+        out = sdfShadingPayload(d, aIn.g, aIn.id, aIn.n);
     } else {
-        out = sdfR(d, b.g, b.id, -b.n);
+        out = sdfShadingPayload(d, b.g, b.id, -b.n);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, aIn, b, partials);
 }
 
 // Columns intersection Ex
@@ -2635,6 +2821,7 @@ fn fOpIntersectionColumnsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRe
 
 // Stairs union Ex — staircase transition between operands
 fn fOpUnionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
+    let partials = partialUnionStairs(a.d, b.d, r, n);
     let seamT = safeNormalize(cross(a.n, b.n), vec3f(0.0, 0.0, 1.0));
     let seam = bestSeam(a, b, abs(a.d - b.d), 1u, seamT);
     let s = r / n;
@@ -2645,22 +2832,22 @@ fn fOpUnionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResult {
     if (a.d < r && b.d < r) {
         let wa = r - a.d;
         let wb = r - b.d;
-        let w = wb / (wa + wb);
+        let w = wb / max(wa + wb, 1e-20);
         let blendN = safeNormalize(a.n * wa + b.n * wb, a.n);
-        return SDFResult(d, 1.0, a.id, blendN, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0);
+        return composeDerivative(SDFResult(d, 1.0, a.id, blendN, vec3f(0.0), DERIVATIVE_UNAVAILABLE, b.id, w, a.id, b.id, 0u, 1e9, seamT, 0.0, 0.0), a, b, partials);
     }
     var out: SDFResult;
     let coplanar = abs(a.d - b.d) < SURF_DIST;
     if (coplanar) {
         let cn = safeNormalize(a.n + b.n, a.n);
-        out = selectSDF(sdfR(d, b.g, b.id, cn), sdfR(d, a.g, a.id, cn), a.id <= b.id);
+        out = selectSDF(sdfShadingPayload(d, b.g, b.id, cn), sdfShadingPayload(d, a.g, a.id, cn), a.id <= b.id);
     } else if (a.d < b.d) {
-        out = sdfR(d, a.g, a.id, a.n);
+        out = sdfShadingPayload(d, a.g, a.id, a.n);
     } else {
-        out = sdfR(d, b.g, b.id, b.n);
+        out = sdfShadingPayload(d, b.g, b.id, b.n);
     }
     applySeam(&out, seam);
-    return out;
+    return composeDerivative(out, a, b, partials);
 }
 
 // Stairs intersection Ex
@@ -2668,6 +2855,7 @@ fn fOpIntersectionStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFRes
     var result = fOpUnionStairsEx(sdfNeg(a), sdfNeg(b), r, n);
     result.d = -result.d;
     result.n = -result.n;
+    result.gradient = -result.gradient;
     return result;
 }
 
@@ -2676,11 +2864,13 @@ fn fOpDifferenceStairsEx(a: SDFResult, b: SDFResult, r: f32, n: f32) -> SDFResul
     var result = fOpUnionStairsEx(sdfNeg(a), b, r, n);
     result.d = -result.d;
     result.n = -result.n;
+    result.gradient = -result.gradient;
     return result;
 }
 
 // Pipe Ex — cylindrical hole at intersection of two surfaces
 fn fOpPipeEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let partials = partialPipe(a.d, b.d, r);
     let pipeLen = length(vec2f(a.d, b.d));
     let d = pipeLen - r;
     // Normal is the gradient of length(a.d, b.d): weight by distance components
@@ -2688,24 +2878,26 @@ fn fOpPipeEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
     if (pipeLen > 1e-6) {
         blendN = safeNormalize(a.n * a.d + b.n * b.d, a.n);
     }
-    if (a.id <= b.id) { return sdfR(d, 1.0, a.id, blendN); }
-    return sdfR(d, 1.0, b.id, blendN);
+    if (a.id <= b.id) { return composeDerivative(sdfShadingPayload(d, 1.0, a.id, blendN), a, b, partials); }
+    return composeDerivative(sdfShadingPayload(d, 1.0, b.id, blendN), a, b, partials);
 }
 
 // Engrave Ex — carved groove in surface a using surface b as profile
 fn fOpEngraveEx(a: SDFResult, b: SDFResult, r: f32) -> SDFResult {
+    let partials = partialEngrave(a.d, b.d, r);
     let engraveD = (a.d + r - abs(b.d)) * sqrt(0.5);
     let d = max(a.d, engraveD);
     if (engraveD > a.d) {
         // Gradient of (a.d + r - |b.d|) is (∇a - sign(b.d)·∇b)
         let blendN = safeNormalize(a.n - sgn(b.d) * b.n, a.n);
-        return sdfR(d, 1.0, a.id, blendN);
+        return composeDerivative(sdfShadingPayload(d, 1.0, a.id, blendN), a, b, partials);
     }
-    return sdfR(d, a.g, a.id, a.n);
+    return composeDerivative(sdfShadingPayload(d, a.g, a.id, a.n), a, b, partials);
 }
 
 // Groove Ex — carpenter groove (rectangular channel in surface a along surface b)
 fn fOpGrooveEx(a: SDFResult, b: SDFResult, ra: f32, rb: f32) -> SDFResult {
+    let partials = partialGroove(a.d, b.d, ra, rb);
     let depthD = a.d + ra;
     let widthD = rb - abs(b.d);
     let grooveD = min(depthD, widthD);
@@ -2713,16 +2905,17 @@ fn fOpGrooveEx(a: SDFResult, b: SDFResult, ra: f32, rb: f32) -> SDFResult {
     if (grooveD > a.d) {
         if (depthD < widthD) {
             // Depth-limited: normal is a's surface normal
-            return sdfR(d, 1.0, a.id, a.n);
+            return composeDerivative(sdfShadingPayload(d, 1.0, a.id, a.n), a, b, partials);
         }
         // Width-limited: gradient of (rb - |b.d|) is -sign(b.d)·∇b
-        return sdfR(d, 1.0, a.id, -sgn(b.d) * b.n);
+        return composeDerivative(sdfShadingPayload(d, 1.0, a.id, -sgn(b.d) * b.n), a, b, partials);
     }
-    return sdfR(d, a.g, a.id, a.n);
+    return composeDerivative(sdfShadingPayload(d, a.g, a.id, a.n), a, b, partials);
 }
 
 // Tongue Ex — carpenter tongue (inverse of groove: protrusion from surface a)
 fn fOpTongueEx(a: SDFResult, b: SDFResult, ra: f32, rb: f32) -> SDFResult {
+    let partials = partialTongue(a.d, b.d, ra, rb);
     let depthD = a.d - ra;
     let widthD = abs(b.d) - rb;
     let tongueD = max(depthD, widthD);
@@ -2730,11 +2923,29 @@ fn fOpTongueEx(a: SDFResult, b: SDFResult, ra: f32, rb: f32) -> SDFResult {
     if (tongueD < a.d) {
         if (depthD > widthD) {
             // Depth-limited: normal is a's surface normal
-            return sdfR(d, 1.0, a.id, a.n);
+            return composeDerivative(sdfShadingPayload(d, 1.0, a.id, a.n), a, b, partials);
         }
         // Width-limited: gradient of (|b.d| - rb) is sign(b.d)·∇b
-        return sdfR(d, 1.0, a.id, sgn(b.d) * b.n);
+        return composeDerivative(sdfShadingPayload(d, 1.0, a.id, sgn(b.d) * b.n), a, b, partials);
     }
-    return sdfR(d, a.g, a.id, a.n);
+    return composeDerivative(sdfShadingPayload(d, a.g, a.id, a.n), a, b, partials);
 }
 
+
+fn sdfElongateGradient(r: SDFResult, p: vec3f, h: vec3f) -> SDFResult {
+    let gradient = r.gradient * select(vec3f(0.0), vec3f(1.0), abs(p) > h);
+    return sdfWithGradient(r, gradient, r.derivativeStatus | select(0u, DERIVATIVE_ONE_SIDED, any(abs(p) == h)));
+}
+fn sdfElongateGradientMid(r: SDFResultMid, p: vec3f, h: vec3f) -> SDFResultMid {
+    let gradient = r.gradient * select(vec3f(0.0), vec3f(1.0), abs(p) > h);
+    return sdfWithGradientMid(r, gradient, r.derivativeStatus | select(0u, DERIVATIVE_ONE_SIDED, any(abs(p) == h)));
+}
+
+fn boxDerivativeStatus(p: vec3f, b: vec3f) -> u32 {
+    let d = abs(p)-b;
+    if (any(d > vec3f(0.0))) { return DERIVATIVE_EXACT; }
+    let m = max(d.x,max(d.y,d.z));
+    let winners = d == vec3f(m);
+    if (dot(select(vec3f(0.0),vec3f(1.0),winners),vec3f(1.0)) > 1.0 || (winners.x && p.x == 0.0) || (winners.y && p.y == 0.0) || (winners.z && p.z == 0.0)) { return DERIVATIVE_ONE_SIDED; }
+    return DERIVATIVE_EXACT;
+}

@@ -46,7 +46,7 @@ export class Elongate extends UnaryOperator {
         const childResult = this.arg.compile(indentLevel)
         const h = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         const funcName = `Elongate${this.id}`
-        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `elongatePoint(p, ${h})`, c => c, "selectSDF")
+        return warpIsoResult(this, funcName, decapitalize(funcName), childResult, `elongatePoint(p, ${h})`, c => `sdfElongateGradient(${c}, p, ${h})`, "selectSDF")
     }
     override compileFast(indentLevel = 0): CompileResult {
         const childResult = this.arg.compileFast(indentLevel)
@@ -58,7 +58,7 @@ export class Elongate extends UnaryOperator {
         const childResult = this.arg.compileMid(indentLevel)
         const h = vec3Wgsl(this.paramOffset, this.previewVec3Slot)
         const funcName = `Elongate${this.id}`
-        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `elongatePoint(p, ${h})`, c => `sdfMidStripFeatures(${c})`, "selectMid")
+        return warpIsoResult(this, funcName, `${decapitalize(funcName)}_m`, childResult, `elongatePoint(p, ${h})`, c => `sdfElongateGradientMid(sdfMidStripFeatures(${c}), p, ${h})`, "selectMid")
     }
 
     protected override computeBoundsCore(): AABB | null {

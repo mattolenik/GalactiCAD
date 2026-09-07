@@ -239,7 +239,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let filletBotR = ${fb};
     let chamferTopAmt = ${ct};
     let chamferBotAmt = ${cb};
-    var cur = sdfTrue(dSide, id, nSide);
+    var cur = sdfApproximate(dSide, 1.0, id, vec3f(gx, gy, gz) / (2.0 * eps));
     let topHS = sdfTrue(capY - capH, ${capTopId}u, vec3f(0.0, 1.0, 0.0));
     let botHS = sdfTrue(-capY - capH, ${capBottomId}u, vec3f(0.0, -1.0, 0.0));
     if (filletTopR > 0.0) {
@@ -269,7 +269,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             resultId = FACE_HIGHLIGHT_BOTTOM;
         }
     }
-    return sdfTrue(d, resultId, n);
+    cur.id = resultId;
+    return cur;
 }
 `
     }
@@ -353,7 +354,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let filletBotR = ${fb};
     let chamferTopAmt = ${ct};
     let chamferBotAmt = ${cb};
-    var cur = sdfRMidOwned(dSide, 1.0, nSide, ${id}u, ${id}u);
+    var cur = sdfWithGradientMid(sdfRMidOwned(dSide, 1.0, nSide, ${id}u, ${id}u), vec3f(gx, gy, gz) / (2.0 * eps), DERIVATIVE_APPROXIMATE);
     let topM = sdfRMidOwned(capY - capHv, 1.0, vec3f(0.0, 1.0, 0.0), ${this.capTop.id}u, ${this.capTop.id}u);
     let botM = sdfRMidOwned(-capY - capHv, 1.0, vec3f(0.0, -1.0, 0.0), ${this.capBottom.id}u, ${this.capBottom.id}u);
     if (filletTopR > 0.0) {

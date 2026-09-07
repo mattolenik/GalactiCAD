@@ -266,8 +266,9 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     if (r > 1e-8) {
         radDir = p.xz / r;
     }
-    let n = safeNormalize(vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y), vec3f(0.0, 1.0, 0.0));
-    return sdfTrue(d, id, n);
+    let rawGradient = vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y);
+    let n = safeNormalize(rawGradient, vec3f(0.0, 1.0, 0.0));
+    return sdfWithGradient(sdfExact(d, 1.0, id, rawGradient), rawGradient, select(DERIVATIVE_ONE_SIDED, DERIVATIVE_SINGULAR, r == 0.0));
 }
 `
     }
@@ -303,12 +304,12 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
                             let ringTangent = safeNormalize(vec3f(-radDir.y, 0.0, radDir.x), vec3f(0.0, 0.0, 1.0));
                             var ring = sdfRMidRing(d, 1.0, n, feat, ringTangent, n1m, axisCenter, length(p - feat));
                             ring.featureIdB = vertexTag;
-                            return ring;
+                            return sdfWithFeatureGradientMid(ring, rawGradient, select(DERIVATIVE_ONE_SIDED, DERIVATIVE_SINGULAR, r == 0.0));
                         }
                         let feat = vec3f(0.0, ${vVName}.y, 0.0);
                         var corner = sdfRMidCorner(d, 1.0, n, feat, n0m, n1m, length(p - feat));
                         corner.featureIdB = vertexTag;
-                        return corner;
+                        return sdfWithFeatureGradientMid(corner, rawGradient, select(DERIVATIVE_ONE_SIDED, DERIVATIVE_SINGULAR, r == 0.0));
                     }
                 }`
 
@@ -323,7 +324,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     if (r > 1e-8) {
         radDir = p.xz / r;
     }
-    let n = safeNormalize(vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y), vec3f(0.0, 1.0, 0.0));
+    let rawGradient = vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y);
+    let n = safeNormalize(rawGradient, vec3f(0.0, 1.0, 0.0));
     let sideEps = ${eps.sideEps};
     let featureVtxEps = ${eps.featureVtxEps};
     if (abs(d) < sideEps) {
@@ -348,7 +350,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
             ${cornerBody("v1", `((edgeIdx + 1u) % ${N}u) + 1u`)}
         }
     }
-    return sdfRMidLatheMantle(d, 1.0, n);
+    return sdfWithGradientMid(sdfRMidLatheMantle(d, 1.0, n), rawGradient, select(DERIVATIVE_ONE_SIDED, DERIVATIVE_SINGULAR, r == 0.0));
 }
 `
     }

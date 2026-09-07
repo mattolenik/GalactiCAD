@@ -1,5 +1,7 @@
 # SFCC analytical-feature audit results
 
+> Historical audit checkpoint. Composite subtraction and branch/curve-identity work have since advanced; see the [implementation results](sfcc-feature-preservation-results.md) for the current scope and remaining gaps.
+
 Audit against `4368b444`, September 7, 2026. This records implemented corrections,
 independent controls, and unresolved findings. It does **not** certify analytical
 completeness, and the entire implementation sequence in the companion plan is

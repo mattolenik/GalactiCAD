@@ -1,6 +1,6 @@
 # Stratified Feature-Conforming Contouring (SFCC)
 
-> **Superseded (2026-07-18):** this is the original pre-implementation design note. The algorithm as actually implemented is documented in [`docs/sfcc-meshing-algorithm.md`](../sfcc-meshing-algorithm.md), which also catalogues where this design and the implementation diverge (its §11).
+> **Historical design, superseded:** see the [current implementation explanation](../sfcc-meshing-algorithm.md), especially §7.2 for worker execution and §11 for known limitations. Guarantees and implementation status stated below belong to the original proposal, not the current exporter.
 
 *A novel SDF→mesh algorithm design for CAD applications, synthesized from a verified
 literature survey. Hard requirements: exact sharp-feature preservation (no roundover,

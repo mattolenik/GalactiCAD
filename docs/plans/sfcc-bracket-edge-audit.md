@@ -1,5 +1,7 @@
 # SFCC bracket edge audit
 
+> **Historical audit and implementation checkpoints:** the findings below refer to their stated baselines. See the [current algorithm explanation](../sfcc-meshing-algorithm.md) and [September 7 audit results](sfcc-analytical-feature-completeness-results.md) for subsequent fixes and remaining limitations. The later continuity check invalidated the old scan’s remaining transition as a local crease; normal-transition counts are not independently confirmed crease counts.
+
 Date: 2026-09-06. Implementation baseline: `17783042`.
 
 Scene: `docs/manim/scenes/torture_bracket.yaml`, SHA-256

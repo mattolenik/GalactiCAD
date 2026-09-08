@@ -275,3 +275,20 @@ fn quality_stages_preserve_box_topology_and_worker_ownership() {
         meshes_equivalent(&a, &serial.tris, &b, &result.tris, &CanonicalizeOptions { pos_eps: 0., compare_normals: true, ..Default::default() }).unwrap();
     }
 }
+
+#[test]
+fn quality_projection_tube_pruning_matches_the_same_unpruned_surface() {
+    let sphere=sdf::leaf_at(Shape::Sphere{r:5.},[0.;3]);
+    let mut children=vec![sphere.clone()];
+    // These strictly interior spheres are provably dominated everywhere. They
+    // exercise the larger-tree pruning gate without changing the zero set.
+    for i in 0..7 {children.push(sdf::leaf_at(Shape::Sphere{r:0.1},[i as f64*0.1,0.,0.]));}
+    let full=prepared_tree(sphere);let pruned=prepared_tree(sdf::union(children));
+    let tuning=PipelineTuning{depth_min:3,depth_max:5,quality_triangulation:true,quality_refinement:true,quality_remeshing:true,..Default::default()};
+    let a=run_sfcc_pipeline(&full,&cube20(),&tuning);let b=run_sfcc_pipeline(&pruned,&cube20(),&tuning);
+    assert!(a.manifold.ok&&b.manifold.ok);
+    assert!(a.validation.quality.as_ref().unwrap().passed());
+    assert!(b.validation.quality.as_ref().unwrap().passed());
+    let av:Vec<_>=a.verts.iter().map(|&x|x as f64).collect();let bv:Vec<_>=b.verts.iter().map(|&x|x as f64).collect();
+    meshes_equivalent(&av,&a.tris,&bv,&b.tris,&CanonicalizeOptions{pos_eps:0.,compare_normals:true,..Default::default()}).unwrap();
+}

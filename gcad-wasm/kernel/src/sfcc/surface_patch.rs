@@ -318,6 +318,35 @@ mod tests {
             assert!(t.contains(&0) && t.contains(&2));
         }
     }
+    #[test]
+    fn cylindrical_quad_rejects_the_shorter_but_inaccurate_diagonal() {
+        let tree = leaf_at(Shape::Cylinder { r: 1., h: 20. }, [0.; 3]);
+        let features = compile_native_features(&tree);
+        let carrier = features
+            .strata
+            .iter()
+            .find(|s| s.kind == crate::strata::CarrierKind::Cylinder)
+            .unwrap();
+        let a = 0.1_f64;
+        let mut p = PointTable::new();
+        for x in [
+            [1., -10., 0.],
+            [a.cos(), 0., -a.sin()],
+            [1., 10., 0.],
+            [a.cos(), 0., a.sin()],
+        ] {
+            p.add(x[0], x[1], x[2], x[0], 0., x[2]);
+        }
+        for start in 0..4 {
+            let mut boundary = vec![0, 1, 2, 3];
+            boundary.rotate_left(start);
+            let out = disk(&p, &boundary, &tree, Some(carrier), 0.003).unwrap();
+            assert_eq!(out.len(), 6);
+            for t in out.chunks_exact(3) {
+                assert!(t.contains(&0) && t.contains(&2));
+            }
+        }
+    }
 }
 
 /// These carriers have a single regular local sheet under the chart's normal

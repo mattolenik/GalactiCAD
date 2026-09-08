@@ -231,10 +231,11 @@ pub fn mesh_cells_subset(
     let mut segs: Vec<Seg> = Vec::new();
     let mut pins: Vec<FacePin> = Vec::new();
 
-    // Lever 1: per-cell pruning gate (default OFF; see lever1_should_prune).
-    // Quality candidates may project beyond the legacy centroid margin. Use
-    // the complete query until their individual projection tubes are pruned.
-    let prune = !opts.quality_triangulation && crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+    // Quality triangulation performs enough queries to amortize a pruned view
+    // on larger trees. Its box includes the entire candidate projection budget.
+    // Baseline pruning retains the existing experiment gate.
+    let prune = if opts.quality_triangulation { tree.leaf_count() >= 8 }
+        else { crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES) };
 
     for cell in leaves {
         segs.clear();
@@ -320,13 +321,17 @@ pub fn mesh_cells_subset(
         let cbox = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
 
         // Lever 1: one pruned view per cell, reused across this cell's interior-
-        // vertex projection / fan evals. Every `tree.f`/`tree.grad` in the meshers
-        // is guarded `in_box(cell_box, ·, margin)` (margin = 0.1·cell_size), so all
-        // query points lie within the cell box inflated by that margin — prune over
-        // exactly that inflated box so the pruned view stays bit-exact there.
+        // vertex projection / fan evals. Baseline queries are guarded by the
+        // centroid margin. Quality queries additionally include the maximum
+        // coarse-candidate displacement and f32 rounding of the cell boundary.
         let pruned: Option<Pruned> = if prune {
             let cs = cbox[3] - cbox[0];
-            let half = cs * 0.6; // cell_size/2 + margin(0.1·cell_size), with headroom
+            let quality_reach = if opts.quality_triangulation {
+                let rounding = (cbox.iter().map(|x| x.abs()).fold(0., f64::max) * f32::EPSILON as f64)
+                    .max(f32::from_bits(1) as f64);
+                8. * opts.curve_chord_tol + rounding
+            } else { 0. };
+            let half = cs * 0.6 + quality_reach;
             let c = [(cbox[0] + cbox[3]) * 0.5, (cbox[1] + cbox[4]) * 0.5, (cbox[2] + cbox[5]) * 0.5];
             Some(tree.prune_to_box(c, [half, half, half]))
         } else {
@@ -633,7 +638,7 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
             }
         }
         let mut same_sheet = true;
-        if tree.f([px, py, pz]).abs() <= o.surface_tol && in_box(cell_box, px, py, pz, margin) {
+        if in_box(cell_box, px, py, pz, margin) && tree.f([px, py, pz]).abs() <= o.surface_tol {
             let mut ax = 0.0;
             let mut ay = 0.0;
             let mut az = 0.0;
@@ -645,7 +650,7 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
             let (_, g) = tree.grad([px, py, pz]);
             same_sheet = ax * g[0] + ay * g[1] + az * g[2] > 0.0;
         }
-        if tree.f([px, py, pz]).abs() > o.surface_tol || !in_box(cell_box, px, py, pz, margin) || !same_sheet
+        if !in_box(cell_box, px, py, pz, margin) || tree.f([px, py, pz]).abs() > o.surface_tol || !same_sheet
         {
             let k = best_fan_apex(points, loop_pts);
             for i in 1..m - 1 {

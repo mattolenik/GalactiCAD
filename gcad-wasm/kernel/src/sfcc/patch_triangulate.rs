@@ -298,6 +298,33 @@ mod tests {
             Err(Rejection::Budget)
         );
     }
+    #[test]
+    fn narrow_neck_keeps_its_domain_under_scale_and_translation() {
+        let base = [
+            [0., 0.],
+            [2., 0.],
+            [2., 0.9],
+            [4., 0.9],
+            [4., 0.],
+            [6., 0.],
+            [6., 2.],
+            [4., 2.],
+            [4., 1.1],
+            [2., 1.1],
+            [2., 2.],
+            [0., 2.],
+        ];
+        for scale in [0.001, 1., 1000.] {
+            let xy = base.map(|p| [(p[0] + 3.) * scale, (p[1] - 7.) * scale]);
+            let tris = triangulate(&xy, &[(0..xy.len()).collect()]).unwrap();
+            assert!((area(&xy, &tris) / scale / scale - 8.4).abs() < 1e-10);
+            for t in tris {
+                let x = t.iter().map(|&i| base[i][0]).sum::<f64>() / 3.;
+                let y = t.iter().map(|&i| base[i][1]).sum::<f64>() / 3.;
+                assert!(x <= 2. || x >= 4. || (y >= 0.9 && y <= 1.1));
+            }
+        }
+    }
     fn area(xy: &[P2], tris: &[[usize; 3]]) -> f64 {
         tris.iter()
             .map(|t| {

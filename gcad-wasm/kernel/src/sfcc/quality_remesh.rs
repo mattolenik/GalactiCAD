@@ -618,6 +618,51 @@ mod tests {
         );
     }
     #[test]
+    fn shape_improvement_cannot_trade_away_cylindrical_fidelity() {
+        let tree = leaf_at(Shape::Cylinder { r: 1., h: 20. }, [0.; 3]);
+        let features = compile_native_features(&tree);
+        let owner = features
+            .strata
+            .iter()
+            .position(|s| s.kind == crate::strata::CarrierKind::Cylinder)
+            .unwrap();
+        let mut p = PointTable::new();
+        let angle = 0.1_f64;
+        for x in [
+            [1., -10., 0.],
+            [1., 10., 0.],
+            [angle.cos(), 0., angle.sin()],
+            [angle.cos(), 0., -angle.sin()],
+        ] {
+            p.add(x[0], x[1], x[2], x[0], 0., x[2]);
+        }
+        let tris = [0, 1, 2, 1, 0, 3];
+        for t in tris.chunks_exact(3) {
+            p.set_patch([t[0], t[1], t[2]], owner);
+        }
+        let old = [[0, 1, 2], [1, 0, 3]].map(|t| t.map(|i| q::pos(&p, i)));
+        let new = [[2, 0, 3], [3, 1, 2]].map(|t| t.map(|i| q::pos(&p, i)));
+        assert!(
+            new.map(q::quality)
+                .into_iter()
+                .fold(f64::INFINITY, f64::min)
+                > 2. * old
+                    .map(q::quality)
+                    .into_iter()
+                    .fold(f64::INFINITY, f64::min)
+        );
+        for t in old {
+            assert!(q::deviation(&tree, t, 0.003).is_ok());
+        }
+        assert!(new.iter().any(|&t| q::deviation(&tree, t, 0.003).is_err()));
+        let expected = p.ordered_triangles(&tris);
+        let (out, r) = flips(&tree, &features, &mut p, &tris, 0.003, 4);
+        assert_eq!(r.flips, 0);
+        assert!(r.rejected > 0);
+        assert_eq!(out, expected);
+        assert_eq!(p.count(), 4);
+    }
+    #[test]
     fn new_diagonal_cannot_cross_an_unrelated_sheet() {
         let (f, mut p, mut tris) = fixture();
         // Vertical sheet in the replacement pair but outside the skinny input

@@ -43,7 +43,11 @@ async function partition(sceneJson: string, leaves: Uint8Array, groupIndex: numb
     }
 }
 
-for (const source of ["return box(10, 10, 10)", "return sphere.radius(8)"]) {
+for (const source of [
+    "return box(10, 10, 10)",
+    "return sphere.radius(8)",
+    "return union(sphere.radius(5), ...Array.from({length: 7}, (_, i) => sphere.radius(0.1).shift(i * 0.1, 0, 0)))",
+]) {
 test(`quality stages retain topology and ownership across actual WASM workers: ${source}`, { timeout: 180_000 }, async () => {
     const scene = new SceneInfo(source)
     const sceneJson = serializeSceneToBridgeJson(scene.root)

@@ -56,6 +56,27 @@ export interface MeshMdcDebugData {
 }
 
 export interface MeshSfccValidation {
+    /** Optional final-mesh audit for the experimental quality stages. */
+    quality?: {
+        beforeTriangles: number
+        afterTriangles: number
+        beforeSlivers: number
+        afterSlivers: number
+        beforeP5Angle: number
+        afterP5Angle: number
+        flips: number
+        inserted: number
+        edgeSplits: number
+        interiorSplits: number
+        collapses: number
+        relocations: number
+        rejected: number
+        unknownTriangles: number
+        geometryFailures: number
+        intersections: number
+        cancelled: boolean
+        workBudgetExhausted: boolean
+    } | null
     unresolvedBranchPaths: number[][]
     /** Checks compiled curves only; omitted analytical features require independent coverage tests. */
     featureChains: { status: "notChecked" } | {

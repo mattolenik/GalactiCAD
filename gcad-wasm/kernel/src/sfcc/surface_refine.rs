@@ -149,6 +149,8 @@ pub(crate) fn refine_surface(
         for t in tris.chunks_exact(3) {
             let m: [Option<usize>; 3] =
                 std::array::from_fn(|k| split.get(&edge(t[k], t[(k + 1) % 3])).copied().flatten());
+            let start = next.len();
+            let owner = points.patch([t[0], t[1], t[2]]);
             match m.iter().filter(|m| m.is_some()).count() {
                 0 => next.extend_from_slice(t),
                 1 => {
@@ -184,6 +186,11 @@ pub(crate) fn refine_surface(
                     let (ab, bc, ca) = (m[0].unwrap(), m[1].unwrap(), m[2].unwrap());
                     next.extend_from_slice(&[a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca]);
                     changed = true;
+                }
+            }
+            if let Some(owner) = owner {
+                for child in next[start..].chunks_exact(3) {
+                    points.set_patch([child[0], child[1], child[2]], owner);
                 }
             }
         }

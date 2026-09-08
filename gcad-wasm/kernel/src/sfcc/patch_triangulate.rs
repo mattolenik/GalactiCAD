@@ -81,6 +81,20 @@ fn canonicalize(ring: &mut Vec<usize>, xy: &[P2], sign: i8) {
 /// Each ring is supplied in local vertex indices; outer first, then its holes.
 /// Disconnected components must be submitted as separate domains.
 pub(crate) fn triangulate(xy: &[P2], rings: &[Vec<usize>]) -> Result<Vec<[usize; 3]>, Rejection> {
+    triangulate_with_budget(xy, rings, 1_000_000)
+}
+fn charge(work: &mut usize, count: usize) -> Result<(), Rejection> {
+    *work = work.checked_sub(count).ok_or(Rejection::Budget)?;
+    Ok(())
+}
+fn triangulate_with_budget(
+    xy: &[P2],
+    rings: &[Vec<usize>],
+    mut work: usize,
+) -> Result<Vec<[usize; 3]>, Rejection> {
+    if xy.len() > 4096 {
+        return Err(Rejection::Budget);
+    }
     if rings.is_empty() || xy.iter().flatten().any(|v| !v.is_finite()) {
         return Err(Rejection::Chart);
     }
@@ -106,6 +120,7 @@ pub(crate) fn triangulate(xy: &[P2], rings: &[Vec<usize>]) -> Result<Vec<[usize;
         }
         let (a, b) = segments[i];
         for &(c, d) in &segments[..i] {
+            charge(&mut work, 1)?;
             if a == c || a == d || b == c || b == d {
                 // Adjacent collinear edges may touch at their common vertex,
                 // but overlapping/backtracking edges invalidate the domain.
@@ -142,6 +157,7 @@ pub(crate) fn triangulate(xy: &[P2], rings: &[Vec<usize>]) -> Result<Vec<[usize;
         let mut candidates = Vec::new();
         for (i, &a) in polygon.iter().enumerate() {
             for (j, &b) in hole.iter().enumerate() {
+                charge(&mut work, segments.len() + bridges.len())?;
                 let clear = segments.iter().chain(bridges.iter()).all(|&(c, d)| {
                     if a == c || a == d || b == c || b == d {
                         let other = if c == a || c == b { d } else { c };
@@ -174,6 +190,7 @@ pub(crate) fn triangulate(xy: &[P2], rings: &[Vec<usize>]) -> Result<Vec<[usize;
         let m = polygon.len();
         let mut best: Option<(f64, usize)> = None;
         for i in 0..m {
+            charge(&mut work, m)?;
             let [a, b, c] = [polygon[(i + m - 1) % m], polygon[i], polygon[(i + 1) % m]];
             if orient2d(xy[a], xy[b], xy[c]) <= 0 {
                 continue;
@@ -211,6 +228,7 @@ pub(crate) fn triangulate(xy: &[P2], rings: &[Vec<usize>]) -> Result<Vec<[usize;
     // Lawson legalization. Constraints include the real rings, not temporary
     // bridges: bridge edges may be flipped after the initial domain is filled.
     for _ in 0..xy.len().saturating_mul(xy.len()).max(1) {
+        charge(&mut work, tris.len() * 3)?;
         if super::cancel::is_cancelled() {
             return Err(Rejection::Budget);
         }
@@ -268,6 +286,18 @@ pub(crate) fn triangulate(xy: &[P2], rings: &[Vec<usize>]) -> Result<Vec<[usize;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn work_budget_rejects_without_returning_a_partial_mesh() {
+        let xy = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        assert_eq!(
+            triangulate_with_budget(&xy, &[vec![0, 1, 2, 3]], 0),
+            Err(Rejection::Budget)
+        );
+        assert_eq!(
+            triangulate_with_budget(&xy, &[vec![0, 1, 2, 3]], 0),
+            Err(Rejection::Budget)
+        );
+    }
     fn area(xy: &[P2], tris: &[[usize; 3]]) -> f64 {
         tris.iter()
             .map(|t| {

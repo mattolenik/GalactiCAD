@@ -13,7 +13,8 @@ initSync({ module: readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.
 test("housing mesh preserves the flange rim and chamfer seams through the tee crossing", () => {
     const { source } = load(readFileSync(new URL("../../docs/manim/scenes/torture_housing.yaml", import.meta.url), "utf8")) as { source: string }
     const scene = new SceneInfo(source)
-    const result = export_sfcc(serializeSceneToBridgeJson(scene.root), "{}", -23.5, 10.300000190734863 - 23.5, -23.5, 47)
+    const tuning = process.env.SFCC_TEST_QUALITY === "1" ? JSON.stringify({ qualityTriangulation: true, qualityRefinement: true, qualityRemeshing: true }) : "{}"
+    const result = export_sfcc(serializeSceneToBridgeJson(scene.root), tuning, -23.5, 10.300000190734863 - 23.5, -23.5, 47)
     try {
         const stats = JSON.parse(result.stats_json)
         assert.equal(stats.validation.edgeIncidence, "passed")

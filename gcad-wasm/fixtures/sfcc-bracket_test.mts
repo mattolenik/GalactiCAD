@@ -12,7 +12,8 @@ initSync({ module: readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.
 test("bracket mesh preserves displaced cap rims and intersecting rib seams", () => {
     const { source } = load(readFileSync(new URL("../../docs/manim/scenes/torture_bracket.yaml", import.meta.url), "utf8")) as { source: string }
     const scene = new SceneInfo(source)
-    const result = export_sfcc(serializeSceneToBridgeJson(scene.root), "{}", -26.4, -21.1, -26.4, 52.8)
+    const tuning = process.env.SFCC_TEST_QUALITY === "1" ? JSON.stringify({ qualityTriangulation: true, qualityRefinement: true, qualityRemeshing: true }) : "{}"
+    const result = export_sfcc(serializeSceneToBridgeJson(scene.root), tuning, -26.4, -21.1, -26.4, 52.8)
     try {
         const stats = JSON.parse(result.stats_json)
         for (const check of ["edgeIncidence", "vertexLinks", "faceSegments", "vertexResiduals"]) {

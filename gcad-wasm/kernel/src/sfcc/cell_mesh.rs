@@ -41,6 +41,7 @@ pub enum InteriorVertexMode {
 pub struct CellMeshOptions<'a> {
     pub surface_tol: f64,
     pub interior_vertex_mode: InteriorVertexMode,
+    pub quality_triangulation: bool,
     pub project_max_iters: u32,
     /// Max chord deviation (mm) of in-cell feature polylines.
     pub curve_chord_tol: f64,
@@ -231,7 +232,9 @@ pub fn mesh_cells_subset(
     let mut pins: Vec<FacePin> = Vec::new();
 
     // Lever 1: per-cell pruning gate (default OFF; see lever1_should_prune).
-    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+    // Quality candidates may project beyond the legacy centroid margin. Use
+    // the complete query until their individual projection tubes are pruned.
+    let prune = !opts.quality_triangulation && crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
 
     for cell in leaves {
         segs.clear();
@@ -333,6 +336,23 @@ pub fn mesh_cells_subset(
             Some(p) => p,
             None => tree,
         };
+
+        if opts.quality_triangulation && loops.len() > 1 && pins.is_empty() {
+            let mut candidate = None;
+            if let Some(features) = opts.features {
+                for carrier in &features.strata {
+                    if let Ok(mesh) = super::surface_patch::planar_domains(points, &loops, q, carrier, opts.curve_chord_tol) {
+                        candidate = Some((mesh, carrier.id));
+                        break;
+                    }
+                }
+            }
+            if let Some((mesh, owner)) = candidate {
+                for t in mesh.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], owner); }
+                tris.extend(mesh);
+                continue;
+            }
+        }
 
         let mut meshed_loops: std::collections::HashSet<usize> = std::collections::HashSet::new();
         let mut feature_graph_failed = false;
@@ -499,6 +519,35 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
     out_tris: &mut Vec<usize>,
 ) {
     let m = loop_pts.len();
+    if o.quality_triangulation && m >= 3 {
+        // Only accept known carriers here. Unknown field charts retain the
+        // baseline route until connected branch ownership can be established.
+        if let Some(features) = o.features {
+            for carrier in &features.strata {
+                if !super::surface_patch::supports_local_edits(carrier) { continue; }
+                if !loop_pts.iter().all(|&i| {
+                    let p = super::triangle_quality::pos(points, i);
+                    // Reject distant equations before their (possibly
+                    // iterative) carrier projection. This is only a candidate
+                    // screen; acceptance still uses displacement and exposure.
+                    let sample = carrier.raw_field(p[0], p[1], p[2]);
+                    let gradient = super::triangle_quality::norm(sample.gradient);
+                    if !sample.value.is_finite() || !gradient.is_finite() || gradient == 0.
+                        || sample.value.abs() > gradient * o.surface_tol * 0.1 { return false; }
+                    let q = carrier.project(p[0], p[1], p[2]);
+                    super::triangle_quality::norm(super::triangle_quality::sub(p, q)) <= o.surface_tol * 0.1
+                        && carrier.domain_contains(q, o.surface_tol * 0.01)
+                }) { continue; }
+                let candidate = super::surface_patch::disk(points, loop_pts, tree, Some(carrier), o.curve_chord_tol)
+                    .or_else(|_| super::surface_patch::disk(points, loop_pts, tree, Some(carrier), o.curve_chord_tol * 8.));
+                if let Ok(candidate) = candidate {
+                    for t in candidate.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], carrier.id); }
+                    out_tris.extend(candidate);
+                    return;
+                }
+            }
+        }
+    }
     if m < 3 {
         return;
     }
@@ -1198,6 +1247,15 @@ fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
     opts: &CellMeshOptions,
     out_tris: &mut Vec<usize>,
 ) {
+    if opts.quality_triangulation && super::surface_patch::supports_local_edits(stratum) {
+        let candidate = super::surface_patch::disk(points, boundary, tree, Some(stratum), opts.curve_chord_tol)
+            .or_else(|_| super::surface_patch::disk(points, boundary, tree, Some(stratum), opts.curve_chord_tol * 8.));
+        if let Ok(candidate) = candidate {
+            for t in candidate.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], stratum.id); }
+            out_tris.extend(candidate);
+            return;
+        }
+    }
     let m = boundary.len();
     let mut cx = 0.0;
     let mut cy = 0.0;
@@ -1263,6 +1321,7 @@ mod reliability_tests {
         let mut opts = CellMeshOptions {
             surface_tol: 0.01,
             interior_vertex_mode: InteriorVertexMode::Project,
+            quality_triangulation: false,
             project_max_iters: 16,
             curve_chord_tol: 0.01,
             max_polyline_points_per_cell: 1,

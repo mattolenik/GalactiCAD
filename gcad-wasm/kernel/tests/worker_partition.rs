@@ -249,3 +249,29 @@ fn curved_feature_intervals_survive_real_merges_and_reversed_completion() {
         }
     }
 }
+
+#[test]
+fn quality_stages_preserve_box_topology_and_worker_ownership() {
+    let tree = box_scene();
+    let cube = cube20();
+    let tuning = PipelineTuning {
+        depth_min: 3, depth_max: 5,
+        quality_triangulation: true, quality_refinement: true, quality_remeshing: true,
+        ..PipelineTuning::default()
+    };
+    let serial = run_sfcc_pipeline(&tree, &cube, &tuning);
+    assert!(serial.manifold.ok);
+    let quality = serial.validation.quality.as_ref().unwrap();
+    assert!(quality.passed(), "{quality:?}");
+    let leaves = prepare(&tree, &cube, &tuning);
+    for n in [1, 2, 4, 8] {
+        let mut partials: Vec<_> = (0..n).map(|i| mesh_partition(&tree, &cube, &tuning, &leaves, i, n)).collect();
+        partials.reverse();
+        let result = merge(&tree, &cube, &tuning, &partials);
+        assert!(!result.serial_recovery, "quality must exercise actual merge");
+        assert_eq!(result.validation, serial.validation);
+        let a: Vec<_> = serial.verts.iter().map(|&v| v as f64).collect();
+        let b: Vec<_> = result.verts.iter().map(|&v| v as f64).collect();
+        meshes_equivalent(&a, &serial.tris, &b, &result.tris, &CanonicalizeOptions { pos_eps: 0., compare_normals: true, ..Default::default() }).unwrap();
+    }
+}

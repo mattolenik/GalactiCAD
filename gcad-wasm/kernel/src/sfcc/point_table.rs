@@ -81,9 +81,26 @@ pub struct PointTable {
     /// Stored in ascending vertex-id orientation; an edge may belong to more
     /// than one equivalent carrier pair at a junction.
     curve_edges: HashMap<(usize, usize), Vec<CurveInterval>>,
+    /// Known analytical ownership. Unrecorded triangles remain locked for
+    /// quality edits; cleanup cannot turn an unknown patch into a known one.
+    patch_owners: HashMap<[usize; 3], usize>,
 }
 
 impl PointTable {
+    pub(crate) fn set_patch(&mut self, mut triangle: [usize; 3], owner: usize) {
+        triangle.sort_unstable();
+        self.patch_owners.insert(triangle, owner);
+    }
+    pub(crate) fn patch(&self, mut triangle: [usize; 3]) -> Option<usize> {
+        triangle.sort_unstable();
+        self.patch_owners.get(&triangle).copied()
+    }
+    /// Global post-assembly relocation; keys remain historical source lineage.
+    /// Never call this while independent partitions still share boundaries.
+    pub(crate) fn relocate(&mut self, id: usize, p: [f64; 3], n: [f64; 3]) {
+        self.pos[id * 3..id * 3 + 3].copy_from_slice(&p);
+        self.normal[id * 3..id * 3 + 3].copy_from_slice(&n);
+    }
     pub fn protect_curve_edge(&mut self, a: usize, b: usize, interval: CurveInterval) {
         assert!(interval.start.is_finite() && interval.end.is_finite());
         if a == b {

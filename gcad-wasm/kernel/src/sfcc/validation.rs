@@ -78,7 +78,30 @@ pub fn chord_budget_exhausted() {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct QualityAudit {
+    pub before_triangles: usize, pub after_triangles: usize,
+    pub before_slivers: usize, pub after_slivers: usize,
+    pub before_p5_angle: f64, pub after_p5_angle: f64,
+    pub flips: usize, pub inserted: usize, pub edge_splits: usize, pub interior_splits: usize,
+    pub collapses: usize, pub relocations: usize, pub rejected: usize,
+    pub unknown_triangles: usize, pub geometry_failures: usize, pub intersections: usize,
+    pub cancelled: bool,
+    pub work_budget_exhausted: bool,
+}
+impl QualityAudit {
+    pub fn passed(&self) -> bool { !self.cancelled && self.geometry_failures == 0 && self.intersections == 0 }
+    fn to_json(&self) -> String {
+        format!(concat!("{{\"beforeTriangles\":{},\"afterTriangles\":{},\"beforeSlivers\":{},\"afterSlivers\":{},",
+            "\"beforeP5Angle\":{},\"afterP5Angle\":{},\"flips\":{},\"inserted\":{},\"edgeSplits\":{},\"interiorSplits\":{},",
+            "\"collapses\":{},\"relocations\":{},\"rejected\":{},\"unknownTriangles\":{},\"geometryFailures\":{},\"intersections\":{},\"cancelled\":{},\"workBudgetExhausted\":{}}}"),
+            self.before_triangles,self.after_triangles,self.before_slivers,self.after_slivers,self.before_p5_angle,self.after_p5_angle,
+            self.flips,self.inserted,self.edge_splits,self.interior_splits,self.collapses,self.relocations,self.rejected,self.unknown_triangles,self.geometry_failures,self.intersections,self.cancelled,self.work_budget_exhausted)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SfccValidation {
+    pub quality: Option<QualityAudit>,
     /// Compiled-curve preservation only; independent representation coverage
     /// remains a separate question even when this report passes.
     pub feature_chains: Option<super::feature_chain::FeatureChainReport>,
@@ -128,7 +151,7 @@ impl SfccValidation {
     }
     pub fn status(&self) -> &'static str {
         let checks = [self.edge_incidence, self.vertex_links, self.face_segments, self.vertex_residuals];
-        if checks.contains(&AuditStatus::Failed) {
+        if checks.contains(&AuditStatus::Failed) || self.quality.as_ref().is_some_and(|q| !q.passed()) {
             "failed"
         } else if checks.contains(&AuditStatus::NotChecked)
             || self.unresolved_cells > 0
@@ -149,13 +172,14 @@ impl SfccValidation {
     pub fn to_json(&self) -> String {
         format!(
             concat!(
-                "{{\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
+                "{{\"quality\":{},\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
                 "\"faceSegments\":\"{}\",\"vertexResiduals\":\"{}\",\"unresolvedCells\":{},",
                 "\"featureFallbackCells\":{},\"curveProjectionFailures\":{},\"faceProjectionFailures\":{},",
                 "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{},",
                 "\"featureTrace\":{{\"pairsConsidered\":{},\"seedsFound\":{},\"curvesTraced\":{},",
                 "\"tangencyBails\":{},\"tangentReversals\":{},\"correctionBails\":{},\"stepCapHits\":{}}}}}"
             ),
+            self.quality.as_ref().map_or_else(|| "null".into(), QualityAudit::to_json),
             self.unresolved_branch_paths,
             self.feature_chains.as_ref().map_or_else(|| "{\"status\":\"notChecked\"}".into(), |r| r.to_json()),
             self.status(),

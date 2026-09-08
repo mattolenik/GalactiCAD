@@ -35,7 +35,6 @@ use crate::sfcc::refine_criteria::{
     classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
     SmoothCriteriaOptions,
 };
-use crate::sfcc::sliver_flip::flip_sliver_triangles;
 use crate::sfcc::validation::{self, AuditStatus, NumericalGuard, SfccValidation};
 use crate::tolerances::resolve_tolerances;
 use crate::tuning::SfccTuning;
@@ -71,6 +70,12 @@ pub struct PipelineTuning {
     pub surface_tol_mm: f64,
     pub edge_root_tol_fraction: f64,
     pub interior_vertex_mode: InteriorVertexMode,
+    /// Staged, independently selectable triangulation quality passes.
+    pub quality_triangulation: bool,
+    pub quality_audit: bool,
+    pub quality_refinement: bool,
+    pub quality_remeshing: bool,
+    pub quality_max_edit_trials: usize,
     pub project_max_iters: u32,
     pub re_refine_max_rounds: u32,
     pub check_vertex_links: bool,
@@ -104,6 +109,11 @@ impl Default for PipelineTuning {
             surface_tol_mm: 0.01,
             edge_root_tol_fraction: 1e-3,
             interior_vertex_mode: InteriorVertexMode::Project,
+            quality_triangulation: false,
+            quality_audit: false,
+            quality_refinement: false,
+            quality_remeshing: false,
+            quality_max_edit_trials: 10_000,
             project_max_iters: 8,
             re_refine_max_rounds: 2,
             check_vertex_links: true,
@@ -1002,8 +1012,11 @@ fn mesh_groups_separate(
                 merged.protect_curve_edge(local_to_global[a], local_to_global[b], interval);
             }
         }
-        for &t in &cm.tris {
-            tris.push(local_to_global[t]);
+        for t in cm.tris.chunks_exact(3) {
+            let ids = [t[0], t[1], t[2]];
+            let global = ids.map(|i| local_to_global[i]);
+            if let Some(owner) = pt.patch(ids) { merged.set_patch(global, owner); }
+            tris.extend(global);
         }
         failed_cells.extend(cm.failed_cells);
         fallback_cells.extend(cm.fallback_cells);
@@ -1230,6 +1243,7 @@ fn run_sfcc_pipeline_impl(
         let cm_opts = CellMeshOptions {
             surface_tol: tuning.surface_tol_mm,
             interior_vertex_mode: tuning.interior_vertex_mode,
+            quality_triangulation: tuning.quality_triangulation || tuning.quality_refinement || tuning.quality_remeshing,
             project_max_iters: tuning.project_max_iters,
             curve_chord_tol: tuning.curve_chord_tol_mm,
             max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
@@ -1367,21 +1381,10 @@ fn run_sfcc_pipeline_impl(
     }
 
     emit(4, "Assembling mesh");
-    // S4 cleanups (same call order/args as the oracle so winding/topology match):
-    // coincident-pair drop → debris drop → coincident-pair drop → sliver flip.
-    let ordered = points.ordered_triangles(&cell_result.tris);
-    let deduped1 = drop_coincident_triangle_pairs(&ordered);
-    let filtered = drop_debris_components(&points, &deduped1, lat.step * 4.0, features, lat.step * 2.0, 600);
-    let deduped2 = drop_coincident_triangle_pairs(&filtered);
-    let (flipped, _flips) = flip_sliver_triangles(&points, &deduped2, 4);
-
-    let (refined, unresolved_triangles) = super::surface_refine::refine_surface(
-        tree,
-        features,
-        &mut points,
-        &flipped,
-        tuning.curve_chord_tol_mm,
+    let (refined, unresolved_triangles, quality_audit) = super::assembly::finish(
+        tree, features, &mut points, &cell_result.tris, lat.step, tuning, Some(&|label| emit(4, label)),
     );
+    if crate::sfcc::cancel::is_cancelled() { return cancelled_pipeline_result(); }
     let (verts, out_tris) = points.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
@@ -1403,6 +1406,7 @@ fn run_sfcc_pipeline_impl(
         re_refine_rounds,
     };
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.quality = quality_audit;
     validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
         &points,
         &refined,

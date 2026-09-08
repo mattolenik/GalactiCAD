@@ -45,11 +45,10 @@ use crate::sfcc::octree::{
     rebuild_octree_from_leaves, CellDecision, ResumableOctreeBuild, SfccCell, SfccOctree,
 };
 use crate::sfcc::pipeline::{
-    build_pipeline_context, drop_coincident_triangle_pairs, drop_debris_components, morton_partition_indices,
+    build_pipeline_context, morton_partition_indices,
     PipelineTuning, SfccWorldCube,
 };
 use crate::sfcc::point_table::{CurveInterval, PointKey, PointTable};
-use crate::sfcc::sliver_flip::flip_sliver_triangles;
 use crate::sfcc::validation::{self, AuditStatus, NumericalFailures, NumericalGuard, SfccValidation};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -107,7 +106,7 @@ impl<'a> Reader<'a> {
 }
 
 const LEAVES_MAGIC: u32 = 0x5346_4C33; // "SFL3": semantic field/domain fingerprint
-const PARTIAL_MAGIC: u32 = 0x5346_5033; // "SFP3": fingerprint + oriented curve intervals
+const PARTIAL_MAGIC: u32 = 0x5346_5034; // "SFP4": per-triangle analytical patch ownership
 
 // ---------------------------------------------------------------------------
 // Phase 1 — prepare: tagged octree → byte buffer.
@@ -392,6 +391,9 @@ fn encode_partial(
     for &t in tris {
         put_u32(&mut out, t as u32);
     }
+    for t in tris.chunks_exact(3) {
+        put_u64(&mut out, pt.patch([t[0], t[1], t[2]]).map_or(u64::MAX, |id| id as u64));
+    }
     let mut protected: Vec<_> = pt.protected_edges().collect();
     protected.sort_unstable();
     put_u64(&mut out, protected.len() as u64);
@@ -448,6 +450,7 @@ struct DecodedPartial {
     face_uses: Vec<(u64, i64, i64, usize, usize, u64, u64)>,
     keys: Vec<PointKey>,
     tris: Vec<u32>,
+    patches: Vec<Option<usize>>,
     counters: PartialCounters,
 }
 
@@ -456,7 +459,8 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     let magic = r.u32();
     assert_eq!(magic, PARTIAL_MAGIC, "worker: bad partial buffer magic");
     let fingerprint = r.u64();
-    let n = r.u64() as usize;
+    let n = usize::try_from(r.u64()).expect("worker: vertex count overflow");
+    assert!(n <= buf.len() / 64, "worker: invalid vertex count");
     let mut verts = Vec::with_capacity(n * 8);
     for _ in 0..n * 8 {
         verts.push(r.f64());
@@ -465,11 +469,15 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     for _ in 0..n {
         keys.push(get_key(&mut r));
     }
-    let tn = r.u64() as usize;
+    let tn = usize::try_from(r.u64()).expect("worker: triangle count overflow");
+    assert!(tn % 3 == 0 && tn <= buf.len() / 4, "worker: invalid triangle count");
     let mut tris = Vec::with_capacity(tn);
     for _ in 0..tn {
-        tris.push(r.u32());
+        let id = r.u32();
+        assert!((id as usize) < n, "worker: triangle vertex out of bounds");
+        tris.push(id);
     }
+    let patches = (0..tn / 3).map(|_| { let id = r.u64(); if id == u64::MAX { None } else { Some(usize::try_from(id).expect("worker: patch id overflow")) } }).collect();
     let n_protected = r.u64();
     let protected = (0..n_protected).map(|_| (r.u64() as usize, r.u64() as usize)).collect();
     let count = r.u64() as usize;
@@ -504,7 +512,7 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
         multi_run_faces: r.u64(),
         boundary_violations: r.u64(),
     };
-    DecodedPartial { fingerprint, intervals, verts, keys, tris, counters, protected, face_uses }
+    DecodedPartial { fingerprint, intervals, verts, keys, tris, patches, counters, protected, face_uses }
 }
 
 /// Build the face-contour + cell-mesh options exactly as the serial driver's S2/S3
@@ -519,6 +527,7 @@ fn mesh_opts<'a>(
     let cm = CellMeshOptions {
         surface_tol: tuning.surface_tol_mm,
         interior_vertex_mode: tuning.interior_vertex_mode,
+        quality_triangulation: tuning.quality_triangulation || tuning.quality_refinement || tuning.quality_remeshing,
         project_max_iters: tuning.project_max_iters,
         curve_chord_tol: tuning.curve_chord_tol_mm,
         max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
@@ -751,8 +760,13 @@ pub fn merge_partials(
         numerical.curve_projection += p.counters.numerical.curve_projection;
         numerical.face_projection += p.counters.numerical.face_projection;
         numerical.chord_budget += p.counters.numerical.chord_budget;
-        for &t in &p.tris {
-            tris.push(local_to_global[t as usize]);
+        for (triangle, owner) in p.tris.chunks_exact(3).zip(p.patches) {
+            let t = std::array::from_fn(|k| local_to_global[triangle[k] as usize]);
+            if let Some(owner) = owner {
+                assert!(owner < features.strata.len(), "worker: invalid patch owner");
+                merged.set_patch(t, owner);
+            }
+            tris.extend(t);
         }
         failed_cells += p.counters.failed_cells as usize;
         multi_loop_cells += p.counters.multi_loop_cells as usize;
@@ -763,25 +777,15 @@ pub fn merge_partials(
         boundary_violations += p.counters.boundary_violations as usize;
     }
 
-    // S4 cleanups — same call order/args as the serial driver.
-    let ordered = merged.ordered_triangles(&tris);
-    let deduped1 = drop_coincident_triangle_pairs(&ordered);
-    let filtered = drop_debris_components(&merged, &deduped1, lat.step * 4.0, features, lat.step * 2.0, 600);
-    let deduped2 = drop_coincident_triangle_pairs(&filtered);
-    let (flipped, _flips) = flip_sliver_triangles(&merged, &deduped2, 4);
-
-    let (refined, unresolved_triangles) = super::surface_refine::refine_surface(
-        tree,
-        features,
-        &mut merged,
-        &flipped,
-        tuning.curve_chord_tol_mm,
+    let (refined, unresolved_triangles, quality_audit) = super::assembly::finish(
+        tree, features, &mut merged, &tris, lat.step, tuning, None,
     );
     let (verts, out_tris) = merged.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.quality = quality_audit;
     validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
         &merged,
         &refined,
@@ -917,6 +921,7 @@ mod reliability_tests {
         let b = p.add(2., 0., 0., 0., 1., 0.);
         let interval = CurveInterval { curve_id: 7, start: 1.0 + f64::EPSILON * 3., end: 2. };
         p.protect_curve_edge(a, b, interval);
+        p.set_patch([a, b, a], 12);
         let counters = PartialCounters {
             degenerate_cells: 3,
             numerical: NumericalFailures { chord_budget: 2, ..Default::default() },
@@ -928,6 +933,7 @@ mod reliability_tests {
         assert_ne!(decoded.verts[0], (x as f32) as f64);
         assert_eq!(decoded.protected, vec![(a, b)]);
         assert_eq!(decoded.fingerprint, 123);
+        assert_eq!(decoded.patches, vec![Some(12)]);
         assert_eq!(decoded.intervals, vec![(a, b, interval)]);
         assert_eq!(decoded.counters.degenerate_cells, 3);
         assert_eq!(decoded.counters.numerical.chord_budget, 2);

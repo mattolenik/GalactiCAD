@@ -147,13 +147,7 @@ pub(crate) fn finish(
         }
         for j in index.query(p) {
             if j < i
-                && (super::mesh_edit::intersects(p, geo[j], ids[i], ids[j])
-                    || super::mesh_edit::intersects(
-                        p.map(q::rounded),
-                        geo[j].map(q::rounded),
-                        ids[i],
-                        ids[j],
-                    ))
+                && super::mesh_edit::intersects_both(p, geo[j], ids[i], ids[j])
             {
                 audit.intersections += 1;
             }

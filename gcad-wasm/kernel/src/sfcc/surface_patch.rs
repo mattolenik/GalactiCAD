@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{sdf::SdfQuery, strata::Stratum};
 
+#[derive(Clone, Copy)]
 pub(crate) struct Chart {
     pub axes: [usize; 2],
     pub orientation: i8,
@@ -48,6 +49,7 @@ impl Chart {
 /// Triangulate one known disk with immutable boundary. A successful return has
 /// no side effects until the caller appends the complete candidate. Unsupported
 /// charts stay on the existing route during the staged rollout.
+#[cfg(any(test, feature = "sfcc-profile"))]
 pub(crate) fn disk<T: SdfQuery + ?Sized>(
     points: &PointTable,
     boundary: &[usize],
@@ -56,10 +58,78 @@ pub(crate) fn disk<T: SdfQuery + ?Sized>(
     tolerance: f64,
 ) -> Result<Vec<usize>, Rejection> {
     let chart = Chart::from_boundary(points, boundary)?;
+    disk_prepared(points,boundary,tree,carrier,tolerance,chart,&mut Prepared::default())
+}
+
+type PreparedGeometry = Result<(Vec<[f64; 2]>, Vec<Vec<[usize; 3]>>), Rejection>;
+#[derive(Default)]
+struct Prepared {
+    geometry: Option<PreparedGeometry>,
+    // Most patches have <= 8 boundary points. Larger boundaries simply bypass
+    // this bounded projection memo for their remaining points.
+    projected: [Option<P3>; 8],
+}
+
+/// Keep tolerance-dependent acceptance and projections separate from the chart.
+pub(crate) fn disk_strict_or_coarse<T: SdfQuery + ?Sized>(
+    points: &PointTable,
+    boundary: &[usize],
+    tree: &T,
+    carrier: Option<&Stratum>,
+    tolerance: f64,
+) -> Result<Vec<usize>, Rejection> {
+    #[cfg(feature = "sfcc-profile")]
+    if super::perf::disabled(8) {
+        return disk(points, boundary, tree, carrier, tolerance)
+            .or_else(|_| { super::perf::add(9, 1); disk(points, boundary, tree, carrier, tolerance * 8.) });
+    }
+    let chart = Chart::from_boundary(points, boundary)?;
+    let mut prepared = Prepared::default();
+    disk_prepared(
+        points,
+        boundary,
+        tree,
+        carrier,
+        tolerance,
+        chart,
+        &mut prepared,
+    )
+    .or_else(|_| {
+        super::perf::add(9, 1);
+        disk_prepared(
+            points,
+            boundary,
+            tree,
+            carrier,
+            tolerance * 8.,
+            chart,
+            &mut prepared,
+        )
+    })
+}
+
+fn disk_prepared<T: SdfQuery + ?Sized>(
+    points: &PointTable,
+    boundary: &[usize],
+    tree: &T,
+    carrier: Option<&Stratum>,
+    tolerance: f64,
+    chart: Chart,
+    prepared: &mut Prepared,
+) -> Result<Vec<usize>, Rejection> {
     if let Some(carrier) = carrier {
-        for &id in boundary {
+        for (index, &id) in boundary.iter().enumerate() {
             let p = q::pos(points, id);
-            let y = carrier.project(p[0], p[1], p[2]);
+            let y = if let Some(y) = prepared.projected.get(index).copied().flatten() {
+                super::perf::add(15, 1);
+                y
+            } else {
+                let y = carrier.project(p[0], p[1], p[2]);
+                if y.iter().all(|v| v.is_finite()) {
+                    if let Some(slot) = prepared.projected.get_mut(index) { *slot = Some(y); }
+                }
+                y
+            };
             if !y.iter().all(|v| v.is_finite())
                 || q::norm(q::sub(y, p)) > tolerance * 0.1
                 || !carrier.domain_contains(y, tolerance * 0.01)
@@ -68,16 +138,24 @@ pub(crate) fn disk<T: SdfQuery + ?Sized>(
             }
         }
     }
-    let xy: Vec<_> = boundary
-        .iter()
-        .map(|&i| chart.map(q::pos(points, i)))
-        .collect();
-    let local = patch_triangulate::triangulate(&xy, &[(0..boundary.len()).collect()])?;
-    let candidates = if boundary.len() == 4 {
-        vec![vec![[0, 1, 2], [0, 2, 3]], vec![[1, 2, 3], [1, 3, 0]]]
-    } else {
-        vec![local]
-    };
+    if super::cancel::is_cancelled() { return Err(Rejection::Budget); }
+    let (xy, candidates) = prepared.geometry
+        .get_or_insert_with(|| {
+            super::perf::add(8, 1);
+            let xy: Vec<_> = boundary
+                .iter()
+                .map(|&i| chart.map(q::pos(points, i)))
+                .collect();
+            let local = patch_triangulate::triangulate(&xy, &[(0..boundary.len()).collect()])?;
+            let candidates = if boundary.len() == 4 {
+                vec![vec![[0, 1, 2], [0, 2, 3]], vec![[1, 2, 3], [1, 3, 0]]]
+            } else {
+                vec![local]
+            };
+            Ok((xy, candidates))
+        })
+        .as_ref()
+        .map_err(|e| *e)?;
     let mut best: Option<(f64, f64, Vec<usize>)> = None;
     for local in candidates {
         let attempt = (|| -> Result<(f64, f64, Vec<usize>), Rejection> {
@@ -360,4 +438,33 @@ pub(crate) fn supports_local_edits(carrier: &Stratum) -> bool {
             | crate::strata::CarrierKind::Cylinder
             | crate::strata::CarrierKind::Cone
     ) || carrier.planar_coefficients().is_some()
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+    #[test]
+    fn coarse_retry_matches_separate_attempts() {
+        use crate::sdf::{leaf_at, Shape};
+        let tree = leaf_at(Shape::Cuboid { half: [2., 2., 1.] }, [0.; 3]);
+        let features = super::super::feature_set::compile_native_features(&tree);
+        let carrier = features
+            .strata
+            .iter()
+            .find(|s| s.f(0., 0., 1.).abs() < 1e-12 && s.normal(0., 0., 1.)[2] > 0.9)
+            .unwrap();
+        for offset in [0., 0.0002, 0.2] {
+            let mut points = PointTable::new();
+            for [x, y] in [[-1., -1.], [1., -1.], [1., 1.], [-1., 1.]] {
+                points.add(x, y, 1. + offset, 0., 0., 1.);
+            }
+            let boundary = [0, 1, 2, 3];
+            let old = disk(&points, &boundary, &tree, Some(carrier), 0.001)
+                .or_else(|_| disk(&points, &boundary, &tree, Some(carrier), 0.008));
+            assert_eq!(
+                disk_strict_or_coarse(&points, &boundary, &tree, Some(carrier), 0.001),
+                old
+            );
+        }
+    }
 }

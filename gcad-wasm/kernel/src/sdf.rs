@@ -237,13 +237,13 @@ fn max_carrier_curvature(children: &[CsgNode], out: &mut f64) -> bool {
 
 /// The nearest two transformed field values (smallest first), matching the
 /// shader's nearest-pair fold. Binary blends keep operand order.
-fn nearest_pair(children: &[CsgNode], p: [f64; 3], sgn: f64) -> (f64, f64) {
+fn nearest_pair<'a>(children: &'a [CsgNode], sgn: f64, mut scalar: impl FnMut(&'a CsgNode) -> f64) -> (f64, f64) {
     if children.len() == 2 {
-        (sgn * children[0].f(p), sgn * children[1].f(p))
+        (sgn * scalar(&children[0]), sgn * scalar(&children[1]))
     } else {
         let (mut va, mut vb) = (f64::INFINITY, f64::INFINITY);
         for c in children {
-            let v = sgn * c.f(p);
+            let v = sgn * scalar(c);
             if v < va {
                 vb = va;
                 va = v;
@@ -347,13 +347,19 @@ impl ChildVals {
 impl CsgNode {
     /// Signed field of the full tree (negative inside, f = 0 ⟺ surface).
     pub fn f(&self, p: [f64; 3]) -> f64 {
+        self.f_with_children(p, |child| child.f(p))
+    }
+
+    /// Same scalar composition, with a caller-owned cache for child evaluation.
+    pub(crate) fn f_with_children<'a>(&'a self, p: [f64; 3], mut scalar: impl FnMut(&'a CsgNode) -> f64) -> f64 {
+        crate::sfcc::perf::add(12,1);
         match self {
             CsgNode::Leaf(l) => l.f(p),
-            CsgNode::Min(ch) => ch.iter().map(|c| c.f(p)).fold(f64::INFINITY, f64::min),
-            CsgNode::Max(ch) => ch.iter().map(|c| c.f(p)).fold(f64::NEG_INFINITY, f64::max),
+            CsgNode::Min(ch) => ch.iter().map(&mut scalar).fold(f64::INFINITY, f64::min),
+            CsgNode::Max(ch) => ch.iter().map(&mut scalar).fold(f64::NEG_INFINITY, f64::max),
             CsgNode::Blend { kind, mode, r, n, children } => {
                 let sgn = if *kind == BlendKind::Smax { -1.0 } else { 1.0 };
-                let (va, vb) = nearest_pair(children, p, sgn);
+                let (va, vb) = nearest_pair(children, sgn, scalar);
                 sgn * smin(*mode, va, vb, *r, *n)
             }
         }

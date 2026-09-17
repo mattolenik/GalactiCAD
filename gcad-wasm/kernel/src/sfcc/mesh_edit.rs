@@ -166,9 +166,7 @@ fn coplanar(a: [P3; 3], b: [P3; 3], ia: [usize; 3], ib: [usize; 3]) -> bool {
     // Identical triangles have no strictly interior vertex or crossing edge.
     ia.iter().all(|v| ib.contains(v))
 }
-fn edge_hits(a: P3, b: P3, t: [P3; 3]) -> bool {
-    let sa = orient3d(t[0], t[1], t[2], a);
-    let sb = orient3d(t[0], t[1], t[2], b);
+fn edge_hits(a: P3, b: P3, t: [P3; 3], sa: i8, sb: i8) -> bool {
     if sa != 0 && sa == sb {
         return false;
     }
@@ -180,6 +178,8 @@ fn edge_hits(a: P3, b: P3, t: [P3; 3]) -> bool {
     s.iter().all(|&v| v >= 0) || s.iter().all(|&v| v <= 0)
 }
 pub(crate) fn intersects(a: [P3; 3], b: [P3; 3], ia: [usize; 3], ib: [usize; 3]) -> bool {
+    #[cfg(feature = "sfcc-profile")]
+    if super::perf::disabled(2) { return reference_intersects(a,b,ia,ib); }
     if !a.iter().chain(b.iter()).flatten().all(|v| v.is_finite()) {
         return true;
     }
@@ -193,7 +193,8 @@ pub(crate) fn intersects(a: [P3; 3], b: [P3; 3], ia: [usize; 3], ib: [usize; 3])
     if sa == [0; 3] {
         return coplanar(a, b, ia, ib);
     }
-    for (x, y, ix, iy) in [(a, b, ia, ib), (b, a, ib, ia)] {
+    for (direction, (x, y, ix, iy)) in [(a, b, ia, ib), (b, a, ib, ia)].into_iter().enumerate() {
+        let sides = if direction == 1 { sa } else { a.map(|p| orient3d(b[0],b[1],b[2],p)) };
         for k in 0..3 {
             let j = (k + 1) % 3;
             let shared_a = iy.contains(&ix[k]);
@@ -204,21 +205,20 @@ pub(crate) fn intersects(a: [P3; 3], b: [P3; 3], ia: [usize; 3], ib: [usize; 3])
             if shared_a || shared_b {
                 // Non-coplanar segment with one shared endpoint meets this plane
                 // only there. A segment lying in the plane needs the 2D test.
-                let end = if shared_a { x[j] } else { x[k] };
-                if orient3d(y[0], y[1], y[2], end) != 0 {
+                if sides[if shared_a { j } else { k }] != 0 {
                     continue;
                 }
                 if coplanar(y, [x[k], x[j], x[k]], iy, [ix[k], ix[j], ix[k]]) {
                     return true;
                 }
             } else {
-                let a = orient3d(y[0], y[1], y[2], x[k]);
-                let b = orient3d(y[0], y[1], y[2], x[j]);
+                let a = sides[k];
+                let b = sides[j];
                 if a == 0 && b == 0 {
                     if coplanar(y, [x[k], x[j], x[k]], iy, [ix[k], ix[j], ix[k]]) {
                         return true;
                     }
-                } else if edge_hits(x[k], x[j], y) {
+                } else if edge_hits(x[k], x[j], y, a, b) {
                     return true;
                 }
             }
@@ -297,6 +297,96 @@ impl GrowingIndex {
             self.index =
                 TriangleIndex::new(&self.items.iter().map(|&(_, p)| p).collect::<Vec<_>>());
             self.indexed = self.items.len();
+        }
+    }
+}
+
+#[cfg(any(test, feature = "sfcc-profile"))]
+fn reference_edge_hits(a: P3, b: P3, t: [P3; 3]) -> bool {
+    let sa = orient3d(t[0], t[1], t[2], a);
+    let sb = orient3d(t[0], t[1], t[2], b);
+    if sa != 0 && sa == sb {
+        return false;
+    }
+    let s = [
+        orient3d(a, b, t[0], t[1]),
+        orient3d(a, b, t[1], t[2]),
+        orient3d(a, b, t[2], t[0]),
+    ];
+    s.iter().all(|&v| v >= 0) || s.iter().all(|&v| v <= 0)
+}
+#[cfg(any(test, feature = "sfcc-profile"))]
+fn reference_intersects(a: [P3; 3], b: [P3; 3], ia: [usize; 3], ib: [usize; 3]) -> bool {
+    if !a.iter().chain(b.iter()).flatten().all(|v| v.is_finite()) {
+        return true;
+    }
+    if !overlap(bounds(a), bounds(b)) {
+        return false;
+    }
+    let sa = b.map(|p| orient3d(a[0], a[1], a[2], p));
+    if sa.iter().all(|&v| v > 0) || sa.iter().all(|&v| v < 0) {
+        return false;
+    }
+    if sa == [0; 3] {
+        return coplanar(a, b, ia, ib);
+    }
+    for (x, y, ix, iy) in [(a, b, ia, ib), (b, a, ib, ia)] {
+        for k in 0..3 {
+            let j = (k + 1) % 3;
+            let shared_a = iy.contains(&ix[k]);
+            let shared_b = iy.contains(&ix[j]);
+            if shared_a && shared_b {
+                continue;
+            }
+            if shared_a || shared_b {
+                // Non-coplanar segment with one shared endpoint meets this plane
+                // only there. A segment lying in the plane needs the 2D test.
+                let end = if shared_a { x[j] } else { x[k] };
+                if orient3d(y[0], y[1], y[2], end) != 0 {
+                    continue;
+                }
+                if coplanar(y, [x[k], x[j], x[k]], iy, [ix[k], ix[j], ix[k]]) {
+                    return true;
+                }
+            } else {
+                let a = orient3d(y[0], y[1], y[2], x[k]);
+                let b = orient3d(y[0], y[1], y[2], x[j]);
+                if a == 0 && b == 0 {
+                    if coplanar(y, [x[k], x[j], x[k]], iy, [ix[k], ix[j], ix[k]]) {
+                        return true;
+                    }
+                } else if reference_edge_hits(x[k], x[j], y) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Both representations, avoiding a duplicate test only for bit-identical input.
+pub(crate) fn intersects_both(a: [P3;3], b: [P3;3], ia: [usize;3], ib: [usize;3]) -> bool {
+    if intersects(a,b,ia,ib) { return true; }
+    if super::perf::disabled(2) {return intersects(a.map(q::rounded),b.map(q::rounded),ia,ib);}
+    let ra = a.map(q::rounded); let rb = b.map(q::rounded);
+    let same = |a: [P3;3], b: [P3;3]| a.map(|p|p.map(f64::to_bits)) == b.map(|p|p.map(f64::to_bits));
+    (!same(a,ra) || !same(b,rb)) && intersects(ra,rb,ia,ib)
+}
+#[cfg(test)]
+mod predicate_reuse_tests {
+    use super::*;
+    #[test]
+    fn pair_results_match_original_with_shared_vertices_and_rounding() {
+        let a = [[0.,0.,0.],[1.,0.,0.],[0.,1.,0.]];
+        for i in -20..21 {
+            for z in [-1e-46,0.,1e-46,0.5] {
+                let x = i as f64 / 20.;
+                let b = [[x,0.,z],[x+1.,0.,z],[x,1.,z]];
+                for ids in [[0,1,2],[0,3,4],[3,4,5]] {
+                    assert_eq!(intersects(a,b,[0,1,2],ids),reference_intersects(a,b,[0,1,2],ids));
+                    assert_eq!(intersects_both(a,b,[0,1,2],ids),reference_intersects(a,b,[0,1,2],ids) || reference_intersects(a.map(q::rounded),b.map(q::rounded),[0,1,2],ids));
+                }
+            }
         }
     }
 }

@@ -3,7 +3,8 @@
  * SFCC_BENCH_SCENE=housing|bracket and SFCC_BENCH_MODE=baseline|triangulation|all
  * narrow investigation runs. Output includes digests, all samples and medians.
  */
-import { readFileSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { load } from "js-yaml"
@@ -11,7 +12,7 @@ import { SceneInfo } from "../../src/scene/scene.mjs"
 import { serializeSceneToBridgeJson } from "../../src/export/sfcc-rs/scene-bridge.mjs"
 import { initSync, export_sfcc } from "../wasm/pkg/gcad_wasm.js"
 
-const wasm = readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.meta.url))
+const wasm = readFileSync(process.env.SFCC_BENCH_WASM ?? new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.meta.url))
 const instance = initSync({ module: wasm })
 const digest = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex")
 const configurations = {
@@ -25,7 +26,7 @@ const fixtures: Array<{ name: string; cube: [number, number, number, number] }> 
     { name: "bracket", cube: [-26.4, -21.1, -26.4, 52.8] },
 ]
 const runs = Number(process.env.SFCC_BENCH_RUNS ?? 5)
-if (!Number.isSafeInteger(runs) || runs < 1) throw new Error("SFCC_BENCH_RUNS must be positive")
+if (!Number.isSafeInteger(runs) || runs < 0) throw new Error("SFCC_BENCH_RUNS must be nonnegative (zero captures one warmup only)")
 console.log(JSON.stringify({ head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), wasmSha256: digest(wasm), backend: "release WASM", node: process.version }))
 for (const fixture of fixtures) {
     if (process.env.SFCC_BENCH_SCENE && process.env.SFCC_BENCH_SCENE !== fixture.name) continue
@@ -60,6 +61,15 @@ for (const fixture of fixtures) {
                 }
                 angles.sort((a, b) => a - b)
                 console.log(JSON.stringify({ scene: fixture.name, sourceSha256: digest(source), sceneSha256: digest(sceneJson), tuning, cube: fixture.cube, mode, run, ms, triangles: tris.length / 3, slivers, p5Angle: angles[Math.floor((angles.length - 1) * 0.05)], outputBytes: verts.byteLength + tris.byteLength, wasmPagesBytes: instance.memory.buffer.byteLength, validation: JSON.parse(mesh.stats_json).validation }))
+                const artifactDir = process.env.SFCC_BENCH_ARTIFACTS
+                if (artifactDir) {
+                    mkdirSync(artifactDir, { recursive: true })
+                    const prefix = join(artifactDir, `${fixture.name}-${mode}-${run}`)
+                    for (const [name, data] of [["verts", verts], ["tris", tris], ["edges", mesh.feature_edges]] as const) {
+                        writeFileSync(`${prefix}.${name}`, new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
+                    }
+                    writeFileSync(`${prefix}.json`, JSON.stringify(JSON.parse(mesh.stats_json).validation))
+                }
             } finally { mesh.free() }
         }
         timings.sort((a, b) => a - b)

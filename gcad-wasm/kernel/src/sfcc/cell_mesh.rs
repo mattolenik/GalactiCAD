@@ -543,8 +543,7 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
                     super::triangle_quality::norm(super::triangle_quality::sub(p, q)) <= o.surface_tol * 0.1
                         && carrier.domain_contains(q, o.surface_tol * 0.01)
                 }) { continue; }
-                let candidate = super::surface_patch::disk(points, loop_pts, tree, Some(carrier), o.curve_chord_tol)
-                    .or_else(|_| super::surface_patch::disk(points, loop_pts, tree, Some(carrier), o.curve_chord_tol * 8.));
+                let candidate = super::surface_patch::disk_strict_or_coarse(points, loop_pts, tree, Some(carrier), o.curve_chord_tol);
                 if let Ok(candidate) = candidate {
                     for t in candidate.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], carrier.id); }
                     out_tris.extend(candidate);
@@ -1253,8 +1252,7 @@ fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
     out_tris: &mut Vec<usize>,
 ) {
     if opts.quality_triangulation && super::surface_patch::supports_local_edits(stratum) {
-        let candidate = super::surface_patch::disk(points, boundary, tree, Some(stratum), opts.curve_chord_tol)
-            .or_else(|_| super::surface_patch::disk(points, boundary, tree, Some(stratum), opts.curve_chord_tol * 8.));
+        let candidate = super::surface_patch::disk_strict_or_coarse(points, boundary, tree, Some(stratum), opts.curve_chord_tol);
         if let Ok(candidate) = candidate {
             for t in candidate.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], stratum.id); }
             out_tris.extend(candidate);

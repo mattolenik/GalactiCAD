@@ -50,3 +50,5 @@ mod blend_surfaces;
 
 pub(crate) mod branch_surfaces;
 pub(crate) mod surface_refine;
+
+pub mod perf;

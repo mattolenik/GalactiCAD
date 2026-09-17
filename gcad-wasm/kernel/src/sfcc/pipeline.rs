@@ -27,7 +27,7 @@ use crate::sfcc::face_contour::{
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{
-    build_octree, build_octree_profiled, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell,
+    build_octree, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell,
     SfccOctree,
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
@@ -478,10 +478,9 @@ struct ForcedMarker {
 /// The immutable per-export context the feature-aware needsSplit DECISION reads.
 /// Built once by [`build_pipeline_context`] and shared by BOTH the serial driver
 /// ([`run_sfcc_pipeline_impl`]) and the worker `prepare` path so the two can never
-/// drift — the decision (classify_cell_features + smoothCrit, the expensive ~60%)
-/// is computed by exactly one code path. Holds only borrows + cheap scalars; no
-/// per-round mutable state (the `forced` markers are passed separately, since they
-/// accumulate across re-refine rounds).
+/// drift — the decision is computed by exactly one code path. Holds immutable
+/// features/advisories and bounded per-export query caches. Current forced
+/// markers are passed separately because they accumulate across recovery rounds.
 pub(crate) struct PipelineContext<'a> {
     pub lat: SfccLattice,
     pub features: SfccFeatureSet,
@@ -499,6 +498,10 @@ pub(crate) struct PipelineContext<'a> {
     /// build (the cost that sank the per-cell Lever 1). Lazy. Mirrors the coarse contour
     /// prune (`face_contour::contour_into`).
     coarse: std::cell::RefCell<std::collections::HashMap<u64, crate::sdf::Pruned<'a>>>,
+    // Only successful classifications: failure-producing queries must execute
+    // again after recovery resets round-local numerical diagnostics.
+    classifications: std::cell::RefCell<HashMap<(u32,i64), super::refine_criteria::FeatureCellClass>>,
+
 }
 
 /// Coarse octree level at which a cell's prune view is built and shared. Cells at
@@ -556,8 +559,18 @@ impl<'a> PipelineContext<'a> {
     ) -> CellDecision {
         let lat = &self.lat;
         let features = &self.features;
-        let cls =
-            classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
+        let key = (cell.level, crate::math::grid::cell_key(lat, cell.level, cell.ix, cell.iy, cell.iz));
+        let cached = if super::perf::disabled(16) { None } else { self.classifications.borrow().get(&key).copied() };
+        if cached.is_some() { super::perf::add(10,1); }
+        let cls = cached.unwrap_or_else(|| {
+            let before = validation::numerical_failures();
+            let cls = classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
+            if !super::perf::disabled(16) && validation::numerical_failures() == before && !super::cancel::is_cancelled() {
+                let mut cache = self.classifications.borrow_mut();
+                if cache.len() < 49_152 { cache.insert(key, cls); }
+            }
+            cls
+        });
         if cls.split {
             // Only a cell containing the corner may fan from it. Claiming a
             // nearby external corner at the depth ceiling creates overlapping
@@ -799,6 +812,7 @@ pub(crate) fn build_pipeline_context<'a>(
         total_size,
         tree,
         coarse: std::cell::RefCell::new(std::collections::HashMap::new()),
+        classifications: std::cell::RefCell::new(HashMap::new()),
     }
 }
 
@@ -1202,6 +1216,7 @@ fn run_sfcc_pipeline_impl(
     let mut separate_audit = None;
     phase_mark(now, &mut ph_last, &mut ph_feature);
     let mut round = 0u32;
+    let mut retained_samples = HashMap::new();
     loop {
         validation::restore_numerical_failures(feature_failures);
         let forced_snapshot = forced.clone();
@@ -1220,11 +1235,9 @@ fn run_sfcc_pipeline_impl(
             ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot)
         };
         emit(1, "Building octree");
-        oct = match now {
-            // Profiled: time each round's decide vs apply, then fold the split in.
-            Some(f) => build_octree_profiled(tree, &lat, opts, decide_cb, f),
-            None => build_octree(tree, &lat, opts, decide_cb),
-        };
+        oct = super::octree::build_octree_reusing(
+            tree, &lat, opts, decide_cb, now, std::mem::take(&mut retained_samples),
+        );
         if let Some(p) = oct.profile.take() {
             ph_oct_decide += p.decide_ms;
             ph_oct_apply += p.apply_ms;
@@ -1351,7 +1364,17 @@ fn run_sfcc_pipeline_impl(
                 level: c.level,
             });
         }
+        if !super::perf::disabled(16) { retained_samples = oct.take_sample_values(131_072); }
         round += 1;
+    }
+
+    // No more classification or lattice queries occur after the recovery loop.
+    // Release their storage before allocating the final audit/remeshing indexes.
+    if !super::perf::disabled(16) {
+        let mut classifications = ctx.classifications.borrow_mut();
+        classifications.clear();
+        classifications.shrink_to_fit();
+        oct.release_sample_storage();
     }
 
     // Face-segment audit: interior segments must be consumed once forward and
@@ -1452,4 +1475,118 @@ fn run_sfcc_pipeline_impl(
 
 fn hypot3(x: f64, y: f64, z: f64) -> f64 {
     (x * x + y * y + z * z).sqrt()
+}
+
+#[cfg(test)]
+mod recovery_cache_tests {
+    use super::*;
+    #[test]
+    fn cached_classification_does_not_cache_forced_decision() {
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);
+        let cube = SfccWorldCube {
+            min_x: -4.,
+            min_y: -4.,
+            min_z: -4.,
+            size: 8.,
+        };
+        let tuning = PipelineTuning {
+            depth_min: 2,
+            depth_max: 4,
+            ..Default::default()
+        };
+        let ctx = build_pipeline_context(&tree, &cube, &tuning);
+        let cell = SfccCell {
+            level: 2,
+            ix: 0,
+            iy: 0,
+            iz: 0,
+            key: 0,
+            degenerate: false,
+            feature_curve: -1,
+            feature_corner: -1,
+        };
+        let sample = |x, y, z| {
+            let w = crate::math::grid::point_to_world(&ctx.lat, x, y, z);
+            tree.f(w)
+        };
+        let first = ctx.decide_cell(&cell, &sample, &[]);
+        assert_eq!(ctx.classifications.borrow().len(), 1);
+        let size = ctx.total_size / 4.;
+        let marker = ForcedMarker {
+            x: ctx.lat.origin_x + size * 0.5,
+            y: ctx.lat.origin_y + size * 0.5,
+            z: ctx.lat.origin_z + size * 0.5,
+            level: 2,
+        };
+        let forced = ctx.decide_cell(&cell, &sample, &[marker]);
+        assert!(!first.split);
+        assert!(forced.split);
+        assert_eq!(forced.feature_curve, -1);
+        assert_eq!(forced.feature_corner, -1);
+    }
+}
+
+#[cfg(test)]
+mod recovery_failure_tests {
+    use super::*;
+    #[test]
+    fn failed_classification_queries_are_repeated_after_diagnostic_reset() {
+        use super::super::feature_curves::{make_traced_curve, TracedRefine};
+        use crate::strata::{Stratum, StratumIdentity};
+        let _scope = validation::NumericalGuard::new();
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);
+        let cube = SfccWorldCube {
+            min_x: -1.,
+            min_y: 0.,
+            min_z: 0.,
+            size: 2.,
+        };
+        let mut ctx = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
+        ctx.lat = crate::math::grid::make_lattice(2, -1., 0., 0., 2.);
+        ctx.total_size = 2.;
+        let ident = |id| StratumIdentity {
+            id,
+            owner_node_id: -1,
+            leaf_index: 0,
+            local_index: id,
+            sign: 1.,
+        };
+        let a = Stratum::plane(ident(0), 0., 1., 0., 0.);
+        let b = Stratum::plane(ident(1), 0., 1., 0., -1.);
+        let poly = vec![-0.5, 0.5, 0.2, 0.5, 0.5, 0.2];
+        ctx.features.index = super::super::spatial_index::SfccSpatialIndex::new(0.5);
+        ctx.features.index.insert_curve_polyline(0, &poly);
+        ctx.features.curves = vec![make_traced_curve(
+            0,
+            [0, 1],
+            poly,
+            false,
+            a.clone(),
+            b.clone(),
+            TracedRefine {
+                curve_eps: 1e-12,
+                min_cross: 1e-3,
+                max_displacement: 1.,
+            },
+            -1,
+        )];
+        ctx.features.strata = vec![a, b];
+        ctx.features.corners.clear();
+        let cell = SfccCell {
+            level: 1,
+            ix: 0,
+            iy: 0,
+            iz: 0,
+            key: 0,
+            degenerate: false,
+            feature_curve: -1,
+            feature_corner: -1,
+        };
+        for _ in 0..2 {
+            validation::restore_numerical_failures(Default::default());
+            ctx.decide_cell(&cell, &|_, _, _| 1., &[]);
+            assert!(validation::numerical_failures().curve_projection > 0);
+            assert!(ctx.classifications.borrow().is_empty());
+        }
+    }
 }

@@ -132,9 +132,9 @@ kill-user-browser:
 
 .PHONY: kill-agent-browsers
 kill-agent-browsers: stop-agent
-	jq -r '.browser_pids[]?' < .devserver.agent.run | xargs kill -9 2> /dev/null || echo 'No dangling browser PIDs found in .devserver.agent.run'
+	cat .devserver.agent.run 2>/dev/null | jq -r '.browser_pids[]?' | xargs kill -9 2> /dev/null || echo 'No dangling browser PIDs found in .devserver.agent.run'
 	# Sweep any remaining processes, excluding user browsers
-	pgrep -fl "$(PWD)/.browsers" | awk '!/$(USER_DATA_DIR)/ {print $$1}' | xargs kill -9 2> /dev/null || true
+	pgrep -fl "$(PWD)/$(BROWSERS_DIR)" | grep -vF "$(USER_DATA_DIR)" | awk '{print $$1}' | xargs kill -9 2> /dev/null || true
 
 .PHONY: restart
 restart: stop start

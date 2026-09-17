@@ -91,11 +91,26 @@ export function compileLathePrimitiveEdgeHitCase(node: Lathe): string {
     const pos = vec3Wgsl(o, pv)
     const eps = latheProfileEpsPack(child)
 
-    const caseBody = (() => {
-        let inner = ""
-        for (let k = 0; k < N; k++) {
-            const idx = `${k}u`
-            const ringAssign = `
+    // One loop over the profile vertices rather than N unrolled copies. The unrolled
+    // form (N × nested ifs with early returns, 26 return paths for a 13-vertex
+    // profile) makes Apple's Metal backend spin for minutes / run out of memory
+    // when inlined into the deferred geometry pass; the loop form compiles in
+    // well under a second (verified against the dumped MSL, 2026-09-16).
+    const caseBody = `
+    for (var k: u32 = 0u; k < ${N}u; k = k + 1u) {
+        let vK = polygonVertices[${BASE}u + k];
+        let vPrev = polygonVertices[${BASE}u + (k + ${N}u - 1u) % ${N}u];
+        let vNext = polygonVertices[${BASE}u + (k + 1u) % ${N}u];
+        let prevLeg = vK - vPrev;
+        let nextLeg = vNext - vK;
+        let prevLeg2 = dot(prevLeg, prevLeg);
+        let nextLeg2 = dot(nextLeg, nextLeg);
+        if (prevLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()} && nextLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()}) {
+            let prevDir = prevLeg * inverseSqrt(prevLeg2);
+            let nextDir = nextLeg * inverseSqrt(nextLeg2);
+            if (dot(prevDir, nextDir) < ${LATHE_COLLINEAR_DOT}) {
+                let qNear = vec2f(abs(vK.x), vK.y);
+                if (length(q - qNear) < ${eps.previewVtxEps}) {
                     let rAbs = abs(vK.x);
                     if (rAbs > ${eps.axisRingR}) {
                         let rUse = max(rAbs, ${eps.axisRingR});
@@ -104,7 +119,7 @@ export function compileLathePrimitiveEdgeHitCase(node: Lathe): string {
                         if (dRing < ${eps.edgeThreshold}) {
                             (*out).kind = EDGE_KIND_PRIMITIVE;
                             (*out).primaryId = ${node.id}u;
-                            (*out).featureA = ${idx};
+                            (*out).featureA = k;
                             (*out).objectId = hitId;
                             let feat = vec3f(radDir.x * rUse, vK.y, radDir.y * rUse);
                             (*out).seedPoint = vec4f(${pos} + feat, 0.0);
@@ -116,38 +131,23 @@ export function compileLathePrimitiveEdgeHitCase(node: Lathe): string {
                         if (dPole < ${eps.edgeThreshold}) {
                             (*out).kind = EDGE_KIND_PRIMITIVE;
                             (*out).primaryId = ${node.id}u;
-                            (*out).featureA = ${idx};
+                            (*out).featureA = k;
                             (*out).objectId = hitId;
                             let feat = vec3f(0.0, vK.y, 0.0);
                             (*out).seedPoint = vec4f(${pos} + feat, 0.0);
                             (*out).seedTangent = safeNormalize(vec3f(-radDir.y, 0.0, radDir.x), vec3f(0.0, 0.0, 1.0));
                             return true;
                         }
-                    }`
-            inner += `
-    {
-        let vK = polygonVertices[${BASE}u + ${idx}];
-        let vPrev = polygonVertices[${BASE}u + (${idx} + ${N}u - 1u) % ${N}u];
-        let vNext = polygonVertices[${BASE}u + (${idx} + 1u) % ${N}u];
-        let prevLeg = vK - vPrev;
-        let nextLeg = vNext - vK;
-        let prevLeg2 = dot(prevLeg, prevLeg);
-        let nextLeg2 = dot(nextLeg, nextLeg);
-        if (prevLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()} && nextLeg2 >= ${LATHE_MIN_EDGE_LEN2.toExponential()}) {
-            let prevDir = prevLeg * inverseSqrt(prevLeg2);
-            let nextDir = nextLeg * inverseSqrt(nextLeg2);
-            if (dot(prevDir, nextDir) < ${LATHE_COLLINEAR_DOT}) {
-                let qNear = vec2f(abs(vK.x), vK.y);
-                if (length(q - qNear) < ${eps.previewVtxEps}) {${ringAssign}
+                    }
                 }
             }
         }
     }`
-        }
-        return inner
-    })()
 
-    return `case ${node.id}u: {
+    // A whole function (not a `switch` case): a case-terminal `return` makes Tint emit a
+    // volatile-guarded return + break that Apple's Metal backend cannot compile for a body
+    // this size (see the NOTE in preview.wgsl).
+    return `fn latheEdgeHit_${node.id}(hitId: u32, hitWorld: vec3f, out: ptr<function, EdgeHit>) -> bool {
     let localP = hitWorld - ${pos};
     let combined = ${combinedFunc}(vec2f(length(localP.xz), localP.y));
     if (abs(combined.x) >= ${eps.previewSideEps}) { return false; }
@@ -157,12 +157,13 @@ export function compileLathePrimitiveEdgeHitCase(node: Lathe): string {
     let q = vec2f(r, localP.y);
     ${caseBody}
     return false;
-}`
+}
+`
 }
 
 /**
- * Distance in world/lathe space from hitWorld to the ring (or pole) at `profileVtx` for this lathe id.
- * Returns 1e30 if `latheId` does not match this node (caller switches on id).
+ * Distance in world/lathe space from hitWorld to the ring (or pole) at `profileVtx` for this lathe:
+ * emits `fn latheRingDistance_<id>(profileVtx, hitWorld) -> f32` (the scene emits the dispatcher).
  */
 export function compileLathePrimitiveRingDistanceCase(node: Lathe): string {
     const child = node.child
@@ -171,7 +172,7 @@ export function compileLathePrimitiveRingDistanceCase(node: Lathe): string {
     const pv = node.previewVec3Slot
     const pos = vec3Wgsl(o, pv)
     const eps = latheProfileEpsPack(child)
-    return `case ${node.id}u: {
+    return `fn latheRingDistance_${node.id}(profileVtx: u32, hitWorld: vec3f) -> f32 {
     let localP = hitWorld - ${pos};
     let r = length(localP.xz);
     let q = vec2f(r, localP.y);
@@ -182,7 +183,8 @@ export function compileLathePrimitiveRingDistanceCase(node: Lathe): string {
         return length(q - vec2f(rUse, v.y));
     }
     return length(vec3f(localP.x, localP.y - v.y, localP.z));
-}`
+}
+`
 }
 
 /**

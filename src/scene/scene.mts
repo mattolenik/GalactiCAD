@@ -623,6 +623,10 @@ export class SceneInfo {
         return `\nreturn ${compiledResult.text};\n`
     }
 
+    /**
+     * Preview WGSL body lines for `getBoxParamsForId`: a plain if-chain, no `switch` (see the
+     * Metal NOTE at the insert point in preview.wgsl).
+     */
     compileEdgeHelpers(): string {
         setCompileParamMode("preview")
         let code = ""
@@ -630,29 +634,45 @@ export class SceneInfo {
             if (node instanceof Box) {
                 const o = node.paramOffset
                 const pv = node.previewVec3Slot
-                code += `case ${node.id}u: { (*posOut) = ${vec3Wgsl(o, pv)}; (*halfOut) = ${vec3Wgsl(o + 3, pv + 1)}; return true; }\n`
+                code += `    if (id == ${node.id}u) { (*posOut) = ${vec3Wgsl(o, pv)}; (*halfOut) = ${vec3Wgsl(o + 3, pv + 1)}; return true; }\n`
             }
         }
         return code
     }
 
-    /** Preview WGSL `switch` cases for lathe primitive ring/pole edge hits (see `tryLathePrimitiveEdgeHit`). */
-    compileLathePrimitiveEdgeHitCases(): string {
+    /**
+     * Preview WGSL module-scope functions for lathe primitive edges: `latheEdgeHit_<id>` and
+     * `latheRingDistance_<id>` per lathe (`//:) insert sceneLatheFns`). Whole functions rather
+     * than `switch` cases: see the Metal NOTE at the insert point in preview.wgsl.
+     */
+    compileLathePrimitiveFns(): string {
         let code = ""
         for (const node of this.#nodes.values()) {
             if (node instanceof Lathe) {
                 code += compileLathePrimitiveEdgeHitCase(node)
+                code += compileLathePrimitiveRingDistanceCase(node)
             }
         }
         return code
     }
 
-    /** Preview WGSL `switch` cases for distance from `hitWorld` to a lathe ring/pole at `profileVtx`. */
+    /** Preview WGSL body lines (if-chain) for `tryLathePrimitiveEdgeHit`, dispatching to `latheEdgeHit_<id>`. */
+    compileLathePrimitiveEdgeHitCases(): string {
+        let code = ""
+        for (const node of this.#nodes.values()) {
+            if (node instanceof Lathe) {
+                code += `    if (hitId == ${node.id}u) { return latheEdgeHit_${node.id}(hitId, hitWorld, out); }\n`
+            }
+        }
+        return code
+    }
+
+    /** Preview WGSL body lines (if-chain) for `lathePrimitiveRingDistance`, dispatching to `latheRingDistance_<id>`. */
     compileLathePrimitiveRingDistanceCases(): string {
         let code = ""
         for (const node of this.#nodes.values()) {
             if (node instanceof Lathe) {
-                code += compileLathePrimitiveRingDistanceCase(node)
+                code += `    if (latheId == ${node.id}u) { return latheRingDistance_${node.id}(profileVtx, hitWorld); }\n`
             }
         }
         return code

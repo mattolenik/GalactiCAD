@@ -704,6 +704,14 @@ export class RenderWorkerCore {
         let release!: () => void
         this.#buildLock = new Promise<void>(r => (release = r))
         await prev
+        // `#doBuild` commits `#builtBody`/`#scene` before the pipelines exist. If the
+        // build throws (e.g. Metal pipeline creation fails), roll both back so the
+        // failing body is not recorded as "built": otherwise the thumbnail/agent
+        // paths skip the rebuild (reporting a null pipeline as "Scene failed to
+        // build"), and their scene-restore step re-queues the failing compile after
+        // every later build — each attempt costing the full pipeline-compile timeout.
+        const prevBody = this.#builtBody
+        const prevScene = this.#scene
         try {
             // Build-time tessellation density. The size-adaptive default
             // (absolute floor + world-extent term) is scaled by the dev-tools
@@ -714,6 +722,10 @@ export class RenderWorkerCore {
             const f = tessDetailFactor && tessDetailFactor > 0 ? tessDetailFactor : 1
             setPath2DChordTol(0.01 / f, 0.0015 / f)
             return await this.#doBuild(body)
+        } catch (err) {
+            this.#builtBody = prevBody
+            this.#scene = prevScene
+            throw err
         } finally {
             release()
         }
@@ -1013,6 +1025,7 @@ export class RenderWorkerCore {
         const tSdfFast = performance.now()
         const ghostSDFFast = scene.compileGhostFastForPreview()
         const sceneEdgeHelpers = scene.compileEdgeHelpers()
+        const sceneLatheFns = scene.compileLathePrimitiveFns()
         const sceneLatheEdgeHitCases = scene.compileLathePrimitiveEdgeHitCases()
         const sceneLatheRingDistanceCases = scene.compileLathePrimitiveRingDistanceCases()
         const tWgsl1 = performance.now()
@@ -1024,6 +1037,7 @@ export class RenderWorkerCore {
             .replace("insert", "sceneSDF", sceneSDF)
             .replace("insert", "ghostSDF_fast", ghostSDFFast)
             .replace("insert", "sceneEdgeHelpers", sceneEdgeHelpers)
+            .replace("insert", "sceneLatheFns", sceneLatheFns)
             .replace("insert", "sceneLatheEdgeHitCases", sceneLatheEdgeHitCases)
             .replace("insert", "sceneLatheRingDistanceCases", sceneLatheRingDistanceCases)
 

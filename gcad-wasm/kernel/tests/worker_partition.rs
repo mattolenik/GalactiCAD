@@ -83,7 +83,8 @@ fn twisted_l_scene() -> (CsgNode, SfccWorldCube) {
     let verts: Vec<f64> = l_poly.iter().flat_map(|v| [v[0], v[1]]).collect();
     let wind = winding_sign(&l_poly);
     let twist_rad = 90.0_f64 * std::f64::consts::PI / 180.0;
-    let tree = prepared_tree(sdf::leaf_at(Shape::Extrude { verts, wind, h: 5.0, twist_rad }, [0.0, 0.0, 0.0]));
+    let tree =
+        prepared_tree(sdf::leaf_at(Shape::Extrude { verts, wind, h: 5.0, twist_rad }, [0.0, 0.0, 0.0]));
     (tree, SfccWorldCube { min_x: -6.0, min_y: -6.0, min_z: -6.0, size: 12.0 })
 }
 
@@ -114,7 +115,8 @@ fn assert_worker_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
     for &n in &[1usize, 2, 4, 8] {
         // Each "worker" meshes ONE Morton group into its own partial. Independent
         // calls — exactly what separate wasm instances will do.
-        let partials: Vec<Vec<u8>> = (0..n).map(|i| mesh_partition(tree, c, &tuning(), &leaves_bytes, i, n)).collect();
+        let partials: Vec<Vec<u8>> =
+            (0..n).map(|i| mesh_partition(tree, c, &tuning(), &leaves_bytes, i, n)).collect();
 
         // The "main thread" merges the partials by global key + runs the S4 tail.
         let merged = merge(tree, c, &tuning(), &partials);
@@ -145,9 +147,11 @@ fn assert_worker_equiv_serial(name: &str, tree: &CsgNode, c: &SfccWorldCube) {
 
         let sv: Vec<f64> = serial.verts.iter().map(|&f| f as f64).collect();
         let wv: Vec<f64> = merged.verts.iter().map(|&f| f as f64).collect();
-        let exact = CanonicalizeOptions { pos_eps: 0.0, compare_normals: true, ..CanonicalizeOptions::default() };
-        meshes_equivalent(&sv, &serial.tris, &wv, &merged.tris, &exact)
-            .unwrap_or_else(|e| panic!("{name}: worker partitions={n} NOT canonically identical to serial: {e}"));
+        let exact =
+            CanonicalizeOptions { pos_eps: 0.0, compare_normals: true, ..CanonicalizeOptions::default() };
+        meshes_equivalent(&sv, &serial.tris, &wv, &merged.tris, &exact).unwrap_or_else(|e| {
+            panic!("{name}: worker partitions={n} NOT canonically identical to serial: {e}")
+        });
     }
     println!(
         "[worker-partition] {name}: prepare→mesh(1,2,4,8)→merge == serial (canonical, pos_eps=0); leaf buffer = {} bytes",
@@ -197,4 +201,94 @@ fn worker_recovery_and_reversed_completion_order_match_serial() {
     assert_eq!(reversed.tris, forward.tris);
     assert_eq!(forward.validation, serial.validation);
     assert!(!forward.ok);
+}
+
+#[test]
+fn curved_feature_intervals_survive_real_merges_and_reversed_completion() {
+    let tree = prepared_tree(sdf::leaf_at(Shape::Cylinder { r: 1., h: 1. }, [0.; 3]));
+    let cube = SfccWorldCube { min_x: -2., min_y: -2., min_z: -2., size: 4. };
+    let tuning = PipelineTuning { depth_min: 3, depth_max: 5, ..Default::default() };
+    let serial = run_sfcc_pipeline(&tree, &cube, &tuning);
+    assert!(
+        serial.validation.feature_chains.as_ref().unwrap().passed(),
+        "{:?}",
+        serial.validation.feature_chains
+    );
+    let leaves = prepare(&tree, &cube, &tuning);
+    let canonical = |verts: &[f32], edges: &[gcad_kernel::sfcc::point_table::MeshCurveEdge]| {
+        let mut records: Vec<_> = edges
+            .iter()
+            .map(|e| {
+                let p = |id: u32| {
+                    [
+                        verts[id as usize * 8].to_bits(),
+                        verts[id as usize * 8 + 1].to_bits(),
+                        verts[id as usize * 8 + 2].to_bits(),
+                    ]
+                };
+                let (a, b) = (p(e.vertices[0]), p(e.vertices[1]));
+                let interval = if a < b { e.interval } else { e.interval.reversed() };
+                (a.min(b), a.max(b), interval.curve_id, interval.start.to_bits(), interval.end.to_bits())
+            })
+            .collect();
+        records.sort_unstable();
+        records
+    };
+    let expected = canonical(&serial.verts, &serial.feature_edges);
+    for n in [1, 2, 4, 8] {
+        let mut partials: Vec<_> =
+            (0..n).map(|i| mesh_partition(&tree, &cube, &tuning, &leaves, i, n)).collect();
+        for reverse in [false, true] {
+            if reverse {
+                partials.reverse();
+            }
+            let merged = merge(&tree, &cube, &tuning, &partials);
+            assert!(!merged.serial_recovery, "N={n} reverse={reverse} recovered serially");
+            assert!(merged.validation.feature_chains.as_ref().unwrap().passed());
+            assert_eq!(canonical(&merged.verts, &merged.feature_edges), expected);
+        }
+    }
+}
+
+#[test]
+fn quality_stages_preserve_box_topology_and_worker_ownership() {
+    let tree = box_scene();
+    let cube = cube20();
+    let tuning = PipelineTuning {
+        depth_min: 3, depth_max: 5,
+        quality_triangulation: true, quality_refinement: true, quality_remeshing: true,
+        ..PipelineTuning::default()
+    };
+    let serial = run_sfcc_pipeline(&tree, &cube, &tuning);
+    assert!(serial.manifold.ok);
+    let quality = serial.validation.quality.as_ref().unwrap();
+    assert!(quality.passed(), "{quality:?}");
+    let leaves = prepare(&tree, &cube, &tuning);
+    for n in [1, 2, 4, 8] {
+        let mut partials: Vec<_> = (0..n).map(|i| mesh_partition(&tree, &cube, &tuning, &leaves, i, n)).collect();
+        partials.reverse();
+        let result = merge(&tree, &cube, &tuning, &partials);
+        assert!(!result.serial_recovery, "quality must exercise actual merge");
+        assert_eq!(result.validation, serial.validation);
+        let a: Vec<_> = serial.verts.iter().map(|&v| v as f64).collect();
+        let b: Vec<_> = result.verts.iter().map(|&v| v as f64).collect();
+        meshes_equivalent(&a, &serial.tris, &b, &result.tris, &CanonicalizeOptions { pos_eps: 0., compare_normals: true, ..Default::default() }).unwrap();
+    }
+}
+
+#[test]
+fn quality_projection_tube_pruning_matches_the_same_unpruned_surface() {
+    let sphere=sdf::leaf_at(Shape::Sphere{r:5.},[0.;3]);
+    let mut children=vec![sphere.clone()];
+    // These strictly interior spheres are provably dominated everywhere. They
+    // exercise the larger-tree pruning gate without changing the zero set.
+    for i in 0..7 {children.push(sdf::leaf_at(Shape::Sphere{r:0.1},[i as f64*0.1,0.,0.]));}
+    let full=prepared_tree(sphere);let pruned=prepared_tree(sdf::union(children));
+    let tuning=PipelineTuning{depth_min:3,depth_max:5,quality_triangulation:true,quality_refinement:true,quality_remeshing:true,..Default::default()};
+    let a=run_sfcc_pipeline(&full,&cube20(),&tuning);let b=run_sfcc_pipeline(&pruned,&cube20(),&tuning);
+    assert!(a.manifold.ok&&b.manifold.ok);
+    assert!(a.validation.quality.as_ref().unwrap().passed());
+    assert!(b.validation.quality.as_ref().unwrap().passed());
+    let av:Vec<_>=a.verts.iter().map(|&x|x as f64).collect();let bv:Vec<_>=b.verts.iter().map(|&x|x as f64).collect();
+    meshes_equivalent(&av,&a.tris,&bv,&b.tris,&CanonicalizeOptions{pos_eps:0.,compare_normals:true,..Default::default()}).unwrap();
 }

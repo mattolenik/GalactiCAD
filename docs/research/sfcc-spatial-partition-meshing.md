@@ -1,6 +1,6 @@
 # SFCC spatial-partition parallel meshing (tax-free, for large meshes)
 
-> **Superseded (2026-07-18):** the partition path has since been implemented (behind the default-off `sfccPartitions=N` flag). The implemented algorithm, including partitioning, is documented in [`docs/sfcc-meshing-algorithm.md`](../sfcc-meshing-algorithm.md) §7.2; divergences from this design are catalogued in its §11.
+> **Historical design, superseded:** see the [current implementation explanation](../sfcc-meshing-algorithm.md), especially §7.2 for worker execution and §11 for known limitations. Guarantees and implementation status stated below belong to the original proposal, not the current exporter.
 
 Design for the one parallelism route that escapes the WASM shared-memory atomics
 tax: instead of threading inside one `+atomics` module (rayon — measured

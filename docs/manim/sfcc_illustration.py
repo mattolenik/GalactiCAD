@@ -120,28 +120,28 @@ def cell_square(cx, cy, h, **kw):
 
 # --------------------------------------------- ch1d: torture-test slides
 # (asset base name, caption lines) — captions carry each scene's operator
-# inventory and export stats, filled from the actual export runs.
+# inventory and qualitative scope; counts require the actual export report.
 TORTURE = [
     ("torture_bracket", [
-        "part 1 — a bracket: 3-way rounded union, a chamfer-blended",
+        "part 1 — a bracket: plate and bosses joined with a chamfer-blended",
         "200° twisted rib, a domed hard intersect, 7 hard subtracts —",
-        "71,210 triangles, manifold-clean, 0 failed cells"]),
+        "saved mesh example — topology checks alone do not certify fidelity"]),
     ("torture_knob", [
         "part 2 — a knob: lathe body ∪ 220°-twisted star fins (rounded),",
         "hard envelope intersect, chamfer-blended ring groove, hard hex",
-        "socket, smooth-intersect crown — 125,382 triangles, manifold-clean"]),
+        "socket, smooth-intersect crown — saved mesh example"]),
     ("torture_housing", [
-        "part 3 — a housing: rounded cylinder tee, a square→12-gon loft",
-        "flange, chamfered cone port, 8 hard subtracts hollowing it out —",
-        "98,020 triangles, manifold-clean, 0 failed cells"]),
+        "part 3 — a housing: blended cylinder tee, a square→12-gon loft",
+        "flange, chamfered cone port, 7 hard cuts and a flat-base intersect —",
+        "saved mesh example — bore, X seams and flange rims have regressions"]),
     ("torture_mess1", [
         "mess 1 — 11 primitives, every blend mode in the book: round,",
         "chamfer, stairs, columns unions + subtracts, a 270° twisted star,",
-        "a hard sphere trim — 134,330 triangles, still manifold-clean"]),
+        "a hard sphere trim — stairs/columns feature coverage remains incomplete"]),
     ("torture_mess2", [
         "mess 2 — 10 primitives: lathe vase, stairs/chamfer/round blends,",
         "cone spike, hard trim, a 400°-twisted ribbon slapped on last —",
-        "111,636 triangles, manifold-clean, 0 failed cells"]),
+        "saved mesh example — stairs feature coverage remains incomplete"]),
 ]
 
 # ---------------------------------------------------------------- scene
@@ -186,6 +186,7 @@ class SFCC(Scene):
         self.ch3_features()
         self.ch3b_featureset()
         self.ch3c_blends()
+        self.ch3d_lifted_branches()
         self.ch4_octree()
         self.ch5_contour()
         self.ch5b_provenance()
@@ -204,7 +205,7 @@ class SFCC(Scene):
         self.play(FadeIn(t3, shift=UP * 0.2), run_time=0.8)
         self.wait(2.6)
 
-        stages = ["Scene JSON", "S1 features", "S2 octree", "S3 contour + mesh", "S4 audits"]
+        stages = ["Scene JSON", "S1 features", "S2 octree", "S3 contour + mesh", "S4 refine + audits"]
         chips = VGroup()
         for s in stages:
             txt = Text(s, font_size=22)
@@ -407,7 +408,7 @@ class SFCC(Scene):
         card = make_card("two representations, one shape", GREEN_B, [
             "implicit:   f_box(p) — for queries",
             "analytic:   8 corners (exact xyz) · 12 edge segments",
-            "· 6 face planes — for truth",
+            "· 6 face planes — for feature constraints",
             "now the vertices exist as data, not merely as places",
             "where f happens to vanish",
         ], width=6.9).move_to(P(3.2, 0.65))
@@ -416,7 +417,7 @@ class SFCC(Scene):
         self.play(FadeIn(img), FadeIn(card, shift=RIGHT * 0.3), FadeIn(cap), run_time=1.0)
         self.wait(5.4)
 
-        # operator stack: twist, then stretch — both representations transform
+        # Extrusion parameters: twist, then greater height; not nonuniform scale.
         img2 = load_render("box_twisted_crop.png", 5.2).move_to(P(-1.25, 0.45))
         img3 = load_render("box_twisted_stretched_crop.png", 5.6).move_to(P(1.5, 0.45))
         ar1 = Arrow(P(-2.85, 0.5), P(-2.05, 0.5), color=GREY_B, stroke_width=4,
@@ -425,18 +426,18 @@ class SFCC(Scene):
                     max_tip_length_to_length_ratio=0.4)
         al1 = Text("twist(800°)", font_size=20, color=YELLOW_C)\
             .next_to(ar1, UP, buff=0.18).shift(LEFT * 0.35)
-        al2 = Text("stretch", font_size=20, color=YELLOW_C).next_to(ar2, UP, buff=0.18)
-        cap2 = self.caption("every operator transforms BOTH: twist maps the field",
-                            "p → R(θ·p.y)·p — vertical edges sweep helices")
+        al2 = Text("height(100)", font_size=20, color=YELLOW_C).next_to(ar2, UP, buff=0.18)
+        cap2 = self.caption("this extrusion twists its profile with height, clamping at the caps:",
+                            "the field and supporting sides change; vertical edges sweep helices")
         self.play(FadeOut(card), FadeOut(cap),
                   img.animate.scale_to_fit_height(3.0).move_to(P(-4.9, 0.5)),
                   run_time=0.8)
         self.play(FadeIn(img2), FadeIn(cap2), GrowArrow(ar1), FadeIn(al1), run_time=1.0)
         self.wait(5.4)
 
-        cap3 = self.caption("then stretch it: transforms stack — the final feature curves are",
-                            "model-derived carriers under twist and stretch, with sampled curves",
-                            "and numerical projection onto their carrier pairs")
+        cap3 = self.caption("increase the extrusion height to 100, keeping the total twist at 800°:",
+                            "supporting fields and sampled helical curves follow those parameters",
+                            "— this example does not apply a nonuniform scale transform")
         self.swap_caption(cap3, cap2)
         self.play(FadeIn(img3), GrowArrow(ar2), FadeIn(al2), run_time=1.0)
         self.wait(5.6)
@@ -467,7 +468,7 @@ class SFCC(Scene):
             Text("mesh — wireframe", font_size=20, color=GREY_A).move_to(P(4.6, 2.45)))
         cap4 = self.caption("CSG also creates seams — traced numerically on carrier pairs",
                             "on the analytic carriers, trimmed where a shape swallows an edge —",
-                            "complex SDF geometry, without ever losing the underlying shape")
+                            "model-derived candidates guide the mesh, within numerical budgets")
         self.play(FadeOut(meshes), FadeOut(mlegend), FadeOut(capm),
                   FadeIn(Group(csg, csgm_s, csgm_w)), FadeIn(clabels),
                   FadeIn(cap4), run_time=0.9)
@@ -684,12 +685,12 @@ class SFCC(Scene):
         c3 = make_card("CORNERS — where curves meet", RED_B, [
             "position + (curve, end) wiring + incident strata",
             "box → 8 corners (valence 3) · cone apex → valence 0",
-            "here: c₁ = (0.44, 1.50) — where the box's top",
-            "carrier meets the circle carrier",
+            "2D analogy: c₁ = (−2.30, 1.50), the square's top-left corner",
+            "3D corners require their own incident-curve junctions",
         ]).move_to(card_pos)
-        lbl = Text("c₁", font_size=26, color=RED_B).next_to(SEAM_TOP + shift, UP, buff=0.15)
+        lbl = Text("c₁", font_size=26, color=RED_B).next_to(CORNER_TL + shift, UP, buff=0.15)
         cap3 = self.caption("compiled once, before any refinement — S2 and S3 only read it;",
-                            "every feature vertex in the mesh is an evaluation of these objects",
+                            "feature vertices use these objects; failed placement is reported",
                             pos=DOWN * 3.35)
         self.play(FadeOut(c2), FadeIn(c3, shift=RIGHT * 0.3),
                   FadeOut(cap2), FadeIn(cap3), run_time=0.7)
@@ -712,8 +713,8 @@ class SFCC(Scene):
         ls = Text("smooth union", font_size=24, weight=BOLD, color=BLUE_B)\
             .next_to(smooth, UP, buff=0.18)
         cap = self.caption("CSG can be smooth too: a blended union (smin, radius r) replaces",
-                           "the sharp seam with a fillet band — featureless by construction:",
-                           "no primitive owns its surface, so no seam is traced there at all")
+                           "this seam with a fillet band between the shown smooth patches;",
+                           "elsewhere, a blend can expose new creases from operand field branches")
         self.play(FadeIn(bg), FadeIn(hard), FadeIn(smooth), FadeIn(lh), FadeIn(ls),
                   FadeIn(cap), run_time=1.1)
         self.wait(6.0)
@@ -797,7 +798,7 @@ class SFCC(Scene):
                              for p in (CORNER_TL, CORNER_BL, CORNER_BR)])
         grp2d = VGroup(hard2d, sm2d, dead_dots, live_dots)\
             .scale(0.72).move_to(P(-3.5, 0.75))
-        legend = Text("yellow: the fillet band — no owner, no feature", font_size=16,
+        legend = Text("yellow: no primitive owner in this example", font_size=16,
                       color=YELLOW).next_to(grp2d, DOWN, buff=0.22)
         crosses = VGroup(*[Cross(scale_factor=0.11).move_to(d) for d in dead_dots])
         cap4 = self.caption("in the 2D scene: smooth-union the same primitives — the two seam",
@@ -811,14 +812,45 @@ class SFCC(Scene):
                   run_time=1.0)
         self.wait(5.6)
 
-        cap5 = self.caption("the band meshes as smooth surface — no strata, so refinement uses",
-                            "the tree's sampled ∇f cone by default — and it joins the",
-                            "crease's cells via once-per-face contouring: crack-free")
+        cap5 = self.caption("the smooth part uses sampled tree-gradient cones; generated carriers",
+                            "and lifted branches describe additional patches and creases",
+                            "— shared-face consumption and final topology are checked")
         self.swap_caption(cap5, cap4)
         self.wait(6.4)
 
         self.play(FadeOut(VGroup(bg, tick_grp, grp2d, crosses, legend)), FadeOut(cap5),
                   run_time=0.8)
+
+    def ch3d_lifted_branches(self):
+        self.set_header("A blend can expose a branch away from the original surface")
+        pages = [
+            ("zero-set edges are not the whole field", [
+                "square profile, half-width 2: inside, f = max(|x|, |z|) − 2",
+                "inward level f = −0.4: the corner moves to x = z = 1.6",
+                "trimming the original edge at x = z = 2 cannot find it",
+                "SFCC lifts adjacent field branches through the enclosing blend",
+            ], "Explicit branch pairs describe displaced creases, not just primitive edges."),
+            ("carry each branch through its ancestry", [
+                "box faces · cylinder/cone caps · finite profile segments",
+                "extrusion twist clamps · loft height regions · child/pair choices",
+                "trace adjacent lifted fields, then check domains and both flanks",
+                "a later cutter must not revive a patch hidden by an earlier union",
+            ], "This is central to the housing X seams, screw-hole rims and bracket fixes."),
+            ("compose raw derivatives, normalize once", [
+                "for a blend: ∇f = wa·∇a + wb·∇b",
+                "normalizing each child first loses its derivative magnitude",
+                "Newton scales each residual and derivative row together",
+                "full, pruned and paired WASM queries share the raw differential",
+            ], "GPU shader normals still have a separate nested-blend discrepancy."),
+        ]
+        for title, lines, caption in pages:
+            card = make_card(title, GREEN_B, lines, width=12.5).move_to(UP * 0.35)
+            if card.width > 13.2:
+                card.scale_to_fit_width(13.2)
+            cap = self.caption(caption)
+            self.play(FadeIn(card), FadeIn(cap), run_time=0.7)
+            self.wait(8.0)
+            self.play(FadeOut(card), FadeOut(cap), run_time=0.5)
 
     # ---------------------------------------------------------- chapter 4
     def ch4_octree(self):
@@ -939,7 +971,7 @@ class SFCC(Scene):
                                  fill_opacity=1 if ins else 0.9)
                              .set_stroke(WHITE, width=1, opacity=0.6))
         cap = self.caption("corner samples live in one shared cache — each lattice point",
-                          "evaluated once, so neighbor cells can never disagree on a sign")
+                          "shared under one lattice address, so both cells use the same sign")
         self.play(FadeIn(cap), Create(hls), run_time=0.8)
         self.play(LaggedStart(*[GrowFromCenter(d) for d in dots], lag_ratio=0.06), run_time=1.0)
         self.wait(3.6)
@@ -1042,7 +1074,7 @@ class SFCC(Scene):
             "vertex key = latticeKey·8 + axis",
             "the PointTable is first-writer-wins: every cell, face,",
             "and worker derives the same integer → same vertex id",
-            "the float position is payload — never the key",
+            "for this lattice crossing, the position is payload",
         ], width=7.4).move_to(card_pos)
         good = Dot(X, radius=0.09, color=GREEN_B)
         gl = Text("one id", font_size=20, color=GREEN_B).next_to(good, RIGHT, buff=0.12)
@@ -1058,11 +1090,11 @@ class SFCC(Scene):
             "\"F{axis}:{faceKey}:{curveId}:{t:.12}\"",
             "repair-midpoint keys use the exact bit pattern:",
             "\"p{x.to_bits()}_{y.to_bits()}_{z.to_bits()}\"",
-            "and payload floats are bit-identical anyway —",
+            "canonical root evaluation stabilizes the payload —",
             "roots are found after canonicalizing endpoint order",
         ], width=7.4).move_to(card_pos)
         cap5 = self.caption("a float can join a key only frozen — fixed-format text or its",
-                            "exact IEEE-754 bits — never through float equality")
+                            "exact IEEE-754 bits — not a tolerance-based position weld")
         self.play(FadeOut(p2), FadeIn(p4, shift=RIGHT * 0.3),
                   FadeOut(cap3), FadeIn(cap5), run_time=0.7)
         self.wait(6.0)
@@ -1132,11 +1164,11 @@ class SFCC(Scene):
 
     # ---------------------------------------------------------- chapter 7
     def ch7_audits(self):
-        self.set_header("S4 — Cleanup, audits, and explicit validation status")
+        self.set_header("S4 — Refinement, cleanup, and validation")
         checks = [
             "face-segment audit: every interior segment consumed once forward, once reversed",
             "topology: edge incidence and orientation + vertex links (on by default)",
-            "cleanup preserves closed components and protects crease edges",
+            "cleanup protects crease edges; blend triangles get sampled refinement",
             "success also requires residual checks and no exhausted budgets",
         ]
         lines = VGroup(*[Text("✓  " + c, font_size=21, t2c={"✓": GREEN_B}) for c in checks])
@@ -1145,7 +1177,29 @@ class SFCC(Scene):
                   self.mob_scene.animate.set_fill(opacity=0.0).set_stroke(opacity=0.0),
                   self.mesh_view.animate.shift(UP * 0.35), run_time=0.7)
 
-        # how the audits work: pure counting on shared edges
+        details = [
+            ("junctions need a local feature graph", [
+                "multiple corners or curved incident arcs cannot share one fan",
+                "boundary pins, true corners and in-cell arcs form a half-edge graph",
+                "triangulate its patches; check boundary and internal edge use",
+                "unsupported arrangements remain explicit fallbacks",
+            ]),
+            ("triangle interiors need their own check", [
+                "after assembly and cleanup: sample blend triangle centroids + midpoints",
+                "split shared edges conformingly and project new points",
+                "protected splits follow their curve ID within its parameter interval",
+                "eight rounds and a geometry budget — unresolved errors are reported",
+            ]),
+        ]
+        for title, text_lines in details:
+            card = make_card(title, GREEN_B, text_lines, width=12.5).move_to(UP * 0.1)
+            if card.width > 13.2:
+                card.scale_to_fit_width(13.2)
+            self.play(FadeIn(card), run_time=0.6)
+            self.wait(8.0)
+            self.play(FadeOut(card), run_time=0.5)
+
+        # Edge incidence and orientation checks; other audits also query the field.
         ed_a, ed_b = P(4.1, 0.75), P(5.9, 0.75)
         tri_top = Polygon(ed_a, ed_b, P(5.0, 2.15), stroke_width=2.5, color=GREY_A)
         tri_bot = Polygon(ed_b, ed_a, P(5.0, -0.65), stroke_width=2.5, color=GREY_A)
@@ -1156,7 +1210,7 @@ class SFCC(Scene):
         aud = Text("count 2 · balance 0 ✓", font_size=18, color=GREEN_B)\
             .move_to(P(5.0, -1.15))
         audg = VGroup(tri_top, tri_bot, fwd, rev, aud)
-        capA = self.caption("the audits are pure counting: every interior segment consumed once",
+        capA = self.caption("these incidence checks count each interior segment once",
                             "forward + once reversed; every undirected edge used exactly twice,",
                             "in opposite directions — violations are reported, not ruled out a priori")
         self.play(FadeIn(capA), Create(tri_top), Create(tri_bot), run_time=0.9)
@@ -1169,6 +1223,17 @@ class SFCC(Scene):
         self.wait(4.6)
 
         self.play(*[FadeOut(m) for m in list(self.mobjects)], run_time=1.0)
+        limits = make_card("passed checks are not a completeness proof", YELLOW_C, [
+            "stairs: missing formula-region creases; columns: a sign-changing jump",
+            "nested partner/profile switches still need fuller region coverage",
+            "finite tracing and curve-chain audits still report unresolved work",
+            "topology + sampled residuals do not prove a self-intersection-free surface",
+        ], width=12.5)
+        if limits.width > 13.2:
+            limits.scale_to_fit_width(13.2)
+        self.play(FadeIn(limits), run_time=0.7)
+        self.wait(10.0)
+        self.play(FadeOut(limits), run_time=0.6)
         end1 = Text("The mesh ships with an explicit validation status.",
                     font_size=38)
         end2 = Text("SFCC  ·  docs/sfcc-meshing-algorithm.md", font_size=24, color=GREY_B)
@@ -1295,7 +1360,7 @@ def extract_contour(leaves):
 
 def pin_inset(leaves, center, side=3.2):
     """Zoomed diagram of the edge cell containing SEAM_TOP: true boundary,
-    face crossings, the exact pin, and the certified exit→pin→enter route."""
+    face crossings, a feature pin, and the single-pin exit→pin→enter route."""
     lf = find_leaf(leaves, SEAM_RIGHT[0], SEAM_RIGHT[1])
     cx, cy, h = lf[:3]
     S = side / (2 * h)

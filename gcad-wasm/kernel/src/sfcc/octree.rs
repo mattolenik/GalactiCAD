@@ -69,11 +69,14 @@ pub struct Sampler<'a> {
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
     samples: RefCell<HashMap<i64, f64>>,
+    // Values from an earlier build are not visible to has_sample_key until
+    // sampled by THIS build (hanging-node detection observes that distinction).
+    retained: HashMap<i64, f64>,
 }
 
 impl<'a> Sampler<'a> {
     fn new(tree: &'a CsgNode, lat: &'a SfccLattice) -> Self {
-        Sampler { tree, lat, samples: RefCell::new(HashMap::new()) }
+        Sampler { tree, lat, samples: RefCell::new(HashMap::new()), retained: HashMap::new() }
     }
 
     /// `f` at a lattice point, evaluated once and cached.
@@ -83,7 +86,9 @@ impl<'a> Sampler<'a> {
             return v;
         }
         let w = point_to_world(self.lat, gx, gy, gz);
-        let v = self.tree.f([w[0], w[1], w[2]]);
+        let v = if let Some(&v) = self.retained.get(&key) {
+            super::perf::add(11,1); v
+        } else { self.tree.f([w[0], w[1], w[2]]) };
         self.samples.borrow_mut().insert(key, v);
         v
     }
@@ -192,6 +197,24 @@ impl<'a> SfccOctree<'a> {
 
     pub fn has_sample_key(&self, key: i64) -> bool {
         self.sampler.has_sample_key(key)
+    }
+
+    pub(crate) fn take_sample_values(&mut self, limit: usize) -> HashMap<i64, f64> {
+        let values = self.sampler.samples.get_mut();
+        if values.len() > limit { return HashMap::new(); }
+        let mut values = std::mem::take(values);
+        values.retain(|_, value| value.is_finite());
+        values
+    }
+
+    /// Only after contouring and cell meshing have finished: sample presence is
+    /// topological input during those phases, but final assembly does not use it.
+    pub(crate) fn release_sample_storage(&mut self) {
+        let samples = self.sampler.samples.get_mut();
+        samples.clear();
+        samples.shrink_to_fit();
+        self.sampler.retained.clear();
+        self.sampler.retained.shrink_to_fit();
     }
 
     /// Whether (level, ix, iy, iz) is a split (internal) cell.
@@ -494,7 +517,7 @@ pub fn build_octree<'a, F>(
 where
     F: DecideFn,
 {
-    build_octree_inner(tree, lat, opts, decide, None)
+    build_octree_inner(tree, lat, opts, decide, None, HashMap::new())
 }
 
 /// [`build_octree`] with an injected millisecond clock that times each round's
@@ -513,7 +536,14 @@ pub fn build_octree_profiled<'a, F>(
 where
     F: DecideFn,
 {
-    build_octree_inner(tree, lat, opts, decide, Some(now))
+    build_octree_inner(tree, lat, opts, decide, Some(now), HashMap::new())
+}
+
+pub(crate) fn build_octree_reusing<'a, F: DecideFn>(
+    tree: &'a CsgNode, lat: &'a SfccLattice, opts: OctreeBuildOptions,
+    decide: F, now: Option<&dyn Fn() -> f64>, retained: HashMap<i64,f64>,
+) -> SfccOctree<'a> {
+    build_octree_inner(tree, lat, opts, decide, now, retained)
 }
 
 fn build_octree_inner<'a, F>(
@@ -522,6 +552,7 @@ fn build_octree_inner<'a, F>(
     opts: OctreeBuildOptions,
     decide: F,
     now: Option<&dyn Fn() -> f64>,
+    retained: HashMap<i64,f64>,
 ) -> SfccOctree<'a>
 where
     F: DecideFn,
@@ -533,9 +564,11 @@ where
         lat.max_depth
     );
 
+    let mut sampler = Sampler::new(tree,lat);
+    sampler.retained = retained;
     let mut b = Builder {
         lat,
-        sampler: Sampler::new(tree, lat),
+        sampler,
         cells_by_level: (0..=lat.max_depth).map(|_| HashMap::new()).collect(),
         internal_by_level: (0..=lat.max_depth).map(|_| HashSet::new()).collect(),
         worklist: Vec::new(),
@@ -698,7 +731,7 @@ impl ResumableOctreeBuild {
     pub(crate) fn finish<'a>(mut self, tree: &'a CsgNode, lat: &'a SfccLattice) -> SfccOctree<'a> {
         let b = Builder {
             lat,
-            sampler: Sampler { tree, lat, samples: RefCell::new(std::mem::take(&mut self.samples)) },
+            sampler: Sampler { tree, lat, samples: RefCell::new(std::mem::take(&mut self.samples)), retained: HashMap::new() },
             cells_by_level: std::mem::take(&mut self.cells_by_level),
             internal_by_level: std::mem::take(&mut self.internal_by_level),
             worklist: std::mem::take(&mut self.worklist),
@@ -724,7 +757,7 @@ impl ResumableOctreeBuild {
         let lat = self.lat;
         let mut b = Builder {
             lat: &lat,
-            sampler: Sampler { tree, lat: &lat, samples: RefCell::new(std::mem::take(&mut self.samples)) },
+            sampler: Sampler { tree, lat: &lat, samples: RefCell::new(std::mem::take(&mut self.samples)), retained: HashMap::new() },
             cells_by_level: std::mem::take(&mut self.cells_by_level),
             internal_by_level: std::mem::take(&mut self.internal_by_level),
             worklist: std::mem::take(&mut self.worklist),
@@ -1056,5 +1089,36 @@ mod tests {
             }
         }
         assert_eq!(oct.degenerate_cells, 0);
+    }
+}
+
+#[cfg(test)]
+mod retained_value_tests {
+    use super::*;
+    #[test]
+    fn old_values_do_not_create_current_round_hanging_nodes() {
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);
+        let lat = crate::math::grid::make_lattice(4, -4., -4., -4., 8.);
+        let key = pack_point(&lat, 1, 2, 3);
+        let mut first = Sampler::new(&tree, &lat);
+        let expected = first.sample_at(1, 2, 3);
+        let mut next = Sampler::new(&tree, &lat);
+        next.retained = std::mem::take(first.samples.get_mut());
+        assert!(!next.has_sample_key(key));
+        {
+            let samples = next.samples.borrow();
+            let view = SampleView {
+                tree: &tree,
+                lat: &lat,
+                samples: &samples,
+            };
+            assert_eq!(view.sample_at(1, 2, 3).to_bits(), expected.to_bits());
+        }
+        assert!(
+            !next.has_sample_key(key),
+            "read-only miss must not mark a hanging node"
+        );
+        assert_eq!(next.sample_at(1, 2, 3).to_bits(), expected.to_bits());
+        assert!(next.has_sample_key(key));
     }
 }

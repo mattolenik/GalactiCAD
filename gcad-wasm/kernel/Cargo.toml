@@ -15,3 +15,6 @@ serde_json = { version = "1", optional = true }
 [features]
 default = []
 serde = ["dep:serde", "dep:serde_json"]
+
+# Work counters for separate diagnostic runs; excluded from normal exports.
+sfcc-profile = []

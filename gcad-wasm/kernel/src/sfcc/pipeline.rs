@@ -17,24 +17,24 @@ use crate::math::grid::point_to_world;
 use crate::math::grid::{make_lattice, stride_at_level, SfccLattice};
 use crate::sdf::CsgNode;
 use crate::sfcc::cell_mesh::{
-    mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions, CellMeshResult,
-    InteriorVertexMode,
+    mesh_all_cells, mesh_cells_for, mesh_cells_partitioned, mesh_cells_subset, CellMeshOptions,
+    CellMeshResult, InteriorVertexMode,
 };
 use crate::sfcc::face_contour::{
-    contour_all_faces, contour_faces_for, contour_faces_partitioned, contour_subset_separate, FaceContourOptions,
-    FaceContourResult,
+    contour_all_faces, contour_faces_for, contour_faces_partitioned, contour_subset_separate,
+    FaceContourOptions, FaceContourResult,
 };
 use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{
-    build_octree, build_octree_profiled, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell, SfccOctree,
+    build_octree, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell,
+    SfccOctree,
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::refine_criteria::{
     classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
     SmoothCriteriaOptions,
 };
-use crate::sfcc::sliver_flip::flip_sliver_triangles;
 use crate::sfcc::validation::{self, AuditStatus, NumericalGuard, SfccValidation};
 use crate::tolerances::resolve_tolerances;
 use crate::tuning::SfccTuning;
@@ -70,6 +70,12 @@ pub struct PipelineTuning {
     pub surface_tol_mm: f64,
     pub edge_root_tol_fraction: f64,
     pub interior_vertex_mode: InteriorVertexMode,
+    /// Staged, independently selectable triangulation quality passes.
+    pub quality_triangulation: bool,
+    pub quality_audit: bool,
+    pub quality_refinement: bool,
+    pub quality_remeshing: bool,
+    pub quality_max_edit_trials: usize,
     pub project_max_iters: u32,
     pub re_refine_max_rounds: u32,
     pub check_vertex_links: bool,
@@ -103,6 +109,11 @@ impl Default for PipelineTuning {
             surface_tol_mm: 0.01,
             edge_root_tol_fraction: 1e-3,
             interior_vertex_mode: InteriorVertexMode::Project,
+            quality_triangulation: false,
+            quality_audit: false,
+            quality_refinement: false,
+            quality_remeshing: false,
+            quality_max_edit_trials: 10_000,
             project_max_iters: 8,
             re_refine_max_rounds: 2,
             check_vertex_links: true,
@@ -143,6 +154,7 @@ pub struct SfccStats {
 /// The assembled smooth-mesh result.
 pub struct SfccPipelineResult {
     /// Stride-8 vertex buffer (pos, pad, normal, pad) as f32.
+    pub feature_edges: Vec<super::point_table::MeshCurveEdge>,
     pub verts: Vec<f32>,
     pub tris: Vec<u32>,
     pub stats: SfccStats,
@@ -177,6 +189,7 @@ pub struct SfccPipelineResult {
 /// fires at a pipeline checkpoint. The mesh is empty; callers key off `cancelled`.
 fn cancelled_pipeline_result() -> SfccPipelineResult {
     SfccPipelineResult {
+        feature_edges: Vec::new(),
         verts: Vec::new(),
         tris: Vec::new(),
         stats: SfccStats {
@@ -465,10 +478,9 @@ struct ForcedMarker {
 /// The immutable per-export context the feature-aware needsSplit DECISION reads.
 /// Built once by [`build_pipeline_context`] and shared by BOTH the serial driver
 /// ([`run_sfcc_pipeline_impl`]) and the worker `prepare` path so the two can never
-/// drift — the decision (classify_cell_features + smoothCrit, the expensive ~60%)
-/// is computed by exactly one code path. Holds only borrows + cheap scalars; no
-/// per-round mutable state (the `forced` markers are passed separately, since they
-/// accumulate across re-refine rounds).
+/// drift — the decision is computed by exactly one code path. Holds immutable
+/// features/advisories and bounded per-export query caches. Current forced
+/// markers are passed separately because they accumulate across recovery rounds.
 pub(crate) struct PipelineContext<'a> {
     pub lat: SfccLattice,
     pub features: SfccFeatureSet,
@@ -486,6 +498,10 @@ pub(crate) struct PipelineContext<'a> {
     /// build (the cost that sank the per-cell Lever 1). Lazy. Mirrors the coarse contour
     /// prune (`face_contour::contour_into`).
     coarse: std::cell::RefCell<std::collections::HashMap<u64, crate::sdf::Pruned<'a>>>,
+    // Only successful classifications: failure-producing queries must execute
+    // again after recovery resets round-local numerical diagnostics.
+    classifications: std::cell::RefCell<HashMap<(u32,i64), super::refine_criteria::FeatureCellClass>>,
+
 }
 
 /// Coarse octree level at which a cell's prune view is built and shared. Cells at
@@ -543,7 +559,18 @@ impl<'a> PipelineContext<'a> {
     ) -> CellDecision {
         let lat = &self.lat;
         let features = &self.features;
-        let cls = classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
+        let key = (cell.level, crate::math::grid::cell_key(lat, cell.level, cell.ix, cell.iy, cell.iz));
+        let cached = if super::perf::disabled(16) { None } else { self.classifications.borrow().get(&key).copied() };
+        if cached.is_some() { super::perf::add(10,1); }
+        let cls = cached.unwrap_or_else(|| {
+            let before = validation::numerical_failures();
+            let cls = classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, &self.feature_opts);
+            if !super::perf::disabled(16) && validation::numerical_failures() == before && !super::cancel::is_cancelled() {
+                let mut cache = self.classifications.borrow_mut();
+                if cache.len() < 49_152 { cache.insert(key, cls); }
+            }
+            cls
+        });
         if cls.split {
             // Only a cell containing the corner may fan from it. Claiming a
             // nearby external corner at the depth ceiling creates overlapping
@@ -575,10 +602,13 @@ impl<'a> PipelineContext<'a> {
             None
         };
         let q: &dyn crate::sdf::SdfQuery = match &coarse_view {
-            Some(m) => m.get(&octree_coarse_key(cell)).map(|p| p as &dyn crate::sdf::SdfQuery).unwrap_or(self.tree),
+            Some(m) => {
+                m.get(&octree_coarse_key(cell)).map(|p| p as &dyn crate::sdf::SdfQuery).unwrap_or(self.tree)
+            }
             None => self.tree,
         };
-        let probe = make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
+        let probe =
+            make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
         if cls.corner >= 0 {
             // Corner cells exempt from per-stratum + sign-change gates.
             return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
@@ -619,7 +649,12 @@ impl<'a> PipelineContext<'a> {
     /// Pure per cell: `decisions[i]` depends only on `frontier[start + i]`, so
     /// concatenating N disjoint slices equals deciding the whole frontier — the
     /// cross-worker split is exact by construction.
-    pub(crate) fn decide_partition(&self, frontier: &[SfccCell], start: usize, end: usize) -> Vec<CellDecision> {
+    pub(crate) fn decide_partition(
+        &self,
+        frontier: &[SfccCell],
+        start: usize,
+        end: usize,
+    ) -> Vec<CellDecision> {
         let forced: Vec<ForcedMarker> = Vec::new();
         let sample = |gx: i64, gy: i64, gz: i64| {
             let w = crate::math::grid::point_to_world(&self.lat, gx, gy, gz);
@@ -707,8 +742,13 @@ pub(crate) fn build_pipeline_context<'a>(
     let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
     let jy = (3.0f64.sqrt() - 1.0) * 0.25 * step;
     let jz = (5.0f64.sqrt() - 2.0) * 0.25 * step;
-    let lat: SfccLattice =
-        make_lattice(tuning.depth_max, cube.min_x - pad - jx, cube.min_y - pad - jy, cube.min_z - pad - jz, total_size);
+    let lat: SfccLattice = make_lattice(
+        tuning.depth_max,
+        cube.min_x - pad - jx,
+        cube.min_y - pad - jy,
+        cube.min_z - pad - jz,
+        total_size,
+    );
 
     let scene_diag = hypot3(cube.size, cube.size, cube.size);
     let sfcc_tuning = SfccTuning {
@@ -772,6 +812,7 @@ pub(crate) fn build_pipeline_context<'a>(
         total_size,
         tree,
         coarse: std::cell::RefCell::new(std::collections::HashMap::new()),
+        classifications: std::cell::RefCell::new(HashMap::new()),
     }
 }
 
@@ -798,7 +839,11 @@ enum MeshStrategy {
     SeparateMorton(usize),
 }
 
-pub fn run_sfcc_pipeline(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> SfccPipelineResult {
+pub fn run_sfcc_pipeline(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+) -> SfccPipelineResult {
     run_sfcc_pipeline_impl(tree, cube, tuning, MeshStrategy::Serial, None, None)
 }
 
@@ -845,7 +890,8 @@ pub fn run_sfcc_pipeline_partitioned(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Shared(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Shared(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -864,7 +910,8 @@ pub fn run_sfcc_pipeline_separate_partitioned(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Separate(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::Separate(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -879,7 +926,8 @@ pub fn run_sfcc_pipeline_partitioned_morton(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SharedMorton(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SharedMorton(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -894,7 +942,8 @@ pub fn run_sfcc_pipeline_separate_partitioned_morton(
     tuning: &PipelineTuning,
     partitions: usize,
 ) -> SfccPipelineResult {
-    let strategy = if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
+    let strategy =
+        if partitions.max(1) <= 1 { MeshStrategy::Serial } else { MeshStrategy::SeparateMorton(partitions) };
     run_sfcc_pipeline_impl(tree, cube, tuning, strategy, None, None)
 }
 
@@ -972,8 +1021,16 @@ fn mesh_groups_separate(
         for (a, b) in pt.protected_edges() {
             merged.protect_edge(local_to_global[a], local_to_global[b]);
         }
-        for &t in &cm.tris {
-            tris.push(local_to_global[t]);
+        for ((a, b), intervals) in pt.identified_edges() {
+            for &interval in intervals {
+                merged.protect_curve_edge(local_to_global[a], local_to_global[b], interval);
+            }
+        }
+        for t in cm.tris.chunks_exact(3) {
+            let ids = [t[0], t[1], t[2]];
+            let global = ids.map(|i| local_to_global[i]);
+            if let Some(owner) = pt.patch(ids) { merged.set_patch(global, owner); }
+            tris.extend(global);
         }
         failed_cells.extend(cm.failed_cells);
         fallback_cells.extend(cm.fallback_cells);
@@ -1079,7 +1136,10 @@ pub fn morton_partition_indices(oct: &SfccOctree, k: usize) -> Vec<Vec<usize>> {
 /// `SfccCell` is `Copy` and tiny, so this is a cheap gather; the caller borrows these
 /// as `&[&[SfccCell]]` for the shared- or separate-table meshers.
 fn gather_morton_groups(oct: &SfccOctree, k: usize) -> Vec<Vec<SfccCell>> {
-    partition_morton(oct, k).into_iter().map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect()).collect()
+    partition_morton(oct, k)
+        .into_iter()
+        .map(|idxs| idxs.into_iter().map(|i| oct.leaves[i]).collect())
+        .collect()
 }
 
 /// Accumulate `now() - *last` into `bucket` and advance `*last` to `now()`, but only
@@ -1156,6 +1216,7 @@ fn run_sfcc_pipeline_impl(
     let mut separate_audit = None;
     phase_mark(now, &mut ph_last, &mut ph_feature);
     let mut round = 0u32;
+    let mut retained_samples = HashMap::new();
     loop {
         validation::restore_numerical_failures(feature_failures);
         let forced_snapshot = forced.clone();
@@ -1174,11 +1235,9 @@ fn run_sfcc_pipeline_impl(
             ctx.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced_snapshot)
         };
         emit(1, "Building octree");
-        oct = match now {
-            // Profiled: time each round's decide vs apply, then fold the split in.
-            Some(f) => build_octree_profiled(tree, &lat, opts, decide_cb, f),
-            None => build_octree(tree, &lat, opts, decide_cb),
-        };
+        oct = super::octree::build_octree_reusing(
+            tree, &lat, opts, decide_cb, now, std::mem::take(&mut retained_samples),
+        );
         if let Some(p) = oct.profile.take() {
             ph_oct_decide += p.decide_ms;
             ph_oct_apply += p.apply_ms;
@@ -1192,10 +1251,12 @@ fn run_sfcc_pipeline_impl(
         }
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
-        let fc_opts = FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
+        let fc_opts =
+            FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
         let cm_opts = CellMeshOptions {
             surface_tol: tuning.surface_tol_mm,
             interior_vertex_mode: tuning.interior_vertex_mode,
+            quality_triangulation: tuning.quality_triangulation || tuning.quality_refinement || tuning.quality_remeshing,
             project_max_iters: tuning.project_max_iters,
             curve_chord_tol: tuning.curve_chord_tol_mm,
             max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
@@ -1220,8 +1281,14 @@ fn run_sfcc_pipeline_impl(
                 // ONE face map + point table. Byte-identical to the serial path.
                 let groups = partition_contiguous(oct.leaves.len(), *n);
                 face_result = contour_faces_partitioned(&oct, tree, &mut points, &fc_opts, &groups);
-                cell_result =
-                    mesh_cells_partitioned(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &groups);
+                cell_result = mesh_cells_partitioned(
+                    &oct,
+                    &mut face_result.faces,
+                    tree,
+                    &mut points,
+                    &cm_opts,
+                    &groups,
+                );
             }
             MeshStrategy::Separate(n) => {
                 // #3 slice 3: mesh each contiguous group into its OWN separate face map
@@ -1250,7 +1317,8 @@ fn run_sfcc_pipeline_impl(
                 let owned = gather_morton_groups(&oct, *n);
                 let leaf_groups: Vec<&[SfccCell]> = owned.iter().map(|g| g.as_slice()).collect();
                 face_result = contour_faces_for(&oct, tree, &mut points, &fc_opts, &leaf_groups);
-                cell_result = mesh_cells_for(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &leaf_groups);
+                cell_result =
+                    mesh_cells_for(&oct, &mut face_result.faces, tree, &mut points, &cm_opts, &leaf_groups);
             }
             MeshStrategy::SeparateMorton(n) => {
                 // #3 slice 2 over the slice-3 separate-table view: Morton/Z-order groups,
@@ -1296,7 +1364,17 @@ fn run_sfcc_pipeline_impl(
                 level: c.level,
             });
         }
+        if !super::perf::disabled(16) { retained_samples = oct.take_sample_values(131_072); }
         round += 1;
+    }
+
+    // No more classification or lattice queries occur after the recovery loop.
+    // Release their storage before allocating the final audit/remeshing indexes.
+    if !super::perf::disabled(16) {
+        let mut classifications = ctx.classifications.borrow_mut();
+        classifications.clear();
+        classifications.shrink_to_fit();
+        oct.release_sample_storage();
     }
 
     // Face-segment audit: interior segments must be consumed once forward and
@@ -1326,16 +1404,10 @@ fn run_sfcc_pipeline_impl(
     }
 
     emit(4, "Assembling mesh");
-    // S4 cleanups (same call order/args as the oracle so winding/topology match):
-    // coincident-pair drop → debris drop → coincident-pair drop → sliver flip.
-    let ordered = points.ordered_triangles(&cell_result.tris);
-    let deduped1 = drop_coincident_triangle_pairs(&ordered);
-    let filtered = drop_debris_components(&points, &deduped1, lat.step * 4.0, features, lat.step * 2.0, 600);
-    let deduped2 = drop_coincident_triangle_pairs(&filtered);
-    let (flipped, _flips) = flip_sliver_triangles(&points, &deduped2, 4);
-
-    let (refined, unresolved_triangles) =
-        super::surface_refine::refine_surface(tree, features, &mut points, &flipped, tuning.curve_chord_tol_mm);
+    let (refined, unresolved_triangles, quality_audit) = super::assembly::finish(
+        tree, features, &mut points, &cell_result.tris, lat.step, tuning, Some(&|label| emit(4, label)),
+    );
+    if crate::sfcc::cancel::is_cancelled() { return cancelled_pipeline_result(); }
     let (verts, out_tris) = points.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
@@ -1357,6 +1429,14 @@ fn run_sfcc_pipeline_impl(
         re_refine_rounds,
     };
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.quality = quality_audit;
+    validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
+        &points,
+        &refined,
+        &features,
+        tuning.curve_chord_tol_mm,
+    ));
+    validation.unresolved_branch_paths = features.unresolved_branch_paths.clone();
     validation.feature_trace = features.trace_diagnostics;
     validation.face_segments = if !cell_result.failed_cells.is_empty() {
         AuditStatus::NotChecked
@@ -1374,6 +1454,7 @@ fn run_sfcc_pipeline_impl(
     emit(SFCC_PHASE_COUNT, "Done");
 
     SfccPipelineResult {
+        feature_edges: points.compacted_curve_edges(&refined),
         verts,
         tris: out_tris,
         stats,
@@ -1394,4 +1475,118 @@ fn run_sfcc_pipeline_impl(
 
 fn hypot3(x: f64, y: f64, z: f64) -> f64 {
     (x * x + y * y + z * z).sqrt()
+}
+
+#[cfg(test)]
+mod recovery_cache_tests {
+    use super::*;
+    #[test]
+    fn cached_classification_does_not_cache_forced_decision() {
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);
+        let cube = SfccWorldCube {
+            min_x: -4.,
+            min_y: -4.,
+            min_z: -4.,
+            size: 8.,
+        };
+        let tuning = PipelineTuning {
+            depth_min: 2,
+            depth_max: 4,
+            ..Default::default()
+        };
+        let ctx = build_pipeline_context(&tree, &cube, &tuning);
+        let cell = SfccCell {
+            level: 2,
+            ix: 0,
+            iy: 0,
+            iz: 0,
+            key: 0,
+            degenerate: false,
+            feature_curve: -1,
+            feature_corner: -1,
+        };
+        let sample = |x, y, z| {
+            let w = crate::math::grid::point_to_world(&ctx.lat, x, y, z);
+            tree.f(w)
+        };
+        let first = ctx.decide_cell(&cell, &sample, &[]);
+        assert_eq!(ctx.classifications.borrow().len(), 1);
+        let size = ctx.total_size / 4.;
+        let marker = ForcedMarker {
+            x: ctx.lat.origin_x + size * 0.5,
+            y: ctx.lat.origin_y + size * 0.5,
+            z: ctx.lat.origin_z + size * 0.5,
+            level: 2,
+        };
+        let forced = ctx.decide_cell(&cell, &sample, &[marker]);
+        assert!(!first.split);
+        assert!(forced.split);
+        assert_eq!(forced.feature_curve, -1);
+        assert_eq!(forced.feature_corner, -1);
+    }
+}
+
+#[cfg(test)]
+mod recovery_failure_tests {
+    use super::*;
+    #[test]
+    fn failed_classification_queries_are_repeated_after_diagnostic_reset() {
+        use super::super::feature_curves::{make_traced_curve, TracedRefine};
+        use crate::strata::{Stratum, StratumIdentity};
+        let _scope = validation::NumericalGuard::new();
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);
+        let cube = SfccWorldCube {
+            min_x: -1.,
+            min_y: 0.,
+            min_z: 0.,
+            size: 2.,
+        };
+        let mut ctx = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
+        ctx.lat = crate::math::grid::make_lattice(2, -1., 0., 0., 2.);
+        ctx.total_size = 2.;
+        let ident = |id| StratumIdentity {
+            id,
+            owner_node_id: -1,
+            leaf_index: 0,
+            local_index: id,
+            sign: 1.,
+        };
+        let a = Stratum::plane(ident(0), 0., 1., 0., 0.);
+        let b = Stratum::plane(ident(1), 0., 1., 0., -1.);
+        let poly = vec![-0.5, 0.5, 0.2, 0.5, 0.5, 0.2];
+        ctx.features.index = super::super::spatial_index::SfccSpatialIndex::new(0.5);
+        ctx.features.index.insert_curve_polyline(0, &poly);
+        ctx.features.curves = vec![make_traced_curve(
+            0,
+            [0, 1],
+            poly,
+            false,
+            a.clone(),
+            b.clone(),
+            TracedRefine {
+                curve_eps: 1e-12,
+                min_cross: 1e-3,
+                max_displacement: 1.,
+            },
+            -1,
+        )];
+        ctx.features.strata = vec![a, b];
+        ctx.features.corners.clear();
+        let cell = SfccCell {
+            level: 1,
+            ix: 0,
+            iy: 0,
+            iz: 0,
+            key: 0,
+            degenerate: false,
+            feature_curve: -1,
+            feature_corner: -1,
+        };
+        for _ in 0..2 {
+            validation::restore_numerical_failures(Default::default());
+            ctx.decide_cell(&cell, &|_, _, _| 1., &[]);
+            assert!(validation::numerical_failures().curve_projection > 0);
+            assert!(ctx.classifications.borrow().is_empty());
+        }
+    }
 }

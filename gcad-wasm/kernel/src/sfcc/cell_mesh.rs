@@ -22,7 +22,7 @@ use crate::sfcc::feature_curves::{CurveKind, FeatureCurve};
 use crate::sfcc::feature_set::{SfccCorner, SfccFeatureSet};
 use crate::sfcc::octree::LEVER1_MIN_LEAVES;
 use crate::sfcc::octree::{SfccCell, SfccOctree};
-use crate::sfcc::point_table::PointTable;
+use crate::sfcc::point_table::{CurveInterval, PointTable};
 use crate::strata::Stratum;
 use std::collections::HashMap;
 
@@ -41,6 +41,7 @@ pub enum InteriorVertexMode {
 pub struct CellMeshOptions<'a> {
     pub surface_tol: f64,
     pub interior_vertex_mode: InteriorVertexMode,
+    pub quality_triangulation: bool,
     pub project_max_iters: u32,
     /// Max chord deviation (mm) of in-cell feature polylines.
     pub curve_chord_tol: f64,
@@ -230,8 +231,11 @@ pub fn mesh_cells_subset(
     let mut segs: Vec<Seg> = Vec::new();
     let mut pins: Vec<FacePin> = Vec::new();
 
-    // Lever 1: per-cell pruning gate (default OFF; see lever1_should_prune).
-    let prune = crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES);
+    // Quality triangulation performs enough queries to amortize a pruned view
+    // on larger trees. Its box includes the entire candidate projection budget.
+    // Baseline pruning retains the existing experiment gate.
+    let prune = if opts.quality_triangulation { tree.leaf_count() >= 8 }
+        else { crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES) };
 
     for cell in leaves {
         segs.clear();
@@ -317,13 +321,17 @@ pub fn mesh_cells_subset(
         let cbox = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
 
         // Lever 1: one pruned view per cell, reused across this cell's interior-
-        // vertex projection / fan evals. Every `tree.f`/`tree.grad` in the meshers
-        // is guarded `in_box(cell_box, ·, margin)` (margin = 0.1·cell_size), so all
-        // query points lie within the cell box inflated by that margin — prune over
-        // exactly that inflated box so the pruned view stays bit-exact there.
+        // vertex projection / fan evals. Baseline queries are guarded by the
+        // centroid margin. Quality queries additionally include the maximum
+        // coarse-candidate displacement and f32 rounding of the cell boundary.
         let pruned: Option<Pruned> = if prune {
             let cs = cbox[3] - cbox[0];
-            let half = cs * 0.6; // cell_size/2 + margin(0.1·cell_size), with headroom
+            let quality_reach = if opts.quality_triangulation {
+                let rounding = (cbox.iter().map(|x| x.abs()).fold(0., f64::max) * f32::EPSILON as f64)
+                    .max(f32::from_bits(1) as f64);
+                8. * opts.curve_chord_tol + rounding
+            } else { 0. };
+            let half = cs * 0.6 + quality_reach;
             let c = [(cbox[0] + cbox[3]) * 0.5, (cbox[1] + cbox[4]) * 0.5, (cbox[2] + cbox[5]) * 0.5];
             Some(tree.prune_to_box(c, [half, half, half]))
         } else {
@@ -333,6 +341,23 @@ pub fn mesh_cells_subset(
             Some(p) => p,
             None => tree,
         };
+
+        if opts.quality_triangulation && loops.len() > 1 && pins.is_empty() {
+            let mut candidate = None;
+            if let Some(features) = opts.features {
+                for carrier in &features.strata {
+                    if let Ok(mesh) = super::surface_patch::planar_domains(points, &loops, q, carrier, opts.curve_chord_tol) {
+                        candidate = Some((mesh, carrier.id));
+                        break;
+                    }
+                }
+            }
+            if let Some((mesh, owner)) = candidate {
+                for t in mesh.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], owner); }
+                tris.extend(mesh);
+                continue;
+            }
+        }
 
         let mut meshed_loops: std::collections::HashSet<usize> = std::collections::HashSet::new();
         let mut feature_graph_failed = false;
@@ -389,7 +414,20 @@ pub fn mesh_cells_subset(
                 let cid = corner_point_id(corner, features, points);
                 for pin in &pins {
                     if incident.contains(&pin.curve_id) && loop_pts.contains(&pin.point_id) {
-                        points.protect_edge(cid, pin.point_id);
+                        let curve = &features.curves[pin.curve_id];
+                        for &(id, end) in &corner.curve_ends {
+                            if id == pin.curve_id {
+                                points.protect_curve_edge(
+                                    cid,
+                                    pin.point_id,
+                                    CurveInterval {
+                                        curve_id: id,
+                                        start: if end == 0 { curve.t_min } else { curve.t_max },
+                                        end: pin.t,
+                                    },
+                                );
+                            }
+                        }
                     }
                 }
                 let m = loop_pts.len();
@@ -486,6 +524,34 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
     out_tris: &mut Vec<usize>,
 ) {
     let m = loop_pts.len();
+    if o.quality_triangulation && m >= 3 {
+        // Only accept known carriers here. Unknown field charts retain the
+        // baseline route until connected branch ownership can be established.
+        if let Some(features) = o.features {
+            for carrier in &features.strata {
+                if !super::surface_patch::supports_local_edits(carrier) { continue; }
+                if !loop_pts.iter().all(|&i| {
+                    let p = super::triangle_quality::pos(points, i);
+                    // Reject distant equations before their (possibly
+                    // iterative) carrier projection. This is only a candidate
+                    // screen; acceptance still uses displacement and exposure.
+                    let sample = carrier.raw_field(p[0], p[1], p[2]);
+                    let gradient = super::triangle_quality::norm(sample.gradient);
+                    if !sample.value.is_finite() || !gradient.is_finite() || gradient == 0.
+                        || sample.value.abs() > gradient * o.surface_tol * 0.1 { return false; }
+                    let q = carrier.project(p[0], p[1], p[2]);
+                    super::triangle_quality::norm(super::triangle_quality::sub(p, q)) <= o.surface_tol * 0.1
+                        && carrier.domain_contains(q, o.surface_tol * 0.01)
+                }) { continue; }
+                let candidate = super::surface_patch::disk_strict_or_coarse(points, loop_pts, tree, Some(carrier), o.curve_chord_tol);
+                if let Ok(candidate) = candidate {
+                    for t in candidate.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], carrier.id); }
+                    out_tris.extend(candidate);
+                    return;
+                }
+            }
+        }
+    }
     if m < 3 {
         return;
     }
@@ -571,7 +637,7 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
             }
         }
         let mut same_sheet = true;
-        if tree.f([px, py, pz]).abs() <= o.surface_tol && in_box(cell_box, px, py, pz, margin) {
+        if in_box(cell_box, px, py, pz, margin) && tree.f([px, py, pz]).abs() <= o.surface_tol {
             let mut ax = 0.0;
             let mut ay = 0.0;
             let mut az = 0.0;
@@ -583,7 +649,7 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
             let (_, g) = tree.grad([px, py, pz]);
             same_sheet = ax * g[0] + ay * g[1] + az * g[2] > 0.0;
         }
-        if tree.f([px, py, pz]).abs() > o.surface_tol || !in_box(cell_box, px, py, pz, margin) || !same_sheet
+        if !in_box(cell_box, px, py, pz, margin) || tree.f([px, py, pz]).abs() > o.surface_tol || !same_sheet
         {
             let k = best_fan_apex(points, loop_pts);
             for i in 1..m - 1 {
@@ -673,6 +739,7 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
     let boundary = &loops[0];
     let key = |a: usize, b: usize| if a < b { (a, b) } else { (b, a) };
     let mut edges: BTreeMap<(usize, usize), Option<[usize; 2]>> = BTreeMap::new();
+    let mut memberships = Vec::new();
     let mut boundary_forward = BTreeSet::new();
     for i in 0..boundary.len() {
         let (a, b) = (boundary[i], boundary[(i + 1) % boundary.len()]);
@@ -719,12 +786,19 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
                 return false;
             };
             let mut previous = a;
-            for next in interior.into_iter().chain(std::iter::once(b)) {
+            for (span, next) in
+                interior.parameters.windows(2).zip(interior.points.iter().copied().chain(std::iter::once(b)))
+            {
                 let k = key(previous, next);
                 if edges.contains_key(&k) {
                     return false;
                 }
                 edges.insert(k, Some(curve.adjacent_strata));
+                memberships.push((
+                    previous,
+                    next,
+                    CurveInterval { curve_id: id, start: span[0], end: span[1] },
+                ));
                 previous = next;
             }
         }
@@ -841,10 +915,8 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
     for (id, polygon) in patches {
         fan_from_stratum_vertex(&polygon, &features.strata[id], cell_box, tree, points, opts, &mut triangles);
     }
-    for (&(a, b), ids) in &edges {
-        if ids.is_some() {
-            points.protect_edge(a, b);
-        }
+    for (a, b, interval) in memberships {
+        points.protect_curve_edge(a, b, interval);
     }
     out.extend(triangles);
     true
@@ -950,17 +1022,23 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
     };
 
     let mut previous = pin_a.point_id;
-    for &id in interior.iter().chain(std::iter::once(&pin_b.point_id)) {
-        points.protect_edge(previous, id);
+    for (span, &id) in
+        interior.parameters.windows(2).zip(interior.points.iter().chain(std::iter::once(&pin_b.point_id)))
+    {
+        points.protect_curve_edge(
+            previous,
+            id,
+            CurveInterval { curve_id: curve.id, start: span[0], end: span[1] },
+        );
         previous = id;
     }
 
     // side1 = chain1 (A→…→B) closed by the polyline B→A (reversed interior);
     // side2 = chain2 (B→…→A) closed by the polyline A→B.
     let mut side1 = chain1.clone();
-    side1.extend(interior.iter().rev().copied());
+    side1.extend(interior.points.iter().rev().copied());
     let mut side2 = chain2.clone();
-    side2.extend(interior.iter().copied());
+    side2.extend(interior.points.iter().copied());
 
     // Assign strata to sides by aggregate NORMAL-AGREEMENT margin over all non-pin
     // chain vertices. Score both assignments and take the better — never reject.
@@ -997,6 +1075,12 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
     true
 }
 
+struct SampledArc {
+    points: Vec<usize>,
+    /// Includes both endpoints and retains the chosen unwrapped arc.
+    parameters: Vec<f64>,
+}
+
 /// Interior polyline points along the curve between two parameters, choosing the
 /// in-cell arc for closed curves. Returns point ids (exactly on the analytic
 /// curve), or None when no arc stays in the cell. Port of `sampleInCellArc`.
@@ -1008,7 +1092,7 @@ fn sample_in_cell_arc(
     points: &mut PointTable,
     features: &SfccFeatureSet,
     opts: &CellMeshOptions,
-) -> Option<Vec<usize>> {
+) -> Option<SampledArc> {
     let live = |p: [f64; 3]| {
         curve.adjacent_strata.iter().all(|&id| features.strata[id].domain_contains(p, opts.surface_tol))
     };
@@ -1153,7 +1237,7 @@ fn sample_in_cell_arc(
         }
         ids.push(points.add(p[0], p[1], p[2], nx, ny, nz));
     }
-    Some(ids)
+    Some(SampledArc { points: ids, parameters: samples.iter().map(|s| s.0).collect() })
 }
 
 /// Fan a disk from an interior vertex projected onto the side's smooth carrier.
@@ -1167,6 +1251,14 @@ fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
     opts: &CellMeshOptions,
     out_tris: &mut Vec<usize>,
 ) {
+    if opts.quality_triangulation && super::surface_patch::supports_local_edits(stratum) {
+        let candidate = super::surface_patch::disk_strict_or_coarse(points, boundary, tree, Some(stratum), opts.curve_chord_tol);
+        if let Ok(candidate) = candidate {
+            for t in candidate.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], stratum.id); }
+            out_tris.extend(candidate);
+            return;
+        }
+    }
     let m = boundary.len();
     let mut cx = 0.0;
     let mut cy = 0.0;
@@ -1221,6 +1313,7 @@ mod reliability_tests {
         let sphere = Stratum::sphere(ident(0), 0., 0., 0., 1.);
         let plane = Stratum::plane(ident(1), 0., 0., 1., 0.);
         let features = SfccFeatureSet {
+            unresolved_branch_paths: Vec::new(),
             trace_diagnostics: Default::default(),
             strata: vec![sphere.clone(), plane.clone()],
             curves: vec![],
@@ -1231,6 +1324,7 @@ mod reliability_tests {
         let mut opts = CellMeshOptions {
             surface_tol: 0.01,
             interior_vertex_mode: InteriorVertexMode::Project,
+            quality_triangulation: false,
             project_max_iters: 16,
             curve_chord_tol: 0.01,
             max_polyline_points_per_cell: 1,
@@ -1274,9 +1368,9 @@ mod reliability_tests {
         );
         opts.max_polyline_points_per_cell = 64;
         let ids = sample_in_cell_arc(&traced, 0., 1., &bounds, &mut points, &features, &opts).unwrap();
-        assert!(ids.len() > 1, "two tracer samples alone do not meet the chord tolerance");
+        assert!(ids.points.len() > 1, "two tracer samples alone do not meet the chord tolerance");
         let mut poly = vec![[1., 0., 0.]];
-        poly.extend(ids.iter().map(|&id| [points.x(id), points.y(id), points.z(id)]));
+        poly.extend(ids.points.iter().map(|&id| [points.x(id), points.y(id), points.z(id)]));
         poly.push([0., 1., 0.]);
         for edge in poly.windows(2) {
             let m = [(edge[0][0] + edge[1][0]) * 0.5, (edge[0][1] + edge[1][1]) * 0.5, 0.];

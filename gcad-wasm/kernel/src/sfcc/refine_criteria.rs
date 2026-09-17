@@ -570,8 +570,7 @@ pub fn classify_cell_features(
     // `curve_ends`, which avoids a per-corner-cell heap allocation.)
 
     let mut through_curve: i64 = -1;
-    let mut curve_ids = features.index.curves_in_box(qmin, qmax);
-    curve_ids.sort_unstable();
+    let curve_ids = features.index.curves_in_box(qmin, qmax);
     for curve_id in curve_ids {
         let curve = &features.curves[curve_id];
         let mut total = 0usize;

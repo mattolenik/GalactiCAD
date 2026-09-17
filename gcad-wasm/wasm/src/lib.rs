@@ -84,6 +84,11 @@ struct BridgeTuning {
     edge_root_tol_fraction: f64,
     max_polyline_points_per_cell: usize,
     interior_vertex_mode: String,
+    quality_triangulation: bool,
+    quality_audit: bool,
+    quality_refinement: bool,
+    quality_remeshing: bool,
+    quality_max_edit_trials: usize,
     project_max_iters: u32,
     recovery_cull: bool,
     re_refine_max_rounds: u32,
@@ -116,6 +121,11 @@ impl Default for BridgeTuning {
             edge_root_tol_fraction: d.edge_root_tol_fraction,
             max_polyline_points_per_cell: d.max_polyline_points_per_cell,
             interior_vertex_mode: "project".to_string(),
+            quality_triangulation: d.quality_triangulation,
+            quality_audit: d.quality_audit,
+            quality_refinement: d.quality_refinement,
+            quality_remeshing: d.quality_remeshing,
+            quality_max_edit_trials: d.quality_max_edit_trials,
             project_max_iters: d.project_max_iters,
             recovery_cull: d.recovery_cull,
             re_refine_max_rounds: d.re_refine_max_rounds,
@@ -145,6 +155,11 @@ impl BridgeTuning {
             surface_tol_mm: self.surface_tol_mm,
             edge_root_tol_fraction: self.edge_root_tol_fraction,
             interior_vertex_mode,
+            quality_triangulation: self.quality_triangulation,
+            quality_audit: self.quality_audit,
+            quality_refinement: self.quality_refinement,
+            quality_remeshing: self.quality_remeshing,
+            quality_max_edit_trials: self.quality_max_edit_trials.min(100_000),
             project_max_iters: self.project_max_iters,
             re_refine_max_rounds: self.re_refine_max_rounds,
             check_vertex_links: self.check_vertex_links,
@@ -168,6 +183,7 @@ impl BridgeTuning {
 /// memory views). Stats are exposed individually as a small JSON string.
 #[wasm_bindgen]
 pub struct SfccExportResult {
+    feature_edges: Vec<gcad_kernel::sfcc::point_table::MeshCurveEdge>,
     verts: Vec<f32>,
     tris: Vec<u32>,
     ok: bool,
@@ -177,6 +193,13 @@ pub struct SfccExportResult {
 
 #[wasm_bindgen]
 impl SfccExportResult {
+    /// Final vertex IDs, curve ID and unwrapped parameters: [a,b,curve,start,end].
+    /// Curve IDs are local to this export's compiled feature set.
+    #[wasm_bindgen(getter)]
+    pub fn feature_edges(&self) -> Vec<f64> {
+        self.feature_edges.iter().flat_map(|e| [e.vertices[0] as f64,e.vertices[1] as f64,e.interval.curve_id as f64,e.interval.start,e.interval.end]).collect()
+    }
+
     /// Stride-8 vertex buffer (pos, pad, normal, pad), f32. Copied into JS.
     #[wasm_bindgen(getter)]
     pub fn verts(&self) -> Vec<f32> {
@@ -294,6 +317,7 @@ pub fn export_sfcc(
 
     append_validation(&mut stats_json, &result.validation, result.manifold.non_manifold_vertices);
     Ok(SfccExportResult {
+        feature_edges: result.feature_edges,
         cancelled: result.cancelled,
         verts: result.verts,
         tris: result.tris,
@@ -486,7 +510,7 @@ pub fn sfcc_worker_merge(
     stats_json.pop();
     stats_json.push_str(&format!(",\"degenerateCells\":{},\"reRefineRounds\":{},\"serialRecovery\":{}}}", merged.degenerate_cells, merged.re_refine_rounds, merged.serial_recovery));
     append_validation(&mut stats_json, &merged.validation, merged.manifold.non_manifold_vertices);
-    Ok(SfccExportResult { verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json, cancelled: false })
+    Ok(SfccExportResult { feature_edges: merged.feature_edges, verts: merged.verts, tris: merged.tris, ok: merged.ok, stats_json, cancelled: false })
 }
 
 

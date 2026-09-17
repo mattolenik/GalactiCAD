@@ -93,33 +93,47 @@ pub(crate) fn refine_surface(
             let pb = pos(points, b);
             let mid = std::array::from_fn(|k| (pa[k] + pb[k]) * 0.5);
             let length = (pa[0] - pb[0]).hypot(pa[1] - pb[1]).hypot(pa[2] - pb[2]);
+            let mut split_parameters = Vec::new();
             let p = if points.edge_is_protected(a, b) {
-                // Follow the original modeled curve instead of rounding a
-                // protected edge by unconstrained projection onto either face.
-                let mut best = None;
-                let mut distance = f64::INFINITY;
-                let lo = std::array::from_fn(|k| pa[k].min(pb[k]) - tolerance);
-                let hi = std::array::from_fn(|k| pa[k].max(pb[k]) + tolerance);
-                let mut ids = features.index.curves_in_box(lo, hi);
-                ids.sort_unstable();
-                for i in ids {
-                    let c = &features.curves[i];
-                    if c.project(pa[0], pa[1], pa[2]).1 > tolerance * 0.1
-                        || c.project(pb[0], pb[1], pb[2]).1 > tolerance * 0.1
-                    {
-                        continue;
-                    }
-                    let (t, d) = c.project(mid[0], mid[1], mid[2]);
-                    if d < distance {
-                        if let Some(p) = c.point_at_checked(t) {
-                            if tree.f(p).abs() <= tolerance * 0.1 {
-                                best = Some(p);
-                                distance = d;
-                            }
+                // The creator chose this exact arc, including orientation and
+                // periodic wrap. Never guess a neighboring curve from proximity.
+                let intervals = points.curve_intervals(a, b);
+                let mut chosen: Option<[f64; 3]> = None;
+                let compatible = !intervals.is_empty()
+                    && intervals.iter().all(|interval| {
+                        let Some(curve) = features.curves.get(interval.curve_id) else {
+                            return false;
+                        };
+                        let Some((t, p)) = curve.project_interval(mid, interval.start, interval.end) else {
+                            return false;
+                        };
+                        if t == interval.start || t == interval.end {
+                            return false;
                         }
-                    }
+                        split_parameters.push(t);
+                        if tree.f(p).abs() > tolerance * 0.1
+                            || (0..3).map(|k| (p[k] - mid[k]).powi(2)).sum::<f64>().sqrt() > length
+                            || !curve
+                                .adjacent_strata
+                                .iter()
+                                .all(|&id| features.strata[id].domain_contains(p, tolerance * 0.1))
+                        {
+                            return false;
+                        }
+                        if let Some(q) = chosen {
+                            if (0..3).map(|k| (p[k] - q[k]).powi(2)).sum::<f64>().sqrt() > tolerance * 0.01 {
+                                return false;
+                            }
+                        } else {
+                            chosen = Some(p);
+                        }
+                        true
+                    });
+                if compatible {
+                    chosen
+                } else {
+                    None
                 }
-                best.filter(|_| distance <= length)
             } else {
                 project(tree, mid, length, tolerance * 0.01)
             };
@@ -127,10 +141,7 @@ pub(crate) fn refine_surface(
                 let (_, n) = tree.grad(p);
                 let i = points.add(p[0], p[1], p[2], n[0], n[1], n[2]);
                 *id = Some(i);
-                if points.edge_is_protected(a, b) {
-                    points.protect_edge(a, i);
-                    points.protect_edge(i, b);
-                }
+                points.split_curve_edge_at(a, b, i, &split_parameters);
             }
         }
         let mut next = Vec::with_capacity(tris.len() * 2);
@@ -138,6 +149,8 @@ pub(crate) fn refine_surface(
         for t in tris.chunks_exact(3) {
             let m: [Option<usize>; 3] =
                 std::array::from_fn(|k| split.get(&edge(t[k], t[(k + 1) % 3])).copied().flatten());
+            let start = next.len();
+            let owner = points.patch([t[0], t[1], t[2]]);
             match m.iter().filter(|m| m.is_some()).count() {
                 0 => next.extend_from_slice(t),
                 1 => {
@@ -175,6 +188,11 @@ pub(crate) fn refine_surface(
                     changed = true;
                 }
             }
+            if let Some(owner) = owner {
+                for child in next[start..].chunks_exact(3) {
+                    points.set_patch([child[0], child[1], child[2]], owner);
+                }
+            }
         }
         tris = next;
         if !changed {
@@ -194,4 +212,59 @@ pub(crate) fn refine_surface(
         }
     }
     (tris, unresolved)
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    use crate::{
+        primitives::smin::SminMode,
+        sdf::{leaf_at, BlendKind, Shape},
+        sfcc::{
+            feature_curves::make_circle_curve, feature_set::compile_native_features,
+            point_table::CurveInterval, spatial_index::SfccSpatialIndex,
+        },
+    };
+    #[test]
+    fn refinement_stays_on_the_identified_curve_when_a_nearer_curve_also_fits() {
+        let leaf = leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
+        let tree = CsgNode::Blend {
+            kind: BlendKind::Smin,
+            mode: SminMode::Round,
+            r: 0.,
+            n: 4.,
+            children: vec![leaf.clone(), leaf.clone()],
+        };
+        let mut features = compile_native_features(&leaf);
+        features.curves = vec![
+            make_circle_curve(0, -1, [0, 0], 0., 0., 0., 0., 0., 1., 0.999, None),
+            make_circle_curve(1, -1, [0, 0], 0., 0., 0., 0., 0., 1., 1., None),
+        ];
+        features.index = SfccSpatialIndex::new(0.1);
+        for c in &features.curves {
+            features.index.insert_curve_polyline(c.id, &c.index_polyline);
+        }
+        let mut points = PointTable::new();
+        let curve = &features.curves[1];
+        let a = curve.point_at(0.);
+        let b = curve.point_at(std::f64::consts::FRAC_PI_2);
+        let a = points.add(a[0], a[1], a[2], a[0], a[1], a[2]);
+        let b = points.add(b[0], b[1], b[2], b[0], b[1], b[2]);
+        let c = points.add(0., 0., 1., 0., 0., 1.);
+        points.protect_curve_edge(
+            a,
+            b,
+            CurveInterval { curve_id: 1, start: 0., end: std::f64::consts::FRAC_PI_2 },
+        );
+        let (tris, _) = refine_surface(&tree, &features, &mut points, &[a, b, c], 0.02);
+        assert!(tris.len() > 3);
+        let edges: Vec<_> = points.identified_edges().collect();
+        assert!(edges.len() > 1);
+        for ((a, b), intervals) in edges {
+            assert!(intervals.iter().all(|i| i.curve_id == 1));
+            for id in [a, b] {
+                assert!((points.x(id).hypot(points.y(id)) - 1.).abs() < 1e-12);
+            }
+        }
+    }
 }

@@ -1,0 +1,105 @@
+{
+  "date": "2026-09-07",
+  "os": "macOS 26.5.1",
+  "baselineCommit": "52656d1b69f2b00a76410768cca3d867b58aaa61",
+  "sourceSha256": {
+    "housing": "bb870df71895d6829afa385a4b56d0caa0f30ff0452b5dd4b8e385212487a669",
+    "bracket": "9da4b9d3dba0643f97e968aa1b83a001d91dfeabe79bd2eec1403e38d743f044"
+  },
+  "runs": [
+    {
+      "scene": "housing",
+      "backend": "native release",
+      "mode": "baseline",
+      "warmupMs": 24224.162958,
+      "measuredMs": [
+        24089.465792000003,
+        24047.658417000006,
+        24041.81299999998,
+        23897.72991700002,
+        24025.46587500001
+      ],
+      "medianMs": 24041.81299999998,
+      "triangles": 128946,
+      "outputBytes": 3610232,
+      "quality": null,
+      "featureChains": {
+        "status": "failed",
+        "scope": "compiledCurves",
+        "missingEdges": 60,
+        "missingCurves": 9,
+        "disconnectedCurves": 14,
+        "intervalGaps": 40,
+        "offCurveEdges": 0,
+        "invalidMemberships": 0,
+        "unidentifiedEdges": 0
+      },
+      "topology": {
+        "edgeIncidence": "passed",
+        "vertexLinks": "passed",
+        "faceSegments": "passed",
+        "vertexResiduals": "passed"
+      }
+    },
+    {
+      "scene": "housing",
+      "backend": "native release",
+      "mode": "all",
+      "warmupMs": 112432.18033399999,
+      "measuredMs": [
+        107681.64525,
+        106597.64833299999,
+        107949.05679100001,
+        112629.73999999999,
+        137944.70491700002
+      ],
+      "medianMs": 107949.05679100001,
+      "triangles": 115502,
+      "outputBytes": 3233800,
+      "quality": {
+        "beforeTriangles": 99034,
+        "afterTriangles": 115502,
+        "beforeSlivers": 1435,
+        "afterSlivers": 2430,
+        "beforeP5Angle": 4.76520912442615,
+        "afterP5Angle": 3.93185428165449,
+        "flips": 1111,
+        "inserted": 133,
+        "edgeSplits": 133,
+        "interiorSplits": 0,
+        "collapses": 1253,
+        "relocations": 5795,
+        "rejected": 7581,
+        "unknownTriangles": 52276,
+        "geometryFailures": 582,
+        "intersections": 15538,
+        "cancelled": false,
+        "workBudgetExhausted": true
+      },
+      "featureChains": {
+        "status": "failed",
+        "scope": "compiledCurves",
+        "missingEdges": 60,
+        "missingCurves": 9,
+        "disconnectedCurves": 14,
+        "intervalGaps": 40,
+        "offCurveEdges": 0,
+        "invalidMemberships": 0,
+        "unidentifiedEdges": 0
+      },
+      "topology": {
+        "edgeIncidence": "passed",
+        "vertexLinks": "passed",
+        "faceSegments": "passed",
+        "vertexResiduals": "passed"
+      }
+    }
+  ],
+  "notes": [
+    "Five measured exports after one warm-up; an experimental-run outlier coincided with background build work. All samples retained in the median.",
+    "All six runs of each mode produced identical geometry counts and validation diagnostics.",
+    "Native output-buffer bytes are not peak memory; the full native/WASM memory and benchmark matrix remains uncompleted.",
+    "The new audit reports pre-existing geometry/contact failures; the quality mode is not default-ready.",
+    "YAML hashes include scene metadata; source-expression and serialized-scene hashes are emitted by the WASM benchmark driver."
+  ]
+}

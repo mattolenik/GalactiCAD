@@ -17,7 +17,7 @@ endif
 .PHONY: all draft intro pngs clean $(OUT)
 
 # Final render: 1080p @ 30fps, copied to $(OUT) next to the script.
-all: $(OUT)
+all: pngs $(OUT)
 
 $(OUT): $(SCRIPT) $(wildcard assets/*.png)
 	$(MANIM) -qh --fps 30 $(CACHE_FLAGS) $(SCRIPT) SFCC

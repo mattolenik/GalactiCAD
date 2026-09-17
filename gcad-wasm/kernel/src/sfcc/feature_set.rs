@@ -51,6 +51,7 @@ fn next_feature_set_run_id() -> u64 {
 }
 
 pub struct SfccFeatureSet {
+    pub unresolved_branch_paths: Vec<Vec<usize>>,
     pub trace_diagnostics: crate::sfcc::seam_trace::SeamTraceDiagnostics,
     pub curves: Vec<FeatureCurve>,
     pub corners: Vec<SfccCorner>,
@@ -73,10 +74,25 @@ impl SfccFeatureSet {
                 hash = (hash ^ byte as u64).wrapping_mul(0x100000001b3);
             }
         };
+        let mut context = super::provenance::IdentityContext::default();
+        for path in &self.unresolved_branch_paths {
+            word(path.len() as u64);
+            for &i in path {
+                word(i as u64);
+            }
+        }
+        word(self.strata.len() as u64);
+        for stratum in &self.strata {
+            word(stratum.semantic_identity(&mut context));
+        }
         word(self.curves.len() as u64);
         for curve in &self.curves {
             word(curve.id as u64);
+            word(curve.kind() as u64);
             word(curve.closed as u64);
+            word(curve.t_min.to_bits());
+            word(curve.t_max.to_bits());
+            word(curve.param_wrap.map(f64::to_bits).unwrap_or(u64::MAX));
             for id in curve.adjacent_strata {
                 word(id as u64);
             }
@@ -135,7 +151,13 @@ fn build_box_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, half: [f64;
     let [hx, hy, hz] = half;
     let mk = |i: usize, nx: f64, ny: f64, nz: f64, off: f64| {
         world_plane(
-            StratumIdentity { id: first_id + i, owner_node_id: -1, leaf_index, local_index: i, sign: leaf.sign },
+            StratumIdentity {
+                id: first_id + i,
+                owner_node_id: -1,
+                leaf_index,
+                local_index: i,
+                sign: leaf.sign,
+            },
             &leaf.sim,
             nx,
             ny,
@@ -194,7 +216,16 @@ fn build_cylinder_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64
     let a = leaf.sim.apply_point(px, py, pz);
     let u = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
     vec![
-        Stratum::cylinder(sid(first_id, leaf_index, 0, leaf.sign), a[0], a[1], a[2], u[0], u[1], u[2], leaf.sim.s * r),
+        Stratum::cylinder(
+            sid(first_id, leaf_index, 0, leaf.sign),
+            a[0],
+            a[1],
+            a[2],
+            u[0],
+            u[1],
+            u[2],
+            leaf.sim.s * r,
+        ),
         world_plane(sid(first_id + 1, leaf_index, 1, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)),
         world_plane(sid(first_id + 2, leaf_index, 2, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py - h),
     ]
@@ -228,7 +259,12 @@ fn build_cone_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64, h:
 /// Each carrier's normal matches the edge's outward profile normal — edges
 /// whose outward points toward the axis (bores) fold a flip into `sign`. Port
 /// of the Lathe `buildStrata` in cpu-sdf.mts.
-fn build_lathe_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, edges: &[LatheProfileEdge]) -> Vec<Stratum> {
+fn build_lathe_strata(
+    leaf: &Leaf,
+    leaf_index: usize,
+    first_id: usize,
+    edges: &[LatheProfileEdge],
+) -> Vec<Stratum> {
     let [px, py, pz] = leaf.pos;
     let a = leaf.sim.apply_point(px, py, pz);
     let u = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
@@ -325,7 +361,14 @@ fn build_extrude_strata(
         }
     }
     out.push(world_plane(sid(first_id + n, leaf_index, n, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)));
-    out.push(world_plane(sid(first_id + n + 1, leaf_index, n + 1, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py - h));
+    out.push(world_plane(
+        sid(first_id + n + 1, leaf_index, n + 1, leaf.sign),
+        &leaf.sim,
+        0.0,
+        -1.0,
+        0.0,
+        py - h,
+    ));
     out
 }
 
@@ -578,9 +621,23 @@ fn build_loft_strata_general(
             local += 1;
         }
     }
-    out.push(world_plane(sid(first_id + local, leaf_index, local, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)));
+    out.push(world_plane(
+        sid(first_id + local, leaf_index, local, leaf.sign),
+        &leaf.sim,
+        0.0,
+        1.0,
+        0.0,
+        -(py + h),
+    ));
     local += 1;
-    out.push(world_plane(sid(first_id + local, leaf_index, local, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py - h));
+    out.push(world_plane(
+        sid(first_id + local, leaf_index, local, leaf.sign),
+        &leaf.sim,
+        0.0,
+        -1.0,
+        0.0,
+        py - h,
+    ));
     out
 }
 
@@ -626,7 +683,14 @@ fn build_loft_strata(
             let li = seg * n + j;
             let ident = sid(first_id + li, leaf_index, li, leaf.sign);
             if a_nx == b_nx && a_nz == b_nz && a_x == b_x && a_z == b_z {
-                out.push(world_plane(ident, &leaf.sim, a_nx, 0.0, a_nz, -(a_nx * (px + a_x) + a_nz * (pz + a_z))));
+                out.push(world_plane(
+                    ident,
+                    &leaf.sim,
+                    a_nx,
+                    0.0,
+                    a_nz,
+                    -(a_nx * (px + a_x) + a_nz * (pz + a_z)),
+                ));
             } else {
                 out.push(Stratum::loft_side(
                     ident,
@@ -834,7 +898,14 @@ fn emit_loft_features(
                 ]
             };
             let id = corners.len();
-            corners.push(SfccCorner { id, x: p[0], y: p[1], z: p[2], strata: strata_ids, curve_ends: Vec::new() });
+            corners.push(SfccCorner {
+                id,
+                x: p[0],
+                y: p[1],
+                z: p[2],
+                strata: strata_ids,
+                curve_ends: Vec::new(),
+            });
             row.push(id);
         }
         corner_idx.push(row);
@@ -961,7 +1032,8 @@ fn emit_loft_features(
             let curve_id = curves.len();
             let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
             let b = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
-            let mut crease = make_segment_curve(curve_id, -1, [s_below, s_above], a[0], a[1], a[2], b[0], b[1], b[2]);
+            let mut crease =
+                make_segment_curve(curve_id, -1, [s_below, s_above], a[0], a[1], a[2], b[0], b[1], b[2]);
             crease.native = true;
             crease.corner_start = corner_idx[pi][j] as i64;
             crease.corner_end = corner_idx[pi][j2] as i64;
@@ -982,8 +1054,17 @@ fn emit_loft_features(
             let curve_id = curves.len();
             let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
             let b = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
-            let mut rim =
-                make_segment_curve(curve_id, -1, [side_id(seg, j as i64), cap], a[0], a[1], a[2], b[0], b[1], b[2]);
+            let mut rim = make_segment_curve(
+                curve_id,
+                -1,
+                [side_id(seg, j as i64), cap],
+                a[0],
+                a[1],
+                a[2],
+                b[0],
+                b[1],
+                b[2],
+            );
             rim.native = true;
             rim.corner_start = corner_idx[pi][j] as i64;
             rim.corner_end = corner_idx[pi][j2] as i64;
@@ -1024,8 +1105,9 @@ fn emit_loft_features_general(
         }
         v
     };
-    let carriers: Vec<Vec<LoftCarrier>> =
-        (0..m - 1).map(|seg| loft_seg_carriers(&profs[seg], winds[seg], &profs[seg + 1], winds[seg + 1])).collect();
+    let carriers: Vec<Vec<LoftCarrier>> = (0..m - 1)
+        .map(|seg| loft_seg_carriers(&profs[seg], winds[seg], &profs[seg + 1], winds[seg + 1]))
+        .collect();
     let mut offset = vec![0usize; m - 1];
     for seg in 1..(m - 1) {
         offset[seg] = offset[seg - 1] + carriers[seg - 1].len();
@@ -1091,9 +1173,11 @@ fn emit_loft_features_general(
             }
             let s_l = side_id(seg, (c + lc - 1) % lc);
             let s_r = side_id(seg, c);
-            let (n_alx, n_alz, c_al) = (cprev.a_nx, cprev.a_nz, cprev.a_nx * cprev.a_x + cprev.a_nz * cprev.a_z);
+            let (n_alx, n_alz, c_al) =
+                (cprev.a_nx, cprev.a_nz, cprev.a_nx * cprev.a_x + cprev.a_nz * cprev.a_z);
             let (n_arx, n_arz, c_ar) = (ccur.a_nx, ccur.a_nz, ccur.a_nx * ccur.a_x + ccur.a_nz * ccur.a_z);
-            let (n_blx, n_blz, c_bl) = (cprev.b_nx, cprev.b_nz, cprev.b_nx * cprev.b_x + cprev.b_nz * cprev.b_z);
+            let (n_blx, n_blz, c_bl) =
+                (cprev.b_nx, cprev.b_nz, cprev.b_nx * cprev.b_x + cprev.b_nz * cprev.b_z);
             let (n_brx, n_brz, c_br) = (ccur.b_nx, ccur.b_nz, ccur.b_nx * ccur.b_x + ccur.b_nz * ccur.b_z);
             let q2_at = |t: f64| -> Option<[f64; 2]> {
                 let m1x = (1.0 - t) * n_alx + t * n_blx;
@@ -1209,8 +1293,11 @@ fn emit_loft_features_general(
                 // A run reaching t=0 lands on the bottom-profile corner the carrier
                 // crossed; reaching t=1 lands on the top-profile corner. A matched
                 // corner sets both → one corner-to-corner crease.
-                let cs: i64 =
-                    if i0 == 0 && ccur.a_vertex >= 0 { corner_idx[seg][ccur.a_vertex as usize] as i64 } else { -1 };
+                let cs: i64 = if i0 == 0 && ccur.a_vertex >= 0 {
+                    corner_idx[seg][ccur.a_vertex as usize] as i64
+                } else {
+                    -1
+                };
                 let ce: i64 = if i1 == SAMPLES && ccur.b_vertex >= 0 {
                     corner_idx[seg + 1][ccur.b_vertex as usize] as i64
                 } else {
@@ -1256,8 +1343,17 @@ fn emit_loft_features_general(
             let curve_id = curves.len();
             let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
             let bpt = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
-            let mut crease =
-                make_segment_curve(curve_id, -1, [s_below, s_above], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
+            let mut crease = make_segment_curve(
+                curve_id,
+                -1,
+                [s_below, s_above],
+                a[0],
+                a[1],
+                a[2],
+                bpt[0],
+                bpt[1],
+                bpt[2],
+            );
             crease.native = true;
             crease.corner_start = corner_idx[pi][e] as i64;
             crease.corner_end = corner_idx[pi][e2] as i64;
@@ -1294,7 +1390,8 @@ fn emit_loft_features_general(
                 let curve_id = curves.len();
                 let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
                 let bpt = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
-                let mut rim = make_segment_curve(curve_id, -1, [s_side, cap], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
+                let mut rim =
+                    make_segment_curve(curve_id, -1, [s_side, cap], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
                 rim.native = true;
                 rim.corner_start = corner_idx[pi][e] as i64;
                 rim.corner_end = corner_idx[pi][e2] as i64;
@@ -1343,7 +1440,8 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
                         }
                     }
                 }
-                let stratum_of = |axis: usize, positive: bool| first_id + axis * 2 + if positive { 0 } else { 1 };
+                let stratum_of =
+                    |axis: usize, positive: bool| first_id + axis * 2 + if positive { 0 } else { 1 };
                 // 8 corners.
                 let corner_ids: Vec<usize> = (0..8)
                     .map(|i| {
@@ -1685,6 +1783,7 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
         index.insert_corner(c.id, c.x, c.y, c.z);
     }
     SfccFeatureSet {
+        unresolved_branch_paths: Vec::new(),
         trace_diagnostics: Default::default(),
         curves,
         corners,
@@ -1740,12 +1839,17 @@ pub fn compile_feature_set(
             id
         },
     ));
-    let branch_pairs = super::branch_surfaces::append_branch_pairs(&mut tree, tol.curve_eps * 8.);
+    let (branch_pairs, unresolved_branch_paths) =
+        super::branch_surfaces::append_branch_pairs(&mut tree, tol.curve_eps * 8.);
     for (a, b, bounds) in branch_pairs {
         diagnostics.pairs_considered += 1;
-        for (samples, closed) in
-            super::seam_trace::trace_carrier_pair(&tree.strata[a], &tree.strata[b], &bounds, tol, &mut diagnostics)
-        {
+        for (samples, closed) in super::seam_trace::trace_carrier_pair(
+            &tree.strata[a],
+            &tree.strata[b],
+            &bounds,
+            tol,
+            &mut diagnostics,
+        ) {
             seam_curves.push(make_traced_curve(
                 next_id,
                 [a, b],
@@ -1775,6 +1879,7 @@ pub fn compile_feature_set(
         index.insert_corner(c.id, c.x, c.y, c.z);
     }
     let fs = SfccFeatureSet {
+        unresolved_branch_paths,
         trace_diagnostics: diagnostics,
         curves: trimmed.curves,
         corners: trimmed.corners,
@@ -1796,7 +1901,11 @@ mod tests {
         let mut fs = compile_native_features(&tree);
         let original = fs.fingerprint();
         fs.corners[0].curve_ends[0].1 ^= 1;
-        assert_ne!(original, fs.fingerprint(), "same positions with different endpoint incidence must not share worker references");
+        assert_ne!(
+            original,
+            fs.fingerprint(),
+            "same positions with different endpoint incidence must not share worker references"
+        );
     }
 
     #[test]
@@ -1873,8 +1982,10 @@ mod tests {
         );
         let tol = crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 36.0);
         let (fs, diag) = compile_feature_set(&tree, &tol);
-        let segs = fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Segment).count();
-        let traced = fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced).count();
+        let segs =
+            fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Segment).count();
+        let traced =
+            fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced).count();
         assert_eq!(segs, 12, "12 surviving box edges");
         assert_eq!(traced, 3, "3 traced seam circles (sphere ∩ +x/+y/+z faces)");
         assert_eq!(fs.corners.len(), 8, "8 box corners survive");

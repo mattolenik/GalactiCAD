@@ -62,6 +62,7 @@ test("SFCC audit: nested soft blend GPU scalar derivative reference", async (t) 
     await installWebGpuIfNeeded()
     const helper = await GPUHelper.create()
     if (!helper) {
+        assert.notEqual(process.env.REQUIRE_WEBGPU, "1", "mandatory GPU acceptance needs an adapter")
         t.skip("WebGPU adapter unavailable; GPU reference not checked")
         return
     }
@@ -102,9 +103,9 @@ test("SFCC audit: nested soft blend GPU scalar derivative reference", async (t) 
         }
         const length = Math.hypot(...expected)
         const dot = expected.reduce((s, v, k) => s + v / length * result.sdf[k]!, 0)
-        // Report separately: preview normals currently compose unit directions
-        // and g is a stepping estimate, so they are not a derivative oracle.
-        t.diagnostic(`GPU analytical-normal discrepancy: ${Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI} degrees`)
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI
+        t.diagnostic(`GPU analytical-normal discrepancy: ${angle} degrees`)
+        assert.ok(angle < 0.02, `nested soft normal error: ${angle} degrees`)
     } finally {
         batcher?.destroy()
         for (const b of buffers) b.destroy()

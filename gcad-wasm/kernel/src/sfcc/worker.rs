@@ -41,13 +41,14 @@ use crate::sfcc::cell_mesh::{mesh_cells_subset, CellMeshOptions};
 use crate::sfcc::face_contour::{contour_subset_separate, FaceContourOptions};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
-use crate::sfcc::octree::{rebuild_octree_from_leaves, CellDecision, ResumableOctreeBuild, SfccCell, SfccOctree};
+use crate::sfcc::octree::{
+    rebuild_octree_from_leaves, CellDecision, ResumableOctreeBuild, SfccCell, SfccOctree,
+};
 use crate::sfcc::pipeline::{
-    build_pipeline_context, drop_coincident_triangle_pairs, drop_debris_components, morton_partition_indices,
+    build_pipeline_context, morton_partition_indices,
     PipelineTuning, SfccWorldCube,
 };
-use crate::sfcc::point_table::{PointKey, PointTable};
-use crate::sfcc::sliver_flip::flip_sliver_triangles;
+use crate::sfcc::point_table::{CurveInterval, PointKey, PointTable};
 use crate::sfcc::validation::{self, AuditStatus, NumericalFailures, NumericalGuard, SfccValidation};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -104,8 +105,8 @@ impl<'a> Reader<'a> {
     }
 }
 
-const LEAVES_MAGIC: u32 = 0x5346_4C32; // "SFL2": feature graph fingerprint
-const PARTIAL_MAGIC: u32 = 0x5346_5032; // "SFP2": f64 payloads + audits + protected edges
+const LEAVES_MAGIC: u32 = 0x5346_4C33; // "SFL3": semantic field/domain fingerprint
+const PARTIAL_MAGIC: u32 = 0x5346_5034; // "SFP4": per-triangle analytical patch ownership
 
 // ---------------------------------------------------------------------------
 // Phase 1 — prepare: tagged octree → byte buffer.
@@ -188,7 +189,11 @@ pub fn decode_tagged_leaves(buf: &[u8]) -> (SfccLattice, Vec<SfccCell>) {
 fn verify_feature_fingerprint(buf: &[u8], features: &SfccFeatureSet) {
     let mut r = Reader::new(buf);
     assert_eq!(r.u32(), LEAVES_MAGIC, "worker: incompatible tagged-leaves version");
-    assert_eq!(r.u64(), features.fingerprint(), "worker: feature graph differs from prepared cell references");
+    assert_eq!(
+        r.u64(),
+        features.fingerprint(),
+        "worker: feature graph differs from prepared cell references"
+    );
 }
 
 /// Phase 1 (the serial ~60%): compile the feature set + build the tagged octree
@@ -215,7 +220,11 @@ pub fn prepare(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) ->
 /// B proper) is this exact loop with the in-process `decide_partition` replaced by a
 /// scatter/gather over worker wasm instances — so this proves the round-by-round
 /// build reconstructs the serial octree before any JS exists.
-pub fn build_octree_resumable_inprocess(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> Vec<u8> {
+pub fn build_octree_resumable_inprocess(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+) -> Vec<u8> {
     let ctx = build_pipeline_context(tree, cube, tuning);
     let oct = ctx.build_tagged_octree_resumable(tuning);
     encode_tagged_leaves(&oct.lat, &oct.leaves, ctx.features.fingerprint())
@@ -354,6 +363,7 @@ fn get_key(r: &mut Reader) -> PointKey {
 /// tri list, and the meshing counters.
 fn encode_partial(
     pt: &PointTable,
+    fingerprint: u64,
     tris: &[usize],
     counters: &PartialCounters,
     faces: &[HashMap<i64, crate::sfcc::face_contour::FaceRecord>; 3],
@@ -361,6 +371,7 @@ fn encode_partial(
     let n = pt.count();
     let mut out = Vec::with_capacity(16 + n * (64 + 9) + tris.len() * 4 + 64);
     put_u32(&mut out, PARTIAL_MAGIC);
+    put_u64(&mut out, fingerprint);
     put_u64(&mut out, n as u64);
     // Stride-8 f64 vertices (pos, pad, normal, pad) — the MeshData vertex layout.
     for id in 0..n {
@@ -380,12 +391,27 @@ fn encode_partial(
     for &t in tris {
         put_u32(&mut out, t as u32);
     }
+    for t in tris.chunks_exact(3) {
+        put_u64(&mut out, pt.patch([t[0], t[1], t[2]]).map_or(u64::MAX, |id| id as u64));
+    }
     let mut protected: Vec<_> = pt.protected_edges().collect();
     protected.sort_unstable();
     put_u64(&mut out, protected.len() as u64);
     for (a, b) in protected {
         put_u64(&mut out, a as u64);
         put_u64(&mut out, b as u64);
+    }
+    let mut identified: Vec<_> = pt.identified_edges().collect();
+    identified.sort_by_key(|e| e.0);
+    put_u64(&mut out, identified.iter().map(|e| e.1.len() as u64).sum());
+    for ((a, b), intervals) in identified {
+        for interval in intervals {
+            put_u64(&mut out, a as u64);
+            put_u64(&mut out, b as u64);
+            put_u64(&mut out, interval.curve_id as u64);
+            put_f64(&mut out, interval.start);
+            put_f64(&mut out, interval.end);
+        }
     }
     let mut records: Vec<_> = faces.iter().flat_map(|m| m.values()).collect();
     records.sort_by_key(|r| (r.axis, r.key, r.len));
@@ -417,11 +443,14 @@ fn encode_partial(
 
 /// A decoded partial: stride-8 f64 verts, parallel keys, local tris, counters.
 struct DecodedPartial {
+    fingerprint: u64,
+    intervals: Vec<(usize, usize, CurveInterval)>,
     verts: Vec<f64>, // stride-8, rounded only after global cleanup
     protected: Vec<(usize, usize)>,
     face_uses: Vec<(u64, i64, i64, usize, usize, u64, u64)>,
     keys: Vec<PointKey>,
     tris: Vec<u32>,
+    patches: Vec<Option<usize>>,
     counters: PartialCounters,
 }
 
@@ -429,7 +458,9 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     let mut r = Reader::new(buf);
     let magic = r.u32();
     assert_eq!(magic, PARTIAL_MAGIC, "worker: bad partial buffer magic");
-    let n = r.u64() as usize;
+    let fingerprint = r.u64();
+    let n = usize::try_from(r.u64()).expect("worker: vertex count overflow");
+    assert!(n <= buf.len() / 64, "worker: invalid vertex count");
     let mut verts = Vec::with_capacity(n * 8);
     for _ in 0..n * 8 {
         verts.push(r.f64());
@@ -438,13 +469,30 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     for _ in 0..n {
         keys.push(get_key(&mut r));
     }
-    let tn = r.u64() as usize;
+    let tn = usize::try_from(r.u64()).expect("worker: triangle count overflow");
+    assert!(tn % 3 == 0 && tn <= buf.len() / 4, "worker: invalid triangle count");
     let mut tris = Vec::with_capacity(tn);
     for _ in 0..tn {
-        tris.push(r.u32());
+        let id = r.u32();
+        assert!((id as usize) < n, "worker: triangle vertex out of bounds");
+        tris.push(id);
     }
+    let patches = (0..tn / 3).map(|_| { let id = r.u64(); if id == u64::MAX { None } else { Some(usize::try_from(id).expect("worker: patch id overflow")) } }).collect();
     let n_protected = r.u64();
     let protected = (0..n_protected).map(|_| (r.u64() as usize, r.u64() as usize)).collect();
+    let count = r.u64() as usize;
+    assert!(count <= buf.len() / 40, "worker: invalid curve interval count");
+    let intervals = (0..count)
+        .map(|_| {
+            let (a, b, curve_id) = (r.u64() as usize, r.u64() as usize, r.u64() as usize);
+            let (start, end) = (r.f64(), r.f64());
+            assert!(
+                a < n && b < n && a != b && start.is_finite() && end.is_finite(),
+                "worker: invalid curve interval"
+            );
+            (a, b, CurveInterval { curve_id, start, end })
+        })
+        .collect();
     let n_uses = r.u64();
     let face_uses = (0..n_uses)
         .map(|_| (r.u64(), r.i64(), r.i64(), r.u64() as usize, r.u64() as usize, r.u64(), r.u64()))
@@ -464,7 +512,7 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
         multi_run_faces: r.u64(),
         boundary_violations: r.u64(),
     };
-    DecodedPartial { verts, keys, tris, counters, protected, face_uses }
+    DecodedPartial { fingerprint, intervals, verts, keys, tris, patches, counters, protected, face_uses }
 }
 
 /// Build the face-contour + cell-mesh options exactly as the serial driver's S2/S3
@@ -479,6 +527,7 @@ fn mesh_opts<'a>(
     let cm = CellMeshOptions {
         surface_tol: tuning.surface_tol_mm,
         interior_vertex_mode: tuning.interior_vertex_mode,
+        quality_triangulation: tuning.quality_triangulation || tuning.quality_refinement || tuning.quality_remeshing,
         project_max_iters: tuning.project_max_iters,
         curve_chord_tol: tuning.curve_chord_tol_mm,
         max_polyline_points_per_cell: tuning.max_polyline_points_per_cell,
@@ -503,7 +552,10 @@ pub fn mesh_partition(
     group_count: usize,
 ) -> Vec<u8> {
     let _numerical_guard = NumericalGuard::new();
-    assert!(group_index < group_count.max(1), "worker: group_index {group_index} >= group_count {group_count}");
+    assert!(
+        group_index < group_count.max(1),
+        "worker: group_index {group_index} >= group_count {group_count}"
+    );
     // Recompute the feature set (cheap ~6% phase) — same context as serial/prepare,
     // so curve/corner/strata ids line up with the tags baked into the leaves.
     let ctx = build_pipeline_context(tree, cube, tuning);
@@ -539,7 +591,7 @@ pub fn mesh_partition(
         multi_run_faces: fr.multi_run_faces as u64,
         boundary_violations: fr.boundary_violations as u64,
     };
-    encode_partial(&pt, &cm.tris, &counters, &fr.faces)
+    encode_partial(&pt, features.fingerprint(), &cm.tris, &counters, &fr.faces)
 }
 
 // ---------------------------------------------------------------------------
@@ -548,6 +600,7 @@ pub fn mesh_partition(
 
 /// The merged-mesh result the wasm wrapper exposes (mirrors `SfccExportResult`).
 pub struct MergedMesh {
+    pub feature_edges: Vec<super::point_table::MeshCurveEdge>,
     pub verts: Vec<f32>,
     pub tris: Vec<u32>,
     pub manifold: ManifoldReport,
@@ -573,7 +626,12 @@ pub struct MergedMesh {
 /// [`merge_partials`]. Feature compilation is recomputed once here (cheap ~6%);
 /// only the debris-drop feature-hugging test reads it. The lattice is taken from the
 /// rebuilt context (identical to the one serialized into the leaf buffer).
-pub fn merge(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning, partials: &[Vec<u8>]) -> MergedMesh {
+pub fn merge(
+    tree: &CsgNode,
+    cube: &SfccWorldCube,
+    tuning: &PipelineTuning,
+    partials: &[Vec<u8>],
+) -> MergedMesh {
     let _numerical_guard = NumericalGuard::new();
     let ctx = build_pipeline_context(tree, cube, tuning);
     let result = merge_partials(tree, &ctx.features, &ctx.lat, tuning, partials);
@@ -587,6 +645,7 @@ pub fn merge(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning, part
     {
         let r = crate::sfcc::pipeline::run_sfcc_pipeline(tree, cube, tuning);
         return MergedMesh {
+            feature_edges: r.feature_edges,
             verts: r.verts,
             tris: r.tris,
             manifold: r.manifold,
@@ -640,8 +699,10 @@ pub fn merge_partials(
     let mut numerical = NumericalFailures::default();
     let mut face_uses: HashMap<(u64, i64, i64, usize, usize), (u64, u64)> = HashMap::new();
 
+    let fingerprint = features.fingerprint();
     for buf in partials {
         let p = decode_partial(buf);
+        assert_eq!(p.fingerprint, fingerprint, "worker: partial feature graph mismatch");
         let n = p.keys.len();
         let mut local_to_global = vec![0usize; n];
         for id in 0..n {
@@ -662,6 +723,32 @@ pub fn merge_partials(
         for (a, b) in p.protected {
             merged.protect_edge(local_to_global[a], local_to_global[b]);
         }
+        for (a, b, interval) in p.intervals {
+            let curve = features.curves.get(interval.curve_id).expect("worker: invalid curve reference");
+            let lo = interval.start.min(interval.end);
+            let hi = interval.start.max(interval.end);
+            assert!(
+                if let Some(wrap) = curve.param_wrap {
+                    hi - lo <= wrap + 1e-10
+                } else {
+                    lo >= curve.t_min - 1e-10 && hi <= curve.t_max + 1e-10
+                },
+                "worker: curve interval outside domain"
+            );
+            for old in merged.curve_intervals(local_to_global[a], local_to_global[b]) {
+                if old.curve_id != interval.curve_id {
+                    continue;
+                }
+                let shift = curve.param_wrap.map_or(0., |w| ((old.start - interval.start) / w).round() * w);
+                let eps = (curve.t_max - curve.t_min).abs().max(1.) * 1e-9;
+                assert!(
+                    (old.start - interval.start - shift).abs() <= eps
+                        && (old.end - interval.end - shift).abs() <= eps,
+                    "worker: conflicting curve memberships"
+                );
+            }
+            merged.protect_curve_edge(local_to_global[a], local_to_global[b], interval);
+        }
         for (axis, key, len, a, b, fwd, rev) in p.face_uses {
             let uses = face_uses.entry((axis, key, len, local_to_global[a], local_to_global[b])).or_default();
             uses.0 += fwd;
@@ -673,8 +760,13 @@ pub fn merge_partials(
         numerical.curve_projection += p.counters.numerical.curve_projection;
         numerical.face_projection += p.counters.numerical.face_projection;
         numerical.chord_budget += p.counters.numerical.chord_budget;
-        for &t in &p.tris {
-            tris.push(local_to_global[t as usize]);
+        for (triangle, owner) in p.tris.chunks_exact(3).zip(p.patches) {
+            let t = std::array::from_fn(|k| local_to_global[triangle[k] as usize]);
+            if let Some(owner) = owner {
+                assert!(owner < features.strata.len(), "worker: invalid patch owner");
+                merged.set_patch(t, owner);
+            }
+            tris.extend(t);
         }
         failed_cells += p.counters.failed_cells as usize;
         multi_loop_cells += p.counters.multi_loop_cells as usize;
@@ -685,20 +777,22 @@ pub fn merge_partials(
         boundary_violations += p.counters.boundary_violations as usize;
     }
 
-    // S4 cleanups — same call order/args as the serial driver.
-    let ordered = merged.ordered_triangles(&tris);
-    let deduped1 = drop_coincident_triangle_pairs(&ordered);
-    let filtered = drop_debris_components(&merged, &deduped1, lat.step * 4.0, features, lat.step * 2.0, 600);
-    let deduped2 = drop_coincident_triangle_pairs(&filtered);
-    let (flipped, _flips) = flip_sliver_triangles(&merged, &deduped2, 4);
-
-    let (refined, unresolved_triangles) =
-        super::surface_refine::refine_surface(tree, features, &mut merged, &flipped, tuning.curve_chord_tol_mm);
+    let (refined, unresolved_triangles, quality_audit) = super::assembly::finish(
+        tree, features, &mut merged, &tris, lat.step, tuning, None,
+    );
     let (verts, out_tris) = merged.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.quality = quality_audit;
+    validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
+        &merged,
+        &refined,
+        features,
+        tuning.curve_chord_tol_mm,
+    ));
+    validation.unresolved_branch_paths = features.unresolved_branch_paths.clone();
     validation.feature_trace = features.trace_diagnostics;
     validation.face_segments = if failed_cells > 0 {
         AuditStatus::NotChecked
@@ -713,6 +807,7 @@ pub fn merge_partials(
     let ok = validation.ok();
 
     MergedMesh {
+        feature_edges: merged.compacted_curve_edges(&refined),
         verts,
         tris: out_tris,
         manifold,
@@ -824,17 +919,22 @@ mod reliability_tests {
         let x = 1.0 + f64::EPSILON * 7.0;
         let a = p.add(x, 0., 0., 0., 1., 0.);
         let b = p.add(2., 0., 0., 0., 1., 0.);
-        p.protect_edge(a, b);
+        let interval = CurveInterval { curve_id: 7, start: 1.0 + f64::EPSILON * 3., end: 2. };
+        p.protect_curve_edge(a, b, interval);
+        p.set_patch([a, b, a], 12);
         let counters = PartialCounters {
             degenerate_cells: 3,
             numerical: NumericalFailures { chord_budget: 2, ..Default::default() },
             ..Default::default()
         };
         let faces = std::array::from_fn(|_| HashMap::new());
-        let decoded = decode_partial(&encode_partial(&p, &[a, b, a], &counters, &faces));
+        let decoded = decode_partial(&encode_partial(&p, 123, &[a, b, a], &counters, &faces));
         assert_eq!(decoded.verts[0].to_bits(), x.to_bits());
         assert_ne!(decoded.verts[0], (x as f32) as f64);
         assert_eq!(decoded.protected, vec![(a, b)]);
+        assert_eq!(decoded.fingerprint, 123);
+        assert_eq!(decoded.patches, vec![Some(12)]);
+        assert_eq!(decoded.intervals, vec![(a, b, interval)]);
         assert_eq!(decoded.counters.degenerate_cells, 3);
         assert_eq!(decoded.counters.numerical.chord_budget, 2);
     }

@@ -84,6 +84,12 @@ export interface SfccTuning {
     maxPolylinePointsPerCell: number
     /** Interior vertex placement for disk triangulation. */
     interiorVertexMode: "project" | "centroid" | "fan"
+    /** Experimental stages; defaults stay off until real-scene acceptance. */
+    qualityTriangulation: boolean
+    qualityAudit: boolean
+    qualityRefinement: boolean
+    qualityRemeshing: boolean
+    qualityMaxEditTrials: number
     /** Newton iterations for projecting interior vertices onto the surface. */
     projectMaxIters: number
     /** Featureless ambiguous face resolution: sample f at the face center, or refine instead. */
@@ -149,6 +155,11 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     faceSnapEpsFraction: 0.05,
     maxPolylinePointsPerCell: 16,
     interiorVertexMode: "project",
+    qualityTriangulation: false,
+    qualityAudit: false,
+    qualityRefinement: false,
+    qualityRemeshing: false,
+    qualityMaxEditTrials: 10_000,
     projectMaxIters: 8,
     ambiguityResolution: "centerSample",
     recoveryCull: true,
@@ -222,6 +233,11 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         failurePolicy: o.failurePolicy === "partial" || o.failurePolicy === "throw" ? o.failurePolicy : d.failurePolicy,
         creaseAngleDeg: num(o.creaseAngleDeg, d.creaseAngleDeg, -1, 180),
         checkVertexLinks: bool(o.checkVertexLinks, d.checkVertexLinks),
+        qualityTriangulation: bool(o.qualityTriangulation, d.qualityTriangulation),
+        qualityAudit: bool(o.qualityAudit, d.qualityAudit),
+        qualityRefinement: bool(o.qualityRefinement, d.qualityRefinement),
+        qualityRemeshing: bool(o.qualityRemeshing, d.qualityRemeshing),
+        qualityMaxEditTrials: num(o.qualityMaxEditTrials, d.qualityMaxEditTrials, 0, 100_000, true),
         debugOutput: bool(o.debugOutput, d.debugOutput),
         profile: bool(o.profile, d.profile),
     }

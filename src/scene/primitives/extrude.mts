@@ -297,6 +297,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let dCap = abs(capY) - capH;
     let d = max(d2d, dCap);
     let onSide = d2d > dCap;
+    var rawGradient = vec3f(combined.z, 0.0, combined.w);
+    var rawStatus = DERIVATIVE_ONE_SIDED; // Selected polygon segment, including medial ties.
     var gx = combined.z;
     var gz = combined.w;
 ${this.#sideNormalSmoothWgsl("p.xz", "gx", "gz", N, BASE, NORMBASE)}
@@ -330,6 +332,10 @@ ${this.#sideNormalSmoothWgsl("p.xz", "gx", "gz", N, BASE, NORMBASE)}
            - min(gz_neg, rectSDF2D(sample_zn, rectCenter, eTan, outNorm, halfW, halfH));
     }
 
+    if (faceSelection.mode == 1u && faceSelection.nodeId == id && faceSelection.extrudeOffset != 0.0) {
+        rawGradient = vec3f(gx, 0.0, gz) / 0.002;
+        rawStatus = DERIVATIVE_APPROXIMATE;
+    }
     let nSide = safeNormalize(vec3f(gx, 0.0, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     var n = select(nCap, nSide, onSide);
@@ -378,7 +384,9 @@ ${this.#debugTessEdgesWgsl("p.xz", N, BASE)}
             }
         }
     }
-    return sdfTrue(d, resultId, n);
+    var result = sdfWithGradient(sdfTrue(d, resultId, n), select(nCap, rawGradient, onSide), select(DERIVATIVE_EXACT, rawStatus, onSide));
+    result.n = n; // Explicit preview shading; never propagated as a derivative.
+    return result;
 }
 `
         }
@@ -401,8 +409,9 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     var gx_tw = combined.z;
     var gz_tw = combined.w;
 ${this.#sideNormalSmoothWgsl("twisted", "gx_tw", "gz_tw", N, BASE, NORMBASE)}
-    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
+    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6 && abs(capY) < h);
     let gySide = twistRate * (gx_tw * twisted.y - gz_tw * twisted.x);
+    let rawGradient = select(vec3f(0.0, sgn(capY), 0.0), vec3f(ca * combined.z - sa * combined.w, twistRate * (combined.z * twisted.y - combined.w * twisted.x), sa * combined.z + ca * combined.w), onSide);
     let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, gySide, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     var n = select(nCap, nSide, onSide);
@@ -442,7 +451,9 @@ ${this.#debugTessEdgesWgsl("twisted", N, BASE)}
             }
         }
     }
-    return sdfR(d, 0.8, resultId, n);
+    var result = sdfWithGradient(sdfExact(d, 0.8, resultId, rawGradient), rawGradient, DERIVATIVE_ONE_SIDED);
+    result.n = n;
+    return result;
 }
 `
     }
@@ -454,46 +465,10 @@ ${this.#debugTessEdgesWgsl("twisted", N, BASE)}
         const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
         const twistRad = f32Wgsl(this.paramOffset + 5, this.previewF32Slot + 2)
 
-        // Conservative profile bounds (baked, in the same XZ frame as childFunc):
-        // a cheap lower bound on the polygon distance so empty-space ray-march
-        // steps skip the O(N) polygon SDF entirely — the dominant cost for a
-        // finely-tessellated bezier profile. AABB for the untwisted case; a
-        // twist-invariant bounding circle (the profile rotates about the XZ
-        // origin) for the twisted case.
-        const verts = this.child.vertices
-        let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity, maxR2 = 0
-        for (const [x, z] of verts) {
-            if (x < minX) minX = x
-            if (x > maxX) maxX = x
-            if (z < minZ) minZ = z
-            if (z > maxZ) maxZ = z
-            const r2 = x * x + z * z
-            if (r2 > maxR2) maxR2 = r2
-        }
-        const f = (n: number): string => {
-            if (!isFinite(n)) return "0.0"
-            const s = n.toString()
-            return s.includes(".") || s.includes("e") || s.includes("E") ? s : s + ".0"
-        }
-        const cx = f((minX + maxX) / 2), cz = f((minZ + maxZ) / 2)
-        const hx = f((maxX - minX) / 2), hz = f((maxZ - minZ) / 2)
-        const maxR = f(Math.sqrt(maxR2))
-
         if (!hasTwist) {
             return `
 fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     let dCap = abs(p.y - ${capYOff}) - ${capH};
-    // Distance to the profile AABB underestimates the true polygon distance,
-    // so the sphere-trace step never overshoots when we take the cheap path.
-    let q = abs(p.xz - vec2f(${cx}, ${cz})) - vec2f(${hx}, ${hz});
-    let dAabb = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0);
-    let lo = max(dAabb, dCap);
-    // Only take the cheap path when the bound is safely above the marcher's
-    // surface hit threshold (SURF_DIST = 0.001). At the AABB/slab shell, lo
-    // drops toward 0; returning it there would read as a false surface (the
-    // box outline shading the empty space). The thin shell falls through to
-    // the exact polygon, which gives the true (large) distance — no false hit.
-    if (lo > 0.004) { return sdfFast(lo, 1.0, 1.0); }
     let d2d = ${childFunc}(p.xz);
     return sdfFast(max(d2d, dCap), 1.0, 1.0);
 }
@@ -521,19 +496,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
     let rho = length(p.xz);
     let stretch = sqrt(1.0 + twistRate * twistRate * rho * rho);
-    // length(p.xz) - maxR is a twist-invariant lower bound on the polygon
-    // distance: take the cheap path in empty space, keep the exact field func
-    // (untouched) for steps that land near the surface.
-    let dCapHint = abs(p.y - ${capYOff}) - h;
-    let lo = max(rho - ${maxR}, dCapHint);
-    // Margin above SURF_DIST (0.001): at the bounding shell lo -> 0 would read
-    // as a false surface. The thin shell falls through to the exact field func.
-    if (lo > 0.004) { return sdfFast(lo, 0.8, 1.0 / stretch); }
-    // Match the operator-level sdfTwistFast for ray marching: the effective
-    // step is d * safeStepMul = d / stretch. We keep d raw and g = 0.8 (the
-    // historical placeholder) so MDC's voxel sampling, bisection trigger
-    // (g < 0.95), and post-bisection projection all behave exactly as they
-    // did before, avoiding any change to mesh extraction along twisted edges.
+    // Preserve the scalar field for parent CSG; only the step multiplier is conservative.
     return sdfFast(${this.wgslFieldFuncName}(p), 0.8, 1.0 / stretch);
 }
 `
@@ -578,8 +541,9 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let onSide = d2d > dCap;
     let gx_tw = combined.z;
     let gz_tw = combined.w;
-    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6);
+    let twistRate = select(0.0, twist / (2.0 * h), abs(h) > 1e-6 && abs(capY) < h);
     let gySide = twistRate * (gx_tw * twisted.y - gz_tw * twisted.x);
+    let rawGradient = select(vec3f(0.0, sgn(capY), 0.0), vec3f(ca * combined.z - sa * combined.w, twistRate * (combined.z * twisted.y - combined.w * twisted.x), sa * combined.z + ca * combined.w), onSide);
     let nSide = safeNormalize(vec3f(ca * gx_tw - sa * gz_tw, gySide, sa * gx_tw + ca * gz_tw), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
@@ -640,7 +604,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
                 var cr = sdfRMidCorner(d, 1.0, n, featurePoint, n0, n1, length(p - featurePoint));
                 cr.featureIdA = extrudeMidId;
                 cr.featureIdB = cornerKv + 1u;
-                return cr;
+                return sdfWithFeatureGradientMid(cr, rawGradient, DERIVATIVE_ONE_SIDED);
             }
         }
         let tangent = safeNormalize(vec3f(ca * edgeTan2.x - sa * edgeTan2.y, 0.0, sa * edgeTan2.x + ca * edgeTan2.y), vec3f(1.0, 0.0, 0.0));
@@ -649,7 +613,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
         var ln = sdfRMidLine(d, 1.0, n, featurePoint, tangent, edgeOut, length(p - featurePoint));
         ln.featureIdA = extrudeMidId;
         ln.featureIdB = bestKe + 1u;
-        return ln;
+        return sdfWithFeatureGradientMid(ln, rawGradient, DERIVATIVE_ONE_SIDED);
     }
 
     if (onSide && bestPd < featBand) {
@@ -682,18 +646,18 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
                     var cr = sdfRMidCorner(d, 1.0, n, featurePoint, vec3f(0.0, capSign, 0.0), sideOtherN, length(p - featurePoint));
                     cr.featureIdA = extrudeMidId;
                     cr.featureIdB = creaseKv + 1u;
-                    return cr;
+                    return sdfWithFeatureGradientMid(cr, rawGradient, DERIVATIVE_ONE_SIDED);
                 }
                 let featurePoint = vec3f(ca * sv.x - sa * sv.y, p.y, sa * sv.x + ca * sv.y);
                 let tanHel = safeNormalize(vec3f(-twistRate * featurePoint.z, 1.0, twistRate * featurePoint.x), vec3f(0.0, 1.0, 0.0));
                 var ln = sdfRMidLine(d, 1.0, n, featurePoint, tanHel, sideOtherN, length(p - featurePoint));
                 ln.featureIdA = extrudeMidId;
                 ln.featureIdB = creaseKv + 1u;
-                return ln;
+                return sdfWithFeatureGradientMid(ln, rawGradient, DERIVATIVE_ONE_SIDED);
             }
         }
     }
-    return sdfRMid(d, 1.0, n);
+    return sdfWithGradientMid(sdfRMid(d, 1.0, n), rawGradient, DERIVATIVE_ONE_SIDED);
 }
 `
     }

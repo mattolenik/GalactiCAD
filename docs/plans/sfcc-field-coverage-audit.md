@@ -1,5 +1,7 @@
 # SFCC field and seam coverage audit
 
+> **Historical audit and implementation checkpoints:** the findings below refer to their stated baselines. See the [current algorithm explanation](../sfcc-meshing-algorithm.md) and [September 7 audit results](sfcc-analytical-feature-completeness-results.md) for subsequent fixes and remaining limitations.
+
 Date: 2026-09-06. Scope: current working tree, including the uncommitted housing fixes.
 
 The common structural problem is that SFCC's feature compiler represents supporting zero surfaces, but blends consume operand field values away from those surfaces. Supporting surfaces alone do not describe all those values. Missing blend patches then leave no curve to constrain a later cut, intersection, or union. Trimming can remove incorrect candidates; it cannot recover candidates that were never generated.

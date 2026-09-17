@@ -3,8 +3,7 @@
 //!
 //! Port of `compileCpuSdf`'s scene walk (`src/export/sfcc/cpu-sdf.mts`) operating
 //! over a serialized node description instead of live `Node` instances. The walk
-//! is structurally identical: it folds Subtract into pure min/max via negation
-//! parity, bakes Translate/Rotate/uniform-Scale into a [`Similarity`], and
+//! is structurally identical: it folds Subtract into pure min/max by complementing its completed RHS once, bakes Translate/Rotate/uniform-Scale into a [`Similarity`], and
 //! rejects everything outside the SFCC v1 subset with [`SceneBridgeError`]
 //! (mirroring `SfccUnsupportedError`).
 //!
@@ -289,10 +288,9 @@ fn make_leaf(shape: Shape, sim: Similarity, pos: [f64; 3]) -> CsgNode {
     sdf::leaf(shape, sim, pos)
 }
 
-/// Walk the bridge node, mirroring `compileCpuSdf`'s `walk` (negation parity folds
-/// Subtract into min/max; the blend kind flips under `neg`). Returns `None` and
-/// records an offending node on anything outside the v1 subset.
-fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) -> Option<CsgNode> {
+/// Build operands in their ordinary orientation. Only subtraction complements
+/// its completed RHS; rewriting during traversal would apply De Morgan twice.
+fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<CsgNode> {
     match node {
         // --- primitives ------------------------------------------------------
         BridgeNode::Box { pos, half, .. } => Some(make_leaf(Shape::Cuboid { half: *half }, sim, *pos)),
@@ -348,11 +346,11 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
         // --- transforms ------------------------------------------------------
         BridgeNode::Translate { d, arg, .. } => {
             let child = Similarity::from_translation(d[0], d[1], d[2]);
-            walk(state, arg, Similarity::compose(&sim, &child), neg)
+            walk(state, arg, Similarity::compose(&sim, &child))
         }
         BridgeNode::Rotate { fwd, arg, .. } => {
             let child = Similarity::from_rotation_wgsl_fwd(fwd);
-            walk(state, arg, Similarity::compose(&sim, &child), neg)
+            walk(state, arg, Similarity::compose(&sim, &child))
         }
         BridgeNode::Scale { sx, sy, sz, arg, .. } => {
             if sx != sy || sy != sz {
@@ -365,12 +363,12 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
                 return state.reject(node, format!("negative/zero scale ({sx})"));
             }
             let child = Similarity::from_uniform_scale(*sx);
-            walk(state, arg, Similarity::compose(&sim, &child), neg)
+            walk(state, arg, Similarity::compose(&sim, &child))
         }
 
-        // --- booleans (folded to min/max via negation parity) ----------------
+        // --- booleans (one completed-subtree complement for subtraction) -----
         BridgeNode::Union { children, radius, mode, n, .. } => {
-            let kids: Vec<CsgNode> = children.iter().filter_map(|c| walk(state, c, sim, neg)).collect();
+            let kids: Vec<CsgNode> = children.iter().filter_map(|c| walk(state, c, sim)).collect();
             if kids.len() != children.len() {
                 // A child failed; the error is already recorded — propagate None.
                 return None;
@@ -385,22 +383,20 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
                 let m = blend_mode_of(*mode, true);
                 let n = n.unwrap_or(4.0);
                 Some(CsgNode::Blend {
-                    kind: if neg { sdf::BlendKind::Smax } else { sdf::BlendKind::Smin },
+                    kind: sdf::BlendKind::Smin,
                     mode: m,
                     r: *radius,
                     n,
                     children: kids,
                 })
-            } else if neg {
-                Some(CsgNode::Max(kids))
             } else {
                 Some(CsgNode::Min(kids))
             }
         }
         BridgeNode::Subtract { lh, rh, radius, mode, n, .. } => {
-            let l = walk(state, lh, sim, neg);
-            // The right-hand operand is negated (A − B = A ∩ ¬B): flip neg.
-            let r = walk(state, rh, sim, !neg);
+            let l = walk(state, lh, sim);
+            // A − B = max(A, −B), with B built without polarity rewriting.
+            let r = walk(state, rh, sim);
             let (l, r) = match (l, r) {
                 (Some(l), Some(r)) => (l, r),
                 (Some(only), None) | (None, Some(only)) => {
@@ -414,25 +410,27 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
                 }
                 (None, None) => return None,
             };
+            if !complement_supported(&r) {
+                return state.reject(node, "complement of a columns subtree is unsupported");
+            }
+            let r = sdf::negate(r);
             if *radius > 0.0 {
                 let m = blend_mode_of(*mode, false);
                 let n = n.unwrap_or(4.0);
                 Some(CsgNode::Blend {
-                    kind: if neg { sdf::BlendKind::Smin } else { sdf::BlendKind::Smax },
+                    kind: sdf::BlendKind::Smax,
                     mode: m,
                     r: *radius,
                     n,
-                    children: vec![l, sdf::negate(r)],
+                    children: vec![l, r],
                 })
-            } else if neg {
-                Some(CsgNode::Min(vec![l, sdf::negate(r)]))
             } else {
-                Some(CsgNode::Max(vec![l, sdf::negate(r)]))
+                Some(CsgNode::Max(vec![l, r]))
             }
         }
         BridgeNode::Intersect { lh, rh, radius, mode, n, .. } => {
-            let l = walk(state, lh, sim, neg);
-            let r = walk(state, rh, sim, neg);
+            let l = walk(state, lh, sim);
+            let r = walk(state, rh, sim);
             let (l, r) = match (l, r) {
                 (Some(l), Some(r)) => (l, r),
                 (Some(only), None) | (None, Some(only)) => {
@@ -447,17 +445,28 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, neg: bool) ->
                 let m = blend_mode_of(*mode, false);
                 let n = n.unwrap_or(4.0);
                 Some(CsgNode::Blend {
-                    kind: if neg { sdf::BlendKind::Smin } else { sdf::BlendKind::Smax },
+                    kind: sdf::BlendKind::Smax,
                     mode: m,
                     r: *radius,
                     n,
                     children: vec![l, r],
                 })
-            } else if neg {
-                Some(CsgNode::Min(vec![l, r]))
             } else {
                 Some(CsgNode::Max(vec![l, r]))
             }
+        }
+    }
+}
+
+/// Columns and ColumnsI are not complement duals. Keep this rejection at the
+/// boundary so user input cannot reach the native negate assertion.
+fn complement_supported(node: &CsgNode) -> bool {
+    match node {
+        CsgNode::Leaf(_) => true,
+        CsgNode::Min(c) | CsgNode::Max(c) => c.iter().all(complement_supported),
+        CsgNode::Blend { mode, children, .. } => {
+            !matches!(mode, SminMode::Columns | SminMode::ColumnsI)
+                && children.iter().all(complement_supported)
         }
     }
 }
@@ -488,12 +497,12 @@ fn attach_strata(node: &mut CsgNode, leaf_index: &mut usize, first_id: &mut usiz
 }
 
 /// Build the pipeline-ready [`CsgNode`] tree from a serialized scene: walk the
-/// SFCC v1 subset, fold negation parity, bake transforms, assign dense leaf
+/// SFCC v1 subset, complement subtraction operands, bake transforms, assign dense leaf
 /// indices, then attach per-leaf strata. Returns [`SceneBridgeError`] listing
 /// every offending node (mirroring `SfccUnsupportedError`).
 pub fn build_csg_tree(root: &BridgeNode) -> Result<CsgNode, SceneBridgeError> {
     let mut state = WalkState { unsupported: Vec::new() };
-    let csg = walk(&mut state, root, Similarity::identity(), false);
+    let csg = walk(&mut state, root, Similarity::identity());
     if !state.unsupported.is_empty() {
         return Err(SceneBridgeError { unsupported: state.unsupported });
     }

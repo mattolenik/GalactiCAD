@@ -313,6 +313,8 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
+    let rawGradient = select(nCap, vec3f(gx, gy, gz) / (2.0 * eps), onSide);
+    let rawStatus = select(DERIVATIVE_EXACT, DERIVATIVE_APPROXIMATE, onSide);
     let bottomCap = capY < 0.0;
     let capId = select(${this.profiles[this.profiles.length - 1].id}u, ${this.profiles[0].id}u, bottomCap);
     var resultId = select(capId, id, onSide);
@@ -324,7 +326,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
             resultId = FACE_HIGHLIGHT_BOTTOM;
         }
     }
-    return sdfTrue(d, resultId, n);
+    return sdfWithGradient(sdfTrue(d, resultId, n), rawGradient, rawStatus);
 }
 `
     }
@@ -419,17 +421,17 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
                     let n0Cap = safeNormalize(vec3f(prevOutA.x, 0.0, prevOutA.y), vec3f(1.0, 0.0, 0.0));
                     let n1Cap = safeNormalize(vec3f(nextOutA.x, 0.0, nextOutA.y), vec3f(1.0, 0.0, 0.0));
                     let featurePoint = vec3f(v0A.x, ${capYOff} - h, v0A.y);
-                    return sdfRMidCorner(d, 1.0, vec3f(0.0, -1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, vec3f(0.0, -1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint)), rawGradient, rawStatus);
                 }
                 if (abs(capY - h) < capCornerEps) {
                     let n0Cap = safeNormalize(vec3f(prevOutB.x, 0.0, prevOutB.y), vec3f(1.0, 0.0, 0.0));
                     let n1Cap = safeNormalize(vec3f(nextOutB.x, 0.0, nextOutB.y), vec3f(1.0, 0.0, 0.0));
                     let featurePoint = vec3f(v0B.x, ${capYOff} + h, v0B.y);
-                    return sdfRMidCorner(d, 1.0, vec3f(0.0, 1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, vec3f(0.0, 1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint)), rawGradient, rawStatus);
                 }
                 let featurePoint = vec3f(v0.x, p.y, v0.y);
                 let tangent = safeNormalize(vec3f(v0B.x - v0A.x, ${segmentHeight}, v0B.y - v0A.y), vec3f(0.0, 1.0, 0.0));
-                return sdfRMidLine(d, 1.0, n0, featurePoint, tangent, n1, length(p - featurePoint));
+                return sdfWithFeatureGradientMid(sdfRMidLine(d, 1.0, n0, featurePoint, tangent, n1, length(p - featurePoint)), rawGradient, rawStatus);
             }
         }
         if (length(p.xz - v1) < activeSideVtxEps) {
@@ -452,17 +454,17 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
                     let n0Cap = safeNormalize(vec3f(prevOutA.x, 0.0, prevOutA.y), vec3f(1.0, 0.0, 0.0));
                     let n1Cap = safeNormalize(vec3f(nextOutA.x, 0.0, nextOutA.y), vec3f(1.0, 0.0, 0.0));
                     let featurePoint = vec3f(v1A.x, ${capYOff} - h, v1A.y);
-                    return sdfRMidCorner(d, 1.0, vec3f(0.0, -1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, vec3f(0.0, -1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint)), rawGradient, rawStatus);
                 }
                 if (abs(capY - h) < capCornerEps) {
                     let n0Cap = safeNormalize(vec3f(prevOutB.x, 0.0, prevOutB.y), vec3f(1.0, 0.0, 0.0));
                     let n1Cap = safeNormalize(vec3f(nextOutB.x, 0.0, nextOutB.y), vec3f(1.0, 0.0, 0.0));
                     let featurePoint = vec3f(v1B.x, ${capYOff} + h, v1B.y);
-                    return sdfRMidCorner(d, 1.0, vec3f(0.0, 1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, vec3f(0.0, 1.0, 0.0), featurePoint, n0Cap, n1Cap, length(p - featurePoint)), rawGradient, rawStatus);
                 }
                 let featurePoint = vec3f(v1.x, p.y, v1.y);
                 let tangent = safeNormalize(vec3f(v1B.x - v1A.x, ${segmentHeight}, v1B.y - v1A.y), vec3f(0.0, 1.0, 0.0));
-                return sdfRMidLine(d, 1.0, n0, featurePoint, tangent, n1, length(p - featurePoint));
+                return sdfWithFeatureGradientMid(sdfRMidLine(d, 1.0, n0, featurePoint, tangent, n1, length(p - featurePoint)), rawGradient, rawStatus);
             }
         }
     }` : ""
@@ -483,6 +485,8 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
+    let rawGradient = select(nCap, vec3f(gx, gy, gz) / (2.0 * eps), onSide);
+    let rawStatus = select(DERIVATIVE_EXACT, DERIVATIVE_APPROXIMATE, onSide);
     let rimEps = max(max(SURF_DIST * 8.0, h * 0.02), uniforms.voxelSize * 0.6);
     let sideEps = max(max(SURF_DIST * 8.0, h * 0.015), uniforms.voxelSize * 0.35);
     let vtxEps = max(max(SURF_DIST * 8.0, h * 0.03), uniforms.voxelSize * 1.1);
@@ -514,7 +518,7 @@ ${segmentInfo}
                 let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
                 if (dot(n0, n1) < 0.995) {
                     let featurePoint = vec3f(v0.x, capPlaneY, v0.y);
-                    return sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint)), rawGradient, rawStatus);
                 }
             }
             if (length(p.xz - v1) < vtxEps) {
@@ -527,7 +531,7 @@ ${segmentInfo}
                 let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
                 if (dot(n0, n1) < 0.995) {
                     let featurePoint = vec3f(v1.x, capPlaneY, v1.y);
-                    return sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint)), rawGradient, rawStatus);
                 }
             }
             let edge = v1 - v0;
@@ -537,13 +541,13 @@ ${segmentInfo}
             let tEdge = clamp(dot(p.xz - v0, edge) / edgeLen2, 0.0, 1.0);
             let rim = v0 + edge * tEdge;
             let featurePoint = vec3f(rim.x, capPlaneY, rim.y);
-            return sdfRMidLine(
+            return sdfWithFeatureGradientMid(sdfRMidLine(
                 d, 1.0, nCap,
                 featurePoint,
                 safeNormalize(vec3f(edgeTan2.x, 0.0, edgeTan2.y), vec3f(1.0, 0.0, 0.0)),
                 safeNormalize(vec3f(edgeOut2.x, 0.0, edgeOut2.y), vec3f(1.0, 0.0, 0.0)),
                 length(p - featurePoint),
-            );
+            ), rawGradient, rawStatus);
         }
         if (capY >= 0.0 && abs(topCombined.x) < rimEps) {
             let edgeIdx = u32(topCombined.y);
@@ -560,7 +564,7 @@ ${segmentInfo}
                 let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
                 if (dot(n0, n1) < 0.995) {
                     let featurePoint = vec3f(v0.x, capPlaneY, v0.y);
-                    return sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint)), rawGradient, rawStatus);
                 }
             }
             if (length(p.xz - v1) < vtxEps) {
@@ -573,7 +577,7 @@ ${segmentInfo}
                 let n1 = safeNormalize(vec3f(nextOut2.x, 0.0, nextOut2.y), vec3f(1.0, 0.0, 0.0));
                 if (dot(n0, n1) < 0.995) {
                     let featurePoint = vec3f(v1.x, capPlaneY, v1.y);
-                    return sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint));
+                    return sdfWithFeatureGradientMid(sdfRMidCorner(d, 1.0, nCap, featurePoint, n0, n1, length(p - featurePoint)), rawGradient, rawStatus);
                 }
             }
             let edge = v1 - v0;
@@ -583,17 +587,17 @@ ${segmentInfo}
             let tEdge = clamp(dot(p.xz - v0, edge) / edgeLen2, 0.0, 1.0);
             let rim = v0 + edge * tEdge;
             let featurePoint = vec3f(rim.x, capPlaneY, rim.y);
-            return sdfRMidLine(
+            return sdfWithFeatureGradientMid(sdfRMidLine(
                 d, 1.0, nCap,
                 featurePoint,
                 safeNormalize(vec3f(edgeTan2.x, 0.0, edgeTan2.y), vec3f(1.0, 0.0, 0.0)),
                 safeNormalize(vec3f(edgeOut2.x, 0.0, edgeOut2.y), vec3f(1.0, 0.0, 0.0)),
                 length(p - featurePoint),
-            );
+            ), rawGradient, rawStatus);
         }
     }
 ${sideFeatureBlock}
-    return sdfRMid(d, 0.8, n);
+    return sdfWithGradientMid(sdfRMid(d, 0.8, n), rawGradient, rawStatus);
 }
 `
     }

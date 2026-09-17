@@ -237,12 +237,19 @@ fn rectSDF2D(p: vec2f, center: vec2f, tangent: vec2f, normal: vec2f, halfW: f32,
     return length(max(dd, vec2f(0.0))) + min(max(dd.x, dd.y), 0.0);
 }
 
-// Edge helpers: box parameter lookup (injected from scene)
+// NOTE (Metal): the scene-injected lookups below used to be `switch id { case N: {...; return ...;} }`.
+// Tint lowers a case-terminal `return` to `if (volatile_zero == 0u) { return ...; } break;`, and on
+// that shape Apple's AGX backend duplicates basic blocks without bound once a case body is large
+// (a lathe with a dozen profile vertices): MTLCompilerService aborts (std::bad_alloc), Dawn retries,
+// and pipeline creation fails after ~8 minutes. The scene now injects whole functions (one per node
+// plus a plain if-chain dispatcher) so no switch is involved.
+// Scene-injected per-node lookup functions (`latheEdgeHit_<id>`, `latheRingDistance_<id>`).
+//:) insert sceneLatheFns
+
+// Edge helpers: box parameter lookup (if-chain injected from scene)
 fn getBoxParamsForId(id: u32, posOut: ptr<function, vec3f>, halfOut: ptr<function, vec3f>) -> bool {
-    switch id {
-        //:) insert sceneEdgeHelpers
-        default: { return false; }
-    }
+    //:) insert sceneEdgeHelpers
+    return false;
 }
 
 // Box edge encoding: 0-3 = Z-parallel, 4-7 = Y-parallel, 8-11 = X-parallel.
@@ -317,18 +324,16 @@ fn nearestBoxEdgeFeature(localP: vec3f, half: vec3f) -> u32 {
 }
 
 // Lathe primitive edges: ring at profile vertex (featureA = vertex index) or pole when radius ~ 0.
+// Dispatches to the scene-injected `latheEdgeHit_<id>` functions (if-chain, see NOTE above).
 fn tryLathePrimitiveEdgeHit(hitId: u32, hitWorld: vec3f, out: ptr<function, EdgeHit>) -> bool {
-    switch hitId {
-        //:) insert sceneLatheEdgeHitCases
-        default: { return false; }
-    }
+    //:) insert sceneLatheEdgeHitCases
+    return false;
 }
 
+// Distance from hitWorld to the lathe ring/pole at profileVtx; dispatches to `latheRingDistance_<id>`.
 fn lathePrimitiveRingDistance(latheId: u32, profileVtx: u32, hitWorld: vec3f) -> f32 {
-    switch latheId {
-        //:) insert sceneLatheRingDistanceCases
-        default: { return 1e30; }
-    }
+    //:) insert sceneLatheRingDistanceCases
+    return 1e30;
 }
 
 // Closest point on a box edge segment. Projects hit onto the edge geometry for camera-invariant selection.

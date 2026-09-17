@@ -1,0 +1,4553 @@
+{
+  "date": "2026-09-09",
+  "kernelCommit": "e090f2bed4a8cfd8d5cf965123120e6fdd89ace2",
+  "backend": "native release, serial",
+  "host": {
+    "cpu": "Apple M1 Max",
+    "ramBytes": 68719476736,
+    "os": "macOS 26.5.1 (25F80)",
+    "arch": "arm64",
+    "rustc": "1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "reportingSourceSha256": "0b28b97018727307d243a40a9342ea04db7f5c24add6a4f4012ddb1af1b8b947",
+  "binarySha256": "6668fee46945df1f4e4efc2dc190c1db9e27beac966d7629a3c81ff5e35ab373",
+  "warmupsPerMode": 1,
+  "measuredRunsPerMode": 3,
+  "note": "Sequential configurations. Stack sampling restricted to excluded warmups. Phase medians computed independently. Native JSON parse/tree construction excluded. Output bytes exclude feature-edge output and intermediates. Per-curve issue lists omitted; aggregate diagnostics retained.",
+  "inputs": {
+    "housing": {
+      "sourceFile": "docs/manim/scenes/torture_housing.yaml",
+      "yamlSha256": "bb870df71895d6829afa385a4b56d0caa0f30ff0452b5dd4b8e385212487a669",
+      "sceneJsonSha256": "9894a6d091c74b17f0789abbf128d4cf01a7197784c1f5e768095868f92da6ae",
+      "cube": [
+        -23.5,
+        -13.199999809265137,
+        -23.5,
+        47
+      ]
+    },
+    "bracket": {
+      "sourceFile": "docs/manim/scenes/torture_bracket.yaml",
+      "yamlSha256": "9da4b9d3dba0643f97e968aa1b83a001d91dfeabe79bd2eec1403e38d743f044",
+      "sceneJsonSha256": "97a6067a413c30ce5d0c788abd2110620be32c8c5109080e6c70de68af1d5045",
+      "cube": [
+        -26.4,
+        -21.1,
+        -26.4,
+        52.8
+      ]
+    }
+  },
+  "defaults": {
+    "depthMin": 5,
+    "depthMax": 8,
+    "boundsPaddingMm": 2,
+    "surfaceTolMm": 0.01,
+    "curveChordTolMm": 0.02,
+    "reRefineMaxRounds": 2,
+    "qualityMaxEditTrials": 10000
+  },
+  "stackSamples": [
+    {
+      "scene": "housing",
+      "mode": "audit",
+      "run": 0,
+      "durationSeconds": 10,
+      "intervalMs": 5,
+      "mainThreadSamples": 1743,
+      "sampleTimestamp": "2026-09-09 21:28:16.950 -0700",
+      "processLaunchTimestamp": "2026-09-09 21:27:51.593 -0700",
+      "rawSha256": "c7a6462a13c5d81e1cc9e74d993d89fb1b9edd00c44f26ae9e31fb9777a2378d",
+      "scope": "Excluded warmup. Final audit window; not whole-export shares",
+      "callGraphHead": [
+        "    1743 Thread_7362010   DispatchQueue_1: com.apple.main-thread  (serial)",
+        "      1688 start  (in dyld) + 6992  [0x186ecfe00]",
+        "      + 1688 main  (in sfcc_quality_bench) + 864  [0x10417a6b4]",
+        "      +   1688 std::sys::backtrace::__rust_begin_short_backtrace::h0fc7db3911fa9b72  (in sfcc_quality_bench) + 12  [0x1041789b0]",
+        "      +     1688 sfcc_quality_bench::main::h046317f58151beae  (in sfcc_quality_bench) + 4680  [0x104175d8c]",
+        "      +       1688 gcad_kernel::sfcc::pipeline::run_sfcc_pipeline_impl::hfdcea5c9e57c234e  (in sfcc_quality_bench) + 15172  [0x10423a7b0]",
+        "      +         690 gcad_kernel::sfcc::assembly::finish::h0aeba4a70dab208a  (in sfcc_quality_bench) + 9648  [0x1041fde98]",
+        "      +         ! 314 gcad_kernel::sfcc::mesh_edit::intersects::h6e866c5af9aa0c5e  (in sfcc_quality_bench) + 1872  [0x104210b9c]",
+        "      +         ! : 51 gcad_kernel::sfcc::mesh_edit::coplanar::hec3cfc4b98a855e3  (in sfcc_quality_bench) + 688  [0x10421184c]",
+        "      +         ! : | 15 gcad_kernel::sfcc::predicates::orient2d::hf4f5af17b817f8b0  (in sfcc_quality_bench) + 264  [0x104211f00]",
+        "      +         ! : | + 12 gcad_kernel::sfcc::predicates::difference::h2d4246943e590261  (in sfcc_quality_bench) + 304  [0x104212184]",
+        "      +         ! : | + ! 8 gcad_kernel::sfcc::predicates::Dyadic::sub::h48cb47d2cfd33425  (in sfcc_quality_bench) + 132  [0x1042125a0]",
+        "      +         ! : | + ! : 2 _xzm_free  (in libsystem_malloc.dylib) + 196,356  [0x1870ab130,0x1870ab1d0]",
+        "      +         ! : | + ! : 2 gcad_kernel::sfcc::predicates::Dyadic::add::h21c821f6941b25e5  (in sfcc_quality_bench) + 88  [0x10421265c]",
+        "      +         ! : | + ! : | 2 gcad_kernel::sfcc::predicates::Dyadic::shifted::hbd2d6db072512fc6  (in sfcc_quality_bench) + 120  [0x104212990]",
+        "      +         ! : | + ! : |   2 _malloc_zone_calloc  (in libsystem_malloc.dylib) + 64,84  [0x1870ba2a8,0x1870ba2bc]"
+      ],
+      "exclusive": [
+        {
+          "symbol": "_xzm_free",
+          "image": "libsystem_malloc.dylib",
+          "samples": 340
+        },
+        {
+          "symbol": "_xzm_xzone_malloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 181
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::predicates::Dyadic::add",
+          "image": "sfcc_quality_bench",
+          "samples": 177
+        },
+        {
+          "symbol": "_free",
+          "image": "libsystem_malloc.dylib",
+          "samples": 122
+        },
+        {
+          "symbol": "gcad_kernel::primitives::polygon2d::polygon_dist_2d",
+          "image": "sfcc_quality_bench",
+          "samples": 113
+        },
+        {
+          "symbol": "gcad_kernel::sdf::Leaf::f",
+          "image": "sfcc_quality_bench",
+          "samples": 89
+        },
+        {
+          "symbol": "_malloc_zone_malloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 71
+        },
+        {
+          "symbol": "<deduplicated_symbol>",
+          "image": "libsystem_malloc.dylib",
+          "samples": 67
+        },
+        {
+          "symbol": "_xzm_malloc_zone_malloc_type_calloc_entry",
+          "image": "libsystem_malloc.dylib",
+          "samples": 64
+        },
+        {
+          "symbol": "_malloc_zone_calloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 59
+        },
+        {
+          "symbol": "hypot",
+          "image": "libsystem_m.dylib",
+          "samples": 59
+        },
+        {
+          "symbol": "gcad_kernel::sdf::CsgNode::f",
+          "image": "sfcc_quality_bench",
+          "samples": 58
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::predicates::Dyadic::shifted",
+          "image": "sfcc_quality_bench",
+          "samples": 56
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::predicates::difference",
+          "image": "sfcc_quality_bench",
+          "samples": 37
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::predicates::orient2d",
+          "image": "sfcc_quality_bench",
+          "samples": 37
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::predicates::Dyadic::mul",
+          "image": "sfcc_quality_bench",
+          "samples": 25
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::predicates::orient3d",
+          "image": "sfcc_quality_bench",
+          "samples": 19
+        },
+        {
+          "symbol": "DYLD-STUB$$free",
+          "image": "sfcc_quality_bench",
+          "samples": 16
+        },
+        {
+          "symbol": "DYLD-STUB$$hypot",
+          "image": "sfcc_quality_bench",
+          "samples": 12
+        },
+        {
+          "symbol": "DYLD-STUB$$malloc",
+          "image": "sfcc_quality_bench",
+          "samples": 12
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::assembly::finish",
+          "image": "sfcc_quality_bench",
+          "samples": 11
+        },
+        {
+          "symbol": "DYLD-STUB$$calloc",
+          "image": "sfcc_quality_bench",
+          "samples": 10
+        },
+        {
+          "symbol": "_platform_memmove",
+          "image": "libsystem_platform.dylib",
+          "samples": 10
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::predicates::Dyadic::sub",
+          "image": "sfcc_quality_bench",
+          "samples": 10
+        },
+        {
+          "symbol": "gcad_kernel::primitives::smin::smin",
+          "image": "sfcc_quality_bench",
+          "samples": 9
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::mesh_edit::TriangleIndex::query",
+          "image": "sfcc_quality_bench",
+          "samples": 9
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::mesh_edit::intersects",
+          "image": "sfcc_quality_bench",
+          "samples": 8
+        },
+        {
+          "symbol": "gcad_kernel::sdf::Leaf::normal",
+          "image": "sfcc_quality_bench",
+          "samples": 6
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_leaf",
+          "image": "sfcc_quality_bench",
+          "samples": 6
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_tree",
+          "image": "sfcc_quality_bench",
+          "samples": 6
+        },
+        {
+          "symbol": "malloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 6
+        },
+        {
+          "symbol": "_platform_memset",
+          "image": "libsystem_platform.dylib",
+          "samples": 5
+        },
+        {
+          "symbol": "alloc::raw_vec::RawVecInner$LT$A$GT$::finish_grow",
+          "image": "sfcc_quality_bench",
+          "samples": 5
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::mesh_edit::coplanar",
+          "image": "sfcc_quality_bench",
+          "samples": 5
+        }
+      ]
+    },
+    {
+      "scene": "bracket",
+      "mode": "baseline",
+      "run": 0,
+      "durationSeconds": 5,
+      "intervalMs": 5,
+      "mainThreadSamples": 866,
+      "sampleTimestamp": "2026-09-09 21:38:36.314 -0700",
+      "processLaunchTimestamp": "2026-09-09 21:38:31.898 -0700",
+      "rawSha256": "1bfbb4f5d95167b13685a903cd7682ba105833443639c7965a7fe7b2be39ac90",
+      "scope": "Excluded warmup. Octree/contour window; not whole-export shares",
+      "callGraphHead": [
+        "    866 Thread_7382531   DispatchQueue_1: com.apple.main-thread  (serial)",
+        "      787 start  (in dyld) + 6992  [0x186ecfe00]",
+        "      + 787 main  (in sfcc_quality_bench) + 864  [0x102f726b4]",
+        "      +   787 std::sys::backtrace::__rust_begin_short_backtrace::h0fc7db3911fa9b72  (in sfcc_quality_bench) + 12  [0x102f709b0]",
+        "      +     787 sfcc_quality_bench::main::h046317f58151beae  (in sfcc_quality_bench) + 4680  [0x102f6dd8c]",
+        "      +       362 gcad_kernel::sfcc::pipeline::run_sfcc_pipeline_impl::hfdcea5c9e57c234e  (in sfcc_quality_bench) + 5488  [0x1030301dc]",
+        "      +       ! 202 gcad_kernel::sfcc::face_contour::contour_face::h9d0851fa22fddb5f  (in sfcc_quality_bench) + 16732  [0x102fdcacc]",
+        "      +       ! : 146 gcad_kernel::sfcc::feature_curves::FeatureCurve::axis_plane_crossings::h48ac58e4e852436f  (in sfcc_quality_bench) + 752  [0x102fe0830]",
+        "      +       ! : | 144 gcad_kernel::sfcc::feature_curves::FeatureCurve::point_at::hfeb3edfc454db0ad  (in sfcc_quality_bench) + 248  [0x102fc04f8]",
+        "      +       ! : | + 50 gcad_kernel::sfcc::newton::project_to_carrier_pair::h37bf5acbd409a3bf  (in sfcc_quality_bench) + 144  [0x102fa6970]",
+        "      +       ! : | + ! 36 gcad_kernel::strata::Stratum::raw_field::h9b1ccc801bd8c2e7  (in sfcc_quality_bench) + 140  [0x102fa6d8c]",
+        "      +       ! : | + ! : 33 gcad_kernel::strata::Stratum::raw_field::h9b1ccc801bd8c2e7  (in sfcc_quality_bench) + 300  [0x102fa6e2c]",
+        "      +       ! : | + ! : | 10 gcad_kernel::sfcc::field_branches::sample_leaf::h9412110769f06777  (in sfcc_quality_bench) + 672  [0x102fa1824]",
+        "      +       ! : | + ! : | + 6 gcad_kernel::primitives::polygon2d::polygon_dist_2d::h2678e471f6528b4f  (in sfcc_quality_bench) + 168,288,...  [0x102f7ba54,0x102f7bacc,...]",
+        "      +       ! : | + ! : | + 3 gcad_kernel::sfcc::field_branches::sample_leaf::h9412110769f06777  (in sfcc_quality_bench) + 672,760,...  [0x102fa1824,0x102fa187c,...]",
+        "      +       ! : | + ! : | + 1 gcad_kernel::primitives::polygon2d::polygon_dist_2d::h2678e471f6528b4f  (in sfcc_quality_bench) + 452  [0x102f7bb70]"
+      ],
+      "exclusive": [
+        {
+          "symbol": "gcad_kernel::primitives::polygon2d::polygon_dist_2d",
+          "image": "sfcc_quality_bench",
+          "samples": 147
+        },
+        {
+          "symbol": "gcad_kernel::sdf::Leaf::f",
+          "image": "sfcc_quality_bench",
+          "samples": 129
+        },
+        {
+          "symbol": "hypot",
+          "image": "libsystem_m.dylib",
+          "samples": 90
+        },
+        {
+          "symbol": "gcad_kernel::sdf::Leaf::normal",
+          "image": "sfcc_quality_bench",
+          "samples": 52
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_leaf",
+          "image": "sfcc_quality_bench",
+          "samples": 44
+        },
+        {
+          "symbol": "gcad_kernel::strata::Stratum::raw_field",
+          "image": "sfcc_quality_bench",
+          "samples": 43
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::newton::project_to_carrier_pair",
+          "image": "sfcc_quality_bench",
+          "samples": 34
+        },
+        {
+          "symbol": "gcad_kernel::sdf::CsgNode::f",
+          "image": "sfcc_quality_bench",
+          "samples": 33
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::face_contour::contour_face",
+          "image": "sfcc_quality_bench",
+          "samples": 31
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_tree",
+          "image": "sfcc_quality_bench",
+          "samples": 26
+        },
+        {
+          "symbol": "DYLD-STUB$$hypot",
+          "image": "sfcc_quality_bench",
+          "samples": 15
+        },
+        {
+          "symbol": "_xzm_free",
+          "image": "libsystem_malloc.dylib",
+          "samples": 13
+        },
+        {
+          "symbol": "core::hash::BuildHasher::hash_one",
+          "image": "sfcc_quality_bench",
+          "samples": 13
+        },
+        {
+          "symbol": "_$LT$core..hash..sip..Hasher$LT$S$GT$$u20$as$u20$core..hash..Hasher$GT$::write",
+          "image": "sfcc_quality_bench",
+          "samples": 12
+        },
+        {
+          "symbol": "_malloc_zone_malloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 12
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::pipeline::run_sfcc_pipeline_impl",
+          "image": "sfcc_quality_bench",
+          "samples": 11
+        },
+        {
+          "symbol": "gcad_kernel::strata::Stratum::f",
+          "image": "sfcc_quality_bench",
+          "samples": 11
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::feature_curves::FeatureCurve::axis_plane_crossings",
+          "image": "sfcc_quality_bench",
+          "samples": 10
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::branch_surfaces::sample_override",
+          "image": "sfcc_quality_bench",
+          "samples": 9
+        },
+        {
+          "symbol": "_xzm_xzone_malloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 8
+        },
+        {
+          "symbol": "???",
+          "image": "libsystem_m.dylib",
+          "samples": 7
+        },
+        {
+          "symbol": "__sincos_stret",
+          "image": "libsystem_m.dylib",
+          "samples": 7
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::feature_curves::FeatureCurve::project",
+          "image": "sfcc_quality_bench",
+          "samples": 7
+        },
+        {
+          "symbol": "<deduplicated_symbol>",
+          "image": "libsystem_malloc.dylib",
+          "samples": 6
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::spatial_index::SfccSpatialIndex::curves_in_box",
+          "image": "sfcc_quality_bench",
+          "samples": 6
+        },
+        {
+          "symbol": "gcad_kernel::strata::Stratum::normal",
+          "image": "sfcc_quality_bench",
+          "samples": 6
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::branch_surfaces::FieldBranch::sample",
+          "image": "sfcc_quality_bench",
+          "samples": 5
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::octree::Sampler::sample_at",
+          "image": "sfcc_quality_bench",
+          "samples": 5
+        }
+      ]
+    },
+    {
+      "scene": "bracket",
+      "mode": "all",
+      "run": 0,
+      "durationSeconds": 10,
+      "intervalMs": 5,
+      "mainThreadSamples": 1731,
+      "sampleTimestamp": "2026-09-09 21:42:19.442 -0700",
+      "processLaunchTimestamp": "2026-09-09 21:42:09.634 -0700",
+      "rawSha256": "a8e1787552cc30a1e7d817a5dfc5a314e8f823eb6ad8d69fc80ce11bb6f53a6c",
+      "scope": "Excluded warmup. Started during experimental cell meshing; not whole-export shares",
+      "callGraphHead": [
+        "    1731 Thread_7389129   DispatchQueue_1: com.apple.main-thread  (serial)",
+        "      1480 start  (in dyld) + 6992  [0x186ecfe00]",
+        "      + 1480 main  (in sfcc_quality_bench) + 864  [0x1042566b4]",
+        "      +   1480 std::sys::backtrace::__rust_begin_short_backtrace::h0fc7db3911fa9b72  (in sfcc_quality_bench) + 12  [0x1042549b0]",
+        "      +     1480 sfcc_quality_bench::main::h046317f58151beae  (in sfcc_quality_bench) + 4680  [0x104251d8c]",
+        "      +       1078 gcad_kernel::sfcc::pipeline::run_sfcc_pipeline_impl::hfdcea5c9e57c234e  (in sfcc_quality_bench) + 13624  [0x1043161a4]",
+        "      +       ! 752 gcad_kernel::sfcc::cell_mesh::mesh_cells_subset::h84dcfaef00551933  (in sfcc_quality_bench) + 23384  [0x104300a40]",
+        "      +       ! : 640 gcad_kernel::sfcc::surface_patch::disk::h90261b8f74e358ed  (in sfcc_quality_bench) + 1992  [0x104309070]",
+        "      +       ! : | 633 gcad_kernel::sfcc::field_branches::FieldRef::surface_live::hb1a60ab12c6dff75  (in sfcc_quality_bench) + 128  [0x10428d5c8]",
+        "      +       ! : | + 436 gcad_kernel::sfcc::field_branches::sample_tree::h9f84852bb7e11801  (in sfcc_quality_bench) + 232  [0x104287874]",
+        "      +       ! : | + ! 378 gcad_kernel::sdf::CsgNode::f::h3715a96a96c5fce3  (in sfcc_quality_bench) + 132  [0x104286d8c]",
+        "      +       ! : | + ! : 299 gcad_kernel::sdf::CsgNode::f::h3715a96a96c5fce3  (in sfcc_quality_bench) + 132  [0x104286d8c]",
+        "      +       ! : | + ! : | 205 gcad_kernel::sdf::CsgNode::f::h3715a96a96c5fce3  (in sfcc_quality_bench) + 132  [0x104286d8c]",
+        "      +       ! : | + ! : | + 142 gcad_kernel::sdf::CsgNode::f::h3715a96a96c5fce3  (in sfcc_quality_bench) + 132  [0x104286d8c]",
+        "      +       ! : | + ! : | + ! 78 gcad_kernel::sdf::CsgNode::f::h3715a96a96c5fce3  (in sfcc_quality_bench) + 132  [0x104286d8c]",
+        "      +       ! : | + ! : | + ! : 36 gcad_kernel::sdf::CsgNode::f::h3715a96a96c5fce3  (in sfcc_quality_bench) + 132  [0x104286d8c]"
+      ],
+      "exclusive": [
+        {
+          "symbol": "gcad_kernel::sdf::Leaf::f",
+          "image": "sfcc_quality_bench",
+          "samples": 447
+        },
+        {
+          "symbol": "gcad_kernel::primitives::polygon2d::polygon_dist_2d",
+          "image": "sfcc_quality_bench",
+          "samples": 286
+        },
+        {
+          "symbol": "gcad_kernel::sdf::CsgNode::f",
+          "image": "sfcc_quality_bench",
+          "samples": 217
+        },
+        {
+          "symbol": "hypot",
+          "image": "libsystem_m.dylib",
+          "samples": 214
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_leaf",
+          "image": "sfcc_quality_bench",
+          "samples": 77
+        },
+        {
+          "symbol": "gcad_kernel::sdf::Leaf::normal",
+          "image": "sfcc_quality_bench",
+          "samples": 70
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_tree",
+          "image": "sfcc_quality_bench",
+          "samples": 59
+        },
+        {
+          "symbol": "DYLD-STUB$$hypot",
+          "image": "sfcc_quality_bench",
+          "samples": 45
+        },
+        {
+          "symbol": "gcad_kernel::strata::Stratum::raw_field",
+          "image": "sfcc_quality_bench",
+          "samples": 39
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::newton::project_to_carrier_pair",
+          "image": "sfcc_quality_bench",
+          "samples": 25
+        },
+        {
+          "symbol": "gcad_kernel::primitives::smin::smin",
+          "image": "sfcc_quality_bench",
+          "samples": 18
+        },
+        {
+          "symbol": "__sincos_stret",
+          "image": "libsystem_m.dylib",
+          "samples": 15
+        },
+        {
+          "symbol": "gcad_kernel::sdf::Pruned::f",
+          "image": "sfcc_quality_bench",
+          "samples": 14
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::surface_patch::disk",
+          "image": "sfcc_quality_bench",
+          "samples": 13
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_pruned",
+          "image": "sfcc_quality_bench",
+          "samples": 11
+        },
+        {
+          "symbol": "???",
+          "image": "libsystem_m.dylib",
+          "samples": 10
+        },
+        {
+          "symbol": "???",
+          "image": "libsystem_m.dylib",
+          "samples": 10
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::cell_mesh::mesh_cells_subset",
+          "image": "sfcc_quality_bench",
+          "samples": 10
+        },
+        {
+          "symbol": "???",
+          "image": "libsystem_m.dylib",
+          "samples": 8
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::octree::build_octree_inner",
+          "image": "sfcc_quality_bench",
+          "samples": 8
+        },
+        {
+          "symbol": "gcad_kernel::strata::Stratum::normal",
+          "image": "sfcc_quality_bench",
+          "samples": 8
+        },
+        {
+          "symbol": "DYLD-STUB$$__sincos_stret",
+          "image": "sfcc_quality_bench",
+          "samples": 7
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::field_branches::sample_blend",
+          "image": "sfcc_quality_bench",
+          "samples": 6
+        },
+        {
+          "symbol": "_free",
+          "image": "libsystem_malloc.dylib",
+          "samples": 5
+        },
+        {
+          "symbol": "_malloc_zone_malloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 5
+        },
+        {
+          "symbol": "_xzm_free",
+          "image": "libsystem_malloc.dylib",
+          "samples": 5
+        },
+        {
+          "symbol": "gcad_kernel::sfcc::branch_surfaces::FieldBranch::sample",
+          "image": "sfcc_quality_bench",
+          "samples": 5
+        }
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "scene": "housing",
+      "mode": "baseline",
+      "geometryCountsStable": true,
+      "validationStable": true,
+      "medians": {
+        "ms": 23549.79454200001,
+        "phaseFeatureMs": 5350.740333000009,
+        "phaseOctreeMs": 10606.830208999985,
+        "phaseContourMs": 4508.369291999996,
+        "phaseCellmeshMs": 1252.8463330000086,
+        "phaseAssembleMs": 1790.7819159999926,
+        "retryMs": 8171.778041999991,
+        "octreeDecideMs": 10222.65575299997,
+        "octreeApplyMs": 361.62620899995454,
+        "assemblyIntervals": {
+          "Assembling mesh": 1789.2683749999997
+        }
+      },
+      "samples": [
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 0,
+          "warmup": true,
+          "ms": 24964.05125,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5320.821790999999,
+          "phaseOctreeMs": 11724.981792,
+          "phaseContourMs": 4829.959958000003,
+          "phaseCellmeshMs": 1249.268916999994,
+          "phaseAssembleMs": 1791.221042000001,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "baseline",
+            "octreeApplyMs": 363.02937499998916,
+            "octreeDecideMs": 11337.56012400001,
+            "reRefineRounds": 1,
+            "run": 0
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00020799999999999985
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5320.822125
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 11184.515625
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13593.907833
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 14216.730625000002
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 20078.485916
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 22498.584
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 23127.281375000002
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 24916.253541
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5320.821916999999
+            },
+            {
+              "label": "Building octree",
+              "ms": 5863.6935
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2409.3922079999993
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 622.8227920000027
+            },
+            {
+              "label": "Building octree",
+              "ms": 5861.7552909999995
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2420.0980839999975
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 628.6973750000034
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1788.972165999996
+            }
+          ],
+          "retryMs": 8910.55075
+        },
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 1,
+          "warmup": false,
+          "ms": 23559.093209000002,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5363.395792000003,
+          "phaseOctreeMs": 10609.302082999991,
+          "phaseContourMs": 4508.369291999996,
+          "phaseCellmeshMs": 1248.3990830000184,
+          "phaseAssembleMs": 1788.4464999999982,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "baseline",
+            "octreeApplyMs": 361.62620899995454,
+            "octreeDecideMs": 10224.22683500003,
+            "reRefineRounds": 1,
+            "run": 1
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0002500000045984052
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5363.396167000003
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10685.586791999998
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 12943.302249999997
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 13567.2095
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 18854.670792000008
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 21104.970875000003
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 21731.004917000002
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 23517.912792
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5363.395916999998
+            },
+            {
+              "label": "Building octree",
+              "ms": 5322.190624999996
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2257.7154579999988
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 623.9072500000038
+            },
+            {
+              "label": "Building octree",
+              "ms": 5287.461292000007
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2250.3000829999946
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 626.0340419999993
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1786.9078749999971
+            }
+          ],
+          "retryMs": 8163.795417000001
+        },
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 2,
+          "warmup": false,
+          "ms": 23549.79454200001,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5350.740333000009,
+          "phaseOctreeMs": 10606.830208999985,
+          "phaseContourMs": 4500.311207999999,
+          "phaseCellmeshMs": 1252.8463330000086,
+          "phaseAssembleMs": 1801.517875000005,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "baseline",
+            "octreeApplyMs": 360.946497000019,
+            "octreeDecideMs": 10222.65575299997,
+            "reRefineRounds": 1,
+            "run": 2
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0002080000049318187
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5350.7406249999985
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10643.734042000004
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 12884.18825
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 13510.294958000006
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 18824.54266700001
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 21083.98558300001
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 21712.616
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 23512.246000000006
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5350.740416999994
+            },
+            {
+              "label": "Building octree",
+              "ms": 5292.993417000005
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2240.4542079999956
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 626.1067080000066
+            },
+            {
+              "label": "Building octree",
+              "ms": 5314.247709000003
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2259.442916
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 628.630416999993
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1799.6300000000047
+            }
+          ],
+          "retryMs": 8202.321041999996
+        },
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 3,
+          "warmup": false,
+          "ms": 23543.707834,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5317.521124999999,
+          "phaseOctreeMs": 10599.054040999996,
+          "phaseContourMs": 4542.94270900001,
+          "phaseCellmeshMs": 1256.0152090000047,
+          "phaseAssembleMs": 1790.7819159999926,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "baseline",
+            "octreeApplyMs": 364.75312100003066,
+            "octreeDecideMs": 10210.347503000055,
+            "reRefineRounds": 1,
+            "run": 3
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0001250000059371814
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5317.5214590000105
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10644.809417000011
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 12920.804042000003
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 13545.268750000017
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 18817.396000000008
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 21083.973417
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 21717.04679200001
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 23506.315167000008
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5317.521334000005
+            },
+            {
+              "label": "Building octree",
+              "ms": 5327.287958000001
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2275.994624999992
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 624.4647080000141
+            },
+            {
+              "label": "Building octree",
+              "ms": 5272.12724999999
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2266.577416999993
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 633.0733750000072
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1789.2683749999997
+            }
+          ],
+          "retryMs": 8171.778041999991
+        }
+      ]
+    },
+    {
+      "scene": "housing",
+      "mode": "audit",
+      "geometryCountsStable": true,
+      "validationStable": true,
+      "medians": {
+        "ms": 54855.999583999976,
+        "phaseFeatureMs": 5515.892915999997,
+        "phaseOctreeMs": 11155.603084000002,
+        "phaseContourMs": 4733.722041999994,
+        "phaseCellmeshMs": 1286.8698330000043,
+        "phaseAssembleMs": 32210.738500000007,
+        "retryMs": 8496.890333999996,
+        "octreeDecideMs": 10737.383332000056,
+        "octreeApplyMs": 384.6984169999778,
+        "assemblyIntervals": {
+          "Assembling mesh": 1542.555541000038,
+          "Auditing final triangle geometry": 30666.80904199998
+        }
+      },
+      "samples": [
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 0,
+          "warmup": true,
+          "ms": 52994.854625,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5450.017416,
+          "phaseOctreeMs": 10637.491167,
+          "phaseContourMs": 4662.858082999999,
+          "phaseCellmeshMs": 1258.2537500000017,
+          "phaseAssembleMs": 30940.6555,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 110850,
+              "afterTriangles": 128946,
+              "beforeSlivers": 1494,
+              "afterSlivers": 2468,
+              "beforeP5Angle": 5.208968176239555,
+              "afterP5Angle": 3.933312676292803,
+              "flips": 282,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 128946,
+              "geometryFailures": 584,
+              "intersections": 15609,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "audit",
+            "octreeApplyMs": 362.6244609999958,
+            "octreeDecideMs": 10249.40341399999,
+            "reRefineRounds": 1,
+            "run": 0
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00012499999999999968
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5450.017583000001
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10783.440958
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13135.515875000001
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 13754.292333
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 19058.785375
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 21369.141666
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 22010.325583
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 23518.268958
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 52949.276
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5450.017458000001
+            },
+            {
+              "label": "Building octree",
+              "ms": 5333.4233749999985
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2352.0749170000017
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 618.7764579999985
+            },
+            {
+              "label": "Building octree",
+              "ms": 5304.493042
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2310.356291
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 641.1839170000021
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1507.943374999999
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 29431.007041999997
+            }
+          ],
+          "retryMs": 8256.033250000002
+        },
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 1,
+          "warmup": false,
+          "ms": 54797.937207999996,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5337.134041999998,
+          "phaseOctreeMs": 10654.314041000005,
+          "phaseContourMs": 4661.9023339999985,
+          "phaseCellmeshMs": 1252.6092919999937,
+          "phaseAssembleMs": 32850.035,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 110850,
+              "afterTriangles": 128946,
+              "beforeSlivers": 1494,
+              "afterSlivers": 2468,
+              "beforeP5Angle": 5.208968176239555,
+              "afterP5Angle": 3.933312676292803,
+              "flips": 282,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 128946,
+              "geometryFailures": 584,
+              "intersections": 15609,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "audit",
+            "octreeApplyMs": 368.01929099998233,
+            "octreeDecideMs": 10262.68046000004,
+            "reRefineRounds": 1,
+            "run": 1
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00016700000560376793
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5337.1345
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10676.199416999996
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 12984.043291999995
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 13598.395916999994
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 18913.990542000007
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 21267.700417000007
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 21908.108084
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 23443.289166999988
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 54755.994709
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5337.1343329999945
+            },
+            {
+              "label": "Building octree",
+              "ms": 5339.064916999996
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2307.8438749999987
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 614.3526249999995
+            },
+            {
+              "label": "Building octree",
+              "ms": 5315.5946250000125
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2353.7098750000005
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 640.4076669999922
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1535.1810829999886
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 31312.70554200001
+            }
+          ],
+          "retryMs": 8309.712167000005
+        },
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 2,
+          "warmup": false,
+          "ms": 54855.999583999976,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5515.892915999997,
+          "phaseOctreeMs": 11155.603084000002,
+          "phaseContourMs": 4733.722041999994,
+          "phaseCellmeshMs": 1392.8187489999982,
+          "phaseAssembleMs": 32013.63624999998,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 110850,
+              "afterTriangles": 128946,
+              "beforeSlivers": 1494,
+              "afterSlivers": 2468,
+              "beforeP5Angle": 5.208968176239555,
+              "afterP5Angle": 3.933312676292803,
+              "flips": 282,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 128946,
+              "geometryFailures": 584,
+              "intersections": 15609,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "audit",
+            "octreeApplyMs": 388.64229499992507,
+            "octreeDecideMs": 10737.383332000056,
+            "reRefineRounds": 1,
+            "run": 2
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.000291000003926456
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5515.893290999986
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 11074.001416
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13447.155332999988
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 14194.749749999988
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 19792.671499999997
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 22152.81004099999
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 22799.532957999996
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 24406.918416
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 54811.67316599999
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5515.892999999982
+            },
+            {
+              "label": "Building octree",
+              "ms": 5558.108125000013
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2373.1539169999887
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 747.5944170000002
+            },
+            {
+              "label": "Building octree",
+              "ms": 5597.921750000009
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2360.138540999993
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 646.7229170000064
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1607.3854580000043
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 30404.754749999993
+            }
+          ],
+          "retryMs": 8604.783208000008
+        },
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 3,
+          "warmup": false,
+          "ms": 55277.239499999996,
+          "triangles": 128946,
+          "outputBytes": 3610232,
+          "phaseFeatureMs": 5765.687291999988,
+          "phaseOctreeMs": 11166.718834,
+          "phaseContourMs": 4805.52879099999,
+          "phaseCellmeshMs": 1286.8698330000043,
+          "phaseAssembleMs": 32210.738500000007,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 110850,
+              "afterTriangles": 128946,
+              "beforeSlivers": 1494,
+              "afterSlivers": 2468,
+              "beforeP5Angle": 5.208968176239555,
+              "afterP5Angle": 3.933312676292803,
+              "flips": 282,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 128946,
+              "geometryFailures": 584,
+              "intersections": 15609,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 310,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "audit",
+            "octreeApplyMs": 384.6984169999778,
+            "octreeDecideMs": 10753.077122000017,
+            "reRefineRounds": 1,
+            "run": 3
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00020899999071843922
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5765.687542
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 11524.027042000002
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13892.421624999988
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 14529.288374999975
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 19938.099916999985
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 22374.798959000007
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 23026.17870899997
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 24568.73425000001
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 55235.54329199999
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5765.687333000009
+            },
+            {
+              "label": "Building octree",
+              "ms": 5758.339500000002
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2368.3945829999866
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 636.8667499999865
+            },
+            {
+              "label": "Building octree",
+              "ms": 5408.81154200001
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2436.699042000022
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 651.3797499999637
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 1542.555541000038
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 30666.80904199998
+            }
+          ],
+          "retryMs": 8496.890333999996
+        }
+      ]
+    },
+    {
+      "scene": "housing",
+      "mode": "all",
+      "geometryCountsStable": true,
+      "validationStable": true,
+      "medians": {
+        "ms": 104862.132833,
+        "phaseFeatureMs": 5468.171750000009,
+        "phaseOctreeMs": 10609.499001000018,
+        "phaseContourMs": 4645.324999000033,
+        "phaseCellmeshMs": 31980.210959000047,
+        "phaseAssembleMs": 52817.09833300003,
+        "retryMs": 23610.75566699996,
+        "octreeDecideMs": 10218.377498000045,
+        "octreeApplyMs": 367.9226680001593,
+        "assemblyIntervals": {
+          "Assembling mesh": 124.2929169999843,
+          "Optimizing patch diagonals": 1972.5320839999476,
+          "Refining analytical patches": 2829.599750000023,
+          "Remeshing analytical patches": 23856.90637499999,
+          "Auditing final triangle geometry": 23312.748666999978
+        }
+      },
+      "samples": [
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 0,
+          "warmup": true,
+          "ms": 107296.42045900002,
+          "triangles": 115502,
+          "outputBytes": 3233800,
+          "phaseFeatureMs": 5666.416375,
+          "phaseOctreeMs": 11273.470208999996,
+          "phaseContourMs": 4809.371125000007,
+          "phaseCellmeshMs": 32618.963749999995,
+          "phaseAssembleMs": 52888.85837500001,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 99034,
+              "afterTriangles": 115502,
+              "beforeSlivers": 1435,
+              "afterSlivers": 2430,
+              "beforeP5Angle": 4.76520912442615,
+              "afterP5Angle": 3.93185428165449,
+              "flips": 1111,
+              "inserted": 133,
+              "edgeSplits": 133,
+              "interiorSplits": 0,
+              "collapses": 1253,
+              "relocations": 5795,
+              "rejected": 7581,
+              "unknownTriangles": 52276,
+              "geometryFailures": 582,
+              "intersections": 15538,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 582,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "all",
+            "octreeApplyMs": 405.26349700001265,
+            "octreeDecideMs": 10839.688252999975,
+            "reRefineRounds": 1,
+            "run": 0
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00016700000000000005
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5666.416625
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 11283.322625
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13706.374917000001
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 30473.223459
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 36130.232084
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 38516.102374999995
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 54370.631084
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 54488.376625000004
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 56429.430458999996
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 59324.375167000006
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 83201.34775
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 107257.079875
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5666.416458
+            },
+            {
+              "label": "Building octree",
+              "ms": 5616.906000000001
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2423.0522920000003
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 16766.848542
+            },
+            {
+              "label": "Building octree",
+              "ms": 5657.008625000002
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2385.870290999992
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 15854.528709000006
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 117.74554100000387
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 1941.0538339999912
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 2894.94470800001
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 23876.972582999995
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 24055.732124999995
+            }
+          ],
+          "retryMs": 23897.407625
+        },
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 1,
+          "warmup": false,
+          "ms": 104862.132833,
+          "triangles": 115502,
+          "outputBytes": 3233800,
+          "phaseFeatureMs": 5357.15516699999,
+          "phaseOctreeMs": 10609.499001000018,
+          "phaseContourMs": 4545.507249000002,
+          "phaseCellmeshMs": 31457.527249999985,
+          "phaseAssembleMs": 52853.344958,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 99034,
+              "afterTriangles": 115502,
+              "beforeSlivers": 1435,
+              "afterSlivers": 2430,
+              "beforeP5Angle": 4.76520912442615,
+              "afterP5Angle": 3.93185428165449,
+              "flips": 1111,
+              "inserted": 133,
+              "edgeSplits": 133,
+              "interiorSplits": 0,
+              "collapses": 1253,
+              "relocations": 5795,
+              "rejected": 7581,
+              "unknownTriangles": 52276,
+              "geometryFailures": 582,
+              "intersections": 15538,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 582,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "all",
+            "octreeApplyMs": 367.4172099999705,
+            "octreeDecideMs": 10218.377498000045,
+            "reRefineRounds": 1,
+            "run": 1
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00016700000560376793
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5357.1553339999955
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10733.474750000008
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13036.322583999994
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 28716.400209
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 33949.86316699999
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 36192.23283399998
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 51971.80629200001
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 52096.09920899999
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 54265.07308399999
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 57094.67283400001
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 80951.579209
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 104823.03375000002
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5357.15516699999
+            },
+            {
+              "label": "Building octree",
+              "ms": 5376.319416000013
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2302.8478339999856
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 15680.077625000005
+            },
+            {
+              "label": "Building octree",
+              "ms": 5233.462957999989
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2242.3696669999918
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 15779.573458000028
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 124.2929169999843
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 2168.973874999996
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 2829.599750000023
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 23856.90637499999
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 23871.454541000014
+            }
+          ],
+          "retryMs": 23255.40608300001
+        },
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 2,
+          "warmup": false,
+          "ms": 105582.176917,
+          "triangles": 115502,
+          "outputBytes": 3233800,
+          "phaseFeatureMs": 5468.171750000009,
+          "phaseOctreeMs": 10569.449334000004,
+          "phaseContourMs": 4645.324999000033,
+          "phaseCellmeshMs": 32035.757041999925,
+          "phaseAssembleMs": 52817.09833300003,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 99034,
+              "afterTriangles": 115502,
+              "beforeSlivers": 1435,
+              "afterSlivers": 2430,
+              "beforeP5Angle": 4.76520912442615,
+              "afterP5Angle": 3.93185428165449,
+              "flips": 1111,
+              "inserted": 133,
+              "edgeSplits": 133,
+              "interiorSplits": 0,
+              "collapses": 1253,
+              "relocations": 5795,
+              "rejected": 7581,
+              "unknownTriangles": 52276,
+              "geometryFailures": 582,
+              "intersections": 15538,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 582,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "all",
+            "octreeApplyMs": 367.9226680001593,
+            "octreeDecideMs": 10177.918205999944,
+            "reRefineRounds": 1,
+            "run": 2
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00041599999531172216
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5468.171957999992
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10793.760750000016
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13129.330249999999
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 29110.056540999998
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 34354.252624999994
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 36663.66829100001
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 52720.81220799996
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 52841.27770800001
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 54774.06950000001
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 57572.250333
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 82223.052833
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 105535.80149999997
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5468.171541999996
+            },
+            {
+              "label": "Building octree",
+              "ms": 5325.588792000024
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2335.5694999999832
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 15980.726290999999
+            },
+            {
+              "label": "Building octree",
+              "ms": 5244.196083999996
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2309.4156660000153
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 16057.14391699995
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 120.46550000004936
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 1932.7917920000036
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 2798.1808329999913
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 24650.80249999999
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 23312.748666999978
+            }
+          ],
+          "retryMs": 23610.75566699996
+        },
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 3,
+          "warmup": false,
+          "ms": 104591.337458,
+          "triangles": 115502,
+          "outputBytes": 3233800,
+          "phaseFeatureMs": 5510.428332999989,
+          "phaseOctreeMs": 10936.853250000044,
+          "phaseContourMs": 4678.9928329999675,
+          "phaseCellmeshMs": 31980.210959000047,
+          "phaseAssembleMs": 51441.05245800002,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 99034,
+              "afterTriangles": 115502,
+              "beforeSlivers": 1435,
+              "afterSlivers": 2430,
+              "beforeP5Angle": 4.76520912442615,
+              "afterP5Angle": 3.93185428165449,
+              "flips": 1111,
+              "inserted": 133,
+              "edgeSplits": 133,
+              "interiorSplits": 0,
+              "collapses": 1253,
+              "relocations": 5795,
+              "rejected": 7581,
+              "unknownTriangles": 52276,
+              "geometryFailures": 582,
+              "intersections": 15538,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 60,
+              "missingCurves": 9,
+              "disconnectedCurves": 14,
+              "intervalGaps": 40,
+              "offCurveEdges": 0,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 14057,
+            "featureFallbackCells": 63,
+            "curveProjectionFailures": 530,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 582,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024975475975800594,
+            "featureTrace": {
+              "pairsConsidered": 3269,
+              "seedsFound": 39204,
+              "curvesTraced": 4479,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 6103,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 149,
+            "leaves": 47032,
+            "mode": "all",
+            "octreeApplyMs": 375.1351259997464,
+            "octreeDecideMs": 10534.456416000205,
+            "reRefineRounds": 1,
+            "run": 3
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0002500000409781933
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 5510.428625000059
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 10908.562250000017
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 13203.727083000005
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 29132.198250000016
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 34671.25483300007
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 37054.74083300005
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 53108.57729100005
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 53237.30141600006
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 55209.83350000001
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 58196.183541000064
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 81764.58233300003
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 104547.53787500004
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 5510.428375000018
+            },
+            {
+              "label": "Building octree",
+              "ms": 5398.133624999959
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2295.164832999988
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 15928.47116700001
+            },
+            {
+              "label": "Building octree",
+              "ms": 5539.056583000056
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2383.4859999999753
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 16053.836458000005
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 128.72412500000792
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 1972.5320839999476
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 2986.350041000056
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 23568.398791999964
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 22782.95554200001
+            }
+          ],
+          "retryMs": 23976.379041000037
+        }
+      ]
+    },
+    {
+      "scene": "bracket",
+      "mode": "baseline",
+      "geometryCountsStable": true,
+      "validationStable": true,
+      "medians": {
+        "ms": 16864.014333999992,
+        "phaseFeatureMs": 1415.3555840000008,
+        "phaseOctreeMs": 9356.598541,
+        "phaseContourMs": 4110.541208000002,
+        "phaseCellmeshMs": 1045.569666000003,
+        "phaseAssembleMs": 887.1884170000121,
+        "retryMs": 7227.482666999997,
+        "octreeDecideMs": 9075.018834999995,
+        "octreeApplyMs": 259.6202899999844,
+        "assemblyIntervals": {
+          "Assembling mesh": 884.6945410000044
+        }
+      },
+      "samples": [
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 0,
+          "warmup": true,
+          "ms": 17230.95,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1488.441666,
+          "phaseOctreeMs": 9371.581042,
+          "phaseContourMs": 4360.429167000001,
+          "phaseCellmeshMs": 1097.4354159999984,
+          "phaseAssembleMs": 886.2218340000018,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "baseline",
+            "octreeApplyMs": 258.40395799999965,
+            "octreeDecideMs": 9089.787792000001,
+            "reRefineRounds": 1,
+            "run": 0
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.000291
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1488.441916
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6282.45925
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8580.429291
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 9145.363625
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 13723.251624999999
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 15785.385541
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 16319.271999999999
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 17204.109291
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1488.441625
+            },
+            {
+              "label": "Building octree",
+              "ms": 4794.017334
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2297.9700410000005
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 564.9343339999996
+            },
+            {
+              "label": "Building octree",
+              "ms": 4577.887999999999
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2062.1339160000007
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 533.8864589999994
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 884.8372910000016
+            }
+          ],
+          "retryMs": 7173.908374999999
+        },
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 1,
+          "warmup": false,
+          "ms": 17020.426042000006,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1415.3555840000008,
+          "phaseOctreeMs": 9673.589041999996,
+          "phaseContourMs": 4000.6877080000013,
+          "phaseCellmeshMs": 1039.2731660000027,
+          "phaseAssembleMs": 862.6480840000004,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "baseline",
+            "octreeApplyMs": 259.74458200001027,
+            "octreeDecideMs": 9390.822709,
+            "reRefineRounds": 1,
+            "run": 1
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00033400000029359944
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1415.3557919999985
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6388.484459000003
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8381.540125
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 8912.901875
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 13613.638875
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 15620.993959000007
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 16131.075209000002
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 16991.553792
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1415.3554579999982
+            },
+            {
+              "label": "Building octree",
+              "ms": 4973.1286670000045
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 1993.0556659999966
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 531.36175
+            },
+            {
+              "label": "Building octree",
+              "ms": 4700.737000000001
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2007.3550840000062
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 510.08124999999563
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 860.4785829999964
+            }
+          ],
+          "retryMs": 7218.173334000003
+        },
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 2,
+          "warmup": false,
+          "ms": 16553.225458,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1344.2057080000013,
+          "phaseOctreeMs": 9081.117334000002,
+          "phaseContourMs": 4110.541208000002,
+          "phaseCellmeshMs": 1079.4243750000023,
+          "phaseAssembleMs": 902.5662079999965,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "baseline",
+            "octreeApplyMs": 247.02679499996157,
+            "octreeDecideMs": 8813.724123000007,
+            "reRefineRounds": 1,
+            "run": 2
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0002080000049318187
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1344.2058330000073
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 5885.426416000002
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 7854.057083
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 8364.4775
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 12904.626041000003
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 15046.284165999998
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 15617.177457999998
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 16517.854916000004
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1344.2056250000023
+            },
+            {
+              "label": "Building octree",
+              "ms": 4541.220582999995
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 1968.6306669999976
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 510.4204170000012
+            },
+            {
+              "label": "Building octree",
+              "ms": 4540.148541000002
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2141.6581249999945
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 570.8932920000007
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 900.6774580000056
+            }
+          ],
+          "retryMs": 7252.699957999997
+        },
+        {
+          "backend": "native release",
+          "mode": "baseline",
+          "run": 3,
+          "warmup": false,
+          "ms": 16864.014333999992,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1427.1677080000081,
+          "phaseOctreeMs": 9356.598541,
+          "phaseContourMs": 4117.967875999981,
+          "phaseCellmeshMs": 1045.569666000003,
+          "phaseAssembleMs": 887.1884170000121,
+          "validation": {
+            "quality": null,
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "incomplete",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "baseline",
+            "octreeApplyMs": 259.6202899999844,
+            "octreeDecideMs": 9075.018834999995,
+            "reRefineRounds": 1,
+            "run": 3
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0001249999986612238
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1427.1679160000058
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6130.651125000004
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8204.023166000006
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 8722.315083000009
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 13375.713375000007
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 15420.024874999996
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 15949.797750000005
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 16834.49229100001
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1427.1677910000071
+            },
+            {
+              "label": "Building octree",
+              "ms": 4703.483208999998
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2073.3720410000024
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 518.2919170000023
+            },
+            {
+              "label": "Building octree",
+              "ms": 4653.398291999998
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2044.3114999999889
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 529.7728750000097
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 884.6945410000044
+            }
+          ],
+          "retryMs": 7227.482666999997
+        }
+      ]
+    },
+    {
+      "scene": "bracket",
+      "mode": "audit",
+      "geometryCountsStable": true,
+      "validationStable": true,
+      "medians": {
+        "ms": 37967.110374999975,
+        "phaseFeatureMs": 1384.2494590000133,
+        "phaseOctreeMs": 9909.49479099999,
+        "phaseContourMs": 4352.8141669999895,
+        "phaseCellmeshMs": 1107.8528330000117,
+        "phaseAssembleMs": 20989.608291999975,
+        "retryMs": 7642.307125000021,
+        "octreeDecideMs": 9603.253040999989,
+        "octreeApplyMs": 275.4846699999616,
+        "assemblyIntervals": {
+          "Assembling mesh": 857.9455409999937,
+          "Auditing final triangle geometry": 20252.15795800001
+        }
+      },
+      "samples": [
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 0,
+          "warmup": true,
+          "ms": 36276.628416,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1372.8923339999997,
+          "phaseOctreeMs": 9401.447583000001,
+          "phaseContourMs": 4062.0761249999996,
+          "phaseCellmeshMs": 1037.251624999999,
+          "phaseAssembleMs": 20370.682083,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 85906,
+              "afterTriangles": 91764,
+              "beforeSlivers": 1437,
+              "afterSlivers": 949,
+              "beforeP5Angle": 3.892082550897287,
+              "afterP5Angle": 4.2891520039921165,
+              "flips": 608,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 91764,
+              "geometryFailures": 52,
+              "intersections": 1387,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "audit",
+            "octreeApplyMs": 266.4156659999942,
+            "octreeDecideMs": 9113.486835,
+            "reRefineRounds": 1,
+            "run": 0
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0001250000000000001
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1372.892584
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6097.400625
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8121.824250000001
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 8636.1685
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 13313.551709
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 15350.759917
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 15875.378249999998
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 16595.043209
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 36244.349792
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1372.892459
+            },
+            {
+              "label": "Building octree",
+              "ms": 4724.508041
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2024.4236250000004
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 514.3442499999992
+            },
+            {
+              "label": "Building octree",
+              "ms": 4677.383209
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2037.208208
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 524.6183329999985
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 719.6649590000015
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 19649.306583
+            }
+          ],
+          "retryMs": 7239.209749999998
+        },
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 1,
+          "warmup": false,
+          "ms": 37038.20570799999,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1379.9075420000008,
+          "phaseOctreeMs": 9648.391666000003,
+          "phaseContourMs": 4047.414499999999,
+          "phaseCellmeshMs": 1058.1270839999997,
+          "phaseAssembleMs": 20874.341999999997,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 85906,
+              "afterTriangles": 91764,
+              "beforeSlivers": 1437,
+              "afterSlivers": 949,
+              "beforeP5Angle": 3.892082550897287,
+              "afterP5Angle": 4.2891520039921165,
+              "flips": 608,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 91764,
+              "geometryFailures": 52,
+              "intersections": 1387,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "audit",
+            "octreeApplyMs": 274.74270799999067,
+            "octreeDecideMs": 9353.134458000015,
+            "reRefineRounds": 1,
+            "run": 1
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00016699999832781032
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1379.9076249999998
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6370.210874999997
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8388.583041999998
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 8895.876583999998
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 13554.221958999995
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 15583.006583999995
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 16135.170834000004
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 16993.116374999998
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 37008.182834
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1379.9074580000015
+            },
+            {
+              "label": "Building octree",
+              "ms": 4990.303249999997
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2018.3721670000014
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 507.29354199999943
+            },
+            {
+              "label": "Building octree",
+              "ms": 4658.345374999997
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2028.7846250000002
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 552.1642500000089
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 857.9455409999937
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 20015.066459
+            }
+          ],
+          "retryMs": 7239.294250000006
+        },
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 2,
+          "warmup": false,
+          "ms": 38721.53479100001,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1384.2494590000133,
+          "phaseOctreeMs": 9909.49479099999,
+          "phaseContourMs": 4427.742375000002,
+          "phaseCellmeshMs": 1146.389249999993,
+          "phaseAssembleMs": 21823.21650000001,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 85906,
+              "afterTriangles": 91764,
+              "beforeSlivers": 1437,
+              "afterSlivers": 949,
+              "beforeP5Angle": 3.892082550897287,
+              "afterP5Angle": 4.2891520039921165,
+              "flips": 608,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 91764,
+              "geometryFailures": 52,
+              "intersections": 1387,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "audit",
+            "octreeApplyMs": 282.8680860000168,
+            "octreeDecideMs": 9603.253040999989,
+            "reRefineRounds": 1,
+            "run": 2
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0001250000059371814
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1384.249874999994
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6312.179875000002
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8331.637709000017
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 8865.281084000017
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 13847.238792000004
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 16255.130459000007
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 16869.28641700001
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 17729.763833999998
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 38691.09241700001
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1384.2497499999881
+            },
+            {
+              "label": "Building octree",
+              "ms": 4927.930000000008
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2019.4578340000153
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 533.6433749999997
+            },
+            {
+              "label": "Building octree",
+              "ms": 4981.957707999987
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2407.8916670000035
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 614.155958000003
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 860.4774169999873
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 20961.32858300001
+            }
+          ],
+          "retryMs": 8004.005332999994
+        },
+        {
+          "backend": "native release",
+          "mode": "audit",
+          "run": 3,
+          "warmup": false,
+          "ms": 37967.110374999975,
+          "triangles": 91764,
+          "outputBytes": 2569072,
+          "phaseFeatureMs": 1469.3775840000017,
+          "phaseOctreeMs": 10017.560083000018,
+          "phaseContourMs": 4352.8141669999895,
+          "phaseCellmeshMs": 1107.8528330000117,
+          "phaseAssembleMs": 20989.608291999975,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 85906,
+              "afterTriangles": 91764,
+              "beforeSlivers": 1437,
+              "afterSlivers": 949,
+              "beforeP5Angle": 3.892082550897287,
+              "afterP5Angle": 4.2891520039921165,
+              "flips": 608,
+              "inserted": 0,
+              "edgeSplits": 0,
+              "interiorSplits": 0,
+              "collapses": 0,
+              "relocations": 0,
+              "rejected": 0,
+              "unknownTriangles": 91764,
+              "geometryFailures": 52,
+              "intersections": 1387,
+              "cancelled": false,
+              "workBudgetExhausted": false
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 0,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "audit",
+            "octreeApplyMs": 275.4846699999616,
+            "octreeDecideMs": 9719.993957000013,
+            "reRefineRounds": 1,
+            "run": 3
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00020900001982226968
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1469.3777090000076
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6546.510125000001
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8754.468834000014
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 9306.742750000005
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 14247.418875000018
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 16392.025542000003
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 16949.049875000026
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 17685.05529200002
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 37937.21325000003
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1469.3774999999878
+            },
+            {
+              "label": "Building octree",
+              "ms": 5077.132415999993
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2207.958709000013
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 552.273915999991
+            },
+            {
+              "label": "Building octree",
+              "ms": 4940.676125000013
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2144.6066669999855
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 557.024333000023
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 736.005416999993
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 20252.15795800001
+            }
+          ],
+          "retryMs": 7642.307125000021
+        }
+      ]
+    },
+    {
+      "scene": "bracket",
+      "mode": "all",
+      "geometryCountsStable": true,
+      "validationStable": true,
+      "medians": {
+        "ms": 68072.72658300003,
+        "phaseFeatureMs": 1358.7155419999908,
+        "phaseOctreeMs": 9565.268582999997,
+        "phaseContourMs": 4222.398207999999,
+        "phaseCellmeshMs": 17054.249207999994,
+        "phaseAssembleMs": 35398.306333000015,
+        "retryMs": 15521.97204199998,
+        "octreeDecideMs": 9273.976665999915,
+        "octreeApplyMs": 267.8037070001301,
+        "assemblyIntervals": {
+          "Assembling mesh": 101.88495800000965,
+          "Optimizing patch diagonals": 1106.0309169999964,
+          "Refining analytical patches": 1032.0679579999996,
+          "Remeshing analytical patches": 19187.76341699998,
+          "Auditing final triangle geometry": 13887.017124999984
+        }
+      },
+      "samples": [
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 0,
+          "warmup": true,
+          "ms": 65808.082084,
+          "triangles": 81262,
+          "outputBytes": 2275016,
+          "phaseFeatureMs": 1419.713166,
+          "phaseOctreeMs": 9631.258582999999,
+          "phaseContourMs": 4097.5233339999995,
+          "phaseCellmeshMs": 17015.696417000006,
+          "phaseAssembleMs": 33614.870125,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 76780,
+              "afterTriangles": 81262,
+              "beforeSlivers": 1249,
+              "afterSlivers": 1052,
+              "beforeP5Angle": 3.791827057701726,
+              "afterP5Angle": 4.643432074837109,
+              "flips": 703,
+              "inserted": 37,
+              "edgeSplits": 37,
+              "interiorSplits": 0,
+              "collapses": 972,
+              "relocations": 7219,
+              "rejected": 3940,
+              "unknownTriangles": 33693,
+              "geometryFailures": 52,
+              "intersections": 732,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 52,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "all",
+            "octreeApplyMs": 271.5693339999939,
+            "octreeDecideMs": 9336.941125000005,
+            "reRefineRounds": 1,
+            "run": 0
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00041600000000000014
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1419.7135409999999
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6298.559541
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8384.150166000001
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 17251.567916
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 22004.9405
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 24015.911958
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 32166.137375
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 32253.090583000005
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 33289.51570799999
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 34259.804875
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 52570.962166
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 65779.061833
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1419.7131249999998
+            },
+            {
+              "label": "Building octree",
+              "ms": 4878.846
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2085.5906250000016
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 8867.417749999999
+            },
+            {
+              "label": "Building octree",
+              "ms": 4753.372584000001
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2010.971458
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 8150.225416999998
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 86.95320800000627
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 1036.425124999987
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 970.2891670000099
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 18311.157290999996
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 13208.099667000002
+            }
+          ],
+          "retryMs": 14914.569458999998
+        },
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 1,
+          "warmup": false,
+          "ms": 64476.358875000005,
+          "triangles": 81262,
+          "outputBytes": 2275016,
+          "phaseFeatureMs": 1358.7155419999908,
+          "phaseOctreeMs": 9298.075375000015,
+          "phaseContourMs": 3993.6855009999854,
+          "phaseCellmeshMs": 16262.609207000001,
+          "phaseAssembleMs": 33536.071625,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 76780,
+              "afterTriangles": 81262,
+              "beforeSlivers": 1249,
+              "afterSlivers": 1052,
+              "beforeP5Angle": 3.791827057701726,
+              "afterP5Angle": 4.643432074837109,
+              "flips": 703,
+              "inserted": 37,
+              "edgeSplits": 37,
+              "interiorSplits": 0,
+              "collapses": 972,
+              "relocations": 7219,
+              "rejected": 3940,
+              "unknownTriangles": 33693,
+              "geometryFailures": 52,
+              "intersections": 732,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 52,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "all",
+            "octreeApplyMs": 258.2336689999793,
+            "octreeDecideMs": 9018.716375999968,
+            "reRefineRounds": 1,
+            "run": 1
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00033399999665562063
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1358.715624999997
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6036.502499999988
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8027.386291999996
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 16161.193583999993
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 20781.725499999986
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 22784.28349999999
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 30914.994000000006
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 31007.376541999998
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 32041.11099999999
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 33019.97175
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 51220.342292
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 64449.1575
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1358.7152910000004
+            },
+            {
+              "label": "Building octree",
+              "ms": 4677.786874999991
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 1990.8837920000078
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 8133.807291999998
+            },
+            {
+              "label": "Building octree",
+              "ms": 4620.531915999993
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2002.5580000000045
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 8130.710500000016
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 92.3825419999921
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 1033.7344579999917
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 978.8607500000071
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 18200.370542000004
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 13228.815208
+            }
+          ],
+          "retryMs": 14753.800416000013
+        },
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 2,
+          "warmup": false,
+          "ms": 68072.72658300003,
+          "triangles": 81262,
+          "outputBytes": 2275016,
+          "phaseFeatureMs": 1357.4462080000085,
+          "phaseOctreeMs": 9565.268582999997,
+          "phaseContourMs": 4274.64958300002,
+          "phaseCellmeshMs": 17449.297833999968,
+          "phaseAssembleMs": 35398.306333000015,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 76780,
+              "afterTriangles": 81262,
+              "beforeSlivers": 1249,
+              "afterSlivers": 1052,
+              "beforeP5Angle": 3.791827057701726,
+              "afterP5Angle": 4.643432074837109,
+              "flips": 703,
+              "inserted": 37,
+              "edgeSplits": 37,
+              "interiorSplits": 0,
+              "collapses": 972,
+              "relocations": 7219,
+              "rejected": 3940,
+              "unknownTriangles": 33693,
+              "geometryFailures": 52,
+              "intersections": 732,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 52,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "all",
+            "octreeApplyMs": 268.2878750001255,
+            "octreeDecideMs": 9273.976665999915,
+            "reRefineRounds": 1,
+            "run": 2
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.00029099998937454075
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1357.4464159999916
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6060.258999999991
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8064.388499999972
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 16291.262957999978
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 21154.063749999972
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 23424.23841599998
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 32648.521207999962
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 32750.493582999974
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 33868.72108299998
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 34900.78904099998
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 54157.95162499999
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 68044.96874999997
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1357.4461250000022
+            },
+            {
+              "label": "Building octree",
+              "ms": 4702.812583999999
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2004.129499999981
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 8226.874458000006
+            },
+            {
+              "label": "Building octree",
+              "ms": 4862.8007919999945
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2270.1746660000063
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 9224.282791999984
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 101.97237500001211
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 1118.2275000000081
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 1032.0679579999996
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 19257.162584000005
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 13887.017124999984
+            }
+          ],
+          "retryMs": 16357.258249999984
+        },
+        {
+          "backend": "native release",
+          "mode": "all",
+          "run": 3,
+          "warmup": false,
+          "ms": 68200.104708,
+          "triangles": 81262,
+          "outputBytes": 2275016,
+          "phaseFeatureMs": 1437.2459169999638,
+          "phaseOctreeMs": 9792.236417000007,
+          "phaseContourMs": 4222.398207999999,
+          "phaseCellmeshMs": 17054.249207999994,
+          "phaseAssembleMs": 35663.002833999984,
+          "validation": {
+            "quality": {
+              "beforeTriangles": 76780,
+              "afterTriangles": 81262,
+              "beforeSlivers": 1249,
+              "afterSlivers": 1052,
+              "beforeP5Angle": 3.791827057701726,
+              "afterP5Angle": 4.643432074837109,
+              "flips": 703,
+              "inserted": 37,
+              "edgeSplits": 37,
+              "interiorSplits": 0,
+              "collapses": 972,
+              "relocations": 7219,
+              "rejected": 3940,
+              "unknownTriangles": 33693,
+              "geometryFailures": 52,
+              "intersections": 732,
+              "cancelled": false,
+              "workBudgetExhausted": true
+            },
+            "unresolvedBranchPaths": [],
+            "featureChains": {
+              "status": "failed",
+              "scope": "compiledCurves",
+              "missingEdges": 0,
+              "missingCurves": 0,
+              "disconnectedCurves": 0,
+              "intervalGaps": 38,
+              "offCurveEdges": 1,
+              "invalidMemberships": 0,
+              "unidentifiedEdges": 0
+            },
+            "status": "failed",
+            "edgeIncidence": "passed",
+            "vertexLinks": "passed",
+            "faceSegments": "passed",
+            "vertexResiduals": "passed",
+            "unresolvedCells": 22614,
+            "featureFallbackCells": 19,
+            "curveProjectionFailures": 984,
+            "faceProjectionFailures": 0,
+            "chordBudgetFailures": 52,
+            "offSurfaceVertices": 0,
+            "maxVertexResidual": 0.0024986265000084273,
+            "featureTrace": {
+              "pairsConsidered": 249,
+              "seedsFound": 5632,
+              "curvesTraced": 665,
+              "tangencyBails": 0,
+              "tangentReversals": 0,
+              "correctionBails": 947,
+              "stepCapHits": 0
+            }
+          },
+          "stats": {
+            "event": "stats",
+            "featureCurves": 153,
+            "leaves": 46913,
+            "mode": "all",
+            "octreeApplyMs": 267.8037070001301,
+            "octreeDecideMs": 9500.898624999885,
+            "reRefineRounds": 1,
+            "run": 3
+          },
+          "progress": [
+            {
+              "label": "Compiling features",
+              "elapsedMs": 0.0002919999824371189
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 1437.2462089999754
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 6412.89954199997
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 8515.979374999995
+            },
+            {
+              "label": "Building octree",
+              "elapsedMs": 16986.12941699999
+            },
+            {
+              "label": "Contouring faces",
+              "elapsedMs": 21802.99441699998
+            },
+            {
+              "label": "Meshing cells",
+              "elapsedMs": 23922.02908399998
+            },
+            {
+              "label": "Assembling mesh",
+              "elapsedMs": 32508.10145899997
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "elapsedMs": 32609.98641699998
+            },
+            {
+              "label": "Refining analytical patches",
+              "elapsedMs": 33716.017333999975
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "elapsedMs": 34784.162416999985
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "elapsedMs": 53971.925833999965
+            },
+            {
+              "label": "Done",
+              "elapsedMs": 68169.132667
+            }
+          ],
+          "intervals": [
+            {
+              "label": "Compiling features",
+              "ms": 1437.245916999993
+            },
+            {
+              "label": "Building octree",
+              "ms": 4975.653332999995
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2103.0798330000252
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 8470.150041999994
+            },
+            {
+              "label": "Building octree",
+              "ms": 4816.864999999991
+            },
+            {
+              "label": "Contouring faces",
+              "ms": 2119.034667
+            },
+            {
+              "label": "Meshing cells",
+              "ms": 8586.072374999989
+            },
+            {
+              "label": "Assembling mesh",
+              "ms": 101.88495800000965
+            },
+            {
+              "label": "Optimizing patch diagonals",
+              "ms": 1106.0309169999964
+            },
+            {
+              "label": "Refining analytical patches",
+              "ms": 1068.1450830000103
+            },
+            {
+              "label": "Remeshing analytical patches",
+              "ms": 19187.76341699998
+            },
+            {
+              "label": "Auditing final triangle geometry",
+              "ms": 14197.206833000033
+            }
+          ],
+          "retryMs": 15521.97204199998
+        }
+      ]
+    }
+  ]
+}

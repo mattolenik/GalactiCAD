@@ -1,6 +1,6 @@
 # gcad spec language: grammar documentation
 
-Status: design draft, 2026-09-17. Documents the syntax of the spec-style CAD language
+Status: design draft, 2026-09-22. Documents the syntax of the spec-style CAD language
 (Proposal C of `docs/research/cad-spec-dsl-proposals-2026-09-09.md`, revised so that parts
 are types, the scene is an unnamed part, and names may be multi-word and quoted).
 Nothing here is implemented yet.
@@ -12,8 +12,8 @@ resolution deferred to a separate binding pass that is *not* described here.
 | File | Layer | Notation |
 |---|---|---|
 | [lexical.md](lexical.md) | Tokens, function words, reserved phrases, name rules | Token table with patterns |
-| [grammar.md](grammar.md) | Sentence shapes: document, parts, declarations, clauses, references | W3C-style EBNF |
-| [templates.md](templates.md) | Closed vocabularies with typed slots: kinds, predicates, assertions, patterns | Template tables |
+| [grammar.md](grammar.md) | Sentence shapes: document, parts, declarations, attachment clauses and declarations, references | W3C-style EBNF |
+| [templates.md](templates.md) | Closed vocabularies with typed slots: kinds, attachment kinds and defaults, predicates, assertions, patterns | Template tables |
 | [expressions.md](expressions.md) | Arithmetic, units, comparisons, booleans | Precedence table |
 
 ## Notation legend

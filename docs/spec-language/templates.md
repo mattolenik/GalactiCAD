@@ -1,9 +1,10 @@
 # Templates
 
-The closed vocabularies of the language: built-in kinds, predicate templates (the
-`where` sentences), assertion templates (the `require` sentences), and pattern clauses.
-Each row is one template with typed slots. The parser matches a template by its leading
-words after the subject; the binder checks slot types and resolves names.
+The closed vocabularies of the language: built-in kinds and their parameters,
+attachment kinds, predicate templates (the `where` sentences), assertion templates (the
+`require` sentences), and pattern phrases. Each row is one template with typed slots.
+The parser matches a template by its leading words after the subject; the binder checks
+slot types and resolves names.
 
 Adding a row here is adding a feature to the language. Keep the tables short: Kuhn's
 measure of a language's simplicity is the number of pages needed to describe it.
@@ -17,85 +18,117 @@ measure of a language's simplicity is the number of pages needed to describe it.
 | `<ref>` | `Reference` (entity chain) | grammar.md |
 | `<face>` | `FaceRef` | grammar.md |
 | `<edges>` | `EdgeList` | grammar.md |
-| `<axis>` | `X`, `Y`, `Z`, or a datum axis | grammar.md |
-| `<len>` | `Quantity`, a length expression; bare numbers take the file unit | expressions.md |
-| `<dia>` | `Ø` + `Primary` | grammar.md |
-| `<r>` | `R` + `Primary` (radius, no space) | grammar.md |
-| `<size>` | `<r>` or a bare `Primary` (chamfer distance) | grammar.md |
+| `<axis>` | `X`, `Y`, `Z`, or a datum or axis attachment | grammar.md |
+| `<len>` | a length expression; bare numbers take the file unit | expressions.md |
 | `<angle>` | expression, degrees by default | expressions.md |
 | `<count>` | integer, name, or parenthesized expression | grammar.md |
 | `<expr>` | any expression; in a condition it must be boolean | expressions.md |
 | `<text>` | quoted string | lexical.md |
-| `<blend>` | `round blend R<r>`, `soft blend R<r>`, `chamfer blend <size>` | grammar.md |
+| `<triple>` | `a x b x c`, a size or vector | grammar.md |
+| `<blend>` | `round blend <len>`, `soft blend <len>`, `chamfer blend <len>` | grammar.md |
 
 ## Kinds
 
-What may follow `is a`, `is an`, or `are <count>`. A declared part name is also a kind.
-The dimension column lists the dimensions each kind accepts, in any order; required ones
-are marked. The API column is the scene node the binder emits.
+What may follow `is a`, `is an`, or `are <count>`. A declared part name is also a kind,
+with its `given` names as parameters. Arguments are `, name = value` pairs in any
+order; required ones are marked. Where a row lists alternatives (`dia` or `radius`)
+exactly one must be given. The API column is the scene node the binder emits.
 
-| Kind phrase | Dimensions | Cuts? | API |
+| Kind phrase | Parameters | Cuts? | API |
 |---|---|---|---|
-| `cylinder` | `Ø` or `R` (req), `<len> tall` (req) | no | cylinder |
-| `box` | `<a> x <b> x <c>` or `<len> wide`, `<len> deep`, `<len> tall` (all req) | no | box |
-| `sphere` | `Ø` or `R` (req) | no | sphere |
-| `cone` | `Ø` or `R` bottom (req), `Ø` or `R` top (`to Ø<d>`), `<len> tall` (req) | no | cone |
-| `capsule` | `Ø` or `R` (req), `<len> long` (req) | no | capsule |
-| `torus` | `Ø` ring (req), `R` tube (req) | no | torus |
-| `disc` | `Ø` or `R` (req), `<len> thick` | no | disc |
-| `hex prism` | `<len> across` (flats, req), `<len> tall` (req) | no | hexprism |
-| `male thread` | `Ø<d> x <pitch>` (req), `<len> tall` (req) | no | threaded_rod |
-| `female thread` | `Ø<d> x <pitch>` (req), `<len> deep` or `through` (req) | yes | threaded_rod female, subtract |
-| `bore` | `Ø` or `R` (req), `<len> deep` or `through` (req) | yes | cylinder, subtract |
-| `hole` / `holes` | `Ø` or `R` (req), `<len> deep` or `through` (req) | yes | cylinder, subtract |
-| `pocket` | `<a> x <b>`, `<len> deep` (req) | yes | box, subtract |
-| `slot` | `<len> wide`, `<len> long`, `<len> deep` (req) | yes | capsule, subtract |
-| `extrusion of <ref>` | `<len> tall` (req) | no | extrude |
-| `revolution of <ref>` | `<angle>` optional | no | lathe |
-| `loft from <ref> to <ref>` | `<len> tall` (req) | no | loft |
-
-Thread profiles: `male thread` and `female thread` accept a profile word before the
-kind, `iso male thread`, `acme male thread`; default is the sinusoidal profile. A
-`Thread` token (`1/4-20 UNC-2B`, `M8x1.25`) may replace `Ø<d> x <pitch>` and fixes
-diameter, pitch, and internal/external in one token.
+| `cylinder` | `dia` or `radius` (req), `height` (req) | no | cylinder |
+| `box` | `size` (triple, x by y by z with Y up) or `width`, `height`, `depth` (req) | no | box |
+| `sphere` | `dia` or `radius` (req) | no | sphere |
+| `cone` | `dia` or `radius` (req, bottom), `top dia` (default 0), `height` (req) | no | cone |
+| `capsule` | `dia` or `radius` (req), `length` (req) | no | capsule |
+| `torus` | `dia` (ring, req), `tube dia` (req) | no | torus |
+| `disc` | `dia` or `radius` (req), `thickness` (req) | no | disc |
+| `hex prism` | `across flats` (req), `height` (req) | no | hexprism |
+| `male thread` | `dia` and `pitch`, or `thread` (a Thread token); `height` (req); `profile` = `sine`, `iso`, `acme` | no | threaded_rod |
+| `female thread` | `dia` and `pitch`, or `thread`; `depth` (req, or `through`); `profile` | yes | threaded_rod female, subtract |
+| `bore` | `dia` or `radius` (req), `depth` (req, or `through`) | yes | cylinder, subtract |
+| `hole` / `holes` | `dia` or `radius` (req), `depth` (req, or `through`) | yes | cylinder, subtract |
+| `pocket` | `size` (triple) or `width`, `depth`, `length`; `depth` (req) | yes | box, subtract |
+| `slot` | `width`, `length`, `depth` (all req) | yes | capsule, subtract |
+| `extrusion` | `profile` (a sketch reference, req), `height` (req) | no | extrude |
+| `revolution` | `profile` (req), `angle` (default 360) | no | lathe |
+| `loft` | `from`, `to` (sketch references, req), `height` (req) | no | loft |
 
 Examples:
 
 ```
-the base    is a cylinder Ø32, 28 tall
-the stud    is a male thread Ø29 x 1.5, 3.5 tall
-the socket  is a female thread M8x1.25, 12 deep, entering from the top face of the boss
-the tab     is a box 30 x 20 x 5
-the body    is an extrusion of the outline, 40 tall
+the base    is a cylinder, dia = 32, height = 28
+the stud    is a male thread, dia = 29, pitch = 1.5, height = 3.5
+the socket  is a female thread, thread = M8x1.25, depth = 12
+the tab     is a box, size = 30 x 5 x 20
+the plate   is a box, width = 30, height = 5, depth = 20
+the body    is an extrusion, profile = the outline, height = 40
 ```
+
+Every parameter of an instance can be read back as `the <parameter> of <instance>`
+(expressions.md), so `the height of the base` is the argument the base was given.
+
+## Attachment kinds
+
+Declared in a part's `attachments` section (grammar.md, Attachment declarations) or
+provided by default. The verb column is what a subject may use against an attachment of
+that kind; the modifier column is the free parameter or adjustment each accepts.
+
+| Kind | What it is | Verbs | Modifiers |
+|---|---|---|---|
+| `surface` | a whole face with its outward normal | `on`, `into`, `at` | `sunk`, `proud`, `toward`, `inset`, `turned`, `facing` |
+| `plane` | the infinite plane through a face; alignment only, no contact | `flush with` | `<len> from`, `turned` |
+| `point` | a frame: position, facing, up | `at`, `snapped to` | `turned`, `facing`, `up along` |
+| `axis` | a line, for concentric fits | `in` | `<len> in`, `<len> along`, `turned` |
+| `edge` | a line segment on the part | `along`, `centered on` | `<len> along`, `facing` |
+
+Kind compatibility is checked by the binder before geometry is built: the subject's
+attachment (`its stem`) and the target's (`the riser line of …`) must be the same kind,
+except that a `point` may be placed `at` a surface and a surface subject may sit `on` a
+default surface such as `top`. Mismatch error: "stem of the gauge is an axis; top flange
+of the manifold is a surface".
+
+Default attachments (present when a part declares none, or after `plus the box
+defaults`):
+
+| Name | Kind | From |
+|---|---|---|
+| `top` `bottom` `left` `right` `front` `back` | surface | bounding-box faces |
+| `top front`, `bottom left`, … (12) | edge | bounding-box edges |
+| `top front left`, … (8) | point | bounding-box corners, facing along the corner diagonal |
+| `center` | point | bounding-box center, facing up |
+| `side` (round primitives) | surface | curved side; `at <angle>` picks a point on it |
+| `axis` (round primitives) | axis | the primitive's axis |
 
 ## Predicate templates
 
 Sentences under `where` (or directly among declarations). Every template starts with a
-subject; the parser decides on the verb word after it.
+subject; the parser decides on the verb word after it. A treatment's single size is a
+bare quantity (`fillet 1` is a radius of 1, `chamfer 0.3` a distance of 0.3); anything
+with more than one value takes `, name = value` arguments.
 
-| Template | Slots | Example | Produces |
-|---|---|---|---|
-| `<subject> has fillet <r> on <edges>` | | `the pocket has fillet R1 on its bottom edge` | fillet on catalog edges |
-| `<subject> has chamfer <size> on <edges>` | | `the base has chamfer 0.3 on its top and bottom edges` | chamfer on catalog edges |
-| `<subject> has fillet <r> on all edges` | | `the tab has fillet R0.5 on all edges` | fillet, every edge |
-| `<subject> has all edges broken <size>` | | `the base has all edges broken 0.2` | chamfer, every edge (drawing note BREAK ALL EDGES) |
-| `<subject> is joined to <ref> with a <blend>` | | `the stud is joined to the base with a round blend R0.5` | blended union |
-| `<subject> is cut from <ref>` | | `the notch is cut from the base` | subtract |
-| `<subject> is added to <ref>` | | `the gusset is added to the base` | union |
-| `<subject> is knurled on <face> with <count> straight ridges <r>, <len> long` | | `the base is knurled on its outside with 72 straight ridges R0.3, 27 long` | knurl (repeat_polar of ridge) |
-| `<subject> is hollowed to <len> walls, open on <face>` | | `the cup is hollowed to 1.2 walls, open on its top face` | shell |
-| `<subject> is engraved with <text> on <face>, <len> deep` | | `the lid is engraved with "MADE IN" on its top face, 0.3 deep` | engrave |
-| `<subject> is twisted <angle> about <axis>` | | `the column is twisted 30 about Y` | twist |
-| `<subject> is tapered to <dia> at <face>` | | `the pin is tapered to Ø4 at its top face` | taper |
-| `<subject> exists only if <expr>` / `<subject> exist only if <expr>` | | `the vents exist only if vented` | conditional feature |
+| Template | Example | Produces |
+|---|---|---|
+| `<subject> has fillet <len> on <edges>` | `the pocket has fillet 1 on its bottom edge` | fillet on catalog edges |
+| `<subject> has chamfer <len> on <edges>` | `the base has chamfer 0.3 on its top and bottom edges` | chamfer on catalog edges |
+| `<subject> has fillet <len> on all edges` | `the tab has fillet 0.5 on all edges` | fillet, every edge |
+| `<subject> has all edges broken <len>` | `the base has all edges broken 0.2` | chamfer, every edge (drawing note BREAK ALL EDGES) |
+| `<subject> is joined to <ref> with a <blend>` | `the stud is joined to the base with a round blend 0.5` | blended union |
+| `<subject> is cut from <ref>` | `the notch is cut from the base` | subtract |
+| `<subject> is added to <ref>` | `the gusset is added to the base` | union |
+| `<subject> is knurled on <face>, ridges = <count>, ridge dia = <len>, length = <len>` | `the base is knurled on its outside, ridges = 72, ridge dia = 0.6, length = 27` | knurl (repeat_polar of ridge) |
+| `<subject> is hollowed, wall = <len>, open on <face>` | `the cup is hollowed, wall = 1.2, open on its top face` | shell |
+| `<subject> is engraved with <text> on <face>, depth = <len>` | `the lid is engraved with "MADE IN" on its top face, depth = 0.3` | engrave |
+| `<subject> is twisted <angle> about <axis>` | `the column is twisted 30 about Y` | twist |
+| `<subject> is tapered at <face>, dia = <len>` | `the pin is tapered at its top face, dia = 4` | taper |
+| `<subject> exists only if <expr>` / `<subject> exist only if <expr>` | `the vents exist only if vented` | conditional feature |
 
 Rejected:
 
 ```
 the pocket has a fillet of 1 on the bottom     -- error: nearest template is
-                                                --   "<subject> has fillet R<r> on <edges>"
-the stud is blended into the base R0.5         -- error: nearest template is
+                                                --   "<subject> has fillet <len> on <edges>"
+the stud is blended into the base 0.5          -- error: nearest template is
                                                 --   "<subject> is joined to <ref> with a <blend>"
 ```
 
@@ -116,17 +149,15 @@ solve for anything.
 
 ## Pattern templates
 
-Clauses on counted declarations (`are <count> …`). Exactly one pattern per
-declaration. The count comes from the declaration; the pattern gives placement.
+Patterns place the elements of a counted declaration. They appear in the attachments
+section, after the verb phrase of an attachment statement or as a statement of their
+own. Exactly one pattern per counted subject. Arguments after a pattern phrase belong
+to the pattern.
 
 | Template | Example | API |
 |---|---|---|
-| `equally spaced on a <dia> bolt circle` (`about <axis>`)? | `equally spaced on a Ø10 bolt circle` | repeat_polar, N = count |
-| `every <angle> about <axis>` | `every 60 about Y` | repeat_polar |
-| `<len> apart along <axis>` | `12 apart along X` | linear repeat |
-| `stacked along <axis>` | `stacked along Y` | linear repeat, step = height |
-| `at <vector> and <vector> …` | `at (0,0,0) and (20,0,0) and (40,0,0)` | explicit copies; count must match |
-
-Drawing-note form: a `Count` token before the kind is accepted in place of `are <count>`,
-so `the vents are 4X Ø1.5 holes through the floor, equally spaced on a Ø10 bolt circle`
-parses the same as the sentence form.
+| `equally spaced on a bolt circle, dia = <len>` (`about <axis>`)? | `the vents into the floor of the pocket, equally spaced on a bolt circle, dia = 10` | repeat_polar, N = count |
+| `every <angle> about <axis>` | `the ribs on the side of the hub, every 60 about Y` | repeat_polar |
+| `along <axis>, spacing = <len>` | `the slots into the top of the rail, along X, spacing = 12` | linear repeat |
+| `stacked along <axis>` | `the stack stacked along Y` | linear repeat, step = height |
+| `at <vector> and <vector> …` | `the posts at (0,0,0) and (20,0,0) and (40,0,0)` | explicit copies; count must match |

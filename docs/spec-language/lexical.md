@@ -20,8 +20,8 @@ words and reserved phrases at the end of this file.
 Example:
 
 ```
-the stud   is a male thread Ø29 x pitch, 2 * pitch + 0.5 mm tall,   -- continues
-           standing on the top face of the base
+the stud   is a male thread, dia = 29, pitch = pitch,   -- continues
+           height = 2 * pitch + 0.5 mm
 ```
 
 ## Tokens
@@ -36,21 +36,22 @@ Longer patterns are tried first. Whitespace separates tokens except where a patt
 | `Fraction` | `[0-9]+/[0-9]+` | `1/4`, `3/8` | value only; not a thread |
 | `Inch` | `Decimal"` no space | `2"`, `.5"` | the `"` is an inch mark only directly after a digit |
 | `Unit` | one of `mm` `cm` `m` `in` `inch` `inches` `deg` `°` `rad` | `0.5 mm`, `45 deg` | attaches to the preceding number in the expression layer |
-| `Dia` | `Ø` or `⌀` or `dia` | `Ø29`, `dia 29` | prefix; the following number or name may be separated by a space |
-| `Rad` | `R` immediately followed by a digit, `.`, or `(` | `R0.5`, `R.5`, `R(wall / 2)` | prefix only; the number or parenthesized expression is its own token. `R` followed by a space is a content word |
 | `Count` | `Integer` + `X` no space, or `Integer` + `×` | `4X`, `4 ×` | drawing-note repetition count |
 | `Thread` | `[0-9]+/[0-9]+-[0-9]+ (UNC\|UNF\|UNEF)(-[0-9][AB])?` or `[0-9.]+-[0-9]+ (UNC\|UNF)(-[0-9][AB])?` or `M[0-9]+(\.[0-9]+)?x[0-9]+(\.[0-9]+)?(-[0-9][gHh])?` | `1/4-20 UNC-2B`, `M8x1.25-6H` | one token; the space before the series is part of the pattern |
 | `FeatureId` | `E[0-9]+` or `F[0-9]+` | `E3`, `F1` | raw catalog id; content word otherwise |
 | `AxisName` | `X` `Y` `Z` as a whole word | `along Y` | |
+| `Cross` | `x` or `×` between two numbers or as a whole word inside a value | `10x6x4`, `10 x 6 x 4` | the triple separator; `x` is a function word |
 | `QuotedName` | `"[^"\n]+"` | `"top of the line"` | any characters except quote and newline; see Names |
 | `Text` | same pattern as `QuotedName` | `"MADE IN"` | which one it is depends on the slot; the lexer emits one `Quoted` token |
 | `Symbol` | one of `, ( ) = + - * / ^ < > <= >= /= ≤ ≥ ≠ :` | | |
 | `Word` | `[A-Za-z][A-Za-z0-9'_-]*` | `pocket`, `M8`, `case`, `dia` | classified as `FunctionWord` if in the list below, else `ContentWord` |
 
-Number-bearing tokens (`Integer`, `Decimal`, `Fraction`, `Inch`, `Dia …`, `Rad`,
-`Count`, `Thread`, `FeatureId`) never form part of a bare name. That is what lets a
-dimension list end a kind phrase without a separator: `a cylinder Ø od` splits after
-`cylinder` because `Ø` cannot be a name word.
+Number-bearing tokens (`Integer`, `Decimal`, `Fraction`, `Inch`, `Count`, `Thread`,
+`FeatureId`) never form part of a bare name. A kind phrase ends at the comma that
+precedes its first argument: `a cylinder, dia = 32`. There are no dimension words and
+no symbolic prefixes; every size is a named argument, and the parameter names of the
+built-in kinds (`dia`, `radius`, `height`, `pitch`, `size`, …) are ordinary content
+words, so a parameter of a part may use any of them too.
 
 ## Names
 
@@ -98,9 +99,9 @@ vocabulary; everything else is a content word.
 | Prepositions | `of` `on` `from` `with` `to` `through` `about` `at` `along` `by` `in` `into` `per` `than` `except` |
 | Connectives | `and` `or` `not` `if` `then` `only` `else` |
 | Sections and headers | `part` `given` `where` `require` `datum` `units` `use` `for` |
-| Dimension words | `tall` `long` `high` `wide` `deep` `thick` `across` `pitch` `apart` |
-| Face and edge words | `top` `bottom` `left` `right` `front` `back` `outer` `inner` `outside` `inside` `floor` `face` `faces` `edge` `edges` `ground` `axis` |
-| Placement words | `standing` `seated` `entering` `centered` `stacked` `spaced` `equally` `bolt` `circle` `rotated` `offset` `cut` `added` `joined` `above` `below` `behind` |
+| Classifier words | `face` `faces` `edge` `edges` `corner` `ground` `axis` |
+| Attachment words | `attachments` `sunk` `proud` `inset` `toward` `turned` `facing` `flush` `snapped` `plus` `defaults` `up` `down` `out` `outward` `midway` `between` `meets` |
+| Placement words | `centered` `stacked` `spaced` `equally` `bolt` `circle` `rotated` `offset` `cut` `added` `joined` `above` `below` `behind` `x` |
 | Treatment words | `fillet` `chamfer` `blend` `round` `soft` `knurled` `ridges` `straight` `engraved` `hollowed` `open` `walls` |
 | Assertion words | `clears` `fits` `does` `touch` `broken` `twisted` `tapered` |
 | Quantifier and order words | `first` `last` `least` `most` |
@@ -108,6 +109,14 @@ vocabulary; everything else is a content word.
 | Axis letters | `X` `Y` `Z` |
 | Units | `mm` `cm` `m` `in` `inch` `inches` `deg` `rad` |
 | Expression words | `sqrt` `sin` `cos` `tan` `atan` `min` `max` `abs` |
+
+Default attachment words (`top`, `bottom`, `left`, `right`, `front`, `back`, `center`,
+`side`, `outside`, `inside`, `floor`, `outer`, `inner`) are content words, resolved by
+the binder. They may appear inside a name (`top flange`) but a feature or attachment may
+not be named exactly one of them. The attachment kind words `surface`, `plane`, `point`
+are positional (they start an attachment declaration) and are also content words, so
+`mount plane` is a legal name; `axis` and `edge` are classifier words, so an attachment
+named `riser axis` must be quoted.
 
 ## Reserved phrases
 

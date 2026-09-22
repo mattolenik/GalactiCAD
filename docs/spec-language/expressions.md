@@ -13,17 +13,16 @@ Primary         ::= Number Unit?
                   | Inch
                   | Name
                     -- a parameter, or a bound loop variable
-                  | "the" Property "of" Reference
-                    -- the height of the base
+                  | "the" Name "of" Reference
+                    -- a parameter or let value of an instance (the height of the base),
+                    -- or a derived measure of a feature (the diameter of the bore)
                   | "(" Expression ")"
                   | "yes" | "no" | "true" | "false"
-Property        ::= "height" | "width" | "depth" | "length" | "diameter" | "radius"
-                  | "top" | "bottom" | "center"
-                    -- top/bottom/center yield a coordinate along the part's up axis
 ```
 
-`Ø` and `R` prefixes in a dimension take exactly one `Primary`: `Ø od`, `R(wall / 2)`.
-`Ø od - 2 * wall` is an error, not a diameter of `od - 2 * wall`.
+An argument value is an expression up to the next comma: `dia = od - 2 * wall`. A
+triple `10 x 6 x 4` is three expressions separated by `x` and is only legal as an
+argument value; `x` is a function word.
 
 ## Precedence
 
@@ -75,6 +74,5 @@ Rejected:
 
 ```
 1 < wall < 3                        -- error: comparisons do not chain; write "1 < wall and wall < 3"
-Ø od - 2 * wall                     -- error: Ø takes one primary; write Ø(od - 2 * wall)
-28 tall + 2                         -- error: a dimension word ends the expression
+dia = 10 x 6                        -- error: dia takes a length, not a triple
 ```

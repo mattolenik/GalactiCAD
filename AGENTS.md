@@ -16,7 +16,7 @@ The **iso-simplicial** exporter (Dev Tools → Mesh export → Exporter) evaluat
 
 This repo ships agent **skills** under `.agents/skills/`. They are the source of truth for their topics and are kept up to date — consult the relevant skill instead of relying on workflow advice duplicated in this file:
 
-- **`devserver`** — runtime logs, scene-source dumps, capturing testcases from the live editor, and headless SDF/mesh PNG renders. Covers the interactive vs agent devservers, `scripts/agentcli`, every HTTP endpoint (`/_logs`, `/_sceneSource`, `/_agent/*`), and the disk-path rules.
+- **`devserver`** — runtime logs, scene-source dumps, capturing testcases from the live editor, headless SDF/mesh PNG renders, and the remote-control visual proxy (`GET /_remote`: a dedicated headless Chromium streamed to and driven from any browser on the VPN). Covers the interactive vs agent devservers, `scripts/agentcli`, every HTTP endpoint (`/_logs`, `/_sceneSource`, `/_agent/*`, `/_remote*`), and the disk-path rules.
 - **`sdf-mesh-diff`** — image similarity (SSIM + pixel diff) for comparing SDF vs mesh renders and catching regressions (`agentcli compare` / `triangle` / `ab` / `iterate` / `regress`).
 - **`webgpu`**, **`typescript-expert`**, **`typescript-advanced-types`**, **`web-components`**, **`bash-defensive-patterns`** — language/platform guidance.
 

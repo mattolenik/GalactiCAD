@@ -124,7 +124,7 @@
         }
     }
     function viewportMsg(t) {
-        return { t, w: Math.round(window.innerWidth), h: Math.round(window.innerHeight), dpr: hidpi ? 2 : 1 }
+        return { t, w: Math.round(window.innerWidth), h: Math.round(window.innerHeight), dpr: hidpi ? 2 : 1, touch: navigator.maxTouchPoints > 0 }
     }
     function connect() {
         ws = new WebSocket(wsUrl)
@@ -170,45 +170,37 @@
         const y = Math.max(0, Math.min(r.height, e.clientY - r.top))
         return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
     }
+    // Touch pointers are forwarded RAW as multi-touch points (CDP Input.dispatchTouchEvent),
+    // so the app's own touch handling (PinchZoomController pinch/twist, pointer-event orbit)
+    // runs unchanged in the remote tab. No gesture translation here.
     const touches = new Map() // pointerId → {x,y}
-    let touchDragButtonDown = false
-    let pinchDist = null
+    function touchPts() { return [...touches.entries()].map(([id, p]) => ({ id, x: p.x, y: p.y })) }
+    function sendTouch(type) { send({ t: "tc", type, pts: touchPts() }) }
+    let touchMoveRaf = 0
+    function scheduleTouchMove() {
+        // Each finger's move arrives as its own pointermove; batch them per frame so the remote
+        // tab sees one touchmove carrying every finger's new position.
+        if (touchMoveRaf) return
+        touchMoveRaf = requestAnimationFrame(() => { touchMoveRaf = 0; if (touches.size) sendTouch("touchMove") })
+    }
 
     canvas.addEventListener("pointerdown", e => {
         pokeHud()
         canvas.focus({ preventScroll: true })
+        canvas.setPointerCapture(e.pointerId)
         if (e.pointerType === "touch") {
             touches.set(e.pointerId, pos(e))
-            if (touches.size === 1) {
-                touchDragButtonDown = true
-                send({ t: "md", ...pos(e), b: 0 })
-            } else if (touches.size === 2) {
-                // Second finger: end the drag, start a pinch → wheel zoom.
-                if (touchDragButtonDown) { send({ t: "mu", ...pos(e), b: 0 }); touchDragButtonDown = false }
-                pinchDist = null
-            }
-            canvas.setPointerCapture(e.pointerId)
+            sendTouch("touchStart")
             return
         }
         e.preventDefault()
-        canvas.setPointerCapture(e.pointerId)
         send({ t: "md", ...pos(e), b: e.button === 1 ? 1 : e.button === 2 ? 2 : 0 })
     })
     canvas.addEventListener("pointermove", e => {
         if (e.pointerType === "touch") {
             if (!touches.has(e.pointerId)) return
             touches.set(e.pointerId, pos(e))
-            if (touches.size === 1) { send({ t: "mm", ...pos(e) }) }
-            else if (touches.size >= 2) {
-                const [a, b] = [...touches.values()]
-                const d = Math.hypot(a.x - b.x, a.y - b.y)
-                const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-                if (pinchDist != null) {
-                    const delta = d - pinchDist
-                    if (Math.abs(delta) >= 1) send({ t: "wh", ...mid, dx: 0, dy: -delta * 3 })
-                }
-                pinchDist = d
-            }
+            scheduleTouchMove()
             return
         }
         send({ t: "mm", ...pos(e) })
@@ -216,9 +208,10 @@
     function pointerEnd(e) {
         if (e.pointerType === "touch") {
             if (!touches.has(e.pointerId)) return
+            if (touchMoveRaf) { cancelAnimationFrame(touchMoveRaf); touchMoveRaf = 0; sendTouch("touchMove") }
             touches.delete(e.pointerId)
-            if (touches.size === 0 && touchDragButtonDown) { send({ t: "mu", ...pos(e), b: 0 }); touchDragButtonDown = false }
-            pinchDist = null
+            // CDP releases whichever previously-active points are missing from the list.
+            sendTouch(e.type === "pointercancel" ? "touchCancel" : "touchEnd")
             return
         }
         send({ t: "mu", ...pos(e), b: e.button === 1 ? 1 : e.button === 2 ? 2 : 0 })
@@ -258,7 +251,15 @@
         kb.value = ""
     })
     kb.addEventListener("compositionend", e => { if (e.data) send({ t: "txt", text: e.data }); kb.value = "" })
-    window.addEventListener("blur", () => { for (const m of MODS) send({ t: "ku", key: m }) })
+    // Losing focus/visibility mid-gesture would otherwise strand a held modifier or button
+    // in the remote tab (the matching up event never arrives).
+    function releaseAll() {
+        for (const m of MODS) send({ t: "ku", key: m })
+        send({ t: "release" })
+        touches.clear()
+    }
+    window.addEventListener("blur", releaseAll)
+    document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll() })
 
     // ── hud buttons ──
     document.getElementById("btnKb").addEventListener("click", () => { kb.focus(); pokeHud() })

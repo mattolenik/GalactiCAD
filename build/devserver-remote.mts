@@ -26,8 +26,10 @@ import type http from "http"
 
 /** Viewer → server messages. Coordinates are CSS px of the proxied page (viewport == viewer size). */
 type ViewerMessage =
-    | { t: "hello"; w: number; h: number; dpr?: number }
-    | { t: "resize"; w: number; h: number; dpr?: number }
+    | { t: "hello"; w: number; h: number; dpr?: number; touch?: boolean }
+    | { t: "resize"; w: number; h: number; dpr?: number; touch?: boolean }
+    /** Raw multi-touch: `pts` is the full list of ACTIVE touch points after this event. */
+    | { t: "tc"; type: TouchEventType; pts: { id: number; x: number; y: number }[] }
     | { t: "mm"; x: number; y: number }
     | { t: "md"; x: number; y: number; b: number }
     | { t: "mu"; x: number; y: number; b: number }
@@ -35,9 +37,14 @@ type ViewerMessage =
     | { t: "kd"; key: string }
     | { t: "ku"; key: string }
     | { t: "txt"; text: string }
+    | { t: "release" }
     | { t: "reload" }
 
 type RemoteStatus = "idle" | "launching" | "ready" | "error"
+type TouchEventType = "touchStart" | "touchMove" | "touchEnd" | "touchCancel"
+const TOUCH_EVENT_TYPES = new Set<string>(["touchStart", "touchMove", "touchEnd", "touchCancel"])
+/** Max simultaneous touch points advertised to the remote tab when the viewer has touch. */
+const TOUCH_POINTS = 10
 
 export type RemoteControlOptions = {
     /** URL the proxied tab loads (this devserver's index, loopback). */
@@ -54,13 +61,16 @@ export type RemoteControlOptions = {
 }
 
 const VIEWER_HTML_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "devserver-remote-viewer.html")
-const DEFAULT_VIEWPORT = { width: 1280, height: 800, dpr: 1 }
+const DEFAULT_VIEWPORT = { width: 1280, height: 800, dpr: 1, touch: false }
 const JPEG_QUALITY = 70
 /** Drop frames for a viewer whose socket has this much unsent data (slow link) rather than queue forever. */
 const VIEWER_MAX_BUFFERED_BYTES = 2 * 1024 * 1024
 const MAX_VIEWPORT_DIM = 4096
 const TOKEN_COOKIE = "gcad_remote"
 const MOUSE_BUTTONS = ["left", "middle", "right"] as const
+type MouseButtonName = (typeof MOUSE_BUTTONS)[number]
+/** Modifier keys whose held state must be tracked so a dropped viewer can't leave them stuck. */
+const MODIFIER_KEYS = new Set<string>(["Shift", "Control", "Alt", "Meta"])
 
 function clampInt(v: unknown, lo: number, hi: number, fallback: number): number {
     const n = typeof v === "number" && Number.isFinite(v) ? Math.round(v) : fallback
@@ -94,6 +104,17 @@ export class RemoteControl {
     /** Latest not-yet-dispatched mouse move; updated in place so a burst of moves collapses to one CDP call. */
     #pendingMove: { x: number; y: number } | null = null
     #frames = 0
+    /**
+     * Mouse buttons / modifier keys currently held in the remote tab. Puppeteer throws on a
+     * double `down` or an unmatched `up`, and a viewer that drops mid-gesture never sends the
+     * matching up, so both are reconciled here instead of trusting the viewer's sequence.
+     */
+    #buttonsDown = new Set<MouseButtonName>()
+    #modifiersDown = new Set<string>()
+    /** True while the remote tab has ≥1 emulated touch point down (released on viewer drop). */
+    #touchActive = false
+    /** Latest not-yet-dispatched touchMove; coalesced like mouse moves. */
+    #pendingTouchMove: { pts: { id: number; x: number; y: number }[] } | null = null
 
     constructor(opts: RemoteControlOptions) {
         this.#opts = { log: console.log, err: console.error, ...opts }
@@ -159,6 +180,9 @@ export class RemoteControl {
             screencast: this.#screencastOn,
             viewport: { ...this.#viewport },
             framesSent: this.#frames,
+            buttonsDown: [...this.#buttonsDown],
+            modifiersDown: [...this.#modifiersDown],
+            touchActive: this.#touchActive,
             browserPid: this.#browser?.process()?.pid ?? null,
         }
     }
@@ -196,7 +220,10 @@ export class RemoteControl {
         ws.on("close", () => {
             this.#viewers.delete(ws)
             this.#opts.log(`remote: viewer disconnected (${this.#viewers.size} left)`)
-            if (this.#viewers.size === 0) void this.#stopScreencast()
+            if (this.#viewers.size === 0) {
+                this.#queueRelease()
+                void this.#stopScreencast()
+            }
         })
         ws.on("error", e => this.#opts.err(`remote viewer socket: ${e}`))
         this.#sendState(ws)
@@ -256,8 +283,30 @@ export class RemoteControl {
         switch (msg.t) {
             case "hello":
             case "resize":
-                void this.#applyViewport(msg.w, msg.h, msg.dpr)
+                void this.#applyViewport(msg.w, msg.h, msg.dpr, msg.touch)
                 return
+            case "tc": {
+                if (!TOUCH_EVENT_TYPES.has(msg.type) || !Array.isArray(msg.pts)) return
+                const pts = msg.pts
+                    .filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+                    .map(p => ({ id: clampInt(p.id, 0, 1e9, 0), x: p.x, y: p.y }))
+                if (msg.type === "touchMove") {
+                    if (this.#pendingTouchMove) {
+                        this.#pendingTouchMove.pts = pts
+                        return
+                    }
+                    const slot = { pts }
+                    this.#pendingTouchMove = slot
+                    this.#enqueue(async page => {
+                        if (this.#pendingTouchMove === slot) this.#pendingTouchMove = null
+                        await this.#dispatchTouch(page, "touchMove", slot.pts)
+                    })
+                    return
+                }
+                const type = msg.type
+                this.#queueInput(page => this.#dispatchTouch(page, type, pts))
+                return
+            }
             case "mm":
                 this.#queueMove(msg.x, msg.y)
                 return
@@ -268,8 +317,14 @@ export class RemoteControl {
                 const down = msg.t === "md"
                 this.#queueInput(async page => {
                     await page.mouse.move(x, y)
-                    if (down) await page.mouse.down({ button })
-                    else await page.mouse.up({ button })
+                    if (down === this.#buttonsDown.has(button)) return // already in that state
+                    if (down) {
+                        await page.mouse.down({ button })
+                        this.#buttonsDown.add(button)
+                    } else {
+                        await page.mouse.up({ button })
+                        this.#buttonsDown.delete(button)
+                    }
                 })
                 return
             }
@@ -287,6 +342,11 @@ export class RemoteControl {
                 const down = msg.t === "kd"
                 if (typeof key !== "string" || key.length === 0) return
                 this.#queueInput(async page => {
+                    if (MODIFIER_KEYS.has(key)) {
+                        if (down === this.#modifiersDown.has(key)) return // already in that state
+                        if (down) this.#modifiersDown.add(key)
+                        else this.#modifiersDown.delete(key)
+                    }
                     try {
                         if (down) await page.keyboard.down(key as KeyInput)
                         else await page.keyboard.up(key as KeyInput)
@@ -305,6 +365,9 @@ export class RemoteControl {
                 this.#queueInput(page => page.keyboard.sendCharacter(text))
                 return
             }
+            case "release":
+                this.#queueRelease()
+                return
             case "reload":
                 this.#queueInput(async page => {
                     await page.reload({ waitUntil: "domcontentloaded" })
@@ -318,7 +381,33 @@ export class RemoteControl {
     #queueInput(fn: (page: Page) => Promise<void>): void {
         // Any non-move event seals the pending move so later moves don't reorder before it.
         this.#pendingMove = null
+        this.#pendingTouchMove = null
         this.#enqueue(fn)
+    }
+
+    async #dispatchTouch(page: Page, type: TouchEventType, pts: { id: number; x: number; y: number }[]): Promise<void> {
+        const cdp = this.#cdp
+        if (!cdp || page.isClosed()) return
+        if (type === "touchStart" && pts.length === 0) return
+        // touchEnd/touchCancel list the points that REMAIN; Chromium releases the missing ones.
+        await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: pts.map(p => ({ x: p.x, y: p.y, id: p.id })) })
+        this.#touchActive = pts.length > 0 && type !== "touchCancel"
+    }
+
+    /** Release every held mouse button and modifier key in the remote tab (viewer blur / disconnect). */
+    #queueRelease(): void {
+        if (this.#buttonsDown.size === 0 && this.#modifiersDown.size === 0 && !this.#touchActive) return
+        this.#queueInput(async page => {
+            if (this.#touchActive) await this.#dispatchTouch(page, "touchCancel", []).catch(() => {})
+            for (const button of [...this.#buttonsDown]) {
+                this.#buttonsDown.delete(button)
+                await page.mouse.up({ button }).catch(() => {})
+            }
+            for (const key of [...this.#modifiersDown]) {
+                this.#modifiersDown.delete(key)
+                await page.keyboard.up(key as KeyInput).catch(() => {})
+            }
+        })
     }
 
     #queueMove(x: number, y: number): void {
@@ -369,7 +458,7 @@ export class RemoteControl {
             handleSIGINT: false,
             handleSIGTERM: false,
             handleSIGHUP: false,
-            defaultViewport: { width: this.#viewport.width, height: this.#viewport.height, deviceScaleFactor: this.#viewport.dpr },
+            defaultViewport: this.#puppeteerViewport(this.#viewport),
             args: ["--enable-unsafe-webgpu", `--window-size=${this.#viewport.width},${this.#viewport.height}`],
         })
         if (this.#closed) {
@@ -386,6 +475,9 @@ export class RemoteControl {
             this.#cdp = null
             this.#launch = null
             this.#screencastOn = false
+            this.#buttonsDown.clear()
+            this.#modifiersDown.clear()
+            this.#touchActive = false
             if (!this.#closed) {
                 this.#setStatus("error", "browser exited; reconnect to relaunch")
                 this.#opts.err("remote: headless Chromium disconnected")
@@ -405,19 +497,25 @@ export class RemoteControl {
         page.on("load", () => {
             if (this.#viewers.size > 0) void this.#startScreencast()
         })
+        await this.#applyTouchPoints()
         await page.goto(this.#opts.pageUrl, { waitUntil: "domcontentloaded" })
         this.#opts.log(`remote: headless Chromium (pid ${pid ?? "?"}) → ${this.#opts.pageUrl}`)
         this.#setStatus("ready")
         if (this.#viewers.size > 0) await this.#startScreencast()
     }
 
-    async #applyViewport(w: unknown, h: unknown, dpr: unknown): Promise<void> {
+    async #applyViewport(w: unknown, h: unknown, dpr: unknown, touch: unknown): Promise<void> {
         const next = {
             width: clampInt(w, 200, MAX_VIEWPORT_DIM, DEFAULT_VIEWPORT.width),
             height: clampInt(h, 200, MAX_VIEWPORT_DIM, DEFAULT_VIEWPORT.height),
             dpr: clampInt(dpr, 1, 2, 1),
+            touch: touch === true,
         }
-        const changed = next.width !== this.#viewport.width || next.height !== this.#viewport.height || next.dpr !== this.#viewport.dpr
+        const changed =
+            next.width !== this.#viewport.width ||
+            next.height !== this.#viewport.height ||
+            next.dpr !== this.#viewport.dpr ||
+            next.touch !== this.#viewport.touch
         this.#viewport = next
         const page = this.#page
         if (!changed || !page || page.isClosed()) {
@@ -425,12 +523,27 @@ export class RemoteControl {
             return
         }
         try {
-            await page.setViewport({ width: next.width, height: next.height, deviceScaleFactor: next.dpr })
+            // hasTouch drives Emulation.setTouchEmulationEnabled (needed for Input.dispatchTouchEvent);
+            // Puppeteer reloads the page when it flips, which only happens when a touch viewer
+            // replaces a mouse viewer or vice versa.
+            await page.setViewport(this.#puppeteerViewport(next))
+            await this.#applyTouchPoints()
             this.#sendState()
             if (this.#viewers.size > 0) await this.#startScreencast()
         } catch (e) {
             this.#opts.err(`remote: setViewport failed: ${e}`)
         }
+    }
+
+    /** Puppeteer's hasTouch leaves CDP's default maxTouchPoints (1); multi-touch needs more. */
+    async #applyTouchPoints(): Promise<void> {
+        const cdp = this.#cdp
+        if (!cdp || !this.#viewport.touch) return
+        await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: TOUCH_POINTS }).catch(() => {})
+    }
+
+    #puppeteerViewport(v: { width: number; height: number; dpr: number; touch: boolean }) {
+        return { width: v.width, height: v.height, deviceScaleFactor: v.dpr, hasTouch: v.touch }
     }
 
     async #startScreencast(): Promise<void> {

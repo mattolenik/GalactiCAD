@@ -9,6 +9,7 @@ import { getInstalledBrowsers } from "@puppeteer/browsers"
 import puppeteer, { type Browser } from "puppeteer"
 import WebSocket, { WebSocketServer } from "ws"
 import { BrowserBridge, type DevServerConsoleLogLevel } from "./devserver-bridge.mjs"
+import { RemoteControl } from "./devserver-remote.mjs"
 import {
     mergeAgentRenderRequest,
     normalizeAgentTestcaseFromBridge,
@@ -57,7 +58,7 @@ function sigkillBrowserPids(pids: number[], log: (msg: unknown) => void): void {
     for (const pid of pids) {
         try {
             process.kill(pid, "SIGKILL")
-            log(`agent mode: SIGKILL'd stale browser PID ${pid}`)
+            log(`SIGKILL'd stale browser PID ${pid} from previous run file`)
         } catch {
             /* already gone */
         }
@@ -836,14 +837,18 @@ export class DevServer {
     private readonly bridge: BrowserBridge
     /** Headless agent Chromium launched via puppeteer in AGENT mode; closed on shutdown. */
     #agentBrowser: Browser | null = null
+    /** Remote-control ("visual proxy") browser + viewers for `GET /_remote`; lazily launched, closed on shutdown. */
+    readonly #remote: RemoteControl
 
     private constructor(
         public serveRoot: string,
         public port: number,
         public indexFileName: string,
         bridge: BrowserBridge,
+        remote: RemoteControl,
     ) {
         this.bridge = bridge
+        this.#remote = remote
     }
 
     static async create(
@@ -855,21 +860,35 @@ export class DevServer {
         options?: { runFile: string; pid: number },
     ): Promise<DevServer> {
         const bridge = new BrowserBridge()
+        // `listen` binds exactly `port` (EADDRINUSE rejects rather than picking another), so the
+        // loopback URL for the remote-control tab is known before the socket is bound.
+        const remote = new RemoteControl({
+            pageUrl: `http://127.0.0.1:${port}/`,
+            // Per-mode profile: the interactive and agent devservers can run at once and
+            // Chromium refuses to share a user-data-dir between two live instances.
+            userDataDir: path.resolve(process.cwd(), PUPPETEER_BROWSERS_DIR, `remote-${AGENT_MODE ? "agent" : "user"}-data-dir`),
+            resolveExecutable: resolveChromiumExecutable,
+            onBrowserPid: options ? pid => addBrowserPidToRunFile(options.runFile, pid) : undefined,
+            token: process.env.GCAD_REMOTE_TOKEN?.trim() || undefined,
+            log,
+            err,
+        })
 
         const {
             server,
             port: actualPort,
             wss,
-        } = await listen(serveRoot, port, INJECTED_BRIDGE_SCRIPT, indexFileName, bridge, log, err)
-        const instance = new DevServer(serveRoot, actualPort, indexFileName, bridge)
+        } = await listen(serveRoot, port, INJECTED_BRIDGE_SCRIPT, indexFileName, bridge, remote, log, err)
+        const instance = new DevServer(serveRoot, actualPort, indexFileName, bridge, remote)
         instance.httpServer = server
         instance.wsServer = wss
 
-        // Cold start: reap orphan headless Chromium from a previous agent devserver that
-        // exited uncleanly (its browser_pids are still recorded in the leftover run file).
-        // On a clean re-exec build.mts already unlinked the run file after shutdown(), so this
-        // reads nothing and no-ops. Runs BEFORE the run file is overwritten below.
-        if (AGENT_MODE && options) {
+        // Cold start: reap orphan headless Chromium (agent render browser and/or remote-control
+        // browser) from a previous devserver that exited uncleanly (its browser_pids are still
+        // recorded in the leftover run file). On a clean re-exec build.mts already unlinked the
+        // run file after shutdown(), so this reads nothing and no-ops. Runs BEFORE the run file
+        // is overwritten below.
+        if (options) {
             sigkillBrowserPids(await readRunFileBrowserPids(options.runFile), log)
         }
 
@@ -920,7 +939,7 @@ export class DevServer {
         }
 
         log(
-            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET /_agent/screenshot?viewport=sdf|mesh (live viewport PNG); GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path>?mode=… (path resolved: cwd → test/testcases/ → absolute)`,
+            `Live reload + bridge WebSocket on http://localhost:${actualPort} (same port as HTTP); GET /_remote (remote-control viewer, WS /_remote/ws, GET /_remote/status); GET /_logs GET /_sceneSource GET|POST /_refresh; GET /_agent/capture-testcase; GET /_agent/screenshot?viewport=sdf|mesh (live viewport PNG); GET|POST /_agent/render (JSON); POST /_agent/render/testcase-body (YAML); GET testcase: /_agent/render/testcase/<path>?mode=… (path resolved: cwd → test/testcases/ → absolute)`,
         )
         return instance
     }
@@ -941,6 +960,7 @@ export class DevServer {
      * Closes agent headless Chromium (puppeteer), then closes the WebSocket server and HTTP server.
      */
     async shutdown(): Promise<void> {
+        await this.#remote.close()
         const browser = this.#agentBrowser
         this.#agentBrowser = null
         if (browser != null) {
@@ -987,6 +1007,7 @@ function createHttpServer(
     clientScript: string,
     indexFileName: string,
     bridge: BrowserBridge,
+    remote: RemoteControl,
     log = console.log,
     err = console.error,
 ) {
@@ -1022,6 +1043,11 @@ function createHttpServer(
         const url = new URL(req.url ?? "/", "http://localhost")
         const pathname = url.pathname
         writeAccessLogLine(req, pathname, url.search)
+
+        if (RemoteControl.owns(pathname)) {
+            await remote.handleHttp(req, res, url)
+            return
+        }
 
         if (pathname === "/_logs") {
             if (req.method !== "GET") {
@@ -1445,11 +1471,12 @@ function listen(
     clientScript: string,
     indexFileName: string,
     bridge: BrowserBridge,
+    remote: RemoteControl,
     log = console.log,
     err = console.error,
 ): Promise<{ server: http.Server; port: number; wss: WebSocketServer }> {
     return new Promise((resolve, reject) => {
-        const server = createHttpServer(dir, clientScript, indexFileName, bridge, log, err)
+        const server = createHttpServer(dir, clientScript, indexFileName, bridge, remote, log, err)
         const onError = (e: NodeJS.ErrnoException) => {
             if (e.code === "EADDRINUSE") {
                 void describePortHolders(port).then(holders => {
@@ -1467,10 +1494,16 @@ function listen(
         server.listen(port, () => {
             server.removeListener("error", onError)
             log(`Serving at http://localhost:${port}`)
-            const wss = new WebSocketServer({ server }).on("connection", (ws: WebSocket) => {
+            const wss = new WebSocketServer({ server }).on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
                 ws.on("error", (error: Error) => {
                     err("WebSocket error: ", error)
                 })
+                // Remote-control viewers share the port but are not app bridge clients (they must
+                // never be picked as the "first open client" for /_logs, /_sceneSource, renders…).
+                if (RemoteControl.isViewerUpgrade(req)) {
+                    remote.handleViewerSocket(ws, req)
+                    return
+                }
                 ws.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
                     bridge.handleClientMessage(data, ws)
                 })

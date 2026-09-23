@@ -307,3 +307,18 @@ curl -sS "http://localhost:${user_port}/_sceneSource"
 
 - Cross-reference: **AGENTS.md** (devserver overview, log query parameters, agent automation summary).
 - agentcli source: [scripts/agentcli](scripts/agentcli). All subcommands have `--help` with full option lists.
+
+---
+
+## Remote control / visual proxy (`GET /_remote`)
+
+Either devserver can stream a **dedicated headless Chromium** running the app to a browser anywhere on the VPN and let that browser drive it: open `http://<host>:<port>/_remote` (interactive port from `.devserver.run`, or the agent port). Implementation: `build/devserver-remote.mts` (server) + `build/devserver-remote-viewer.html` (viewer page).
+
+- **Lazy launch, persistent session.** The remote Chromium starts on the first viewer WebSocket (`/_remote/ws`) and stays up until the devserver shuts down (`make stop*` / build re-exec close it; its PID is recorded in the run file's `browser_pids` for cold-start reaping). Profile: `.browsers/remote-user-data-dir` (interactive) / `.browsers/remote-agent-data-dir` (agent), so open documents survive restarts. It is **not** the agent render browser and **not** the human's `make open` tab.
+- **Frames:** CDP `Page.startScreencast` JPEG, one binary WS message per frame, only while ≥1 viewer is connected. Chromium emits frames only on compositor changes (an idle scene costs nothing), so the server pushes one `Page.captureScreenshot` when the screencast is armed and whenever a viewer joins.
+- **Viewport = viewer window.** The viewer reports its size on connect/resize (`hello`/`resize`), the server calls `page.setViewport`, so coordinates map 1:1. **HiDPI** button renders at DPR 2.
+- **Input:** pointer → `page.mouse` (left/middle/right, wheel; touch = left drag, two-finger pinch = wheel zoom), keys → `page.keyboard.down/up` by DOM `key` name with an `Input.insertText` fallback for IME / virtual keyboards. Modifiers are released on viewer `blur` to avoid stuck Shift/Meta. `↻` reloads the remote tab.
+- **Bridge isolation:** viewer sockets are routed by URL before the app bridge, so they never count as the "first open client". The remote tab itself *is* a bridge client (it loads the injected script) — with both it and another tab connected, `/_sceneSource`, `/_logs` etc. go to whichever connected first.
+- **Auth:** none by default (VPN-only assumption). Set `GCAD_REMOTE_TOKEN=…` in the devserver's environment to require `?token=…` once (sets a cookie scoped to `/_remote`).
+- **Status:** `GET /_remote/status` → `{ status, viewers, screencast, viewport, framesSent, browserPid }`.
+- **Headless smoke from Node** (no browser needed): connect `ws` to `/_remote/ws`, send `{"t":"hello","w":1100,"h":700,"dpr":1}`, expect a `state` JSON with `status:"ready"` then binary JPEG frames; send `mm`/`md`/`mu`/`wh`/`kd`/`ku`/`txt` messages to drive it.

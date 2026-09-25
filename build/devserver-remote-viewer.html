@@ -73,12 +73,14 @@
 
     // ── status / hud ──
     let frames = 0, fps = 0
+    let activeTouches = 0 // live finger count, shown in the HUD so on-device gesture detection is visible
     setInterval(() => { fps = frames; frames = 0; renderStatus() }, 1000)
     let remoteState = { status: "idle", message: "" }
     function renderStatus() {
         const s = remoteState.status
         statusEl.classList.toggle("err", s === "error")
-        statusEl.textContent = !open ? "disconnected" : s === "ready" ? `${fps} fps · ${canvas.width}×${canvas.height}` : s === "launching" ? "launching browser…" : s === "error" ? `error: ${remoteState.message || ""}` : s
+        const touchInfo = activeTouches > 0 ? ` · ${activeTouches} touch${activeTouches > 1 ? "es" : ""}` : ""
+        statusEl.textContent = !open ? "disconnected" : s === "ready" ? `${fps} fps · ${canvas.width}×${canvas.height}${touchInfo}` : s === "launching" ? "launching browser…" : s === "error" ? `error: ${remoteState.message || ""}` : s
         const showBanner = !open || s !== "ready"
         banner.classList.toggle("hidden", !showBanner)
         if (showBanner) banner.textContent = !open ? "connecting…" : s === "launching" ? "launching headless browser…" : s === "error" ? `error: ${remoteState.message || ""}` : "waiting for first frame…"
@@ -170,50 +172,48 @@
         const y = Math.max(0, Math.min(r.height, e.clientY - r.top))
         return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
     }
-    // Touch pointers are forwarded RAW as multi-touch points (CDP Input.dispatchTouchEvent),
-    // so the app's own touch handling (PinchZoomController pinch/twist, pointer-event orbit)
-    // runs unchanged in the remote tab. No gesture translation here.
-    const touches = new Map() // pointerId → {x,y}
-    function touchPts() { return [...touches.entries()].map(([id, p]) => ({ id, x: p.x, y: p.y })) }
-    function sendTouch(type) { send({ t: "tc", type, pts: touchPts() }) }
-    let touchMoveRaf = 0
-    function scheduleTouchMove() {
-        // Each finger's move arrives as its own pointermove; batch them per frame so the remote
-        // tab sees one touchmove carrying every finger's new position.
-        if (touchMoveRaf) return
-        touchMoveRaf = requestAnimationFrame(() => { touchMoveRaf = 0; if (touches.size) sendTouch("touchMove") })
+    // Touch is handled through the Touch Events API, not Pointer Events: a touch event carries
+    // the FULL active-touch list (exactly what CDP Input.dispatchTouchEvent wants), and its
+    // preventDefault is what reliably stops iOS Safari / Android from turning two fingers into
+    // a page pinch-zoom (which would pointercancel the gesture out from under us). Points are
+    // forwarded raw, so the app's own PinchZoomController / pointer orbit run unchanged.
+    const touchIds = new Map() // Touch.identifier (huge on iOS) → small CDP id
+    function touchId(identifier) {
+        let id = touchIds.get(identifier)
+        if (id == null) { id = 0; const used = new Set(touchIds.values()); while (used.has(id)) id++; touchIds.set(identifier, id) }
+        return id
     }
+    function sendTouch(type, e) {
+        const r = canvas.getBoundingClientRect()
+        const pts = [...e.touches].map(t => ({
+            id: touchId(t.identifier),
+            x: Math.round(Math.max(0, Math.min(r.width, t.clientX - r.left)) * 100) / 100,
+            y: Math.round(Math.max(0, Math.min(r.height, t.clientY - r.top)) * 100) / 100,
+        }))
+        const live = new Set(pts.map(p => p.id))
+        for (const [ident, id] of touchIds) if (!live.has(id)) touchIds.delete(ident)
+        if (activeTouches !== pts.length) { activeTouches = pts.length; renderStatus() }
+        send({ t: "tc", type, pts })
+    }
+    canvas.addEventListener("touchstart", e => { e.preventDefault(); pokeHud(); canvas.focus({ preventScroll: true }); sendTouch("touchStart", e) }, { passive: false })
+    canvas.addEventListener("touchmove", e => { e.preventDefault(); sendTouch("touchMove", e) }, { passive: false })
+    canvas.addEventListener("touchend", e => { e.preventDefault(); sendTouch("touchEnd", e) }, { passive: false })
+    canvas.addEventListener("touchcancel", e => { sendTouch("touchCancel", e) }, { passive: false })
 
     canvas.addEventListener("pointerdown", e => {
+        if (e.pointerType === "touch") return
         pokeHud()
         canvas.focus({ preventScroll: true })
-        canvas.setPointerCapture(e.pointerId)
-        if (e.pointerType === "touch") {
-            touches.set(e.pointerId, pos(e))
-            sendTouch("touchStart")
-            return
-        }
         e.preventDefault()
+        canvas.setPointerCapture(e.pointerId)
         send({ t: "md", ...pos(e), b: e.button === 1 ? 1 : e.button === 2 ? 2 : 0 })
     })
     canvas.addEventListener("pointermove", e => {
-        if (e.pointerType === "touch") {
-            if (!touches.has(e.pointerId)) return
-            touches.set(e.pointerId, pos(e))
-            scheduleTouchMove()
-            return
-        }
+        if (e.pointerType === "touch") return
         send({ t: "mm", ...pos(e) })
     })
     function pointerEnd(e) {
-        if (e.pointerType === "touch") {
-            if (!touches.has(e.pointerId)) return
-            if (touchMoveRaf) { cancelAnimationFrame(touchMoveRaf); touchMoveRaf = 0; sendTouch("touchMove") }
-            touches.delete(e.pointerId)
-            // CDP releases whichever previously-active points are missing from the list.
-            sendTouch(e.type === "pointercancel" ? "touchCancel" : "touchEnd")
-            return
-        }
+        if (e.pointerType === "touch") return
         send({ t: "mu", ...pos(e), b: e.button === 1 ? 1 : e.button === 2 ? 2 : 0 })
     }
     canvas.addEventListener("pointerup", pointerEnd)
@@ -256,7 +256,7 @@
     function releaseAll() {
         for (const m of MODS) send({ t: "ku", key: m })
         send({ t: "release" })
-        touches.clear()
+        touchIds.clear(); activeTouches = 0
     }
     window.addEventListener("blur", releaseAll)
     document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll() })

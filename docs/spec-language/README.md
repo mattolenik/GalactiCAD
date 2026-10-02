@@ -1,6 +1,6 @@
 # gcad spec language: grammar documentation
 
-Status: design draft, 2026-09-22. Documents the syntax of the spec-style CAD language
+Status: design draft, 2026-09-23. Z-up. Documents the syntax of the spec-style CAD language
 (Proposal C of `docs/research/cad-spec-dsl-proposals-2026-09-09.md`, revised so that parts
 are types, the scene is an unnamed part, and names may be multi-word and quoted).
 Nothing here is implemented yet.
@@ -28,7 +28,7 @@ The EBNF is the W3C flavour used by the XML and Go specifications:
 | `A \| B` | alternatives, tried top to bottom |
 | `A?` `A*` `A+` | optional, zero-or-more, one-or-more |
 | `( … )` | grouping |
-| `-- text` | comment on the rule |
+| `-- text` | comment on the rule; the language uses the same marker for comments |
 | `decides on: …` | the token the parser looks at to choose between alternatives |
 
 Templates use `<slot>` for a typed slot; slot types are defined once in
@@ -37,7 +37,7 @@ Templates use `<slot>` for a typed slot; slot types are defined once in
 ## How the grammar maps to the parser
 
 Each EBNF production corresponds to one parse function of the same name. A reader who
-wants to know how `Placement` is parsed opens `parsePlacement`. The `decides on` notes are
+wants to know how `AttachmentStatement` is parsed opens `parseAttachmentStatement`. The `decides on` notes are
 the lookahead each function performs before committing to an alternative; there is no
 backtracking beyond that lookahead except where a rule says so explicitly.
 
@@ -53,6 +53,6 @@ Every example sentence in these files is intended to become a row of a conforman
 documentation is checked against the parser. Near-miss examples marked *rejected* are
 part of the corpus too, with the expected error.
 
-Railroad diagrams for the recursive rules (`Reference`, `DimensionList`, `Expression`)
+Railroad diagrams for the recursive rules (`Reference`, `AttachmentRef`, `Expression`)
 can be generated from `grammar.md` with the bottlecaps RR generator, which accepts this
 EBNF dialect directly. They are not checked in.

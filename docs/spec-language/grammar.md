@@ -8,8 +8,10 @@ templates, patterns) are in [templates.md](templates.md); `Expression` is in
 
 Two rules shape every part: a declaration says what a thing is and how big
 (`the stud is a male thread, dia = 29, pitch = 1.5, height = 3.5`), and the
-`attachments` section says where it goes (`the stud on the top of the base, sunk 0.5`).
-There is no placement information in a declaration.
+`attachments` section says what it attaches to and how
+(`the stud attaches to the base, with its bottom facing the top of the base`). There
+is no placement information in a declaration. The language is Z-up: `top` is the +Z
+face and `height` runs along Z.
 
 ## Document and parts
 
@@ -20,11 +22,14 @@ Parts may be declared in any order and after their first use.
 
 ```
 Document        ::= Line*
-                    -- column-0 statements form the Scene; each PartHeader starts a Part
+                    -- Line: lexical.md, Lines. Column-0 statements form the Scene;
+                    -- each PartHeader starts a Part
 Scene           ::= Statement*
 Part            ::= PartHeader Statement*
                     -- Statements indented under the header; any indentation, kept consistent
 PartHeader      ::= "part" Name
+                    -- the header owns the rest of the line, so the name may contain
+                    -- function words; references to such a name must be quoted
 ```
 
 Example:
@@ -36,15 +41,14 @@ part Pill Case Lid
   the socket is a female thread, dia = 29, pitch = pitch, depth = 4
   where the cap has fillet 1 on its top edge
   attachments
-    the cap    on the ground
-    the socket into the bottom of the cap
+    the socket subtracts from the cap, with its bottom positioned at the bottom of the cap
+    default is the bottom of the cap
 
 given n = 3
-the stack is n pill case segments
+the stack is n pill case segments, stacked along Z
 the lid   is a pill case lid
 attachments
-  the stack stacked along Y
-  the lid   on the stud of the last segment of the stack
+  the lid attaches to the stack, with its socket facing the stud top of the last segment
 ```
 
 ## Statements
@@ -61,9 +65,10 @@ Statement       ::= UnitsStatement
                   | AttachmentsSection
                   | ForEach
                     -- decides on the first token: "units", "use", a section word, "datum",
-                    -- "attachments", "for"; otherwise "the"/Quoted starts a Declaration or
-                    -- Predicate (decided at the verb, see below); a Name followed by "="
-                    -- is a ParameterDefinition; anything else is an Assertion
+                    -- "attachments", "for"; a Name followed by "=" is a ParameterDefinition;
+                    -- "the" starts a Declaration or Predicate (decided at the verb, see
+                    -- below), or under "require" an AssertionTemplate; anything else is
+                    -- an Assertion
 
 UnitsStatement  ::= "units" Unit
                     -- default unit for bare numbers in this part or scene; default mm
@@ -109,36 +114,41 @@ given
   od   = 32
   wall = 1.5
 datum A is the bottom of the base
-datum mid plane is the plane Y = 14
+datum mid plane is the plane Z = 14
 ```
 
 ### Declarations
 
 A declaration names a feature (inside a part) or an instance (in the scene) and gives
-its kind and arguments. Singular declarations use `is a`; counted declarations use
-`are` and a count. Every kind, built-in or part, takes its arguments the same way:
-`, name = value` pairs after the kind. The parameter names of the built-in kinds are in
-templates.md; a part's are its `given` names.
+its kind, its arguments, and, for a counted declaration, its pattern. Singular
+declarations use `is a`; counted declarations use `is` or `are` and a count
+(`the vents are 4 holes`, `the stack is 3 segments`). Every kind,
+built-in or part, takes its arguments the same way: `, name = value` pairs after the
+kind. The parameter names of the built-in kinds are in templates.md; a part's are its
+`given` names.
 
 ```
-Declaration     ::= Subject ("is a" | "is an") Kind Arguments? Condition?
-                  | Subject "are" Count Kind Arguments? Condition?
-                    -- decides on "is"/"are"; a Subject followed by any other verb
-                    -- is a Predicate
+Declaration     ::= Subject ("is a" | "is an") Kind Arguments?
+                  | Subject ("is" | "are") Count Kind Arguments? ("," Pattern)?
+                    -- decides on the word after "is"/"are": "a"/"an" is a singular
+                    -- declaration, a Count a counted one; anything else ("is joined",
+                    -- "is knurled", "has fillet") makes the sentence a Predicate
 
 Subject         ::= "the" Name
 Kind            ::= Name
                     -- a run of content words ending at the comma; bound later to a
                     -- built-in kind or a part name
 Count           ::= Integer | Name | "(" Expression ")"
+                    -- a Name count is a single word; the Kind starts at the next word
 Arguments       ::= ("," Argument)+
 Argument        ::= Name "=" Value
                     -- decides on: after a ",", Name followed by "=" is an Argument;
-                    -- "only if" is the Condition; anything else is an error here
-Value           ::= Triple | Expression | "through" | Thread | Quoted
+                    -- a pattern word starts the Pattern; anything else is an error here
+Value           ::= Triple | Expression | Reference | "through" | Thread | Quoted
+                    -- Reference for sketch-valued parameters (profile = the outline)
 Triple          ::= Expression "x" Expression ("x" Expression)?
-                    -- 10 x 6 x 4 or 10x6x4; a size is x by y by z with Y up
-Condition       ::= "," "only if" Expression
+                    -- 10 x 6 x 4 or 10x6x4; a size is x by y by z with Z up
+Pattern         ::= see templates.md, Pattern templates
 ```
 
 Examples:
@@ -147,10 +157,10 @@ Examples:
 the base   is a cylinder, dia = od, height = 28
 the stud   is a male thread, dia = 29, pitch = 1.5, height = 3.5
 the pocket is a bore, dia = od - 2 * (wall + 1.5), depth = 17
-the tab    is a box, size = 10 x 6 x 4
-the plate  is a box, width = 30, height = 5, depth = 20
+the tab    is a box, size = 10 x 4 x 6
+the plate  is a box, width = 30, depth = 20, height = 5
 the socket is a female thread, thread = M8x1.25, depth = 12
-the vents  are 4 holes, dia = 1.5, depth = through, only if vented
+the vents  are 4 holes, dia = 1.5, depth = through, equally spaced on a circle with dia = 10
 the lid    is a pill case lid, od = 40, vented = no
 the riser  is a pipe stub, length = run / 2
 ```
@@ -158,7 +168,9 @@ the riser  is a pipe stub, length = run / 2
 The comma before the first argument is required: the kind phrase is a run of content
 words and the comma is what ends it. Arguments may come in any order; a missing
 required argument, an unknown name, or a value of the wrong kind (a boolean for a
-length) is an error from the binder, which also suggests the nearest name.
+length) is an error from the binder, which also suggests the nearest name. A counted
+declaration's pattern lays its elements out around the group's own center; the group
+is then attached as one thing.
 
 Rejected:
 
@@ -172,77 +184,110 @@ the base is a cylinder, dia = 32, on the top of the stand
 
 ### Attachments section
 
-The `attachments` section holds every placement in a part or scene, and the part's
-attachment interface. Three kinds of item: an attachment statement (where a declared
-thing goes), an attachment declaration (a named attachment this part exposes), and
-`plus the box defaults`.
+The `attachments` section holds every attachment in a part or scene, the part's
+attachment interface, and the part's default attachment. Four kinds of item.
 
 ```
 AttachmentsSection  ::= "attachments" (AttachItem | NEWLINE AttachItem+)
-AttachItem          ::= AttachmentStatement | AttachmentDecl | "plus the box defaults"
-                        -- decides on the first word: "the"/Quoted → statement;
-                        -- surface/plane/point/axis/edge → declaration; "plus" → defaults
+AttachItem          ::= AttachmentStatement | AttachmentDecl | DefaultDecl | "plus the box defaults"
+                        -- decides on the first word: "the" → statement;
+                        -- surface/plane/point/axis/edge → declaration; "default" → default;
+                        -- "plus" → box defaults
 ```
 
 #### Attachment statements
 
+An attachment statement names two peers: the subject and the thing it attaches to.
+Both are declared in the current part or scene. Anything deeper, the subject's
+subparts or the target's, is reached only inside the `with` refinement. To attach
+something to a subpart as such, write the statement in the part that owns the subpart.
+
 ```
-AttachmentStatement ::= Subject ("by its" Name)? AttachVerb AttachmentRef Modifier* ("," Pattern)?
-                      | Subject "at" Vector Modifier*
-                      | Subject Quantity Direction Reference Modifier*
-                      | Subject "rotated" Angle "about" Axis
-                      | Subject Pattern
-                        -- "by its <name>" is the subject's own attachment; default: its bottom
-AttachVerb          ::= "on" | "into" | "at" | "snapped to" | "flush with" | "in" | "along"
-                        -- which verbs a kind accepts: templates.md, Attachment kinds
-Modifier            ::= "," ("sunk" | "proud" | "inset") Quantity
-                      | "," "toward" AttachmentRef
+AttachmentStatement ::= Subject AttachVerb Reference WithClause? Modifier* Condition?
+AttachVerb          ::= "attaches to" | "attach to"          -- union
+                      | "subtracts from" | "subtract from"   -- subtraction
+                        -- attach/attaches and subtract/subtracts are synonyms; the
+                        -- singular and plural forms are not enforced
+WithClause          ::= "," "with" Alignment ("and" Alignment)*
+Alignment           ::= AttachmentRef AlignVerb (AttachmentRef | Direction)
+                        -- AttachmentRef: References below. Left side is on the subject;
+                        -- right side is on the target, a direction, or (after "aimed
+                        -- at") anything in scope
+AlignVerb           ::= "facing"        -- positions coincide, vectors anti-parallel
+                      | "aligns with"   -- positions coincide, vectors parallel
+                      | "positioned at" -- positions coincide, orientation untouched
+                      | "aimed at"      -- vector points toward the target's position;
+                                        --   position must already be fixed
+Direction           ::= ("+" | "-") AxisName                      -- global
+                      | "front" | "back" | "left" | "right" | "up" | "down"
+                                                                  -- relative to the subject
+Modifier            ::= "," ("sunk" | "proud" | "slid") Quantity
                       | "," "turned" Angle
-                      | "," "facing" Direction
-                      | "," "up along" (Axis | AttachmentRef)
-                      | "," Quantity ("in" | "along" | "from" AttachmentRef)
-                        -- the free parameter of an axis, edge, or plane attachment
-Direction           ::= "to the right of" | "to the left of" | "above" | "below"
-                      | "in front of" | "behind" | "up" | "down" | "out" | "in"
-                      | ("+" | "-")? AxisName
-Pattern             ::= see templates.md, Pattern templates
+Condition           ::= "," ("only if" | "unless") Expression
 ```
 
-Attachment verbs in one line each: `on` puts the subject's attachment against the
-target's and orients it to the target's normal; `into` is the same for cutters (cutting
-kinds accept only `into`); `at` moves without orienting; `snapped to` mates two points
-including their frames; `flush with` aligns to a plane without contact; `in` fits an
-axis concentrically; `along` slides along an edge. A positive kind with no statement
-sits at its part's origin; a cutting kind (bore, hole, pocket, slot, female thread)
-with no statement is an error. A counted subject carries its pattern here, after the
-verb phrase, or as a statement of its own when it has no target.
+Rules:
+
+- **Resolution.** On the left of an alignment verb, `its` means the subject and a bare
+  `the X` is the subject's subpart or interface. On the right, `its` means the target;
+  a bare name resolves in order to the target's declared interface, then the target's
+  subparts, then peers in the current scope; when more than one matches, the reference
+  must be qualified (`the top of the flange of the manifold`). `of` chains may go
+  arbitrarily deep. A name with no attachment point given (`its inlet`) means that
+  subpart's default attachment point (see Default attachment below).
+- **Degrees of freedom.** Alignments apply left to right, and each one constrains only
+  the degrees of freedom still free. `facing` and `aligns with` fix position and the
+  normal, and set the spin so the two tangents line up; that spin is a default, which a
+  later `aimed at` or a `turned` overrides. `positioned at` fixes position only and
+  ignores both vectors; `aimed at` fixes spin only and requires the position to be fixed
+  already. A `facing` after a `positioned at` finds the position taken and aligns the
+  normal only. An alignment with nothing left to constrain is an error. After all
+  alignments, `turned` spins the subject about the first alignment's normal, `sunk` and
+  `proud` move it along that normal, and `slid` moves it along the target attachment's
+  tangent (negative slides the other way).
+- **No `with`.** The subject's default attachment point faces the target's default
+  attachment point.
+- **No statement.** A positive kind sits at its part's origin in its default pose. A
+  cutting kind (bore, hole, pocket, slot, female thread) with no statement is an error;
+  it must `subtract from` something. `attaches to` on a cutting kind is an error.
+- **Condition.** `, only if <expr>` or `, unless <expr>` makes the whole statement, and therefore the
+  subject's presence in the part, conditional.
 
 Examples:
 
 ```
 attachments
-  the stud   on the top of the base, sunk 0.5
-  the pocket into the top of the stud
-  the cavity into the bottom of the base
-  the lug    by its back on the right of the base, toward the top front edge, inset 2, turned 90
-  the bump   at the side of the base at 162°, sunk 1
-  the vents  into the floor of the pocket, equally spaced on a bolt circle, dia = 10
-  the valve  by its inlet on the top flange of the manifold, turned 45
-  the gauge  by its stem in the riser line of the manifold, 12 in
-  the cover  by its bottom flush with the mount plane of the manifold
-  the pin    at the corner index of the manifold
-  the big one 60 to the right of the stack
-  the stack  stacked along Y
+  the stud   attaches to the base, with its bottom facing the top of the base, sunk 0.5
+  the cavity subtracts from the base, with its bottom positioned at the bottom of the base
+  the pocket subtracts from the stud, with its top positioned at the top of the stud
+  the vents  subtract from the base, with its center positioned at the floor of the pocket, only if vented
+  the lug    attaches to the base, with its back facing the side of the base at 90° and its top aimed at +Z
+  the valve  attaches to the manifold, with its inlet facing the top flange and its front aimed at the pump
+  the gauge  attaches to the manifold, with its stem facing the end of the riser, sunk 12
+  the label  attaches to the manifold, with the bottom right corner of its plate positioned at the top left corner of the flange
+  the cover  attaches to the manifold, with its bottom aligns with the mount plane, proud 0.5
+  the pump   attaches to the manifold, with its foot positioned at the base mount, turned 90
+  the bracket attaches to the body, with its bottom facing the top front edge of the body           -- tilted into the corner
+  the pin    attaches to the lid, with its axis aligns with the back top edge of the lid, slid 10   -- hinge pin along the edge
+  the trim   attaches to the panel, with its lip aligns with the top front edge of the panel     -- lip: an edge the Trim part declares
+  the strip  attaches to the body, with its bottom front edge positioned at the top front edge of the body and its bottom facing the top of the body
+  the cap    attaches to the box, with its bottom back left corner positioned at the top back left corner of the box and its bottom facing the top of the box
+  the big one attaches to the stack                          -- default point facing default point
 ```
 
 Rejected:
 
 ```
-  the gauge by its stem on the top flange of the manifold
-        -- error: stem of the gauge is an axis; top flange of the manifold is a surface; use "in"
-  the pocket into the top of the stud, sunk 1
-        -- error: "sunk" has no meaning for a cutter
-  the stud is a male thread, dia = 29          -- error: declarations go before the attachments section
+  the valve attaches to the flange of the manifold
+        -- error: attach to a peer; to attach to the flange itself, do it inside the Junction part
+  the valve attaches to the manifold, with its front aimed at the pump
+        -- error: "aimed at" needs the position fixed first; add a facing or positioned alignment
+  the pocket attaches to the stud, with its top positioned at the top of the stud
+        -- error: a bore must "subtract from"
+  the pocket subtracts from the stud, with its top positioned at the top of the stud, sunk 1
+        -- error: "sunk" has no meaning for a subtraction
+  the trim attaches to the panel, with its lip aligns with the front edge of the panel
+        -- error: "front edge" names four edges of a box; write a pair such as "top front edge"
 ```
 
 #### Attachment declarations
@@ -250,13 +295,15 @@ Rejected:
 A part's attachments are its interface. They are declared by aliasing or constructing
 from the attachments of the part's constituents (primitive faces, or a sub-part's own
 declared attachments). Every definition may use the part's `given` parameters, so an
-instance with its own arguments gets its own attachment geometry. Attachment kinds and
-their verbs are in templates.md.
+instance with its own arguments gets its own attachment geometry. Attachment kinds are
+in templates.md; each is a frame, a position with a normal and a tangent, which is all
+an alignment needs.
 
 ```
 AttachmentDecl     ::= AttachKind Name "is" AttachDef ("," FrameModifier)*
 AttachKind         ::= "surface" | "plane" | "point" | "axis" | "edge"
-                       -- positional words, not reserved; a name may contain them
+                       -- decides on the first word; surface/plane/point/axis are
+                       -- content words used positionally, edge is a function word
 AttachDef          ::= AttachmentRef                                -- alias
                      | "the plane of" AttachmentRef                 -- plane through a surface
                      | "on" AttachmentRef "," Locating              -- point within a surface
@@ -268,12 +315,32 @@ Locating           ::= Quantity "from" AttachmentRef "and" Quantity "from" Attac
                      | Quantity "up" ("," Quantity "from" AttachmentRef)?
                      | "centered"
 FrameModifier      ::= "facing" Direction | "up along" (Axis | AttachmentRef)
+                       -- "facing" overrides the normal, "up along" the tangent
 ```
 
 The declared kind must match what the definition yields (a `surface` may not alias an
-edge); the binder checks this. Declared names may not reuse the default attachment
-words (`top`, `bottom`, `left`, `right`, `front`, `back`, `center`, `side`) but may
+edge); the binder checks this. Declared names may not reuse a default attachment
+word (`top`, `side`, `axis`, …; the list is in lexical.md, Function words) but may
 contain them (`top flange`). Surfaces are whole faces; there are no surface regions.
+
+#### Default attachment and the part frame
+
+```
+DefaultDecl        ::= "default is" AttachmentRef ("," "turned" Angle)?
+```
+
+Every part and primitive has a default attachment point, used when a statement has no
+`with` and when a subpart is named without an attachment point (`its inlet`). Without a
+`default` line it is the bounding-box center with a look vector of +X and an up vector
+of +Z in the part's authored frame. A `default` line makes it the named attachment: its
+position, and its vector as the look vector. The up vector is derived, never written:
+take the shortest-arc rotation that carries +X onto the look vector and apply it to +Z.
+If the look is exactly -X, the rotation is a half turn about Z, so up stays +Z.
+`turned` then spins the up vector about the look.
+
+The relative directions used in alignments come from that frame: `front` is the look
+vector, `back` its opposite, `up` and `down` the up vector and its opposite, `right`
+is front × up and `left` its opposite. With the defaults, left is +Y and right is -Y.
 
 Example:
 
@@ -283,10 +350,11 @@ part Pipe Stub
   the tube is a cylinder, dia = od, height = length
   the bore is a bore, dia = od - 2 * wall, depth = through
   attachments
-    the bore into the top of the tube
+    the bore subtracts from the tube, with its center positioned at the center of the tube
     surface end  is the top of the tube
     surface root is the bottom of the tube
     axis    line is the axis of the tube
+    default is the root
 
 part Junction
   given run = 60, index inset = 4
@@ -294,21 +362,22 @@ part Junction
   the riser  is a pipe stub
   the branch is a pipe stub, length = 25
   the flange is a disc, dia = 36, thickness = 4
-  the foot   is a box, size = 30 x 6 x 24
+  the foot   is a box, size = 30 x 24 x 6
 
   attachments
-    the riser  by its root on the top of the body
-    the branch by its root on the back of the body
-    the flange by its bottom on the end of the riser
-    the foot   by its top on the bottom of the body
+    the riser  attaches to the body, with its root facing the top of the body
+    the branch attaches to the body, with its root facing the back of the body
+    the flange attaches to the riser, with its bottom facing the end of the riser
+    the foot   attaches to the body, with its top facing the bottom of the body
 
     surface top flange   is the top of the flange
     surface base mount   is the bottom of the foot
-    surface back mount   is the back of the body, up along Y
+    surface back mount   is the back of the body
     plane   mount plane  is the plane of the back of the body
     axis    riser line   is the line of the riser                 -- a sub-part's attachment
-    point   corner index is on the top of the body, index inset from its front edge and index inset from its left edge
+    point   corner index is on the top of the body, index inset from its top front edge and index inset from its top left edge
     edge    grip         is the top front edge of the body
+    default is the base mount
     plus the box defaults
 ```
 
@@ -316,8 +385,8 @@ Defaults: a part that declares no attachments gets the box set from its bounding
 (`top`, `bottom`, `left`, `right`, `front`, `back`, `center`, the 12 edges, the 8
 corners). A part that declares any gets only those unless it says `plus the box
 defaults`. Primitives always have their catalog set (a cylinder's `side` and `axis`, an
-extrusion's named side faces). Reaching inside a part with an `of` chain still resolves
-but the binder flags it as reaching through the interface.
+extrusion's named side faces). Reaching inside a part with an `of` chain is normal in
+alignments; it is what the `with` clause is for.
 
 ### Predicates and assertions
 
@@ -347,10 +416,10 @@ Example:
 
 ```
 for each i from 1 to n:
-  the rib i is a box, size = 2 x 20 x 10
+  the rib i is a box, size = 2 x 10 x 20
 attachments
   for each i from 1 to n:
-    the rib i at (0, 0, i * 6)
+    the rib i attaches to the plate, with its bottom facing the top of the plate, turned i * 30
 ```
 
 Prefer a pattern when one fits; loops are for the engineer's register.
@@ -368,9 +437,10 @@ classifier, and an `of` chain.
 ```
 Reference       ::= RefHead ("of" Reference)?
 RefHead         ::= "the" Name
-                  | Quoted
+                    -- Name may be quoted: the "top of the line"
                   | "its" Name
-                    -- "its" = "of the current Subject"
+                    -- "its" = "of the subject" on the left of an alignment verb and in
+                    -- predicates; "of the target" on the right of an alignment verb
                   | "the" ("first" | "last") Name
                     -- element of a counted declaration
                   | Name Integer
@@ -387,16 +457,22 @@ Classifier      ::= "face" | "edge" | "corner"
 FaceRef         ::= AttachmentRef        -- must resolve to a surface
 EdgeRef         ::= ("the" | "its") Name ("and" Name)* ("edge" | "edges") ("of" Reference)?
                   | "edge" FeatureId ("of" Reference)?
-                  | ("all" | "every") "edges"? "of" Reference ("except" EdgeList)?
+                  | ("all" | "every") ("edge" | "edges")? "of" Reference ("except" EdgeList)?
                   | "edges from" Reference
                     -- lineage: edges that came from that feature after booleans
 EdgeList        ::= EdgeRef ("and" EdgeRef)*
+                    -- a default box edge is always named by a pair (top front, back left);
+                    -- a single word such as "front edge" is an error listing the candidates
 
 Axis            ::= AxisName | AttachmentRef
                     -- a datum axis or an axis attachment by name
 Vector          ::= "(" Expression "," Expression "," Expression ")"
 Angle           ::= Expression
                     -- degrees unless a unit is given
+Quantity        ::= Expression
+                    -- a length; a bare number takes the file unit
+Comparison      ::= "=" | "/=" | "<" | "<=" | ">" | ">=" | "≠" | "≤" | "≥"
+                    -- expressions.md, precedence level 6
 ```
 
 Examples:
@@ -413,7 +489,7 @@ the riser line of the manifold
 every edge of the stud except its bottom edge
 edge E3 of the stud
 edges from the pocket
-the stud of the last segment of the stack
+the stud top of the last segment of the stack
 ```
 
 Rejected:

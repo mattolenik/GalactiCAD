@@ -72,6 +72,7 @@ import {
     visibleRegionForCanvas,
 } from "./layout/editor-layout.mjs"
 import { insertShapeDeclaration, SHAPE_INSERTIONS } from "./editor/insert-shape.mjs"
+import { canRemoveAt, removeSymbolAt, removeSymbolsAt } from "./editor/remove-symbol.mjs"
 import { WelcomeScreen } from "./components/welcome-screen.mjs"
 import { isFileSystemAccessAvailable, openFolder, openSingleGcad, openSingleScad } from "./fs/file-picker.mjs"
 import { createFolderIncludeResolver } from "./fs/scad-includes.mjs"
@@ -721,6 +722,80 @@ class App {
         this.#updateEditorHighlighting()
     }
 
+    /**
+     * Show the SDF-preview right-click "Remove" menu. Only offered in object/auto
+     * selection modes. Right-clicking an unselected object selects it first (so the
+     * highlight matches what will be deleted); right-clicking within a multi-selection
+     * removes the whole selection.
+     */
+    #showObjectRemoveMenu(objectId: number, clientX: number, clientY: number): void {
+        const mode = this.renderer.selectionMode
+        if (mode !== "object" && mode !== "auto") return
+        const targets = this.#resolveObjectRemovalTargets(objectId)
+        if (targets.length === 0) return
+        const label = targets.length > 1 ? `Remove ${targets.length} objects` : "Remove"
+        this.#contextMenu?.setItems([{ label, action: () => this.#removeObjectsByIds(targets) }])
+        this.#contextMenu?.showAt(clientX, clientY)
+    }
+
+    /**
+     * Resolve the authored node ids a preview Remove should target: the whole current
+     * selection when the clicked object is part of it, otherwise just the clicked
+     * object (which is selected first for feedback). Returns only ids that map to
+     * source (so the shared symbol-removal code can act on them).
+     */
+    #resolveObjectRemovalTargets(objectId: number): number[] {
+        const clicked = this.#authoredIdForObject(objectId)
+        if (clicked !== null && !this.renderer.selectedObjectIds.includes(clicked)) {
+            const node = this.#sceneNodeMap.get(clicked)
+            this.renderer.setSelection(node ? (node.getAllDescendantIds?.() ?? [clicked]) : [clicked], true)
+        }
+        return this.#selectedRemovableNodeIds()
+    }
+
+    /** The primary (top-level) selected node ids that have a source location. */
+    #selectedRemovableNodeIds(): number[] {
+        return this.renderer.getSelectionPrimaryAndChildIds().primary
+            .filter(id => this.#sourceLocationMap.has(id))
+    }
+
+    /** Map a picked preview object id to the authored node id that carries its source location. */
+    #authoredIdForObject(objectId: number): number | null {
+        if (objectId <= 0) return null
+        if (this.#sourceLocationMap.has(objectId)) return objectId
+        const poly = this.renderer.resolvePolygon2dForHover(objectId)
+        return poly != null && this.#sourceLocationMap.has(poly) ? poly : null
+    }
+
+    /**
+     * Delete the given authored objects from the source using the shared symbol-removal
+     * code (each object's source location → offset → computeRemoveEdits), in one
+     * transaction. Clears the selection afterward. Returns true if anything was removed.
+     */
+    #removeObjectsByIds(ids: number[]): boolean {
+        const offsets: number[] = []
+        for (const id of ids) {
+            const loc = this.#sourceLocationMap.get(id)
+            if (!loc) continue
+            const offset = this.editor.lineColToOffset(loc.startLine, loc.startColumn)
+            if (offset !== null) offsets.push(offset)
+        }
+        if (offsets.length === 0) return false
+        const src = this.editor.getValue()
+        const opts = {
+            sourceFile: this.#sourceParser.getCachedSourceFile(src),
+            fluentMethods: styleInfo.FluentMethods,
+        }
+        const removed = removeSymbolsAt(this.editor, offsets, opts)
+        if (removed) this.renderer.setSelection([], true)
+        return removed
+    }
+
+    /** Delete whatever objects are currently selected in the preview (the Delete-key path). */
+    #removeSelectedObjects(): boolean {
+        return this.#removeObjectsByIds(this.#selectedRemovableNodeIds())
+    }
+
     constructor(
         preview: PreviewWindow,
         tabs: HTMLDivElement,
@@ -860,10 +935,11 @@ class App {
 
     /**
      * Build the editor right-click menu items for a 1-based source position.
-     * "Edit polygon" and "View Isolated" are gated by what sits at the click
-     * (app-side); "Insert shape" is always offered.
+     * `offset` is the 0-based character offset of the click (or null when it
+     * could not be resolved). "Edit polygon", "View Isolated" and "Remove" are
+     * gated by what sits at the click (app-side); "Insert shape" is always offered.
      */
-    #buildEditorContextMenuItems(line: number, column: number): ContextMenuItem[] {
+    #buildEditorContextMenuItems(line: number, column: number, offset: number | null): ContextMenuItem[] {
         const items: ContextMenuItem[] = []
 
         const parsedCall = this.#findParsedCallAtPosition(line, column)
@@ -876,6 +952,17 @@ class App {
         const isolatableId = this.#findIsolatableNodeIdAtPosition(line, column)
         if (isolatableId !== null) {
             items.push({ label: "View Isolated", action: () => this.#applyIsolation([isolatableId]) })
+        }
+
+        if (offset !== null) {
+            const src = this.editor.getValue()
+            const opts = {
+                sourceFile: this.#sourceParser.getCachedSourceFile(src),
+                fluentMethods: styleInfo.FluentMethods,
+            }
+            if (canRemoveAt(src, offset, opts)) {
+                items.push({ label: "Remove", action: () => removeSymbolAt(this.editor, offset, opts) })
+            }
         }
 
         items.push({
@@ -1285,7 +1372,9 @@ class App {
             const isSelected = relatedIds.some(id => this.renderer.selectedObjectIds.includes(id))
             if ((loc?.functionName === "polygon2d" || loc?.functionName === "path2d") && isSelected && polyId != null) {
                 showPolygonMenu(loc, polyId, clientX, clientY)
+                return
             }
+            this.#showObjectRemoveMenu(objectId, clientX, clientY)
         })
         // Editor-side interactions (DOM listeners on the editor element + view.posAtCoords):
         //   - hover "Edit Polygon" menu for polygon2d calls,
@@ -1327,7 +1416,8 @@ class App {
             cancelEditorHoverForRightClick()
             const lc = this.editor.coordsToLineCol(e.clientX, e.clientY) ?? this.editor.getCursor()
             if (!lc) return
-            const items = this.#buildEditorContextMenuItems(lc.line, lc.column)
+            const offset = this.editor.offsetAtCoords(e.clientX, e.clientY)
+            const items = this.#buildEditorContextMenuItems(lc.line, lc.column, offset)
             if (items.length === 0) return
             e.preventDefault()
             this.#contextMenu?.setItems(items)
@@ -1682,6 +1772,11 @@ class App {
             }
 
             if (this.#editorContainer.contains(active)) return
+
+            if (e.key === "Delete" || e.key === "Backspace") {
+                if (this.#removeSelectedObjects()) e.preventDefault()
+                return
+            }
 
             if (!(e.metaKey || e.ctrlKey) || e.altKey) return
             if (e.key.toLowerCase() !== "z") return

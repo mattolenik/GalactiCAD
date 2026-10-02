@@ -116,6 +116,8 @@ export interface EditorSettings {
     renderWhitespace: RenderWhitespaceMode
     folding: boolean
     tabSize: number
+    /** Vim keybindings (@replit/codemirror-vim). Off by default. */
+    vim: boolean
 }
 
 /** MDC mesh viewer overlay: feature-class glyphs (debug samples must come from mesh export). */
@@ -232,6 +234,7 @@ function defaultEditorSettings(): EditorSettings {
         renderWhitespace: "none",
         folding: true,
         tabSize: 2,
+        vim: false,
     }
 }
 
@@ -702,6 +705,7 @@ export class SettingsManager {
                 if (typeof editor.folding !== "boolean") editor.folding = editorDef.folding
                 if (typeof editor.tabSize !== "number" || editor.tabSize < 2 || editor.tabSize > 8)
                     editor.tabSize = editorDef.tabSize
+                if (typeof editor.vim !== "boolean") editor.vim = editorDef.vim
                 let diskSyncIntervalSeconds = typeof diskRaw === "number" ? diskRaw : def.app.diskSyncIntervalSeconds
                 if (typeof diskSyncIntervalSeconds !== "number") diskSyncIntervalSeconds = 30
                 const app: GlobalSettings["app"] = {

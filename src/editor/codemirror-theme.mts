@@ -37,14 +37,18 @@ const darkChrome = EditorView.theme(
         "&": { color: "#d4d4d4", backgroundColor: "transparent" },
         ".cm-content": { caretColor: "#aeafad" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#aeafad" },
+        // !important is required: CM6's base theme sets the focused selection via a
+        // very high-specificity selector (&dark.cm-focused > .cm-scroller >
+        // .cm-selectionLayer .cm-selectionBackground → #233), which otherwise wins
+        // over this rule whenever the editor is focused and hides our color.
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-            backgroundColor: "#3a6ea5",
+            backgroundColor: "#2c5680 !important",
         },
         // CM6 paints drawSelection() *under* .cm-content, so the active-line
         // background sits on top of the selection. A faint light overlay marks
         // the current line while lightening (never graying-out) a selection on it.
-        ".cm-activeLine": { backgroundColor: "#ffffff1f" },
-        ".cm-activeLineGutter": { backgroundColor: "#ffffff1f" },
+        ".cm-activeLine": { backgroundColor: "#ffffff14" },
+        ".cm-activeLineGutter": { backgroundColor: "#ffffff14" },
         ".cm-gutters": { backgroundColor: "transparent", color: "#858585", border: "none" },
         ".cm-foldPlaceholder": { backgroundColor: "#3a3a3e", border: "none", color: "#888" },
     },
@@ -77,13 +81,15 @@ const lightChrome = EditorView.theme(
         "&": { color: "#000000", backgroundColor: "transparent" },
         ".cm-content": { caretColor: "#000000" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#000000" },
+        // !important overrides CM6's high-specificity base focused-selection rule
+        // (&light.cm-focused > … .cm-selectionBackground → #d7d4f0). See dark theme.
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-            backgroundColor: "#8fb2ff",
+            backgroundColor: "#add6ff !important",
         },
         // On white there is no non-dimming overlay, so keep the current-line tint
         // light and lean on the stronger selection color for contrast on that line.
-        ".cm-activeLine": { backgroundColor: "#0000001a" },
-        ".cm-activeLineGutter": { backgroundColor: "#0000001a" },
+        ".cm-activeLine": { backgroundColor: "#00000014" },
+        ".cm-activeLineGutter": { backgroundColor: "#00000014" },
         ".cm-gutters": { backgroundColor: "transparent", color: "#999999", border: "none" },
         ".cm-foldPlaceholder": { backgroundColor: "#e0e0e0", border: "none", color: "#666" },
     },

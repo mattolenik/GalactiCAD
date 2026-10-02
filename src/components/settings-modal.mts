@@ -201,6 +201,10 @@ export class SettingsModal extends BaseDialog<void> {
                     <input type="checkbox" id="folding" />
                 </div>
                 <div class="setting-row">
+                    <label for="vim" title="Vim keybindings in the editor.">Vim mode</label>
+                    <input type="checkbox" id="vim" />
+                </div>
+                <div class="setting-row">
                     <label for="tab-size">Tab size</label>
                     <select id="tab-size">
                         <option value="2">2</option>
@@ -236,6 +240,8 @@ export class SettingsModal extends BaseDialog<void> {
         renderWhitespaceSelect.value = e.renderWhitespace
         const foldingCheckbox = this.dialog.querySelector("#folding") as HTMLInputElement
         foldingCheckbox.checked = e.folding
+        const vimCheckbox = this.dialog.querySelector("#vim") as HTMLInputElement
+        vimCheckbox.checked = e.vim
         const tabSizeSelect = this.dialog.querySelector("#tab-size") as HTMLSelectElement
         tabSizeSelect.value = String(e.tabSize)
     }
@@ -249,6 +255,7 @@ export class SettingsModal extends BaseDialog<void> {
         const renderWhitespace = (this.dialog.querySelector("#render-whitespace") as HTMLSelectElement)
             .value as RenderWhitespaceMode
         const folding = (this.dialog.querySelector("#folding") as HTMLInputElement).checked
+        const vim = (this.dialog.querySelector("#vim") as HTMLInputElement).checked
         const tabSize = parseInt((this.dialog.querySelector("#tab-size") as HTMLSelectElement).value, 10)
         return {
             lineNumbers,
@@ -258,6 +265,7 @@ export class SettingsModal extends BaseDialog<void> {
             renderWhitespace,
             folding,
             tabSize: Math.max(2, Math.min(8, tabSize)),
+            vim,
         }
     }
 
@@ -316,6 +324,7 @@ export class SettingsModal extends BaseDialog<void> {
             "#font-size",
             "#render-whitespace",
             "#folding",
+            "#vim",
             "#tab-size",
         ]
         editorInputs.forEach(sel => {

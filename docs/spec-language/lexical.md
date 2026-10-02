@@ -11,6 +11,7 @@ words and reserved phrases at the end of this file.
 | Statement terminator | end of line |
 | Continuation | a line whose last token is `,` continues on the next non-blank line |
 | Comment | `--` to end of line; ignored, may follow a statement |
+| Condition | `, only if …` or `, unless …` at the end of an attachment statement; the comma and the keyword together introduce it (grammar.md, `Condition`) |
 | Blank line | ignored |
 | Indentation | measured in leading spaces; tabs are an error |
 | Column 0 | belongs to the scene, or is a `part` header |
@@ -39,12 +40,12 @@ Longer patterns are tried first. Whitespace separates tokens except where a patt
 | `Count` | `Integer` + `X` no space, or `Integer` + `×` | `4X`, `4 ×` | drawing-note repetition count |
 | `Thread` | `[0-9]+/[0-9]+-[0-9]+ (UNC\|UNF\|UNEF)(-[0-9][AB])?` or `[0-9.]+-[0-9]+ (UNC\|UNF)(-[0-9][AB])?` or `M[0-9]+(\.[0-9]+)?x[0-9]+(\.[0-9]+)?(-[0-9][gHh])?` | `1/4-20 UNC-2B`, `M8x1.25-6H` | one token; the space before the series is part of the pattern |
 | `FeatureId` | `E[0-9]+` or `F[0-9]+` | `E3`, `F1` | raw catalog id; content word otherwise |
-| `AxisName` | `X` `Y` `Z` as a whole word | `along Y` | |
+| `AxisName` | `X` `Y` `Z` as a whole word | `along Z` | Z is up |
 | `Cross` | `x` or `×` between two numbers or as a whole word inside a value | `10x6x4`, `10 x 6 x 4` | the triple separator; `x` is a function word |
 | `QuotedName` | `"[^"\n]+"` | `"top of the line"` | any characters except quote and newline; see Names |
 | `Text` | same pattern as `QuotedName` | `"MADE IN"` | which one it is depends on the slot; the lexer emits one `Quoted` token |
 | `Symbol` | one of `, ( ) = + - * / ^ < > <= >= /= ≤ ≥ ≠ :` | | |
-| `Word` | `[A-Za-z][A-Za-z0-9'_-]*` | `pocket`, `M8`, `case`, `dia` | classified as `FunctionWord` if in the list below, else `ContentWord` |
+| `Word` | `[A-Za-z][A-Za-z0-9_-]*` | `pocket`, `M8`, `case`, `dia` | classified as `FunctionWord` if in the list below, else `ContentWord`; no apostrophe, so a possessive (`lid's`) is a lexical error |
 
 Number-bearing tokens (`Integer`, `Decimal`, `Fraction`, `Inch`, `Count`, `Thread`,
 `FeatureId`) never form part of a bare name. A kind phrase ends at the comma that
@@ -76,8 +77,8 @@ part Pill Case Segment                         -- bare, three words
 part top of the line                           -- legal header; references must be quoted
 the base is a pill case segment                -- bare reference, case-folded
 the base is a "Top Of The Line"                -- quoted reference, case-folded
-the stack is 3 pill case segments stacked along Y   -- plural, singularized by the binder
-the stack is 3 "top of the line" stacked along Y    -- quoted names do not pluralize
+the stack is 3 pill case segments, stacked along Z  -- plural, singularized by the binder
+the stack is 3 "top of the line", stacked along Z   -- quoted names do not pluralize
 ```
 
 Rejected:
@@ -94,16 +95,16 @@ vocabulary; everything else is a content word.
 
 | Group | Words |
 |---|---|
-| Determiners | `the` `a` `an` `its` `each` `every` `all` `any` |
-| Copulas and verbs | `is` `are` `has` `have` `exist` `exists` |
-| Prepositions | `of` `on` `from` `with` `to` `through` `about` `at` `along` `by` `in` `into` `per` `than` `except` |
-| Connectives | `and` `or` `not` `if` `then` `only` `else` |
+| Determiners | `the` `a` `an` `its` `each` `every` `all` |
+| Copulas and verbs | `is` `are` `has` |
+| Prepositions | `of` `on` `from` `with` `to` `through` `about` `at` `along` `by` `except` |
+| Connectives | `and` `or` `not` `if` `only` `unless` |
 | Sections and headers | `part` `given` `where` `require` `datum` `units` `use` `for` |
-| Classifier words | `face` `faces` `edge` `edges` `corner` `ground` `axis` |
-| Attachment words | `attachments` `sunk` `proud` `inset` `toward` `turned` `facing` `flush` `snapped` `plus` `defaults` `up` `down` `out` `outward` `midway` `between` `meets` |
-| Placement words | `centered` `stacked` `spaced` `equally` `bolt` `circle` `rotated` `offset` `cut` `added` `joined` `above` `below` `behind` `x` |
-| Treatment words | `fillet` `chamfer` `blend` `round` `soft` `knurled` `ridges` `straight` `engraved` `hollowed` `open` `walls` |
-| Assertion words | `clears` `fits` `does` `touch` `broken` `twisted` `tapered` |
+| Classifier words | `face` `faces` `edge` `edges` `corner` `ground` |
+| Attachment words | `attachments` `attaches` `attach` `subtracts` `subtract` `facing` `aligns` `positioned` `aimed` `default` `sunk` `proud` `slid` `turned` `plus` `defaults` `outward` `midway` `between` `meets` |
+| Pattern words | `centered` `stacked` `spaced` `equally` `circle` `joined` `x` |
+| Treatment words | `fillet` `chamfer` `blend` `round` `soft` `knurled` `engraved` `hollowed` `open` `broken` `twisted` `tapered` |
+| Assertion words | `clears` `fits` `do` `does` `touch` |
 | Quantifier and order words | `first` `last` `least` `most` |
 | Boolean literals | `yes` `no` `true` `false` |
 | Axis letters | `X` `Y` `Z` |
@@ -111,12 +112,17 @@ vocabulary; everything else is a content word.
 | Expression words | `sqrt` `sin` `cos` `tan` `atan` `min` `max` `abs` |
 
 Default attachment words (`top`, `bottom`, `left`, `right`, `front`, `back`, `center`,
-`side`, `outside`, `inside`, `floor`, `outer`, `inner`) are content words, resolved by
-the binder. They may appear inside a name (`top flange`) but a feature or attachment may
-not be named exactly one of them. The attachment kind words `surface`, `plane`, `point`
-are positional (they start an attachment declaration) and are also content words, so
-`mount plane` is a legal name; `axis` and `edge` are classifier words, so an attachment
-named `riser axis` must be quoted.
+`side`, `outside`, `inside`, `floor`, `axis`; the set is the default table in
+templates.md, Attachment kinds) are content words, resolved by the binder. The face
+words, plus `up` and `down`, are relative directions after `facing`, `aligns with`, and
+`aimed at` when they appear bare, without `the` or `its` (`facing up`, `aimed at front`);
+the global directions are `+X` `-X` `+Y` `-Y` `+Z` `-Z`. Default attachment words may
+appear inside a name (`top flange`) but a feature or attachment may not be named exactly
+one of them. The attachment kind words `surface`, `plane`, `point`, `axis` are positional
+(they start an attachment declaration) and are also content words, so `mount plane` and
+`riser axis` are legal names; `edge` is a classifier word, so an attachment named
+`inner edge` must be quoted. Parameter and template words such as `dia`, `spacing`, and
+`ridges` are content words that the template matcher compares literally.
 
 ## Reserved phrases
 
@@ -124,6 +130,6 @@ Built-in kind phrases are made of content words but are reserved as whole phrase
 part may not be named with one of them or with a prefix of one. The list is the Kinds
 table in [templates.md](templates.md#kinds).
 
-`cylinder` `box` `sphere` `cone` `capsule` `torus` `disc` `plane` `hex prism` `bore`
+`cylinder` `box` `sphere` `cone` `capsule` `torus` `disc` `hex prism` `bore`
 `hole` `holes` `pocket` `slot` `male thread` `female thread` `extrusion` `revolution`
 `loft`

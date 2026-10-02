@@ -1,7 +1,8 @@
 # Expressions
 
-Expressions appear in parameter definitions, dimension quantities, counts, conditions,
-`with` clauses, and assertions. They are parsed by precedence climbing (a Pratt parser),
+Expressions appear in parameter definitions, argument values, counts, angles and
+quantities in attachment statements (`at 90°`, `sunk 0.5`, `turned 20`), conditions,
+and assertions. They are parsed by precedence climbing (a Pratt parser),
 which corresponds directly to the table below; there is no ladder of `Term` and `Factor`
 rules.
 
@@ -30,7 +31,7 @@ Highest binds tightest.
 
 | Level | Operators | Associativity | Notes |
 |---|---|---|---|
-| 1 | `( … )`, function application `sqrt x` `sin a` `min a b` | | function words take one or two following `Primary`s |
+| 1 | `( … )`, function application `sqrt r` `sin a` `min a b` | | function words take one or two following `Primary`s |
 | 2 | unary `-` | prefix | |
 | 3 | `^` | right | power |
 | 4 | `*` `/` | left | |
@@ -40,8 +41,8 @@ Highest binds tightest.
 | 8 | `and` | left | |
 | 9 | `or` | left | |
 
-`=` is comparison inside `require` and assignment at the head of a `given` item or
-`with` clause; the position decides, never the parser's lookahead.
+`=` is comparison inside `require` and assignment at the head of a `given` item or an
+argument (`, dia = 32`); the position decides, never the parser's lookahead.
 
 ## Units
 

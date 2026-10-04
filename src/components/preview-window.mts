@@ -139,7 +139,8 @@ export class PreviewWindow extends HTMLElement {
         }
         .sel-info {
             position: absolute;
-            bottom: 10px;
+            /* --sel-info-bottom is set per-orientation in index.css (raised in portrait). */
+            bottom: calc(10px + var(--sel-info-bottom, 0px));
             left: calc(10px + var(--sel-info-left, 0px));
             pointer-events: none;
             z-index: 1;

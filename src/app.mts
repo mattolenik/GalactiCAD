@@ -84,7 +84,7 @@ import { clearFolderHandle, getFolderHandle } from "./storage/project-storage.mj
 import {
     applyDebugLogModules,
     connectMainThreadDevLogToBridge,
-    installDevActiveSceneSourceGetter,
+    installDevActiveSceneSourceGetter, installDevPushPullStateGetter,
     log as debugLog,
 } from "./logging/debug-log.mjs"
 import { VERSION } from "./version.mjs"
@@ -819,6 +819,7 @@ class App {
         tabs.replaceWith(this.#tabs)
         this.#tabs.id = tabs.id
         installDevActiveSceneSourceGetter(() => this.editor.getValue())
+        installDevPushPullStateGetter(() => this.renderer.getPushPullDebugState())
 
         this.#injectStyles()
         const initialTheme = resolveEffectiveTheme(this.#settings.getGlobal().app.theme)

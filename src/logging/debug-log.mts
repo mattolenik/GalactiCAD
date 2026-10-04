@@ -247,6 +247,7 @@ export function installDevConsoleMirror(): void {
 type GalacticadDevBridgeGlobals = {
     __galacticadDevLogPush?: (entry: DevLogEntry) => void
     __galacticadDevGetActiveSceneSource?: () => string
+    __galacticadDevGetPushPullState?: () => unknown
 }
 
 /**
@@ -258,6 +259,14 @@ export function installDevActiveSceneSourceGetter(getSource: () => string): void
     const g = globalThis as GalacticadDevBridgeGlobals
     if (typeof g.__galacticadDevLogPush !== "function") return
     g.__galacticadDevGetActiveSceneSource = getSource
+}
+
+/** Devserver-only: expose push/pull interaction state for headless probes (`__galacticadDevGetPushPullState`). */
+export function installDevPushPullStateGetter(getState: () => unknown): void {
+    if (typeof window === "undefined") return
+    const g = globalThis as GalacticadDevBridgeGlobals
+    if (typeof g.__galacticadDevLogPush !== "function") return
+    g.__galacticadDevGetPushPullState = getState
 }
 
 /** Main thread: connect to devserver-injected `__galacticadDevLogPush` and capture globals. No-op when not using devserver. */

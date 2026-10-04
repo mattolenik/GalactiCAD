@@ -1837,6 +1837,19 @@ export class SDFRenderer {
         })
     }
 
+    /** Devserver probe hook (see `installDevPushPullStateGetter`): push/pull interaction state. */
+    getPushPullDebugState(): { active: boolean; dragging: boolean; faceSelection: { nodeId: number; faceIndex: number; mode: number } | null; lastClickedId: number; lastClickHitPos: [number, number, number] | null; selectionMode: string } {
+        const pp = this.#pushPullController
+        return {
+            active: pp?.isActive ?? false,
+            dragging: pp?.isDragging ?? false,
+            faceSelection: pp?.getFaceSelection() ?? null,
+            lastClickedId: this.#lastClickedId,
+            lastClickHitPos: this.#lastClickHitPos,
+            selectionMode: this.#selectionMode,
+        }
+    }
+
     get isPushPullActive(): boolean {
         return this.#pushPullController?.getFaceSelection() !== null
     }

@@ -169,10 +169,14 @@ mesh-viewer {
 #workspace.editor-left #main-panels {
     --fr-left: var(--editor-width, 35%);
     --fr-top: 0px;
+    --sel-info-bottom: 0px;
 }
+/* Portrait: the bottom-left selection readout sits above the bottom edge,
+   which phone browsers (and the remote viewer HUD) crop or cover. */
 #workspace:not(.editor-left) #main-panels {
     --fr-left: 0px;
     --fr-top: var(--editor-height, 22%);
+    --sel-info-bottom: 28px;
 }
 /* Polygon / path editor replaces the code editor in the same slot */
 #main-panels polygon-editor,

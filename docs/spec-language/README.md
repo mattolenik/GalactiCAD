@@ -5,7 +5,7 @@ Status: design draft, 2026-09-23. Z-up. Documents the syntax of the spec-style C
 are types, the scene is an unnamed part, and names may be multi-word and quoted).
 Nothing here is implemented yet.
 
-The grammar is documented in four layers, one file each. The split follows the parser
+The grammar is documented in four layers, one file each, plus a coverage backlog. The split follows the parser
 design: a hand-written recursive descent parser over a small lexer, with all name
 resolution deferred to a separate binding pass that is *not* described here.
 
@@ -15,6 +15,7 @@ resolution deferred to a separate binding pass that is *not* described here.
 | [grammar.md](grammar.md) | Sentence shapes: document, parts, declarations, attachment clauses and declarations, references | W3C-style EBNF |
 | [templates.md](templates.md) | Closed vocabularies with typed slots: kinds, attachment kinds and defaults, predicates, assertions, patterns | Template tables |
 | [expressions.md](expressions.md) | Arithmetic, units, comparisons, booleans | Precedence table |
+| [api-coverage.md](api-coverage.md) | Backlog: what the JavaScript scene API provides that the language does not yet cover, with a proposed sentence per gap | Status tables |
 
 ## Notation legend
 

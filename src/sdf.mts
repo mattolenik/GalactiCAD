@@ -15,6 +15,7 @@ import type { Vec2f, Vec3f } from "./vecmat/vector.mjs"
 import { vec2, vec3 } from "./vecmat/vector.mjs"
 import { Mat4x4f } from "./vecmat/matrix.mjs"
 import { PushPullController } from "./interaction/push-pull.mjs"
+import { CanvasGestureRecognizer, type CanvasGesture } from "./interaction/canvas-gestures.mjs"
 import { GizmoController } from "./gizmo/gizmo-controller.mjs"
 import type { MeshData } from "./export/export.mjs"
 import {
@@ -73,9 +74,6 @@ function roundScenePerfMs(x: number): number {
 }
 
 /** Default max frames per second for the preview. Main thread throttles render messages to the worker. */
-/** Long-press → push/pull: hold this long within the slop radius (see `SDFRenderer.#armLongPress`). */
-const LONG_PRESS_MS = 400
-const LONG_PRESS_SLOP_PX = 8
 
 const DEFAULT_TARGET_FPS = 120
 
@@ -288,10 +286,17 @@ export class SDFRenderer {
     #suppressGizmoReleaseClick = false
     #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
     #pickObjectRequestId = 0
-    /** Long-press → push/pull (see `#armLongPress`): the armed press, its timer, and the
-     * pick request that verifies the press landed on the selected object. */
-    #longPress: { pointerId: number; clientX: number; clientY: number; timer: ReturnType<typeof setTimeout> | null; fired: boolean } | null = null
-    #pendingLongPressPick = new Map<number, { pointerId: number; clientX: number; clientY: number }>()
+    /** Tap / double-tap / long-press recogniser on the preview canvas (see `#onCanvasGesture`). */
+    #gestures: CanvasGestureRecognizer | null = null
+    /** `pickObject` requests issued by gestures, resolved with the picked object id. */
+    #pendingGesturePick = new Map<number, (objectId: number) => void>()
+    /**
+     * Sticky push/pull mode, entered by a long-press on the selected eligible surface
+     * (docs/plans/long-press-push-pull-mode.md). While sticky, every drag pushes the
+     * surface and the mode re-arms after each commit; it ends on a double-tap off the
+     * surface, Escape, or any deselect. Shift-hold stays transient (not sticky).
+     */
+    #pushPullSticky = false
     #sharedBuffer: SharedArrayBuffer | null = null
     #renderVersion = 0
     #useSharedMemory = false
@@ -498,7 +503,9 @@ export class SDFRenderer {
 
         preview.canvas.addEventListener("contextmenu", (e: MouseEvent) => {
             e.preventDefault()
-            if (this.#longPress?.fired || this.#pushPullController?.isActive) return
+            // A long-press that entered push/pull mode must not ALSO open the context menu
+            // (Chrome Android fires contextmenu at its own long-press threshold).
+            if (this.#gestures?.longPressHeld || this.#pushPullController?.isActive) return
             const uv = this.#screenToClickUV(e.clientX, e.clientY)
             if (!uv) return
             const requestId = ++this.#pickObjectRequestId
@@ -839,10 +846,10 @@ export class SDFRenderer {
                 break
             }
             case "pickObjectResult": {
-                const lp = this.#pendingLongPressPick.get(msg.requestId)
-                if (lp) {
-                    this.#pendingLongPressPick.delete(msg.requestId)
-                    this.#completeLongPress(msg.objectId, lp)
+                const gesture = this.#pendingGesturePick.get(msg.requestId)
+                if (gesture) {
+                    this.#pendingGesturePick.delete(msg.requestId)
+                    gesture(msg.objectId)
                     break
                 }
                 const pending = this.#pendingPickObject.get(msg.requestId)
@@ -1115,27 +1122,12 @@ export class SDFRenderer {
 
     #handleObjectDoubleClick(nodeId: number, hitPos?: [number, number, number]): boolean {
         if (!this.#pushPullController || !hitPos) return false
-        const node = this.#pushPullNodes.get(nodeId)
-        if (!node) return false
-        const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
-        if (node.type === "extrude") {
-            // Twisted extrudes are supported: the controller un-twists the hit
-            // into polygon (profile) space, so side-face selection + push/pull
-            // work through the twist.
-            this.#pushPullController.selectFace(node as unknown as Parameters<PushPullController["selectFace"]>[0], hitVec)
-            this.#pushSelectionInfo()
-            return true
-        }
-        if (node.type === "virtualCap" || node.type === "polygon2d") {
-            const parent = this.#findCapParent(nodeId)
-            if (parent) {
-                const isTop = node.type === "virtualCap" ? node.isTop : (hitVec.y - parent.node.pos.y) >= 0
-                this.#pushPullController.selectCapFace(parent.node as unknown as Parameters<PushPullController["selectCapFace"]>[0], isTop)
-                this.#pushSelectionInfo()
-                return true
-            }
-        }
-        return false
+        const target = this.#resolvePushPullTarget(nodeId, hitPos)
+        if (!target) return false
+        if (target.kind === "side") this.#pushPullController.selectFace(target.node, target.hit)
+        else this.#pushPullController.selectCapFace(target.node, target.isTop)
+        this.#pushSelectionInfo()
+        return true
     }
 
     /** Activate push/pull mode using the currently selected object + last click hit position. */
@@ -1147,78 +1139,118 @@ export class SDFRenderer {
         return this.#handleObjectDoubleClick(nodeId, hitPos)
     }
 
-    /** Start timing a long press if this pointerdown could lead to push/pull (see listener comment). */
-    #armLongPress(e: PointerEvent): void {
-        this.#cancelLongPress()
-        if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return
+    #onCanvasGesture(g: CanvasGesture): void {
+        if (g.kind === "longPress") this.#onLongPress(g)
+        else if (g.kind === "doubleTap") this.#onDoubleTap(g)
+        // Plain taps are selection: the synthesized click → `select$` path handles them.
+    }
+
+    /** Issue a worker pick at a screen point; `cb` gets the raw picked object id (0 = nothing). */
+    #pickObjectAt(clientX: number, clientY: number, cb: (objectId: number) => void): boolean {
+        const uv = this.#screenToClickUV(clientX, clientY)
+        if (!uv) return false
+        const requestId = ++this.#pickObjectRequestId
+        this.#pendingGesturePick.set(requestId, cb)
+        this.#worker.postMessage({ type: "pickObject", clickUV: uv, requestId })
+        return true
+    }
+
+    /** The node id the current push/pull face selection belongs to, or `#lastClickedId` as fallback. */
+    #pushPullSelectionNodeId(): number {
+        const faceSel = this.#pushPullController?.getFaceSelection() ?? null
+        return faceSel !== null ? faceSel.nodeId : this.#lastClickedId
+    }
+
+    /**
+     * Long-press on the SELECTED push/pull-eligible surface → enter sticky push/pull
+     * mode (no drag during the hold; the next drags push). Verified with a worker pick
+     * so a hold elsewhere (background, another object) does nothing and the gesture
+     * falls through to the orbit the camera already started.
+     */
+    #onLongPress(g: CanvasGesture): void {
         const pp = this.#pushPullController
         if (!pp || pp.isActive) return
         if (this.#selectionMode !== "face" && this.#selectionMode !== "auto") return
         if (this.#gizmoController?.dragging) return
-        // Something push/pull-eligible must already be selected: a highlighted face, or a
-        // last-clicked node the controller knows how to push/pull (with a hit position).
         const candidate =
             pp.getFaceSelection() !== null ||
-            (this.#lastClickedId !== 0 && this.#lastClickHitPos !== null && this.#pushPullNodes.has(this.#lastClickedId))
+            (this.#lastClickedId !== 0 && this.#lastClickHitPos !== null && this.#resolvePushPullTarget(this.#lastClickedId, this.#lastClickHitPos) !== null)
         if (!candidate) return
-        const lp = { pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, timer: null as ReturnType<typeof setTimeout> | null, fired: false }
-        lp.timer = setTimeout(() => {
-            lp.timer = null
-            if (this.#longPress !== lp) return
-            // Verify the press is over the selected object before committing (async pick).
-            const uv = this.#screenToClickUV(lp.clientX, lp.clientY)
-            if (!uv) {
-                this.#cancelLongPress()
-                return
-            }
-            const requestId = ++this.#pickObjectRequestId
-            this.#pendingLongPressPick.set(requestId, { pointerId: lp.pointerId, clientX: lp.clientX, clientY: lp.clientY })
-            this.#worker.postMessage({ type: "pickObject", clickUV: uv, requestId })
-        }, LONG_PRESS_MS)
-        this.#longPress = lp
+        this.#pickObjectAt(g.clientX, g.clientY, pickedRaw => {
+            // Still the same hold? (the finger may have lifted while the pick was in flight)
+            if (!this.#gestures?.longPressHeld || pp.isActive) return
+            const picked = this.#resolveFaceSentinel(pickedRaw)
+            const selectedNode = this.#pushPullSelectionNodeId()
+            const onSelection = picked !== 0 && (picked === this.#lastClickedId || picked === selectedNode)
+            if (!onSelection) return
+            this.#enterPushPullMode()
+        })
     }
 
-    #cancelLongPress(): void {
-        const lp = this.#longPress
-        if (!lp) return
-        if (lp.timer !== null) clearTimeout(lp.timer)
-        this.#longPress = null
-    }
-
-    /** Pick result for an armed long press: enter push/pull and begin the drag if it hit the selection. */
-    #completeLongPress(pickedRaw: number, lp: { pointerId: number; clientX: number; clientY: number }): void {
-        const armed = this.#longPress
-        // The pointer may have been released or moved away while the pick was in flight.
-        if (!armed || armed.pointerId !== lp.pointerId || armed.fired) return
+    /** Promote the current face/cap selection to active push/pull and make it sticky. */
+    #enterPushPullMode(): void {
         const pp = this.#pushPullController
-        if (!pp || pp.isActive) {
-            this.#cancelLongPress()
-            return
-        }
-        const picked = this.#resolveFaceSentinel(pickedRaw)
-        const faceSel = pp.getFaceSelection()
-        const onSelection = picked !== 0 && (picked === this.#lastClickedId || (faceSel !== null && picked === faceSel.nodeId))
-        if (!onSelection) {
-            this.#cancelLongPress()
-            return
-        }
-        const activated = faceSel !== null ? pp.promoteToActive() : this.#tryActivatePushPullFromSelection()
-        if (!activated) {
-            this.#cancelLongPress()
-            return
-        }
-        armed.fired = true
+        if (!pp) return
+        const activated = pp.isActive || (pp.getFaceSelection() !== null ? pp.promoteToActive() : this.#tryActivatePushPullFromSelection())
+        if (!activated) return
+        this.#pushPullSticky = true
         this.#cancelBuildsForPushPull()
+        // The camera armed an orbit on this same pointerdown; release the pointer from it
+        // (its moves/up are ignored from here) so the hold never nudges the view.
+        this.#controls.cancelDrag()
         this.#pushSelectionInfo()
-        // The camera began an orbit on this same pointerdown; hand the pointer to push/pull.
-        this.#controls.isDragging = false
-        pp.handlePointerDown({ button: 0, clientX: lp.clientX, clientY: lp.clientY, pointerId: lp.pointerId } as PointerEvent)
         this.#needsRender = true
         try {
             navigator.vibrate?.(15)
         } catch {
             /* unsupported */
         }
+    }
+
+    /** Double-tap OFF the active surface exits sticky push/pull mode (on it = no-op). */
+    #onDoubleTap(g: CanvasGesture): void {
+        const pp = this.#pushPullController
+        if (!this.#pushPullSticky || !pp?.isActive) return
+        this.#pickObjectAt(g.clientX, g.clientY, pickedRaw => {
+            if (!this.#pushPullSticky || !pp.isActive) return
+            const picked = this.#resolveFaceSentinel(pickedRaw)
+            if (picked !== 0 && picked === this.#pushPullSelectionNodeId()) return
+            this.#exitPushPullMode()
+        })
+    }
+
+    #exitPushPullMode(): void {
+        this.#pushPullSticky = false
+        // deselect → onDeselect → pushPullExit$ → the deferred rebuild runs now.
+        this.#pushPullController?.deselect()
+        this.#pushSelectionInfo()
+        this.#needsRender = true
+    }
+
+    /**
+     * The single definition of "push/pull-eligible surface": an extrude SIDE (twist
+     * handled by the controller) or an extrude / loft / threaded-rod CAP reached through
+     * its virtual cap or polygon2d. Shared by tap highlight, activation and the
+     * long-press check, so a new eligible type (e.g. loft sides, deferred) is added here
+     * plus the controller — nowhere else. Loft sides, lathes, primitives → null.
+     */
+    #resolvePushPullTarget(
+        nodeId: number,
+        hitPos: [number, number, number],
+    ): { kind: "side"; node: Parameters<PushPullController["selectFace"]>[0]; hit: Vec3f } | { kind: "cap"; node: Parameters<PushPullController["selectCapFace"]>[0]; isTop: boolean } | null {
+        const node = this.#pushPullNodes.get(nodeId)
+        if (!node) return null
+        const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
+        if (node.type === "extrude") {
+            return { kind: "side", node: node as unknown as Parameters<PushPullController["selectFace"]>[0], hit: hitVec }
+        }
+        if (node.type === "virtualCap" || node.type === "polygon2d") {
+            const parent = this.#findCapParent(nodeId)
+            if (!parent) return null
+            const isTop = node.type === "virtualCap" ? node.isTop : hitVec.y - parent.node.pos.y >= 0
+            return { kind: "cap", node: parent.node as unknown as Parameters<PushPullController["selectCapFace"]>[0], isTop }
+        }
+        return null
     }
 
     #cancelBuildsForPushPull(): void {
@@ -1250,23 +1282,11 @@ export class SDFRenderer {
     #highlightFaceAt(nodeId: number, hitPos: [number, number, number] | null, selectionOnly: boolean): boolean {
         if (!this.#pushPullController || this.#pushPullController.isActive) return false
         if (!nodeId || !hitPos) return false
-        const node = this.#pushPullNodes.get(nodeId)
-        if (!node) return false
-        const hitVec = vec3(hitPos[0], hitPos[1], hitPos[2])
-        if (node.type === "extrude") {
-            // Twisted extrudes supported — see #handleObjectDoubleClick.
-            this.#pushPullController.highlightSideFace(node as unknown as Parameters<PushPullController["highlightSideFace"]>[0], hitVec, selectionOnly)
-            return true
-        }
-        if (node.type === "virtualCap" || node.type === "polygon2d") {
-            const parent = this.#findCapParent(nodeId)
-            if (parent) {
-                const isTop = node.type === "virtualCap" ? node.isTop : (hitVec.y - parent.node.pos.y) >= 0
-                this.#pushPullController.highlightCapFace(parent.node as unknown as Parameters<PushPullController["highlightCapFace"]>[0], isTop, selectionOnly)
-                return true
-            }
-        }
-        return false
+        const target = this.#resolvePushPullTarget(nodeId, hitPos)
+        if (!target) return false
+        if (target.kind === "side") this.#pushPullController.highlightSideFace(target.node, target.hit, selectionOnly)
+        else this.#pushPullController.highlightCapFace(target.node, target.isTop, selectionOnly)
+        return true
     }
 
     /**
@@ -1646,6 +1666,7 @@ export class SDFRenderer {
             self.#writeSelectionBuffer()
             self.#pushSelectionInfo()
             self.#needsRender = true
+            self.#pushPullSticky = false
             self.pushPullExit$.next()
         }
         this.#gizmoController = new GizmoController({
@@ -1726,25 +1747,10 @@ export class SDFRenderer {
                 }
             }
         }, { capture: true })
-        // Long-press (touch, or a held mouse button) on the SELECTED push/pull-eligible
-        // surface → push/pull, the no-modifier twin of shift-hold above. Touch has no Shift,
-        // and this must also work through the remote viewer (`/_remote`), whose CDP-injected
-        // touches get no browser gesture recognition — so the hold is timed here from plain
-        // pointer events rather than relying on a long-press gesture. Fires only when the
-        // press stays within LONG_PRESS_SLOP_PX for LONG_PRESS_MS AND the worker's pick says
-        // the press is over the selected object; the orbit the camera already started on
-        // pointerdown is cancelled and the push/pull drag begins from the press point.
-        canvas.addEventListener("pointerdown", (e: PointerEvent) => this.#armLongPress(e), { capture: true })
-        canvas.addEventListener("pointermove", (e: PointerEvent) => {
-            const lp = this.#longPress
-            if (!lp || lp.fired || e.pointerId !== lp.pointerId) return
-            if (Math.hypot(e.clientX - lp.clientX, e.clientY - lp.clientY) > LONG_PRESS_SLOP_PX) this.#cancelLongPress()
-        }, { capture: true })
-        for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
-            canvas.addEventListener(type, (e: PointerEvent) => {
-                if (this.#longPress && e.pointerId === this.#longPress.pointerId) this.#cancelLongPress()
-            }, { capture: true })
-        }
+        // Touch gestures (tap / double-tap / long-press) recognised from plain pointer
+        // events so a finger on the device and a finger through the remote viewer (CDP
+        // touches get no browser gestures) behave identically; mouse keeps shift-hold.
+        this.#gestures = new CanvasGestureRecognizer(canvas, g => this.#onCanvasGesture(g))
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
             if (this.#pushPullController?.isDragging) {
                 if (this.#pushPullController.handlePointerMove(e)) {
@@ -1810,10 +1816,20 @@ export class SDFRenderer {
             }
         })
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
-            if (this.#pushPullController?.isDragging) {
-                if (this.#pushPullController.handlePointerUp(e)) {
+            const pp = this.#pushPullController
+            if (pp?.isDragging) {
+                if (pp.handlePointerUp(e)) {
                     e.preventDefault()
                     e.stopPropagation()
+                    // Sticky mode: the commit dropped the surface to highlight-only; re-arm it
+                    // so the next drag pushes again (no rebuild has run — it is deferred
+                    // until the mode exits — so the controller's node refs are still valid).
+                    if (this.#pushPullSticky && !pp.isActive && pp.promoteToActive()) {
+                        this.#pushSelectionInfo()
+                        this.#needsRender = true
+                    } else if (this.#pushPullSticky && !pp.isActive) {
+                        this.#pushPullSticky = false
+                    }
                 }
             }
         }, { capture: true })
@@ -1838,7 +1854,7 @@ export class SDFRenderer {
     }
 
     /** Devserver probe hook (see `installDevPushPullStateGetter`): push/pull interaction state. */
-    getPushPullDebugState(): { active: boolean; dragging: boolean; faceSelection: { nodeId: number; faceIndex: number; mode: number } | null; lastClickedId: number; lastClickHitPos: [number, number, number] | null; selectionMode: string } {
+    getPushPullDebugState(): { active: boolean; dragging: boolean; faceSelection: { nodeId: number; faceIndex: number; mode: number } | null; lastClickedId: number; lastClickHitPos: [number, number, number] | null; selectionMode: string; sticky: boolean; viewTransform: number[]; zoom: number } {
         const pp = this.#pushPullController
         return {
             active: pp?.isActive ?? false,
@@ -1847,6 +1863,9 @@ export class SDFRenderer {
             lastClickedId: this.#lastClickedId,
             lastClickHitPos: this.#lastClickHitPos,
             selectionMode: this.#selectionMode,
+            sticky: this.#pushPullSticky,
+            viewTransform: Array.from(this.#controls.viewTransform.data),
+            zoom: this.#controls.zoom,
         }
     }
 

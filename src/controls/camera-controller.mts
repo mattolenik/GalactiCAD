@@ -205,6 +205,10 @@ export class CameraController {
         this.#trackball = new Trackball({
             scene: this.#host.canvas,
             getInteractionRect,
+            // pointerdown runs before touchstart/mousedown: only orbit when THIS controller
+            // armed a rotate on it (push/pull or the gizmo consuming the pointer leaves
+            // #dragMode null, and the trackball's own touch listeners must not orbit then).
+            canStartDrag: () => this.#dragMode === "rotate",
             q: this.#rotation,
             onDraw: (q) => {
                 if (this.#isSyncing) return
@@ -406,6 +410,9 @@ export class CameraController {
             return
         }
         if (this.#zoomController.isZooming) return
+        // isDragging can be set by another interaction (push/pull, gizmo) that consumed the
+        // pointerdown; with no drag mode armed here there is nothing to orbit or pan.
+        if (this.#dragMode === null) return
         // Only use the primary pointer's movement; ignore the second finger when pinch starts
         if (this.#primaryPointerId !== null && e.pointerId !== this.#primaryPointerId) return
 
@@ -449,6 +456,20 @@ export class CameraController {
             // scene does not move, only the orbit anchor follows). No-op if locked.
             this.#reanchorPivotToView()
         }
+    }
+
+    /**
+     * Abandon the drag the camera armed on a pointerdown that another interaction
+     * is taking over mid-press (long-press → push/pull mode). The pointer stays
+     * down; subsequent moves/up for it are ignored by the camera.
+     */
+    cancelDrag(): void {
+        this.#trackball.cancelDrag()
+        if (!this.isDragging && this.#primaryPointerId === null) return
+        this.#primaryPointerId = null
+        this.isDragging = false
+        this.#dragMode = null
+        this.#hasDragged = false
     }
 
     #onPointerUp(e: PointerEvent) {

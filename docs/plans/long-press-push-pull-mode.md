@@ -1,6 +1,6 @@
 # Long-press push/pull mode (touch + remote viewer)
 
-Status: IN PROGRESS (2026-10-03). Decisions taken, see bottom. Baseline: `b11445a` (first long-press cut, to be reworked), probe hook uncommitted in the working tree (`__galacticadDevGetPushPullState`).
+Status: PHASES 0–3 LANDED (2026-10-03); Phase 4 awaits on-device confirmation; Phase 5 deferred. Decisions at bottom. Baseline: `b11445a` (first long-press cut, to be reworked), probe hook uncommitted in the working tree (`__galacticadDevGetPushPullState`).
 
 ## Target UX
 
@@ -89,3 +89,10 @@ No protocol changes. Long-press, drag and double-tap all arrive as raw touch and
 2. **Long-press is touch-only** (pointerType `touch` / `pen`). A held mouse button does nothing special; **mouse keeps shift-hold.**
 3. Phase 4 approach: open until Phase 0 is confirmed on device. Context: the worker's auto-mode feature pick wins within `lineWidth + 10 px` of a corner and `lineWidth/2 + 3 px` of an edge chain (`#fgPickThresholdPx` / `#fgEdgePickThresholdPx` in `render-worker-core.mts`); "shrink for touch" = smaller bands when the pointer is a finger, "face-first" = keep the bands but let the surface win when the object under the finger is push/pull-eligible.
 4. **Phase 5 (loft sides) deferred.**
+
+## Implementation notes (Phases 1–3)
+
+- `src/interaction/canvas-gestures.mts`: `CanvasGestureRecognizer` (tap / doubleTap / longPress; long-press for touch+pen only). Dedupes the remote viewer's synthesized mouse click that follows every finger tap (same spot, other pointer type, inside the double-tap window) — without this a stray tap through `/_remote` registered as a double-tap and exited the mode.
+- `SDFRenderer`: `#pushPullSticky`, `#onLongPress` (pick-verified), `#enterPushPullMode`, `#onDoubleTap` (pick-verified, exits only OFF the surface), `#exitPushPullMode`, sticky re-promotion in the push/pull `pointerup` listener, `#resolvePushPullTarget` shared by `#highlightFaceAt` and `#handleObjectDoubleClick`. `#pendingGesturePick` generalises the long-press pick routing.
+- **Camera-moves root cause was the trackball, not the camera controller:** `Trackball` registers its own `touchstart/touchmove` listeners, so a one-finger push/pull drag orbited through it even though push/pull stopped the pointer events (with a mouse, cancelling `pointerdown` suppresses the compat `mousedown` the trackball listens to — which is why shift-hold never showed it). Fix: `TrackballOptions.canStartDrag` (camera passes `() => #dragMode === "rotate"`, valid because `pointerdown` precedes `touchstart`), `Trackball.cancelDrag()` called from `CameraController.cancelDrag()` on the long-press handoff, and `#onPointerMove` ignores moves when no drag mode is armed.
+- Headless verification (agent devserver, CDP touch): `sticky-smoke.mjs` (hold enters without dragging, release keeps, two drags commit + re-arm, stray tap keeps, double-tap on keeps, double-tap off exits, no contextmenu, mouse hold inert, quick drag orbits; rotation+zoom unchanged through hold and drags), `eligibility-probe.mjs` (extrude side / extrude cap / loft cap enter; loft side, lathe, features do not), `mouse-regress.mjs` (mouse orbit, shift-hold commit without orbit, transient drop on release). Dev hook: `__galacticadDevGetPushPullState()`.

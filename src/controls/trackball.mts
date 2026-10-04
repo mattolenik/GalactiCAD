@@ -10,6 +10,12 @@ export interface TrackballOptions {
     scene: HTMLElement
     /** Optional rect for interaction (e.g. visible area when editor overlays). Uses scene.getBoundingClientRect() when omitted. */
     getInteractionRect?: () => DOMRect
+    /**
+     * Gate for starting a drag. The trackball listens to mouse AND touch events directly;
+     * an interaction that consumes the pointer (push/pull, gizmo) stops the pointer events
+     * but not the touch events, so the owner decides here whether this press is an orbit.
+     */
+    canStartDrag?: () => boolean
     /** Callback function called when trackball is rotated */
     onDraw?: (this: Trackball, q: Quaternion) => void
     /** Whether to clamp elevation rotation */
@@ -45,9 +51,10 @@ export class Trackball {
     #drag: DragState | null = null
     #isUpdatePending = false
     #lastMousePosition: { clientX: number; clientY: number } | null = null
-    #opts: Required<Omit<TrackballOptions, "scene" | "q" | "getInteractionRect">> & {
+    #opts: Required<Omit<TrackballOptions, "scene" | "q" | "getInteractionRect" | "canStartDrag">> & {
         scene: HTMLElement
         getInteractionRect?: () => DOMRect
+        canStartDrag?: () => boolean
     }
 
     /**
@@ -73,6 +80,7 @@ export class Trackball {
             invertX = false,
             invertY = false,
             speed = 1,
+            canStartDrag,
         } = resolvedOpts
 
         if (!scene) {
@@ -86,6 +94,7 @@ export class Trackball {
             invertX,
             invertY,
             speed,
+            canStartDrag,
         }
 
         // Core state initialization
@@ -195,6 +204,7 @@ export class Trackball {
     #handleMouseDown(event: MouseEvent | Touch): void {
         // Only respond to left mouse button; right/middle are used for pan
         if (event instanceof MouseEvent && event.button !== 0) return
+        if (this.#opts.canStartDrag && !this.#opts.canStartDrag()) return
 
         const box = this.#opts.getInteractionRect?.() ?? this.#opts.scene.getBoundingClientRect()
         if (!this.#isInBounds(event.clientX, event.clientY, box)) return
@@ -240,6 +250,17 @@ export class Trackball {
         const deltaY = clientY - this.#drag!.startPosition[1]
         if (deltaX === 0 && deltaY === 0) return
         this.#updateAzEl(deltaX, deltaY)
+    }
+
+    /** Abandon an in-flight drag without applying further rotation (owner took the pointer over). */
+    cancelDrag(): void {
+        if (!this.#drag) return
+        this.#drag = null
+        this.#lastMousePosition = null
+        this.#q0 = this.#q
+        this.#azimuth_start = this.#azimuth
+        this.#elevation_start = this.#elevation
+        this.#roll_start = this.#roll
     }
 
     #handleMouseUp(_event?: MouseEvent | Touch): void {

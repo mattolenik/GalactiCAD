@@ -73,6 +73,10 @@ function roundScenePerfMs(x: number): number {
 }
 
 /** Default max frames per second for the preview. Main thread throttles render messages to the worker. */
+/** Long-press → push/pull: hold this long within the slop radius (see `SDFRenderer.#armLongPress`). */
+const LONG_PRESS_MS = 400
+const LONG_PRESS_SLOP_PX = 8
+
 const DEFAULT_TARGET_FPS = 120
 
 /** Lightweight node stub for main-thread selection logic. Reconstructed from SerializedNode. */
@@ -284,6 +288,10 @@ export class SDFRenderer {
     #suppressGizmoReleaseClick = false
     #pendingPickObject = new Map<number, { clientX: number; clientY: number }>()
     #pickObjectRequestId = 0
+    /** Long-press → push/pull (see `#armLongPress`): the armed press, its timer, and the
+     * pick request that verifies the press landed on the selected object. */
+    #longPress: { pointerId: number; clientX: number; clientY: number; timer: ReturnType<typeof setTimeout> | null; fired: boolean } | null = null
+    #pendingLongPressPick = new Map<number, { pointerId: number; clientX: number; clientY: number }>()
     #sharedBuffer: SharedArrayBuffer | null = null
     #renderVersion = 0
     #useSharedMemory = false
@@ -490,6 +498,7 @@ export class SDFRenderer {
 
         preview.canvas.addEventListener("contextmenu", (e: MouseEvent) => {
             e.preventDefault()
+            if (this.#longPress?.fired || this.#pushPullController?.isActive) return
             const uv = this.#screenToClickUV(e.clientX, e.clientY)
             if (!uv) return
             const requestId = ++this.#pickObjectRequestId
@@ -830,6 +839,12 @@ export class SDFRenderer {
                 break
             }
             case "pickObjectResult": {
+                const lp = this.#pendingLongPressPick.get(msg.requestId)
+                if (lp) {
+                    this.#pendingLongPressPick.delete(msg.requestId)
+                    this.#completeLongPress(msg.objectId, lp)
+                    break
+                }
                 const pending = this.#pendingPickObject.get(msg.requestId)
                 if (pending) {
                     this.contextMenu$.next({ objectId: msg.objectId, clientX: pending.clientX, clientY: pending.clientY })
@@ -1130,6 +1145,80 @@ export class SDFRenderer {
         const hitPos = this.#lastClickHitPos
         if (!nodeId || !hitPos) return false
         return this.#handleObjectDoubleClick(nodeId, hitPos)
+    }
+
+    /** Start timing a long press if this pointerdown could lead to push/pull (see listener comment). */
+    #armLongPress(e: PointerEvent): void {
+        this.#cancelLongPress()
+        if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return
+        const pp = this.#pushPullController
+        if (!pp || pp.isActive) return
+        if (this.#selectionMode !== "face" && this.#selectionMode !== "auto") return
+        if (this.#gizmoController?.dragging) return
+        // Something push/pull-eligible must already be selected: a highlighted face, or a
+        // last-clicked node the controller knows how to push/pull (with a hit position).
+        const candidate =
+            pp.getFaceSelection() !== null ||
+            (this.#lastClickedId !== 0 && this.#lastClickHitPos !== null && this.#pushPullNodes.has(this.#lastClickedId))
+        if (!candidate) return
+        const lp = { pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, timer: null as ReturnType<typeof setTimeout> | null, fired: false }
+        lp.timer = setTimeout(() => {
+            lp.timer = null
+            if (this.#longPress !== lp) return
+            // Verify the press is over the selected object before committing (async pick).
+            const uv = this.#screenToClickUV(lp.clientX, lp.clientY)
+            if (!uv) {
+                this.#cancelLongPress()
+                return
+            }
+            const requestId = ++this.#pickObjectRequestId
+            this.#pendingLongPressPick.set(requestId, { pointerId: lp.pointerId, clientX: lp.clientX, clientY: lp.clientY })
+            this.#worker.postMessage({ type: "pickObject", clickUV: uv, requestId })
+        }, LONG_PRESS_MS)
+        this.#longPress = lp
+    }
+
+    #cancelLongPress(): void {
+        const lp = this.#longPress
+        if (!lp) return
+        if (lp.timer !== null) clearTimeout(lp.timer)
+        this.#longPress = null
+    }
+
+    /** Pick result for an armed long press: enter push/pull and begin the drag if it hit the selection. */
+    #completeLongPress(pickedRaw: number, lp: { pointerId: number; clientX: number; clientY: number }): void {
+        const armed = this.#longPress
+        // The pointer may have been released or moved away while the pick was in flight.
+        if (!armed || armed.pointerId !== lp.pointerId || armed.fired) return
+        const pp = this.#pushPullController
+        if (!pp || pp.isActive) {
+            this.#cancelLongPress()
+            return
+        }
+        const picked = this.#resolveFaceSentinel(pickedRaw)
+        const faceSel = pp.getFaceSelection()
+        const onSelection = picked !== 0 && (picked === this.#lastClickedId || (faceSel !== null && picked === faceSel.nodeId))
+        if (!onSelection) {
+            this.#cancelLongPress()
+            return
+        }
+        const activated = faceSel !== null ? pp.promoteToActive() : this.#tryActivatePushPullFromSelection()
+        if (!activated) {
+            this.#cancelLongPress()
+            return
+        }
+        armed.fired = true
+        this.#cancelBuildsForPushPull()
+        this.#pushSelectionInfo()
+        // The camera began an orbit on this same pointerdown; hand the pointer to push/pull.
+        this.#controls.isDragging = false
+        pp.handlePointerDown({ button: 0, clientX: lp.clientX, clientY: lp.clientY, pointerId: lp.pointerId } as PointerEvent)
+        this.#needsRender = true
+        try {
+            navigator.vibrate?.(15)
+        } catch {
+            /* unsupported */
+        }
     }
 
     #cancelBuildsForPushPull(): void {
@@ -1637,6 +1726,25 @@ export class SDFRenderer {
                 }
             }
         }, { capture: true })
+        // Long-press (touch, or a held mouse button) on the SELECTED push/pull-eligible
+        // surface → push/pull, the no-modifier twin of shift-hold above. Touch has no Shift,
+        // and this must also work through the remote viewer (`/_remote`), whose CDP-injected
+        // touches get no browser gesture recognition — so the hold is timed here from plain
+        // pointer events rather than relying on a long-press gesture. Fires only when the
+        // press stays within LONG_PRESS_SLOP_PX for LONG_PRESS_MS AND the worker's pick says
+        // the press is over the selected object; the orbit the camera already started on
+        // pointerdown is cancelled and the push/pull drag begins from the press point.
+        canvas.addEventListener("pointerdown", (e: PointerEvent) => this.#armLongPress(e), { capture: true })
+        canvas.addEventListener("pointermove", (e: PointerEvent) => {
+            const lp = this.#longPress
+            if (!lp || lp.fired || e.pointerId !== lp.pointerId) return
+            if (Math.hypot(e.clientX - lp.clientX, e.clientY - lp.clientY) > LONG_PRESS_SLOP_PX) this.#cancelLongPress()
+        }, { capture: true })
+        for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
+            canvas.addEventListener(type, (e: PointerEvent) => {
+                if (this.#longPress && e.pointerId === this.#longPress.pointerId) this.#cancelLongPress()
+            }, { capture: true })
+        }
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
             if (this.#pushPullController?.isDragging) {
                 if (this.#pushPullController.handlePointerMove(e)) {

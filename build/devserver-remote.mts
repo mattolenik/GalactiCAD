@@ -45,6 +45,17 @@ type TouchEventType = "touchStart" | "touchMove" | "touchEnd" | "touchCancel"
 const TOUCH_EVENT_TYPES = new Set<string>(["touchStart", "touchMove", "touchEnd", "touchCancel"])
 /** Max simultaneous touch points advertised to the remote tab when the viewer has touch. */
 const TOUCH_POINTS = 10
+/**
+ * Tap recognition for synthesized clicks. CDP `Input.dispatchTouchEvent` yields pointer/touch
+ * events in the tab but Chromium does NOT run its gesture detector on them, so no `click` is
+ * ever synthesized (even Puppeteer's `touchscreen.tap` gets none) — and the app selects
+ * surfaces on `click`. A one-finger sequence that ends within these limits is followed by a
+ * left mouse click at the touch-up point; two taps inside the double-tap window count as 2.
+ */
+const TAP_MAX_TRAVEL_PX = 12
+const TAP_MAX_MS = 400
+const DOUBLE_TAP_MS = 350
+const DOUBLE_TAP_PX = 25
 
 export type RemoteControlOptions = {
     /** URL the proxied tab loads (this devserver's index, loopback). */
@@ -115,6 +126,13 @@ export class RemoteControl {
     #touchActive = false
     /** Latest not-yet-dispatched touchMove; coalesced like mouse moves. */
     #pendingTouchMove: { pts: { id: number; x: number; y: number }[] } | null = null
+    /** Current one-finger sequence, for tap → click synthesis (null once it stops qualifying). */
+    #tap: { startMs: number; x0: number; y0: number; x: number; y: number } | null = null
+    /** Last synthesized tap, for double-tap click counting. */
+    #lastTap: { ms: number; x: number; y: number; count: number } | null = null
+    #tapsSynthesized = 0
+    /** Touch-active state before the current event, so a touchStart that ADDS a finger is distinguishable. */
+    #wasTouchActiveBefore = false
 
     constructor(opts: RemoteControlOptions) {
         this.#opts = { log: console.log, err: console.error, ...opts }
@@ -183,6 +201,7 @@ export class RemoteControl {
             buttonsDown: [...this.#buttonsDown],
             modifiersDown: [...this.#modifiersDown],
             touchActive: this.#touchActive,
+            tapsSynthesized: this.#tapsSynthesized,
             browserPid: this.#browser?.process()?.pid ?? null,
         }
     }
@@ -392,6 +411,49 @@ export class RemoteControl {
         // touchEnd/touchCancel list the points that REMAIN; Chromium releases the missing ones.
         await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: pts.map(p => ({ x: p.x, y: p.y, id: p.id })) })
         this.#touchActive = pts.length > 0 && type !== "touchCancel"
+        await this.#trackTap(cdp, type, pts)
+    }
+
+    async #trackTap(cdp: CDPSession, type: TouchEventType, pts: { id: number; x: number; y: number }[]): Promise<void> {
+        const now = Date.now()
+        const wasActive = this.#wasTouchActiveBefore
+        this.#wasTouchActiveBefore = this.#touchActive
+        if (type === "touchStart") {
+            // A tap candidate is a sequence that BEGINS one-fingered; a second finger voids it.
+            this.#tap = !wasActive && pts.length === 1 ? { startMs: now, x0: pts[0]!.x, y0: pts[0]!.y, x: pts[0]!.x, y: pts[0]!.y } : null
+            return
+        }
+        if (type === "touchMove") {
+            const t = this.#tap
+            if (!t || pts.length !== 1) {
+                this.#tap = null
+                return
+            }
+            t.x = pts[0]!.x
+            t.y = pts[0]!.y
+            if (Math.hypot(t.x - t.x0, t.y - t.y0) > TAP_MAX_TRAVEL_PX) this.#tap = null
+            return
+        }
+        if (type === "touchCancel") {
+            this.#tap = null
+            return
+        }
+        // touchEnd
+        const t = this.#tap
+        if (pts.length !== 0) {
+            this.#tap = null // a finger remains → not a tap
+            return
+        }
+        this.#tap = null
+        if (!t || now - t.startMs > TAP_MAX_MS) return
+        const last = this.#lastTap
+        const count = last && now - last.ms <= DOUBLE_TAP_MS && Math.hypot(t.x - last.x, t.y - last.y) <= DOUBLE_TAP_PX ? last.count + 1 : 1
+        this.#lastTap = { ms: now, x: t.x, y: t.y, count }
+        const base = { x: t.x, y: t.y, button: "left" as const, buttons: 1, clickCount: count, modifiers: 0 }
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: t.x, y: t.y, button: "none", modifiers: 0 })
+        await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", ...base })
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...base, buttons: 0 })
+        this.#tapsSynthesized++
     }
 
     /** Release every held mouse button and modifier key in the remote tab (viewer blur / disconnect). */
@@ -478,6 +540,8 @@ export class RemoteControl {
             this.#buttonsDown.clear()
             this.#modifiersDown.clear()
             this.#touchActive = false
+            this.#wasTouchActiveBefore = false
+            this.#tap = null
             if (!this.#closed) {
                 this.#setStatus("error", "browser exited; reconnect to relaunch")
                 this.#opts.err("remote: headless Chromium disconnected")
@@ -550,6 +614,9 @@ export class RemoteControl {
         const cdp = this.#cdp
         if (!cdp) return
         try {
+            // Re-arming on viewer join / resize / page load: Chromium rejects a second
+            // startScreencast ("already active"), so always stop first (no-op when off).
+            await cdp.send("Page.stopScreencast").catch(() => {})
             await cdp.send("Page.startScreencast", {
                 format: "jpeg",
                 quality: JPEG_QUALITY,

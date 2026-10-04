@@ -9,8 +9,12 @@
 <style>
     :root { color-scheme: dark; }
     html, body { margin: 0; height: 100%; background: #111; overflow: hidden; overscroll-behavior: none; }
+    /* No 100vh: on iOS Safari / Android Chrome it includes the area under the browser
+       toolbar, so the canvas ran past the visible bottom (frame stretched, bottom strip
+       hidden, taps landing low). The script sizes it from window.innerWidth/innerHeight,
+       which is also exactly what the remote tab's viewport is set to — 1:1, no scaling. */
     #view {
-        position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+        position: fixed; top: 0; left: 0; display: block;
         touch-action: none; user-select: none; -webkit-user-select: none; cursor: default; outline: none;
         image-rendering: auto;
     }
@@ -125,8 +129,18 @@
             try { ws.send(JSON.stringify(obj)) } catch {}
         }
     }
+    function viewportSize() {
+        return { w: Math.round(window.innerWidth), h: Math.round(window.innerHeight) }
+    }
+    function fitCanvas() {
+        const { w, h } = viewportSize()
+        canvas.style.width = `${w}px`
+        canvas.style.height = `${h}px`
+    }
+    fitCanvas()
     function viewportMsg(t) {
-        return { t, w: Math.round(window.innerWidth), h: Math.round(window.innerHeight), dpr: hidpi ? 2 : 1, touch: navigator.maxTouchPoints > 0 }
+        const { w, h } = viewportSize()
+        return { t, w, h, dpr: hidpi ? 2 : 1, touch: navigator.maxTouchPoints > 0 }
     }
     function connect() {
         ws = new WebSocket(wsUrl)
@@ -160,10 +174,15 @@
     connect()
 
     let resizeTimer = null
-    window.addEventListener("resize", () => {
+    function onViewportChange() {
+        fitCanvas()
         clearTimeout(resizeTimer)
         resizeTimer = setTimeout(() => send(viewportMsg("resize")), 150)
-    })
+    }
+    window.addEventListener("resize", onViewportChange)
+    window.addEventListener("orientationchange", onViewportChange)
+    // Mobile toolbars showing/hiding change innerHeight without always firing window resize.
+    window.visualViewport?.addEventListener("resize", onViewportChange)
 
     // ── pointer input ──
     function pos(e) {

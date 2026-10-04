@@ -69,6 +69,9 @@ const Options = {
 
 const WatchOptions = {
     ignored: [
+        // Session worktrees (EnterWorktree) carry a full source tree + node_modules; watching
+        // them exhausts file descriptors (EMFILE) and crashes the devserver on re-exec.
+        ".claude",
         ".cursor",
         ".browsers",
         ".github",

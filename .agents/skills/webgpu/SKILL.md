@@ -1,92 +1,98 @@
 ---
-name: webgpu-expert
-description: "Use this agent when working on WebGPU implementations, compute shaders, WGSL shader code, GPU pipeline configurations, or performance-critical graphics rendering."
+name: webgpu
+description: Design, implement, debug, review, and optimize portable WebGPU applications and WGSL shaders. Use when building render or compute pipelines; GPU simulations, cellular automata, particles, image processing, feedback effects, or data-parallel workloads; defining buffers, textures, bind groups, and host-shareable layouts; handling canvas sizing, optional features, errors, device loss, readback, and cleanup; or diagnosing validation, correctness, compatibility, and performance problems.
 ---
 
-# WebGPU Expert
+# WebGPU
 
-Your Core Expertise:
+Build the smallest observable GPU result first, then scale it. Treat every WebGPU feature as five explicit contracts:
 
--   WebGPU API architecture: adapters, devices, queues, command encoders, and pipeline management
--   WGSL shader programming: vertex, fragment, and compute shaders with optimal performance patterns
--   GPU pipeline optimization: render pipelines, compute pipelines, binding groups, and buffer layouts
--   Performance profiling: GPU utilization, memory bandwidth, command submission optimization
--   Non-standard rendering techniques, specifically SDFs (signed distance functions). You are familiar with optimizing SDF renderers for high performance. You are familiar with the demo scene SDF work as well as academic and industry developments of the past decade.
+1. Capability contract: baseline, optional features and limits, fallback.
+2. Data contract: WGSL types, byte offsets, strides, usage flags.
+3. Pass contract: reads, writes, ordering, ping-pong ownership.
+4. Presentation contract: canvas format, physical size, alpha and color.
+5. Lifecycle contract: creation, resize, errors, loss and destruction.
 
-## When to Use
+Copy [the full Vite starter](assets/starter/) for a new browser project. It contains a typed compute-and-render particle field with ping-pong buffers, compilation diagnostics, resize handling, pointer interaction, device-loss reporting, and cleanup.
 
-Use this skill when:
+## Work from a resource and pass graph
 
--   Writing, debugging, optimizing WebGPU shaders in WGSL files
--   Interfacing with WebGPU/WGSL shaders in TypeScript code
+Before writing WGSL, list persistent resources and pass ownership:
 
-## When Writing Code
+```text
+CPU seed ─writeBuffer─> state A
+                         │
+state A ─compute step─> state B ─render─> canvas
+state B ─compute step─> state A ─render─> canvas
+```
 
-1. Always use modern WebGPU patterns following the latest W3C specification
-2. Implement proper error handling with detailed GPU error messages
-3. Structure binding groups efficiently (group 0 for per-frame, group 1 for per-material, group 2 for per-draw)
-4. Write WGSL shaders with clear comments explaining GPU operations and performance considerations
-5. Use buffer usage flags precisely (VERTEX, INDEX, UNIFORM, STORAGE, COPY_SRC, COPY_DST)
-6. Minimize pipeline state changes and batch draw calls effectively
-7. Leverage compute shaders for parallel processing tasks (particle systems, post-processing, physics)
-8. Implement proper resource cleanup and disposal patterns
+For every pass, record:
 
-## Performance Optimization Principles
+- entry point and dispatch/draw dimensions;
+- bindings and shader visibility;
+- resources read, written or copied;
+- state that becomes authoritative after the pass;
+- bounds guards and synchronization assumptions.
 
--   Minimize CPU-GPU synchronization points
--   Use storage buffers for large data sets, uniform buffers for frequently updated small data
--   Batch similar draw calls to reduce pipeline switches
--   Prefer compute shaders over fragment shaders for massively parallel non-rendering tasks
--   Use texture atlases and instanced rendering to reduce draw calls
--   Profile with browser DevTools GPU metrics and optimize bottlenecks
--   Consider WGSL workgroup size optimization for compute shaders (typically multiples of 64)
+Use different resources when a pass needs the previous state while producing the next state. A pass boundary orders commands, but it does not make an algorithm with cross-invocation in-place reads deterministic.
 
-## Browser Compatibility
+## Build in this order
 
--   Be aware of adapter limits and query them before resource allocation
+1. Decide whether unsupported WebGPU means fallback, reduced mode, or a clear failure.
+2. Request an adapter and only the optional features and raised limits the workload actually uses.
+3. Define WGSL structs and calculate exact host offsets and array strides.
+4. Allocate persistent resources and label them.
+5. Compile shader modules, inspect `getCompilationInfo()`, then create pipelines.
+6. Create stable bind groups or rebuild them only when their resources change.
+7. Encode a minimal pass, submit it, and verify visible or numeric output.
+8. Add resize, input, simulation timing, readback, and teardown one concern at a time.
+9. Profile only after correctness is stable at the intended workload.
 
-## WGSL Shader Best Practices
+## Keep these invariants
 
--   Use @group and @binding decorators consistently
--   Leverage WGSL built-in functions for optimal GPU code generation
--   Write clear struct definitions with proper alignment (vec3 alignment issues)
--   Use override constants for shader specialization
--   Implement proper interpolation qualifiers (@location, @builtin)
--   Consider precision requirements (f32 vs f16 where supported)
--   When drawing from GLSL or HLSL training data, keep in mind differences between those shading languages and WGSL.
+- Treat `adapter.features` and `adapter.limits` as possibilities. The device exposes only the capabilities requested and granted at `requestDevice()`.
+- Never use “all structs are 16-byte aligned” as a packing rule. Calculate `AlignOf`, `SizeOf`, member offsets, array stride, and uniform-specific constraints.
+- Guard every over-dispatched compute invocation before accessing resources.
+- Keep `workgroupBarrier()` and `storageBarrier()` in uniform control flow for the participating workgroup.
+- Do not create buffers, textures, samplers, bind groups, or pipelines every frame unless the workload truly changes their descriptors.
+- Avoid full GPU-to-CPU readback in animation or pointer loops. Compact bounded results on the GPU and map a small staging buffer.
+- Treat WGSL passed to `createShaderModule()` as executable input. Prefer bundled, reviewed shader source; do not make the application compile network-fetched or end-user-supplied WGSL at runtime by default.
+- Resize the canvas backing store from its rendered CSS size and DPR, clamp it to device limits, and skip no-op assignments.
+- Surface shader compilation messages, uncaptured errors, pipeline validation failures, and `device.lost`.
+- Stop animation and observers before destroying resources; unconfigure owned canvas contexts and destroy the device when appropriate.
 
-## When Reviewing Code
+## Choose a pattern by workload
 
-1. Verify proper WebGPU resource lifecycle management
-2. Check for memory leaks (unbounded buffer/texture creation)
-3. Validate shader binding group layouts match pipeline expectations
-4. Ensure proper error handling for adapter/device requests
-5. Review command encoder submission patterns for efficiency
-6. Identify opportunities for compute shader acceleration
-7. Check buffer alignment requirements (256 bytes for uniform buffers)
+| Workload | Start with |
+| --- | --- |
+| Independent particles or records | Storage buffers, guarded 1D dispatch, instanced render |
+| Neighbor-based particles | Spatial binning or tiled neighborhoods before pairwise work |
+| Cellular automata or stencils | Ping-pong state, 2D dispatch, fixed simulation cadence |
+| Trails, blur or iterative images | Ping-pong textures and explicit compute/render passes |
+| Post-processing | Render to an intermediate texture, then composite |
+| Interactive inspection | GPU filter/compact pass plus a bounded staging readback |
+| Generated or modular shaders | Stable binding contract, composed pass phases, compile diagnostics |
 
-## Architecture Recommendations
+Start with a portable core path. Gate `shader-f16`, timestamp queries, subgroups, storage formats, language extensions, and raised limits as optional accelerators—not silent requirements.
 
--   Separate rendering logic into systems (geometry, material, lighting, post-processing)
--   Create reusable pipeline factories for common rendering patterns
--   Implement a resource manager for textures, buffers, and samplers
--   Design shader modules for composability and reuse
--   Use TypedArrays efficiently with proper buffer mapping strategies
+## Load the right detail
 
-## When Explaining Concepts
+- Read [initialization-and-lifecycle.md](references/initialization-and-lifecycle.md) for adapters, devices, features, limits, canvas configuration, loss and cleanup.
+- Read [wgsl-data-layout.md](references/wgsl-data-layout.md) before defining or debugging host-shareable buffers.
+- Read [compute-patterns.md](references/compute-patterns.md) for workgroups, ping-pong state, fixed steps, grids, barriers and bounded readback.
+- Read [rendering-patterns.md](references/rendering-patterns.md) for canvas sizing, instancing, intermediate targets and feedback.
+- Read [debugging-and-performance.md](references/debugging-and-performance.md) for compilation messages, error scopes, labels, profiling and symptom-driven diagnosis.
+- Read [creative-recipes.md](references/creative-recipes.md) when translating a visual or simulation idea into a pass graph.
+- Read [compatibility.md](references/compatibility.md) when choosing fallbacks or optional features.
+- Use [current-sources.md](references/current-sources.md) to verify unstable or recently added APIs against living primary sources.
 
--   Use precise WebGPU terminology from the specification
--   Provide visual mental models for GPU pipeline stages
--   Reference real-world performance implications
--   Cite W3C WebGPU specification sections for complex topics
+## Validate the result
 
-## Common Pitfalls to Avoid
-
--   Forgetting to call device.queue.submit() after encoding commands
--   Incorrect buffer offset alignment
--   Mismatched binding group layouts between pipeline and shader
--   Synchronous buffer mapping in render loops
--   Excessive pipeline creation (cache and reuse pipelines)
--   Ignoring adapter limits leading to runtime errors
-
-Always prioritize performance and maintainable code architecture. Proactively suggest optimizations and modern WebGPU patterns. When uncertain about browser-specific behavior, recommend testing and provide alternatives.
+- Type-check the host code against current `@webgpu/types`; do not hide errors with `@ts-nocheck`.
+- Run in a WebGPU-capable browser and inspect compilation messages and uncaptured errors.
+- Test zero-sized/hidden startup, resize, DPR changes, background-tab timing, and teardown/recreate.
+- Test the fallback or failure UI on a path where `navigator.gpu` is unavailable.
+- Confirm buffer sizes, copy offsets, bytes-per-row, dynamic offsets, dispatch counts, and device limits.
+- Inspect startup and steady state visually or assert bounded numeric results.
+- Compare performance with readback and debug instrumentation disabled.
+- When reviewing existing code, report correctness and lifecycle hazards before micro-optimizations.

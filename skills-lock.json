@@ -6,15 +6,34 @@
       "sourceType": "github",
       "computedHash": "33de6a9e8260a7a5f772c5bf1e389b5207318a17a3a0a13160066c5e76a059d3"
     },
+    "rust-async-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/systems-programming/skills/rust-async-patterns/SKILL.md",
+      "computedHash": "20d32ef58158c94eb4dfc4aaf19bec7ae2a025ae5d42da7b49ccfbaeda389273"
+    },
+    "rust-best-practices": {
+      "source": "apollographql/skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-best-practices/SKILL.md",
+      "computedHash": "a3db351ec552ed9d36b59e547d6c1d94077867eb5bcb98b3f802dfebb0a8a248"
+    },
     "typescript-advanced-types": {
       "source": "wshobson/agents",
       "sourceType": "github",
-      "computedHash": "a03a83996ae9d2f4dd6d4db08899d61761c7d5351bce4c695d20a21197742a36"
+      "skillPath": "plugins/javascript-typescript/skills/typescript-advanced-types/SKILL.md",
+      "computedHash": "8cbf2bf600f392d7260e476e3202932a876e2281cda3b15a8b6a5a43f383252d"
     },
     "typescript-expert": {
       "source": "sickn33/antigravity-awesome-skills",
       "sourceType": "github",
       "computedHash": "7d7786559f73afe2e383506724440a5a72d717134943be138d80d2ec3609930f"
+    },
+    "webgpu": {
+      "source": "cazala/webgpu-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "42bea1ccdfcb219ab652e6c1cd61deb02dfd2131d686121ab766ac1f6a77db66"
     }
   }
 }

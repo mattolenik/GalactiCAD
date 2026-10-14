@@ -42,6 +42,7 @@ pub mod sliver_flip;
 pub mod spatial_index;
 pub mod tree;
 pub mod trim;
+mod segment_exposure;
 pub mod worker;
 
 pub mod validation;

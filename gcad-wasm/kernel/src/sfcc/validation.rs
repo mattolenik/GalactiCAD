@@ -183,6 +183,8 @@ impl SfccValidation {
             || self.unresolved_cells > 0
             || self.feature_fallback_cells > 0
             || self.numerical.total() > 0
+            || self.feature_trace.unresolved_discovery > 0
+            || self.feature_trace.unresolved_trims > 0
             || !self.unresolved_branch_paths.is_empty()
             || self.feature_chains.as_ref().is_some_and(|report| !report.passed())
         {
@@ -203,7 +205,8 @@ impl SfccValidation {
                 "\"featureFallbackCells\":{},\"curveProjectionFailures\":{},\"faceProjectionFailures\":{},",
                 "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{},",
                 "\"featureTrace\":{{\"pairsConsidered\":{},\"seedsFound\":{},\"curvesTraced\":{},",
-                "\"tangencyBails\":{},\"tangentReversals\":{},\"correctionBails\":{},\"stepCapHits\":{}}}}}"
+                "\"tangencyBails\":{},\"tangentReversals\":{},\"correctionBails\":{},\"stepCapHits\":{},",
+                "\"unresolvedDiscovery\":{},\"unresolvedTrims\":{}}}}}"
             ),
             self.quality.as_ref().map_or_else(|| "null".into(), QualityAudit::to_json),
             self.unresolved_branch_paths,
@@ -228,7 +231,9 @@ impl SfccValidation {
             self.feature_trace.tangency_bails,
             self.feature_trace.tangent_reversals,
             self.feature_trace.correction_bails,
-            self.feature_trace.step_cap_hits
+            self.feature_trace.step_cap_hits,
+            self.feature_trace.unresolved_discovery,
+            self.feature_trace.unresolved_trims
         )
     }
 }
@@ -255,6 +260,12 @@ mod tests {
         assert_eq!(v.status(), "incomplete");
         v = passed();
         v.triangle_non_degeneracy = AuditStatus::NotChecked;
+        assert_eq!(v.status(), "incomplete");
+        v = passed();
+        v.feature_trace.unresolved_discovery = 1;
+        assert_eq!(v.status(), "incomplete");
+        v = passed();
+        v.feature_trace.unresolved_trims = 1;
         assert_eq!(v.status(), "incomplete");
         v = passed();
         v.unresolved_cells = 1;

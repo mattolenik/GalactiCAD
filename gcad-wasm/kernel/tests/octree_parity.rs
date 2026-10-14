@@ -126,7 +126,6 @@ fn run_parity(name: &str, tree: CsgNode) {
     let opts = SmoothCriteriaOptions {
         normal_variation_cos: fix.normal_variation_cos,
         blend_normal_variation_cos: fix.blend_normal_variation_cos,
-        blend_curvature_analytic: None,
         normal_variation_analytic: false,
     };
 

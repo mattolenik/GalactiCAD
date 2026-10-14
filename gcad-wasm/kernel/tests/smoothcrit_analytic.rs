@@ -1,8 +1,6 @@
-//! Analytic per-stratum smoothCrit cert (opt-in `normal_variation_analytic`):
-//! closed-2-manifold, verts-on-surface, and double-run bit-identical. Soundness
-//! (κ upper-bounds the true carrier curvature ⇒ realized normal variation ≤ θ) is
-//! by construction; here we gate that the analytic refinement still yields a valid,
-//! deterministic surface mesh on each analytic carrier kind (sphere/cylinder/cone).
+//! Optional per-carrier curvature refinement: closed-mesh, vertex-residual and
+//! repeatability controls on selected primitives. These finite checks do not
+//! certify continuous normal variation or triangle-interior approximation error.
 
 use gcad_kernel::sdf::{self, CsgNode, Leaf, Shape};
 use gcad_kernel::sfcc::feature_set::build_leaf_strata;
@@ -64,7 +62,7 @@ fn sphere_analytic_manifold_and_deterministic() {
     let cube = SfccWorldCube { min_x: -9.0, min_y: -9.0, min_z: -9.0, size: 18.0 };
     let a = mesh_analytic(&tree, &cube);
     assert_valid_closed("sphere", &tree, &a, 1);
-    // Double-run bit-identical (determinism under the analytic cert).
+    // Double-run bit-identical under the optional heuristic.
     let b = mesh_analytic(&tree, &cube);
     assert_eq!(a.verts, b.verts, "sphere: verts not deterministic");
     assert_eq!(a.tris, b.tris, "sphere: tris not deterministic");

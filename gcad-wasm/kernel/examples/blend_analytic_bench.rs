@@ -1,8 +1,6 @@
-//! Analytic blend-curvature cert A/B on MANY-BLEND scenes (the "very many smooth
-//! unions" slow case the single-blend tests never covered). For each scene × θ we
-//! time the SAMPLED ∇f cone vs the ANALYTIC κ bound and print leaves + ms, so the
-//! question "does the cheaper cert net positive once the CSG tree is big?" is
-//! answered directly.
+//! Compatibility A/B for the legacy analytic-blend flag on many-blend scenes.
+//! Both flag values now use sampled normal variation. Differences in elapsed
+//! time are measurement noise, not evidence for an analytic-curvature shortcut.
 //!
 //!   cargo run -p gcad-kernel --release --example blend_analytic_bench
 
@@ -33,7 +31,7 @@ fn prepared(mut tree: CsgNode) -> CsgNode {
 }
 
 /// grid of overlapping CUBOIDS, round smooth union — plane-plane fillets (the
-/// realistic many-blend CAD case; analytic ties on cells here).
+/// many-blend CAD case).
 fn box_blob(nx: i64, ny: i64, nz: i64, spacing: f64, half: f64, blend: f64) -> CsgNode {
     let mut parts = Vec::new();
     for i in 0..nx {
@@ -52,7 +50,7 @@ fn box_blob(nx: i64, ny: i64, nz: i64, spacing: f64, half: f64, blend: f64) -> C
 }
 
 /// grid of overlapping SPHERES, round smooth union — curved fillets (the
-/// unfavorable bracket; analytic over-refines vs the adaptive cone here).
+/// curved-carrier comparison case).
 fn sphere_blob(nx: i64, ny: i64, nz: i64, spacing: f64, r: f64, blend: f64) -> CsgNode {
     let mut parts = Vec::new();
     for i in 0..nx {
@@ -71,7 +69,7 @@ fn sphere_blob(nx: i64, ny: i64, nz: i64, spacing: f64, r: f64, blend: f64) -> C
 }
 
 /// DEEP nested binary smooth-union chain — biggest tree per eval, so the sampled
-/// cone's 9× per-cell owner/grad walk costs the most; where analytic should help.
+/// cone's per-cell owner/gradient walks can dominate.
 fn nested_chain(n: i64, spacing: f64, r: f64, blend: f64) -> CsgNode {
     let mut acc = sdf::leaf_at(Shape::Sphere { r }, [0.0, 0.0, 0.0]);
     for i in 1..n {
@@ -101,12 +99,12 @@ fn run(name: &str, tree: &CsgNode, c: &SfccWorldCube, deg: f64, analytic: bool, 
         }
         std::hint::black_box(r.tris.len());
     }
-    let mode = if analytic { "analytic" } else { "sampled " };
+    let mode = if analytic { "fallback" } else { "sampled " };
     println!("  {name:<20} θ={deg:>3}°  {mode}  {best:8.1} ms   leaves={:<6} tris={}", r0.stats.leaves, r0.tris.len() / 3);
 }
 
 fn main() {
-    println!("=== analytic vs sampled blend cert, many-blend scenes (depth_max=7, min-of-2) ===");
+    println!("=== legacy analytic request vs sampled (both sampled), depth_max=7, min-of-2 ===");
     let scenes: Vec<(&str, CsgNode, SfccWorldCube)> = vec![
         ("box-blob 4x4x2", prepared(box_blob(4, 4, 2, 1.4, 1.0, 0.5)), SfccWorldCube { min_x: -6.0, min_y: -6.0, min_z: -4.0, size: 12.0 }),
         ("sphere-blob 4x4x3", prepared(sphere_blob(4, 4, 3, 2.6, 1.6, 0.9)), SfccWorldCube { min_x: -8.0, min_y: -8.0, min_z: -6.0, size: 16.0 }),

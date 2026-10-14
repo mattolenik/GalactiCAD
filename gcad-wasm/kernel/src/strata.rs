@@ -265,6 +265,10 @@ impl Stratum {
             .as_ref()
             .is_none_or(|domains| domains.iter().any(|domain| domain.surface_live(p, tolerance)))
     }
+
+    pub(crate) fn has_domain(&self) -> bool {
+        self.domain.is_some()
+    }
     /// Exact operand field, shared by generated feature expressions.
     pub fn field(ident: StratumIdentity, node: FieldRef) -> Self {
         let mut st = Self::plane(ident, 0., 1., 0., 0.);
@@ -426,13 +430,12 @@ impl Stratum {
         }
     }
 
-    /// Sound upper bound on this carrier's max surface-normal curvature (1/length)
-    /// over a cell with the 9 probe points `pts` (8 corners + center, xyz each) and
-    /// edge length `cell_size`. `Some(κ)` for analytic carriers (the per-cell normal
-    /// variation is then ≤ κ·cell_size); `None` for the ruled twisted/loft sides (no
-    /// closed-form bound → caller falls back to the sampled ∇f cone). Lever 2: the
-    /// per-stratum smoothCrit (iii-b) cert can then split iff `κ·cell_size > θ`,
-    /// replacing the O(k²) sampled normal cone with one closed-form comparison.
+    /// Carrier-curvature estimate (1/length) for the optional refinement heuristic.
+    /// `pts` contains 8 corners and a center (xyz each); `cell_size` is the edge.
+    /// Finite denominator floors are not upper bounds near zero radii or apices,
+    /// and cell-edge length does not bound surface travel distance. Thus κ·cell_size
+    /// is not a certified normal-variation bound. Unsupported carriers return
+    /// `None` for the sampled-normal fallback.
     pub fn curvature_bound(&self, pts: &[f64; 27], cell_size: f64) -> Option<f64> {
         if self.compound.is_some() || self.field.is_some() {
             return None;
@@ -442,7 +445,7 @@ impl Stratum {
             Carrier::Sphere { r, .. } => Some(1.0 / r.abs().max(1e-12)),
             // Cylinder: the analytic κ=1/r bound is exact+cheap, but in the refine
             // loop it measured ~3.6× SLOWER than the sampled cone at the SAME leaf
-            // count (no cell saving, net regression) — so fall back to the proven
+            // count (no cell saving, net regression) — so fall back to the
             // sampled ∇f cone here. Sphere (exact 1/R, ~4× fewer cells) and cone
             // (neutral) keep the analytic path. Revisit if a net-positive cylinder
             // formulation is found.

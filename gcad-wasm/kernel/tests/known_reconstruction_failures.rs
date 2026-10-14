@@ -1,6 +1,5 @@
-//! Known reconstruction failures retained for later algorithm milestones.
-//! The normal suite reports these tests as ignored; each asserts the intended
-//! behavior, not the current failure. Run them explicitly with:
+//! Adversarial reconstruction regressions. Resolved cases run normally; remaining
+//! failures are explicitly ignored and assert the intended behavior. Run those with:
 //! `cargo test --offline --release -p gcad-kernel --test known_reconstruction_failures -- --ignored`
 use gcad_kernel::math::similarity::Similarity;
 use gcad_kernel::primitives::smin::SminMode;
@@ -41,7 +40,6 @@ fn clipped_cube(center_y: f64) -> CsgNode {
 }
 
 #[test]
-#[ignore = "Known: fixed carrier-trim samples can miss the surviving interval of a long box edge"]
 fn long_carrier_trimming_preserves_all_twelve_edges_of_a_four_mm_cube() {
     for center_y in [0., 2.44140625] {
         let tree = clipped_cube(center_y);
@@ -70,7 +68,6 @@ fn long_carrier_trimming_preserves_all_twelve_edges_of_a_four_mm_cube() {
 }
 
 #[test]
-#[ignore = "Known: missing trimmed cube edges let emitted triangles bridge sharp corners"]
 fn hard_intersection_cube_triangles_follow_the_exact_cuboid_boundary() {
     for center_y in [0., 2.44140625] {
         let tree = clipped_cube(center_y);
@@ -161,7 +158,6 @@ fn separate_sphere_is_reconstructed_or_reported_as_unresolved() {
 }
 
 #[test]
-#[ignore = "Known: aspect-ratio-only sliver flips can reverse a planar triangle's orientation"]
 fn sliver_flip_preserves_the_oriented_planar_patch() {
     let mut points = PointTable::new();
     let p = points.add(-1., 0., 0., 0., 0., 1.);
@@ -185,7 +181,6 @@ fn sliver_flip_preserves_the_oriented_planar_patch() {
 }
 
 #[test]
-#[ignore = "Known: the default dihedral gate discards a real shallow sphere/plane intersection circle"]
 fn shallow_spherical_cut_retains_its_boundary_circle() {
     let angle = 10.0_f64.to_radians();
     let z = 10. * angle.cos();
@@ -222,7 +217,6 @@ fn shallow_spherical_cut_retains_its_boundary_circle() {
 }
 
 #[test]
-#[ignore = "Known: identical-profile loft compilation duplicates and overlaps the twelve cuboid edges"]
 fn identical_profile_loft_has_no_duplicate_feature_length() {
     let square = vec![[-2., -2.], [2., -2.], [2., 2.], [-2., 2.]];
     let tree = build_csg_tree(&BridgeNode::Loft {
@@ -254,14 +248,13 @@ fn identical_profile_loft_has_no_duplicate_feature_length() {
 }
 
 #[test]
-#[ignore = "Known: chord-only spatial-index boxes can omit an actual analytic circle extremum"]
 fn spatial_index_encloses_the_curve_between_its_index_samples() {
     let w = 1. / 3.0_f64.sqrt();
     let cy = 1. - (2.0_f64 / 3.).sqrt() + 0.0002;
     let curve = make_circle_curve(7, 0, [0, 1], 0., cy, 0., w, w, w, 1., None);
     let p = curve.point_at(2. * std::f64::consts::PI / 3.);
     let mut index = SfccSpatialIndex::new(1.);
-    index.insert_curve_polyline(7, &curve.index_polyline);
+    index.insert_curve(&curve);
     let candidates = index.curves_in_box(p.map(|v| v - 1e-8), p.map(|v| v + 1e-8));
     assert!(
         candidates.contains(&7),
@@ -270,7 +263,6 @@ fn spatial_index_encloses_the_curve_between_its_index_samples() {
 }
 
 #[test]
-#[ignore = "Known: the optional 1/r round-blend curvature estimate is unsafe for oblique carriers"]
 fn round_blend_curvature_bound_covers_oblique_planar_carriers() {
     let c = -0.5_f64;
     let s = (1. - c * c).sqrt();

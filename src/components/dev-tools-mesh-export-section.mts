@@ -1097,7 +1097,6 @@ const SFCC_BOOL_KNOBS: {
     key:
         | "enforceEdgeBalance"
         | "blendCurvatureRefine"
-        | "blendCurvatureAnalytic"
         | "normalVariationAnalytic"
         | "checkVertexLinks"
         | "debugOutput"
@@ -1105,8 +1104,7 @@ const SFCC_BOOL_KNOBS: {
 }[] = [
     { key: "enforceEdgeBalance", label: "2:1 edge balance" },
     { key: "blendCurvatureRefine", label: "Blend curvature refine" },
-    { key: "blendCurvatureAnalytic", label: "Blend curvature analytic (sfcc-rs)" },
-    { key: "normalVariationAnalytic", label: "Normal variation analytic (sfcc-rs)" },
+    { key: "normalVariationAnalytic", label: "Carrier curvature heuristic (sfcc-rs)" },
     { key: "checkVertexLinks", label: "Vertex-link audit" },
     { key: "debugOutput", label: "Debug overlays" },
 ]

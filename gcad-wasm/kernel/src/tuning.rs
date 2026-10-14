@@ -33,8 +33,8 @@ pub struct SfccTuning {
     pub blend_curvature_refine: bool,
     /// Max surface-normal variation (deg) across a blend cell before it splits.
     pub blend_curvature_deg: f64,
-    /// Lever 2: certify blend curvature from the closed-form `κ ≤ 1/r + κ_carrier`
-    /// bound (`κ·diag > θ`) instead of the sampled ∇f cone. Opt-in; default OFF.
+    /// Retained for saved tuning compatibility. Blend refinement currently
+    /// falls back to sampled normal variation for either flag value.
     pub blend_curvature_analytic: bool,
     /// |tangent·faceNormal| below this counts as a tangential crossing → split. (M4 path.)
     pub tangential_epsilon: f64,
@@ -48,9 +48,9 @@ pub struct SfccTuning {
     pub curve_chord_tol_mm: f64,
     /// Flank-probe offset for seam trimming, as a factor of surface_tol.
     pub probe_delta_factor: f64,
-    /// Crease gate for boolean seams (degrees).
+    /// Legacy setting retained for compatibility; exposure is independent of this angle.
     pub min_dihedral_deg: f64,
-    /// Crease gate for native modeled curves (degrees).
+    /// Carrier-pair conditioning floor for tracing (degrees), not a crease-visibility gate.
     pub min_tangency_angle_deg: f64,
     /// Corner merge radius, as a fraction of the scene diagonal.
     pub corner_merge_tol_diag_fraction: f64,

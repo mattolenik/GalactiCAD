@@ -217,7 +217,6 @@ fn run_parity(name: &str, tree: CsgNode) {
     let smooth_opts = SmoothCriteriaOptions {
         normal_variation_cos: fix.normal_variation_cos,
         blend_normal_variation_cos: fix.blend_normal_variation_cos,
-        blend_curvature_analytic: None,
         normal_variation_analytic: false,
     };
 
@@ -335,7 +334,6 @@ fn contour_sphere_drift_is_sub_ulp_scale() {
     let smooth_opts = SmoothCriteriaOptions {
         normal_variation_cos: fix.normal_variation_cos,
         blend_normal_variation_cos: fix.blend_normal_variation_cos,
-        blend_curvature_analytic: None,
         normal_variation_analytic: false,
     };
     let oct = build_octree(&tree, &lat, OctreeBuildOptions { depth_min: fix.depth_min, depth_max: fix.depth_max, enforce_edge_balance: fix.enforce_edge_balance }, |cell, sampler| {

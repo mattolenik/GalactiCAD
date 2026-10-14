@@ -26,6 +26,10 @@ pub struct SeamTraceDiagnostics {
     pub step_cap_hits: usize,
     pub correction_bails: usize,
     pub tangent_reversals: usize,
+    /// Exposed candidates found only by diagnostic recovery, not traced reliably.
+    pub unresolved_discovery: usize,
+    /// Concrete numerical/domain uncertainty during trimming, counted once per compilation.
+    pub unresolved_trims: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -254,6 +258,35 @@ fn record_end(diag: &mut SeamTraceDiagnostics, end: TraceEnd) {
     }
 }
 
+// Recovery below the tracing rank threshold is diagnostic only. Both carriers
+// must carry real scene ancestry and have surviving flanks separated from the
+// other carrier by more than the projection uncertainty. This excludes hidden
+// supporting extensions and coincident/tangent contacts within tolerance.
+fn exposed_near_tangent(sa: &Stratum, sb: &Stratum, p: [f64; 3], tol: &ResolvedTolerances) -> bool {
+    if !sa.has_domain() || !sb.has_domain()
+        || !sa.domain_contains(p, tol.curve_eps * 8.) || !sb.domain_contains(p, tol.curve_eps * 8.) {
+        return false;
+    }
+    let mut tangent = [0.; 3];
+    let rank = carrier_pair_tangent(sa, sb, p[0], p[1], p[2], &mut tangent);
+    if rank >= tol.min_tangency_sin || rank <= 8. * f64::EPSILON.sqrt() { return false; }
+    [(sa, sb), (sb, sa)].iter().all(|(carrier, other)| {
+        let n = carrier.normal(p[0], p[1], p[2]);
+        let across = [n[1] * tangent[2] - n[2] * tangent[1],
+            n[2] * tangent[0] - n[0] * tangent[2], n[0] * tangent[1] - n[1] * tangent[0]];
+        [1., 0.5, 0.25, 0.125, 0.0625].iter().any(|scale| {
+            [-1., 1.].iter().any(|sign| {
+                let q: [f64; 3] = std::array::from_fn(|k| p[k] + scale * sign * tol.probe_delta * across[k]);
+                let q = carrier.project(q[0], q[1], q[2]);
+                if !q.iter().all(|v| v.is_finite()) { return false; }
+                let separation = other.f(q[0], q[1], q[2]).abs();
+                separation.is_finite()
+                    && separation > tol.curve_eps * 32. && carrier.domain_contains(q, tol.curve_eps * 8.)
+            })
+        })
+    })
+}
+
 /// Trace all seam pieces between two strata carriers within an overlap box.
 /// Port of `traceCarrierPair`.
 pub fn trace_carrier_pair(
@@ -288,6 +321,7 @@ pub fn trace_carrier_pair(
     let ny = (2usize).max((size_y / seed_cell).ceil() as usize);
     let nz = (2usize).max((size_z / seed_cell).ceil() as usize);
     let seed_dedup = tol.curve_eps * 8.0;
+    let mut unresolved_discovery = false;
     for i in 0..=nx {
         for j in 0..=ny {
             for k in 0..=nz {
@@ -309,7 +343,19 @@ pub fn trace_carrier_pair(
                     seed_cell * 2.0,
                 ) {
                     Some(q) => q,
-                    None => continue,
+                    None => {
+                        if !unresolved_discovery && sa.has_domain() && sb.has_domain() {
+                            if let Some(candidate) = project_to_carrier_pair(
+                                sa, sb, x, y, z, tol.curve_eps, 8. * f64::EPSILON.sqrt(), seed_cell * 2.,
+                            ) {
+                                if exposed_near_tangent(sa, sb, candidate, tol) {
+                                    diag.unresolved_discovery += 1;
+                                    unresolved_discovery = true;
+                                }
+                            }
+                        }
+                        continue;
+                    }
                 };
                 if q[0] < bounds[0]
                     || q[1] < bounds[1]

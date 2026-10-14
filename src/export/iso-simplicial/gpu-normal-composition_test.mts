@@ -381,3 +381,49 @@ test("GPU derivative composition: housing and bracket regular samples", async t 
         }
     } finally { helper.device.destroy() }
 })
+
+test("GPU primitive scale: tiny segments, duplicate edges, and exact lathe axes", async t => {
+    await installWebGpuIfNeeded()
+    const helper = await GPUHelper.create()
+    if (!helper) { assert.notEqual(process.env.REQUIRE_WEBGPU, "1"); t.skip("WebGPU adapter unavailable"); return }
+    const k = 1 / Math.sqrt(5)
+    const cases: { name: string, profile: number[][], shape: string, points: number[][], expected: number[][] }[] = [
+        {
+            name: "extrude", profile: [[0, 0], [10, 0], [10, 10], [0, 10]], shape: "extrude.profile(p).height(HEIGHT)",
+            points: [[5, 0, -.01], [5, 0, .01], [5, 0, 0], [10.2, 0, 10.4]],
+            expected: [[0, 0, -1, .01], [0, 0, -1, -.01], [0, 0, -1, 0], [k, 0, 2 * k, .2 / k]],
+        },
+        {
+            name: "annulus", profile: [[.5, -2], [2, -2], [2, 2], [.5, 2]], shape: "lathe.profile(p)",
+            points: [[.49, 0, 0], [.51, 0, 0], [0, 0, .51], [.5, 0, 0], [2.2, 2.4, 0]],
+            expected: [[-1, 0, 0, .01], [-1, 0, 0, -.01], [0, 0, -1, -.01], [-1, 0, 0, 0], [k, 2 * k, 0, .2 / k]],
+        },
+        {
+            name: "concave extrude", profile: [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]], shape: "extrude.profile(p).height(HEIGHT)",
+            points: [[1.3, 0, 1.2], [1.2, 0, 1.3], [.8, 0, 1.5], [1.5, 0, .8], [.9, 0, .9]],
+            expected: [[0, 0, 1, .2], [1, 0, 0, .2], [1, 0, 0, -.2], [0, 0, 1, -.2], [Math.SQRT1_2, 0, Math.SQRT1_2, -.1 * Math.SQRT2]],
+        },
+        {
+            name: "solid axis", profile: [[0, -2], [2, -2], [2, 2], [0, 2]], shape: "lathe.profile(p)",
+            points: [[0, .3, 0], [0, 2.2, 0], [0, 2, 0], [.1, 0, 0], [2.2, 2.4, 0]],
+            expected: [[0, 1, 0, -1.7], [0, 1, 0, .2], [0, 1, 0, 0], [1, 0, 0, -1.9], [k, 2 * k, 0, .2 / k]],
+        },
+    ]
+    try {
+        for (const c of cases) for (const localScale of [1, 1e-8]) {
+            const vertices = c.profile.map(p => `[${p.map(v => v * localScale).join(",")}]`).join(",")
+            // Insert after construction so normalization cannot remove the zero-length test edge.
+            const body = `const p=polygon2d(${vertices}); p.vertices.splice(1,0,[...p.vertices[1]]); p.vertices.push([...p.vertices[0]]); return scale([${1 / localScale},${1 / localScale},${1 / localScale}], ${c.shape.replace("HEIGHT", String(10 * localScale))});`
+            const scene = new SceneInfo(transpileCadSource(body), { bvhEnabled: false })
+            const points = new Float32Array(c.points.flat())
+            for (const mode of ["full", "mid", "fast"] as const) {
+                const actual = await sampleScene(helper, scene, points, mode)
+                assert.ok(Array.from(actual).every(Number.isFinite), `${c.name}, ${localScale}, ${mode}`)
+                for (let i = 0; i < c.expected.length; i++) for (const component of mode === "fast" ? [3] : [0, 1, 2, 3]) {
+                    assert.ok(Math.abs(actual[i * 4 + component]! - c.expected[i]![component]!) < 2e-5,
+                        `${c.name}, scale=${localScale}, ${mode}, point=${c.points[i]}, component=${component}: ${actual[i * 4 + component]} != ${c.expected[i]![component]}`)
+                }
+            }
+        }
+    } finally { helper.device.destroy() }
+})

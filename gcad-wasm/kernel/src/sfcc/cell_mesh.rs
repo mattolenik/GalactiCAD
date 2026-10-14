@@ -7,9 +7,9 @@
 //! interior face segment is consumed exactly twice in opposite directions —
 //! recorded into the [`FaceRecord`] counters for the S4 audit.
 //!
-//! Triangulation: 3-loops emit directly; 4-loops split along the shorter
-//! diagonal; larger loops fan from an interior vertex Newton-projected onto the
-//! surface (fallback: best-quality boundary-vertex fan).
+//! Triangulation: 3-loops emit directly; 4-loops prefer a valid projected diagonal
+//! before comparing length; larger loops fan from an interior vertex projected
+//! onto the surface (fallback: best-quality boundary-vertex fan).
 //!
 //! M4c-2 added the FEATURE paths (gated on `opts.features`, inert on smooth
 //! scenes): corner-cell wedge fans (`cell.feature_corner`), edge-cell pin routing
@@ -23,6 +23,7 @@ use crate::sfcc::feature_set::{SfccCorner, SfccFeatureSet};
 use crate::sfcc::octree::LEVER1_MIN_LEAVES;
 use crate::sfcc::octree::{SfccCell, SfccOctree};
 use crate::sfcc::point_table::{CurveInterval, PointTable};
+use crate::sfcc::triangle_quality as q;
 use crate::strata::Stratum;
 use std::collections::HashMap;
 
@@ -562,7 +563,25 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
     if m == 4 {
         let d02 = dist2(points, loop_pts[0], loop_pts[2]);
         let d13 = dist2(points, loop_pts[1], loop_pts[3]);
-        if d02 <= d13 {
+        let valid = super::surface_patch::Chart::from_boundary(points, loop_pts)
+            .map(|chart| {
+                let p: [q::P3; 4] = std::array::from_fn(|i| q::pos(points, loop_pts[i]));
+                [[0, 1, 2, 0, 2, 3], [1, 2, 3, 1, 3, 0]].map(|indices| {
+                    [p, p.map(q::rounded)].into_iter().all(|p| {
+                        p.iter().flatten().all(|x| x.is_finite())
+                            && indices.chunks_exact(3).all(|t| {
+                                super::predicates::orient2d(
+                                    chart.map(p[t[0]]), chart.map(p[t[1]]), chart.map(p[t[2]]),
+                                ) > 0
+                            })
+                    })
+                })
+            })
+            .unwrap_or([false; 2]);
+        // Prefer a valid projected disk before length. An unavailable chart is
+        // not proof of invalid 3D geometry; retain the existing fallback there.
+        let use_02 = if valid[0] != valid[1] { valid[0] } else { d02 <= d13 };
+        if use_02 {
             out_tris.extend_from_slice(&[
                 loop_pts[0],
                 loop_pts[1],
@@ -1306,6 +1325,38 @@ mod reliability_tests {
     use crate::strata::StratumIdentity;
     fn ident(id: usize) -> StratumIdentity {
         StratumIdentity { id, owner_node_id: -1, leaf_index: 0, local_index: id, sign: 1. }
+    }
+    #[test]
+    fn quad_prefers_a_valid_diagonal_without_requiring_every_patch_to_be_a_chart() {
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 1. }, [0.; 3]);
+        let opts = CellMeshOptions {
+            surface_tol: 0.01,
+            interior_vertex_mode: InteriorVertexMode::Project,
+            quality_triangulation: false,
+            project_max_iters: 16,
+            curve_chord_tol: 0.01,
+            max_polyline_points_per_cell: 16,
+            features: None,
+        };
+        for (positions, normal) in [
+            // The shorter 1-3 diagonal cuts off an inward +X cap on the X face.
+            ([[0., 0., 0.], [0., 1./8., -1.], [1., 0., -1.], [0., -1./64., 1./4.]], [-1., -1., -1.]),
+            // Two valid orthogonal faces have no disk in the chosen axis chart.
+            // Keeping the shorter 0-2 diagonal is correct for this 3D patch.
+            ([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.]], [1., 0., 1.]),
+        ] {
+            let mut points = PointTable::new();
+            for [x, y, z] in positions {
+                points.add(x, y, z, 0., 0., 1.);
+            }
+            let mut tris = Vec::new();
+            triangulate_loop(&[0, 1, 2, 3], &tree, &mut points, &[-2., -2., -2., 2., 2., 2.], &opts, &mut tris);
+            assert_eq!(tris.len(), 6);
+            for t in tris.chunks_exact(3) {
+                let p = [t[0], t[1], t[2]].map(|i| q::pos(&points, i));
+                assert!(q::dot(q::normal(p), normal) > 0., "inward cap: {p:?}");
+            }
+        }
     }
     #[test]
     fn circle_cap_and_traced_midpoint_error_are_enforced() {

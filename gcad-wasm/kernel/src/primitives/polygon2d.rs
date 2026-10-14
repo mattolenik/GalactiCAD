@@ -2,11 +2,8 @@
 //! `src/scene/primitives/polygon2d.mts` (winding) and
 //! `src/export/sfcc/cpu-sdf-primitives.mts` (distance + outward edge normal).
 //!
-//! Negative inside regardless of winding. DELIBERATE DEVIATION from the shader:
-//! exactly on the boundary the closest-point vector vanishes; instead of the
-//! WGSL (1,0) fallback this returns the closest edge's true OUTWARD normal (the
-//! limit of the off-boundary gradient), so the gradient is continuous across the
-//! boundary — SFCC probes do sit exactly on carriers.
+//! Negative inside regardless of winding. Native and generated WGSL use the
+//! closest edge's outward normal when its closest-point vector is exactly zero.
 
 /// Winding sign consistent with the extrude WGSL shoelace sum. Returns +1 / −1.
 pub fn winding_sign(verts: &[[f64; 2]]) -> f64 {
@@ -27,8 +24,18 @@ pub fn winding_sign(verts: &[[f64; 2]]) -> f64 {
 /// True outward unit normal of a polygon edge with tangent (ex, ez), in the
 /// polygon's own 2D plane. `wind` is [`winding_sign`].
 pub fn outward_edge_normal_2d(ex: f64, ez: f64, wind: f64) -> [f64; 2] {
-    let e_len = ex.hypot(ez).max(1e-12);
-    [(-ez / e_len) * wind, (ex / e_len) * wind]
+    let e_len = ex.hypot(ez);
+    if e_len == 0. { [0.; 2] } else { [(-ez / e_len) * wind, (ex / e_len) * wind] }
+}
+
+/// Closest-point offset and whether its foot is in the segment interior.
+pub(crate) fn segment_offset_2d(ex: f64, ey: f64, wx: f64, wy: f64) -> ([f64; 2], bool) {
+    let scale = ex.abs().max(ey.abs());
+    if scale == 0. { return ([wx, wy], false); }
+    let (ux, uy) = (ex / scale, ey / scale);
+    // Normalize the edge before squaring; its denominator is then in [1, 2].
+    let along = ((wx * ux + wy * uy) / (ux * ux + uy * uy)).clamp(0., scale);
+    ([wx - ux * along, wy - uy * along], along > 0. && along < scale)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,11 +59,10 @@ pub(crate) fn polygon_edge_dist_2d(
     let next = (edge + 1) % (verts.len() / 2);
     let (ex, ez) = (verts[2 * next] - verts[2 * edge], verts[2 * next + 1] - verts[2 * edge + 1]);
     let (wx, wz) = (px - verts[2 * edge], pz - verts[2 * edge + 1]);
-    let t = ((wx * ex + wz * ez) / (ex * ex + ez * ez).max(1e-12)).clamp(0., 1.);
-    let (dx, dz) = (wx - t * ex, wz - t * ez);
+    let ([dx, dz], _) = segment_offset_2d(ex, ez, wx, wz);
     let length = dx.hypot(dz);
     let sign = if actual.d < 0. { -1. } else { 1. };
-    let [gx, gz] = if length >= 1e-6 {
+    let [gx, gz] = if length > 0. {
         [sign * dx / length, sign * dz / length]
     } else {
         outward_edge_normal_2d(ex, ez, wind)
@@ -67,12 +73,13 @@ pub(crate) fn polygon_edge_dist_2d(
 /// Exact signed distance to a closed polygon. `verts` is flat `[x0,z0,x1,z1,…]`.
 pub fn polygon_dist_2d(verts: &[f64], wind: f64, px: f64, pz: f64) -> Polygon2DResult {
     let n = verts.len() / 2;
-    let mut d = (px - verts[0]) * (px - verts[0]) + (pz - verts[1]) * (pz - verts[1]);
+    let mut d = (px - verts[0]).hypot(pz - verts[1]);
     let mut s = 1.0;
     let mut min_dist = f64::INFINITY;
     let mut closest = 0usize;
-    let mut bx = 0.0;
-    let mut bz = 0.0;
+    let mut closest_interior = false;
+    let mut bx = px - verts[0];
+    let mut bz = pz - verts[1];
     let mut j = n - 1;
     for i in 0..n {
         let vix = verts[i * 2];
@@ -81,17 +88,19 @@ pub fn polygon_dist_2d(verts: &[f64], wind: f64, px: f64, pz: f64) -> Polygon2DR
         let vjz = verts[j * 2 + 1];
         let ex = vjx - vix;
         let ez = vjz - viz;
+        if ex == 0. && ez == 0. {
+            j = i;
+            continue;
+        }
         let wx = px - vix;
         let wz = pz - viz;
-        let e_len2 = (ex * ex + ez * ez).max(1e-12);
-        let t = ((wx * ex + wz * ez) / e_len2).clamp(0.0, 1.0);
-        let qx = wx - ex * t;
-        let qz = wz - ez * t;
-        let dd = qx * qx + qz * qz;
+        let ([qx, qz], interior) = segment_offset_2d(ex, ez, wx, wz);
+        let dd = qx.hypot(qz);
         d = d.min(dd);
         if dd < min_dist {
             min_dist = dd;
             closest = j;
+            closest_interior = interior;
             bx = qx;
             bz = qz;
         }
@@ -103,13 +112,14 @@ pub fn polygon_dist_2d(verts: &[f64], wind: f64, px: f64, pz: f64) -> Polygon2DR
         }
         j = i;
     }
-    let mut out = Polygon2DResult { d: s * d.sqrt(), gx: 0.0, gz: 0.0, edge: closest };
+    let mut out = Polygon2DResult { d: s * d, gx: 0.0, gz: 0.0, edge: closest };
     let b_len = bx.hypot(bz);
-    if b_len >= 1e-6 {
+    if b_len > 0. && !closest_interior {
         out.gx = s * bx / b_len;
         out.gz = s * bz / b_len;
     } else {
-        // On the boundary: the closest edge's outward normal (see header note).
+        // Interior feet have the analytic edge normal, even at tiny residuals;
+        // normalizing their cancellation-prone closest-point offset adds noise.
         let k = closest;
         let k1 = (k + 1) % n;
         let ex = verts[k1 * 2] - verts[k * 2];
@@ -154,5 +164,57 @@ mod tests {
         let on = polygon_dist_2d(&SQUARE, w, 1.0, 0.5);
         assert!(on.d.abs() < 1e-9, "on-edge d = {}", on.d);
         assert!((on.gx.hypot(on.gz) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tiny_segments_and_duplicate_vertices_keep_distance_and_derivative() {
+        for scale in [1e-12, 1e-7, 1., 1e7] {
+            let vertices = [[0., 0.], [1., 0.], [1., 0.], [1., 1.], [0., 1.]]
+                .map(|p| p.map(|v| v * scale));
+            let flat: Vec<_> = vertices.iter().flatten().copied().collect();
+            let wind = winding_sign(&vertices);
+            let k = 1. / 5.0_f64.sqrt();
+            for (p, d, g) in [
+                ([0.5, -0.1], 0.1, [0., -1.]),
+                ([0.2, 0.7], -0.2, [-1., 0.]),
+                ([1.2, 1.4], 0.2 / k, [k, 2. * k]),
+                ([0.5, 0.], 0., [0., -1.]),
+            ] {
+                let sample = polygon_dist_2d(&flat, wind, p[0] * scale, p[1] * scale);
+                assert!((sample.d / scale - d).abs() < 1e-12, "scale={scale}, p={p:?}");
+                assert!((sample.gx - g[0]).hypot(sample.gz - g[1]) < 1e-12,
+                    "scale={scale}, p={p:?}, gradient=({}, {})", sample.gx, sample.gz);
+            }
+            let branch = polygon_edge_dist_2d(&flat, wind, 0.5 * scale, -0.1 * scale, 0);
+            assert!((branch.d / scale - 0.1).abs() < 1e-12);
+            assert_eq!([branch.gx, branch.gz], [0., -1.]);
+        }
+        assert_eq!(segment_offset_2d(0., 0., 2., 3.), ([2., 3.], false));
+        assert_eq!(outward_edge_normal_2d(0., 0., 1.), [0.; 2]);
+    }
+
+    #[test]
+    fn concave_profile_gradients_cover_both_sides_and_endpoint_regions() {
+        let k = std::f64::consts::FRAC_1_SQRT_2;
+        for scale in [1., 1e-7, 1e-12] {
+            for reverse in [false, true] {
+                let mut vertices = vec![[0., 0.], [2., 0.], [2., 1.], [1., 1.], [1., 2.], [0., 2.]];
+                if reverse { vertices.reverse(); }
+                let vertices: Vec<_> = vertices.iter().map(|p| p.map(|v| v * scale)).collect();
+                let flat: Vec<_> = vertices.iter().flatten().copied().collect();
+                for (p, d, g) in [
+                    ([1.3, 1.2], 0.2, [0., 1.]),
+                    ([1.2, 1.3], 0.2, [1., 0.]),
+                    ([0.8, 1.5], -0.2, [1., 0.]),
+                    ([1.5, 0.8], -0.2, [0., 1.]),
+                    ([0.9, 0.9], -0.1 / k, [k, k]),
+                ] {
+                    let sample = polygon_dist_2d(&flat, winding_sign(&vertices), p[0] * scale, p[1] * scale);
+                    assert!((sample.d / scale - d).abs() < 1e-12, "scale={scale}, p={p:?}");
+                    assert!((sample.gx - g[0]).hypot(sample.gz - g[1]) < 1e-12,
+                        "scale={scale}, p={p:?}: ({}, {})", sample.gx, sample.gz);
+                }
+            }
+        }
     }
 }

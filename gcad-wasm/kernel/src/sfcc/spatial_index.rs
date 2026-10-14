@@ -1,14 +1,14 @@
-//! Uniform hash-grid spatial index over feature-curve polyline segments and
-//! corner points. Port of `src/export/sfcc/spatial-index.mts`. Conservative:
-//! queries return candidate ids whose indexed geometry touches the inflated
-//! query box — callers do exact filtering.
+//! Uniform hash-grid over curve enclosures and corners. Queries return candidate
+//! supersets; callers still check the curve geometry and its exposed domains.
 
+use super::feature_curves::FeatureCurve;
 use std::collections::{HashMap, HashSet};
 
 pub struct SfccSpatialIndex {
     cell_size: f64,
-    curve_cells: HashMap<i64, HashSet<usize>>,
-    corner_cells: HashMap<i64, Vec<usize>>,
+    curve_cells: HashMap<[i64; 3], HashSet<usize>>,
+    corner_cells: HashMap<[i64; 3], Vec<usize>>,
+    broad_curves: HashSet<usize>,
 }
 
 impl SfccSpatialIndex {
@@ -17,56 +17,81 @@ impl SfccSpatialIndex {
             cell_size: cell_size.max(1e-9),
             curve_cells: HashMap::new(),
             corner_cells: HashMap::new(),
+            broad_curves: HashSet::new(),
         }
     }
 
-    fn key(ix: i64, iy: i64, iz: i64) -> i64 {
-        // B = 2^17 keeps the packed key below 2^51 — exact in f64/i64.
-        const B: i64 = 1 << 17;
-        const HB: i64 = 1 << 16;
-        ((ix + HB) * B + (iy + HB)) * B + (iz + HB)
-    }
-
-    fn cells_of_box(&self, min: [f64; 3], max: [f64; 3]) -> Vec<i64> {
+    fn cells_of_box(&self, min: [f64; 3], max: [f64; 3]) -> Option<Vec<[i64; 3]>> {
+        if !(0..3).all(|k| min[k].is_finite() && max[k].is_finite() && min[k] <= max[k]) {
+            return None;
+        }
         let s = self.cell_size;
         let lo = [(min[0] / s).floor() as i64, (min[1] / s).floor() as i64, (min[2] / s).floor() as i64];
         let hi = [(max[0] / s).floor() as i64, (max[1] / s).floor() as i64, (max[2] / s).floor() as i64];
+        let mut count = 1_u128;
+        for k in 0..3 {
+            count = count.saturating_mul((hi[k] as i128 - lo[k] as i128 + 1) as u128);
+        }
+        // ponytail: scan candidates for large uncertainty boxes; use a hierarchy
+        // if these become common. Never omit a curve to cap index memory.
+        if count > 4096 {
+            return None;
+        }
         let mut keys = Vec::new();
         for x in lo[0]..=hi[0] {
             for y in lo[1]..=hi[1] {
                 for z in lo[2]..=hi[2] {
-                    keys.push(Self::key(x, y, z));
+                    keys.push([x, y, z]);
                 }
             }
         }
-        keys
+        Some(keys)
     }
 
+    fn insert_curve_box(&mut self, curve_id: usize, min: [f64; 3], max: [f64; 3]) {
+        if let Some(cells) = self.cells_of_box(min, max) {
+            for key in cells {
+                self.curve_cells.entry(key).or_default().insert(curve_id);
+            }
+        } else {
+            self.broad_curves.insert(curve_id);
+        }
+    }
+
+    pub fn insert_curve(&mut self, curve: &FeatureCurve) {
+        for (min, max) in curve.index_bounds() {
+            self.insert_curve_box(curve.id, min, max);
+        }
+    }
+
+    /// Only for actual polylines. Analytic/reprojected curves use insert_curve.
     pub fn insert_curve_polyline(&mut self, curve_id: usize, polyline: &[f64]) {
-        let n = polyline.len() / 3 - 1;
+        let n = (polyline.len() / 3).saturating_sub(1);
         for i in 0..n {
             let a = [polyline[i * 3], polyline[i * 3 + 1], polyline[i * 3 + 2]];
             let b = [polyline[i * 3 + 3], polyline[i * 3 + 4], polyline[i * 3 + 5]];
             let min = [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2])];
             let max = [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])];
-            for key in self.cells_of_box(min, max) {
-                self.curve_cells.entry(key).or_default().insert(curve_id);
-            }
+            self.insert_curve_box(curve_id, min, max);
         }
     }
 
     pub fn insert_corner(&mut self, corner_id: usize, x: f64, y: f64, z: f64) {
         let s = self.cell_size;
-        let key = Self::key((x / s).floor() as i64, (y / s).floor() as i64, (z / s).floor() as i64);
+        let key = [(x / s).floor() as i64, (y / s).floor() as i64, (z / s).floor() as i64];
         self.corner_cells.entry(key).or_default().push(corner_id);
     }
 
     pub fn curves_in_box(&self, min: [f64; 3], max: [f64; 3]) -> Vec<usize> {
-        let mut out = HashSet::new();
-        for key in self.cells_of_box(min, max) {
-            if let Some(set) = self.curve_cells.get(&key) {
-                out.extend(set.iter().copied());
+        let mut out = self.broad_curves.clone();
+        if let Some(cells) = self.cells_of_box(min, max) {
+            for key in cells {
+                if let Some(set) = self.curve_cells.get(&key) {
+                    out.extend(set.iter().copied());
+                }
             }
+        } else {
+            out.extend(self.curve_cells.values().flat_map(|ids| ids.iter().copied()));
         }
         // Candidate order breaks ties in carrier recovery and face tagging.
         // Never let the hash seed choose which coincident branch owns a point.
@@ -77,11 +102,17 @@ impl SfccSpatialIndex {
 
     pub fn corners_in_box(&self, min: [f64; 3], max: [f64; 3]) -> Vec<usize> {
         let mut out = Vec::new();
-        for key in self.cells_of_box(min, max) {
-            if let Some(list) = self.corner_cells.get(&key) {
-                out.extend(list.iter().copied());
+        if let Some(cells) = self.cells_of_box(min, max) {
+            for key in cells {
+                if let Some(list) = self.corner_cells.get(&key) {
+                    out.extend(list.iter().copied());
+                }
             }
+        } else {
+            out.extend(self.corner_cells.values().flatten().copied());
         }
+        out.sort_unstable();
+        out.dedup();
         out
     }
 }

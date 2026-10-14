@@ -14,6 +14,39 @@ fn identity(id: usize) -> StratumIdentity {
     StratumIdentity { id, owner_node_id: -1, leaf_index: usize::MAX, local_index: 0, sign: 1. }
 }
 
+/// Equal oriented primitive fields are one patch with alternative source
+/// domains. Keep original slots for leaf ranges; aliases are used only while
+/// wiring the feature graph. Nearby and oppositely oriented fields stay distinct.
+pub(crate) fn canonical_primitive_strata(tree: &mut SfccTree<'_>) -> Vec<usize> {
+    let mut equations = std::collections::HashMap::<[u64; 4], usize>::new();
+    let mut curved = Vec::<usize>::new();
+    let mut aliases: Vec<_> = (0..tree.strata.len()).collect();
+    for (id, alias) in aliases.iter_mut().enumerate() {
+        let st = &tree.strata[id];
+        let existing = if st.kind == CarrierKind::Plane {
+            let Some(f) = st.planar_coefficients() else { continue };
+            if !f.iter().all(|v| v.is_finite()) { continue; }
+            let key = f.map(|v| if v == 0. { 0 } else { v.to_bits() });
+            let existing = equations.get(&key).copied();
+            equations.entry(key).or_insert(id);
+            existing
+        } else {
+            if matches!(st.kind, CarrierKind::Field | CarrierKind::Compound) { continue; }
+            // ponytail: exact descriptor scan; hash primitive descriptors if
+            // curved-carrier counts make this quadratic setup cost significant.
+            let existing = curved.iter().copied().find(|&i| st.same_primitive_field(&tree.strata[i]));
+            if existing.is_none() { curved.push(id); }
+            existing
+        };
+        if let Some(existing) = existing {
+            let other = tree.strata[id].clone();
+            tree.strata[existing].merge_domains(&other);
+            *alias = existing;
+        }
+    }
+    aliases
+}
+
 pub fn append_chamfer_carriers(tree: &mut SfccTree<'_>) -> Vec<(usize, [f64; 6])> {
     use super::field_branches::FieldRef;
     let root = std::sync::Arc::new(tree.root.clone());
@@ -109,6 +142,7 @@ pub fn append_chamfer_carriers(tree: &mut SfccTree<'_>) -> Vec<(usize, [f64; 6])
         let id = tree.strata.len();
         let carrier = if let Some(f) = patch.carrier.planar_coefficients() {
             let len = f[..3].iter().map(|x| x * x).sum::<f64>().sqrt();
+            let normalized = f.map(|v| v / len);
             // Different child combinations may describe the same plane. Merge
             // their bounds to avoid tracing duplicate coincident seams.
             if let Some((existing, bounds)) = result.iter_mut().find(|(id, _)| {
@@ -116,9 +150,7 @@ pub fn append_chamfer_carriers(tree: &mut SfccTree<'_>) -> Vec<(usize, [f64; 6])
                 if st.kind != CarrierKind::Plane {
                     return false;
                 }
-                let n = st.normal(0., 0., 0.);
-                (0..3).all(|k| (n[k] - f[k] / len).abs() < 1e-12)
-                    && (st.f(0., 0., 0.) - f[3] / len).abs() < 1e-12 * (1. + (f[3] / len).abs())
+                st.planar_coefficients() == Some(normalized)
             }) {
                 tree.strata[*existing].merge_domains(&patch.carrier);
                 for k in 0..3 {
@@ -127,7 +159,8 @@ pub fn append_chamfer_carriers(tree: &mut SfccTree<'_>) -> Vec<(usize, [f64; 6])
                 }
                 continue;
             }
-            Stratum::plane(identity(id), f[0] / len, f[1] / len, f[2] / len, f[3] / len).with_domain_of(&patch.carrier)
+            Stratum::plane(identity(id), normalized[0], normalized[1], normalized[2], normalized[3])
+                .with_domain_of(&patch.carrier)
         } else {
             let mut carrier = patch.carrier;
             carrier.id = id;
@@ -176,5 +209,27 @@ mod tests {
         let before = tree.strata.len();
         assert!(append_chamfer_carriers(&mut tree).is_empty());
         assert_eq!(tree.strata.len(), before);
+    }
+
+    #[test]
+    fn plane_aliases_keep_alternative_domains_but_not_opposite_orientation() {
+        let a = leaf_at(Shape::Cuboid { half: [1.; 3] }, [0., -2., 0.]);
+        let b = leaf_at(Shape::Cuboid { half: [1.; 3] }, [0., 2., 0.]);
+        let root = CsgNode::Min(vec![a.clone(), b]);
+        let mut tree = build_tree(&root, build_leaf_strata);
+        append_chamfer_carriers(&mut tree);
+        let aliases = canonical_primitive_strata(&mut tree);
+        assert_eq!(aliases[0], aliases[6]);
+        let side = &tree.strata[aliases[0]];
+        assert!(side.domain_contains([1., -2., 0.], 1e-8));
+        assert!(side.domain_contains([1., 2., 0.], 1e-8));
+        assert!(!side.domain_contains([1., 0., 0.], 1e-8));
+        assert_eq!(tree.strata.len(), 12, "leaf ranges and provenance slots are retained");
+
+        let root = CsgNode::Min(vec![a.clone(), crate::sdf::negate(a)]);
+        let mut tree = build_tree(&root, build_leaf_strata);
+        append_chamfer_carriers(&mut tree);
+        assert_eq!(canonical_primitive_strata(&mut tree), (0..12).collect::<Vec<_>>(),
+            "opposite boundary orientations are different patches");
     }
 }

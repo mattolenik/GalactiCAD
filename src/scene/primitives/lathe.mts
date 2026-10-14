@@ -17,8 +17,8 @@ import {
  */
 export const LATHE_FG_RING_SEGMENTS = 64
 
-/** Profile-space ring radius below this is treated as an axis pole (corner), not a revolved ring. */
-const LATHE_AXIS_RING_R = 1e-6
+/** Only radius zero is an axis pole; positive radii remain rings at any scale. */
+const LATHE_AXIS_RING_R = 0
 /** Adjacent profile edges with dot(dirPrev, dirNext) above this are treated as collinear — no contour. */
 const LATHE_COLLINEAR_DOT = 0.995
 /**
@@ -85,7 +85,7 @@ export function compileLathePrimitiveEdgeHitCase(node: Lathe): string {
     const child = node.child
     const N = child.vertices.length
     const BASE = child.bufferOffset
-    const combinedFunc = child.wgslCombinedFuncName
+    const combinedFunc = child.wgslRevolvedCombinedFuncName
     const o = node.paramOffset
     const pv = node.previewVec3Slot
     const pos = vec3Wgsl(o, pv)
@@ -153,7 +153,7 @@ export function compileLathePrimitiveEdgeHitCase(node: Lathe): string {
     if (abs(combined.x) >= ${eps.previewSideEps}) { return false; }
     let r = length(localP.xz);
     var radDir = vec2f(1.0, 0.0);
-    if (r > 1e-8) { radDir = localP.xz / r; }
+    if (r > 0.0) { radDir = localP.xz / r; }
     let q = vec2f(r, localP.y);
     ${caseBody}
     return false;
@@ -255,7 +255,7 @@ export class Lathe extends Node {
     get wgslMidFuncName(): string { return `fLathe_${this.id}_Mid` }
 
     override compileAux(): string {
-        const combinedFunc = this.child.wgslCombinedFuncName
+        const combinedFunc = this.child.wgslRevolvedCombinedFuncName
 
         return `
 fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
@@ -265,7 +265,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let d = combined.x;
     let g2d = combined.zw;
     var radDir = vec2f(1.0, 0.0);
-    if (r > 1e-8) {
+    if (r > 0.0) {
         radDir = p.xz / r;
     }
     let rawGradient = vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y);
@@ -276,7 +276,7 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     }
 
     override compileAuxMid(): string {
-        const combinedFunc = this.child.wgslCombinedFuncName
+        const combinedFunc = this.child.wgslRevolvedCombinedFuncName
         const N = this.child.vertices.length
         const BASE = this.child.bufferOffset
         const eps = latheProfileEpsPack(this.child)
@@ -323,7 +323,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let d = combined.x;
     let g2d = combined.zw;
     var radDir = vec2f(1.0, 0.0);
-    if (r > 1e-8) {
+    if (r > 0.0) {
         radDir = p.xz / r;
     }
     let rawGradient = vec3f(g2d.x * radDir.x, g2d.y, g2d.x * radDir.y);
@@ -358,7 +358,7 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     }
 
     override compileAuxFast(): string {
-        const childFunc = this.child.wgslFuncName
+        const childFunc = this.child.wgslRevolvedFuncName
         return `
 fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
     let q = vec2f(length(p.xz), p.y);
@@ -456,7 +456,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
      *
      * Skipped cases:
      *  - Non-affine ancestor (warp gate).
-     *  - Profile vertex on the Y axis (`r < LATHE_AXIS_RING_R`) — the ring
+     *  - Profile vertex on the Y axis (`r == 0`) — the ring
      *    collapses to a point and isn't visualised here. (Cone apex /
      *    sphere-pole 0D features could be added later as single-vertex
      *    corners; v1 just skips.)
@@ -495,7 +495,7 @@ fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
             const [r, y] = verts[k]!
             const rAbs = Math.abs(r)
             // Skip axis-pole vertices — they degenerate to a single point.
-            if (rAbs < LATHE_AXIS_RING_R) continue
+            if (rAbs <= LATHE_AXIS_RING_R) continue
 
             const prev = (k - 1 + N) % N
             const next = k

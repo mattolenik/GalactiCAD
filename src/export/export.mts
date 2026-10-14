@@ -115,6 +115,8 @@ export interface MeshSfccValidation {
         tangentReversals: number
         correctionBails: number
         stepCapHits: number
+        unresolvedDiscovery: number
+        unresolvedTrims: number
     }
 }
 

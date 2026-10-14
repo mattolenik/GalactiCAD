@@ -1,8 +1,8 @@
-//! Analytic per-stratum smoothCrit cert A/B on CURVED-PRIMITIVE scenes — the
+//! Per-carrier curvature heuristic A/B on CURVED-PRIMITIVE scenes — the
 //! organic/mechanical regime where smoothCrit dominates (53–56% of car/mechwarrior
 //! per the phase profiling). For each scene × θ we time the SAMPLED ∇f normal cone
-//! vs the ANALYTIC κ·cellSize bound and print leaves + ms, answering "does the
-//! closed-form per-stratum bound cut the dominant phase?".
+//! vs the optional κ·cellSize heuristic and print leaves + ms, answering "does the
+//! per-carrier heuristic cut the dominant phase?".
 //!
 //!   cargo run -p gcad-kernel --release --example smoothcrit_analytic_bench
 
@@ -32,7 +32,7 @@ fn prepared(mut tree: CsgNode) -> CsgNode {
 }
 
 /// Hard union of curved primitives (no blend) — many spherical/cylindrical strata,
-/// the way an organic/mechanical part loads the per-stratum smoothCrit cert.
+/// the way an organic/mechanical part loads the per-carrier refinement.
 fn curved_part() -> CsgNode {
     let mut parts = vec![
         sdf::leaf_at(Shape::Sphere { r: 4.0 }, [0.0, 0.0, 0.0]),
@@ -71,7 +71,7 @@ fn run(name: &str, tree: &CsgNode, c: &SfccWorldCube, deg: f64, analytic: bool, 
 }
 
 fn main() {
-    println!("=== analytic vs sampled per-stratum smoothCrit, curved primitives (depth_max=8, min-of-3) ===");
+    println!("=== curvature heuristic vs sampled per-carrier refinement, curved primitives (depth_max=8, min-of-3) ===");
     let big = SfccWorldCube { min_x: -10.0, min_y: -10.0, min_z: -10.0, size: 20.0 };
     let scenes: Vec<(&str, CsgNode, SfccWorldCube)> = vec![
         ("sphere r6", prepared(sdf::leaf_at(Shape::Sphere { r: 6.0 }, [0.1, -0.2, 0.05])), big),

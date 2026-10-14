@@ -39,16 +39,14 @@ export interface SfccTuning {
     /** Max surface-normal variation (deg) across a blend cell before it splits (anti-diamond on fillets). */
     blendCurvatureDeg: number
     /**
-     * Lever 2 (sfcc-rs ONLY): certify blend curvature from the closed-form analytic
-     * bound `κ ≤ 1/r (+ κ_carrier on grooves)` instead of the sampled ∇f cone — no
-     * per-cell owner/grad probe cone. Sound (never under-refines), but a constant κ
-     * over-refines curved-carrier fillets, so it ships OFF by default and is wired for
-     * A/B. The TS `sfcc` exporter ignores this knob; only the Rust kernel reads it.
+     * Legacy compatibility option, default off. Blend refinement always uses the
+     * sampled normal cone: the former 1/r curvature estimate underestimates oblique
+     * blends, and cell-edge length does not bound surface travel distance.
      */
     blendCurvatureAnalytic: boolean
     /**
-     * Lever 2: use the analytic per-stratum curvature bound (κ·cellSize) for the
-     * smoothCrit (iii-b) refinement cert instead of the sampled ∇f normal cone.
+     * Use the per-stratum κ·cellSize heuristic instead of the sampled normal cone.
+     * Cell-edge length is not a certified surface-path bound.
      * Ships OFF by default; only the Rust (`sfcc-rs`) kernel reads it.
      */
     normalVariationAnalytic: boolean
@@ -64,7 +62,7 @@ export interface SfccTuning {
     curveChordTolMm: number
     /** Flank-probe offset for seam trimming, in multiples of surfaceTolMm. */
     probeDeltaFactor: number
-    /** Below this dihedral angle (deg) two strata are not a crease (matches GPU seam threshold). */
+    /** @deprecated Kept for saved settings; exposure no longer discards creases by angle. */
     minDihedralDeg: number
     /** Seam tracer bails (with a diagnostic) when carrier gradients are within this angle (deg) of parallel. */
     minTangencyAngleDeg: number

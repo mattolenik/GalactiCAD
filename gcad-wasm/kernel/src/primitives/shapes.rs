@@ -5,7 +5,7 @@
 //! applies). Distance formulas match the WGSL zero-set; normals are the exact
 //! region-based analytic normals.
 
-use crate::primitives::polygon2d::{outward_edge_normal_2d, polygon_dist_2d};
+use crate::primitives::polygon2d::{outward_edge_normal_2d, polygon_dist_2d, segment_offset_2d};
 
 fn sgn(x: f64) -> f64 {
     if x < 0.0 {
@@ -292,8 +292,8 @@ pub fn loft_normal(profs: &[Vec<f64>], winds: &[f64], h: f64, px: f64, py: f64, 
 // parity over the FULL polygon for inside/outside. Exact SDF (profiles stay at
 // r ≥ 0), globally 1-Lipschitz.
 
-/// Profile-space |r| at/below which a vertex sits on the revolution axis.
-pub const LATHE_AXIS_R: f64 = 1e-6;
+/// Only radius zero lies on the revolution axis; positive radii remain surfaces at any scale.
+pub const LATHE_AXIS_R: f64 = 0.0;
 const LATHE_EDGE_DIR_EPS: f64 = 1e-9;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -326,7 +326,7 @@ pub fn lathe_profile_edges(vertices: &[[f64; 2]], wind: f64) -> Vec<LatheProfile
         let dr = r1 - r0;
         let dy = y1 - y0;
         let len = dr.hypot(dy);
-        let kind = if len < 1e-12 || (r0.abs() <= LATHE_AXIS_R && r1.abs() <= LATHE_AXIS_R) {
+        let kind = if len == 0.0 || (r0.abs() <= LATHE_AXIS_R && r1.abs() <= LATHE_AXIS_R) {
             LatheEdgeKind::None
         } else if dy.abs() <= LATHE_EDGE_DIR_EPS * len {
             LatheEdgeKind::Plane
@@ -344,8 +344,9 @@ pub fn lathe_profile_edges(vertices: &[[f64; 2]], wind: f64) -> Vec<LatheProfile
 /// Signed meridian distance at q = (ρ, y): (d, gr, gy).
 fn lathe_meridian(edges: &[LatheProfileEdge], qr: f64, qy: f64) -> (f64, f64, f64) {
     let mut inside = false;
-    let mut min_d2 = f64::INFINITY;
+    let mut min_d = f64::INFINITY;
     let mut closest = 0usize;
+    let mut closest_interior = false;
     let (mut bx, mut by) = (0.0, 0.0);
     for (i, e) in edges.iter().enumerate() {
         if (e.y0 > qy) != (e.y1 > qy) {
@@ -361,21 +362,20 @@ fn lathe_meridian(edges: &[LatheProfileEdge], qr: f64, qy: f64) -> (f64, f64, f6
         let ey = e.y1 - e.y0;
         let wx = qr - e.r0;
         let wy = qy - e.y0;
-        let t = ((wx * ex + wy * ey) / (e.len * e.len)).clamp(0.0, 1.0);
-        let dxv = wx - ex * t;
-        let dyv = wy - ey * t;
-        let d2 = dxv * dxv + dyv * dyv;
-        if d2 < min_d2 {
-            min_d2 = d2;
+        let ([dxv, dyv], interior) = segment_offset_2d(ex, ey, wx, wy);
+        let distance = dxv.hypot(dyv);
+        if distance < min_d {
+            min_d = distance;
             closest = i;
+            closest_interior = interior;
             bx = dxv;
             by = dyv;
         }
     }
     let s = if inside { -1.0 } else { 1.0 };
-    let d = s * min_d2.sqrt();
+    let d = s * min_d;
     let b_len = bx.hypot(by);
-    if b_len >= 1e-6 {
+    if b_len > 0. && !closest_interior {
         (d, s * bx / b_len, s * by / b_len)
     } else {
         (d, edges[closest].nr, edges[closest].ny)
@@ -389,7 +389,7 @@ pub fn lathe_dist(edges: &[LatheProfileEdge], px: f64, py: f64, pz: f64) -> f64 
 pub fn lathe_normal(edges: &[LatheProfileEdge], px: f64, py: f64, pz: f64) -> [f64; 3] {
     let rho = px.hypot(pz);
     let (_, gr, gy) = lathe_meridian(edges, rho, py);
-    let (rdx, rdz) = if rho > 1e-12 { (px / rho, pz / rho) } else { (1.0, 0.0) };
+    let (rdx, rdz) = if rho > 0. { (px / rho, pz / rho) } else { (1.0, 0.0) };
     [gr * rdx, gy, gr * rdz]
 }
 

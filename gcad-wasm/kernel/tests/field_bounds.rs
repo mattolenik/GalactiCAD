@@ -164,7 +164,6 @@ fn buried_primitives_do_not_remove_a_cavity_when_pruning_activates() {
 }
 
 #[test]
-#[ignore = "requires coordinated GPU/native polygon scalar repair of the 1e-12 edge-length floor"]
 fn tiny_profile_edges_preserve_world_distance_and_bounds_under_scale() {
     let d = 1e-7;
     let tree = build_csg_tree(&BridgeNode::Scale {
@@ -192,7 +191,6 @@ fn tiny_profile_edges_preserve_world_distance_and_bounds_under_scale() {
 }
 
 #[test]
-#[ignore = "requires coordinated GPU/native lathe scalar and axis-domain handling for tiny profiles"]
 fn tiny_lathe_inner_radius_preserves_world_distance_and_bounds_under_scale() {
     let tree = build_csg_tree(&BridgeNode::Scale {
         node_id: 0,

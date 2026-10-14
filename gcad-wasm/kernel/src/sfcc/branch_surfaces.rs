@@ -39,6 +39,27 @@ pub(crate) enum FieldBranch {
     /// Bottom clamp, each interpolation segment, top clamp.
     LoftRegion(usize),
 }
+
+#[cfg(test)]
+mod lathe_scale_tests {
+    use super::*;
+    use crate::primitives::{polygon2d::winding_sign, shapes::lathe_profile_edges};
+
+    #[test]
+    fn tiny_lathe_branch_retains_the_endpoint_distance_derivative() {
+        let k = 1. / 5.0_f64.sqrt();
+        for scale in [1., 1e-7, 1e-12] {
+            let profile = [[0.5, -2.], [2., -2.], [2., 2.], [0.5, 2.]]
+                .map(|p| p.map(|v| v * scale));
+            let node = crate::sdf::leaf_at(Shape::Lathe {
+                edges: lathe_profile_edges(&profile, winding_sign(&profile)),
+            }, [0.; 3]);
+            let sample = FieldBranch::LatheEdge(1).sample(&node, [2.2 * scale, 2.4 * scale, 0.]);
+            assert!((sample.value / scale - 0.2 / k).abs() < 1e-12);
+            assert!((sample.gradient[0] - k).hypot(sample.gradient[1] - 2. * k) < 1e-12);
+        }
+    }
+}
 impl FieldBranch {
     pub(crate) fn valid(&self, node: &CsgNode, p: [f64; 3], tol: f64) -> bool {
         let CsgNode::Leaf(l) = node else { return true };
@@ -145,22 +166,21 @@ impl FieldBranch {
                         let rho = x.hypot(z);
                         let (ex, ey) = (e.r1 - e.r0, e.y1 - e.y0);
                         let (wx, wy) = (rho - e.r0, y - e.y0);
-                        let t = ((wx * ex + wy * ey) / (e.len * e.len)).clamp(0., 1.);
-                        let (dx, dy) = (wx - t * ex, wy - t * ey);
+                        let ([dx, dy], _) = crate::primitives::polygon2d::segment_offset_2d(ex, ey, wx, wy);
                         let length = dx.hypot(dy);
                         let sign =
                             if crate::primitives::shapes::lathe_dist(edges, x, y, z) < 0. { -1. } else { 1. };
-                        let (gr, gy) = if length >= 1e-6 {
+                        let (gr, gy) = if length > 0. {
                             (sign * dx / length, sign * dy / length)
                         } else {
                             (e.nr, e.ny)
                         };
                         FieldSample {
                             value: sign * length,
-                            gradient: if rho > 1e-12 {
+                            gradient: if rho > 0. {
                                 [gr * x / rho, gy, gr * z / rho]
                             } else {
-                                [0., gy, 0.]
+                                [gr, gy, 0.]
                             },
                         }
                     }
@@ -426,10 +446,25 @@ pub(crate) fn append_branch_pairs(
                             groups.push((0..3).map(FieldBranch::TwistRegion).collect());
                         }
                     }
-                    Shape::Loft { profs, .. } => {
+                    Shape::Loft { profs, winds, .. } => {
                         groups.push((0..3).map(FieldBranch::LoftPart).collect());
                         groups.push((0..=profs.len()).map(FieldBranch::LoftRegion).collect());
                         for region in 0..profs.len() - 1 {
+                            if let Some(edges) = super::feature_set::equivalent_profile_edges(
+                                &profs[region], winds[region], &profs[region + 1], winds[region + 1],
+                            ) {
+                                if edges.len() > 128 {
+                                    unresolved.push(path.clone());
+                                    continue;
+                                }
+                                // Equal distance fields have the same nearest-edge
+                                // regions. Mixed pairs exist only at ties, not on
+                                // either incident patch of a displaced crease.
+                                groups.push(edges.into_iter().enumerate().map(|(lower, upper)| {
+                                    FieldBranch::LoftEdges { region, lower, upper }
+                                }).collect());
+                                continue;
+                            }
                             if (profs[region].len() / 2).saturating_mul(profs[region + 1].len() / 2) > 128 {
                                 unresolved.push(path.clone());
                                 continue;

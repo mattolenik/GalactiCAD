@@ -2,8 +2,7 @@
 //!
 //! A curve sample p is ALIVE (a real crease of the final solid) iff:
 //!   1. |f_tree(p)| ≤ surface_tol — p is on the final surface;
-//!   2. the adjacent strata disagree by more than the minimum dihedral
-//!      (sign-adjusted normals: dot ≤ crease gate);
+//!   2. the adjacent strata have distinct, regular normals;
 //!   3. BOTH strata have a surviving flank: probing `probe_delta` off the curve
 //!      within each stratum's surface, the full tree SDF still vanishes and its
 //!      normal agrees with the stratum's.
@@ -37,10 +36,12 @@ fn flank_survives(
     dy: f64,
     dz: f64,
     tol: &ResolvedTolerances,
-) -> bool {
+    normal_tolerance: f64,
+) -> Result<bool, ()> {
     // A full-size probe can cross another crease near a junction or in a
     // narrow surviving strip. Reduce the probe and its acceptance tolerance
     // together; a smaller step must not inherit the larger residual allowance.
+    let mut uncertain = false;
     for scale in [1.0, 0.5, 0.25, 0.125, 0.0625] {
         let delta = tol.probe_delta * scale;
         for sign in [1.0f64, -1.0] {
@@ -48,27 +49,38 @@ fn flank_survives(
             let py = y + sign * delta * dy;
             let pz = z + sign * delta * dz;
             let proj = stratum.project(px, py, pz);
+            if !proj.iter().all(|v| v.is_finite()) {
+                uncertain = true;
+                continue;
+            }
             if !stratum.domain_contains(proj, tol.curve_eps * 8.) {
                 continue;
             }
-            if !proj.iter().all(|v| v.is_finite()) || tree.f(proj[0], proj[1], proj[2]).abs() > delta * 0.2 {
+            let value = tree.f(proj[0], proj[1], proj[2]);
+            if !value.is_finite() {
+                uncertain = true;
+                continue;
+            }
+            if value.abs() > delta * 0.2 {
                 continue;
             }
             let Some(sample) = super::field_branches::sample_tree(tree.root, proj).normalized_equation()
             else {
+                uncertain = true;
                 continue;
             };
             let flank_grad = sample.gradient;
             let flank_normal = stratum.normal(proj[0], proj[1], proj[2]);
-            let dot = flank_grad[0] * flank_normal[0]
-                + flank_grad[1] * flank_normal[1]
-                + flank_grad[2] * flank_normal[2];
-            if dot >= 0.9 {
-                return true;
+            let error = (flank_grad[0] - flank_normal[0])
+                .hypot(flank_grad[1] - flank_normal[1])
+                .hypot(flank_grad[2] - flank_normal[2]);
+            if !error.is_finite() { uncertain = true; }
+            if error <= normal_tolerance {
+                return Ok(true);
             }
         }
     }
-    false
+    if uncertain { Err(()) } else { Ok(false) }
 }
 
 /// Aliveness of a single on-curve point. Port of `curvePointAlive`.
@@ -78,45 +90,63 @@ pub fn curve_point_alive(
     t: f64,
     tol: &ResolvedTolerances,
 ) -> bool {
-    let p = curve.point_at(t);
+    curve_point_status(tree, curve, t, tol).unwrap_or(false)
+}
+
+fn curve_point_status(
+    tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64, tol: &ResolvedTolerances,
+) -> Result<bool, ()> {
+    let p = curve.point_at_checked(t).ok_or_else(|| {
+        super::validation::curve_projection_failed();
+    })?;
     let (x, y, z) = (p[0], p[1], p[2]);
-    if tree.f(x, y, z).abs() > tol.surface_tol {
-        return false;
+    let value = tree.f(x, y, z);
+    if !value.is_finite() { return Err(()); }
+    if value.abs() > tol.surface_tol {
+        return Ok(false);
     }
     // Trim endpoints can lie exactly on the tolerance boundary. Keep the
     // eventual f32 payload on its accepted side as well, rather than turning a
     // valid f64 endpoint into an off-surface exported corner by rounding.
-    if tree.f(x as f32 as f64, y as f32 as f64, z as f32 as f64).abs() > tol.surface_tol {
-        return false;
+    let rounded_value = tree.f(x as f32 as f64, y as f32 as f64, z as f32 as f64);
+    if !rounded_value.is_finite() { return Err(()); }
+    if rounded_value.abs() > tol.surface_tol {
+        // An actual f64 feature lost only by output quantization is unresolved,
+        // not absent. Ordinary samples in the loose trim band remain dead.
+        let on_locus = super::field_branches::sample_tree(tree.root, p).normalized_equation()
+            .map_or(value.abs() <= tol.curve_eps * 8., |s| s.value.abs() <= tol.curve_eps * 8.);
+        return if on_locus { Err(()) } else { Ok(false) };
     }
     let sa = &tree.strata[curve.adjacent_strata[0]];
     let sb = &tree.strata[curve.adjacent_strata[1]];
     if !sa.domain_contains(p, tol.curve_eps * 8.) || !sb.domain_contains(p, tol.curve_eps * 8.) {
-        return false;
+        return Ok(false);
     }
     let na = sa.normal(x, y, z);
     let nb = sb.normal(x, y, z);
-    // Chamfer patch boundaries are modeled features too. The boolean angle
-    // filter otherwise erases the shallow arms approaching a tangent crossing,
-    // leaving mesh triangles free to bridge the two patches. Retain the same
-    // near-tangency floor as native features and the numerical tracer.
-    let modeled = curve.native || sa.leaf_index == usize::MAX || sb.leaf_index == usize::MAX;
-    let crease_gate = if modeled { tol.native_crease_cos } else { tol.min_dihedral_cos };
-    if na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2] > crease_gate {
-        return false;
-    }
+    if !na.iter().chain(nb.iter()).all(|v| v.is_finite()) { return Err(()); }
+    let gap = (na[0] - nb[0]).hypot(na[1] - nb[1]).hypot(na[2] - nb[2]);
+    if gap <= 64. * f64::EPSILON { return Ok(false); }
+    // A small dihedral is still a crease. Require each exposed flank's actual
+    // field normal to agree much more closely than the separation of the two
+    // carriers; a smooth sheet cannot pass as both shallow flanks.
+    let normal_tolerance = (gap * 0.25).min(0.1);
     let tg = curve.tangent_at(t);
+    if !tg.iter().all(|v| v.is_finite()) || tg.iter().all(|&v| v == 0.) { return Err(()); }
     // In-surface, ⊥-curve probe directions: w = n × tangent.
     let wax = na[1] * tg[2] - na[2] * tg[1];
     let way = na[2] * tg[0] - na[0] * tg[2];
     let waz = na[0] * tg[1] - na[1] * tg[0];
-    if !flank_survives(tree, sa, x, y, z, wax, way, waz, tol) {
-        return false;
-    }
+    let a = flank_survives(tree, sa, x, y, z, wax, way, waz, tol, normal_tolerance);
     let wbx = nb[1] * tg[2] - nb[2] * tg[1];
     let wby = nb[2] * tg[0] - nb[0] * tg[2];
     let wbz = nb[0] * tg[1] - nb[1] * tg[0];
-    flank_survives(tree, sb, x, y, z, wbx, wby, wbz, tol)
+    let b = flank_survives(tree, sb, x, y, z, wbx, wby, wbz, tol, normal_tolerance);
+    match (a, b) {
+        (Ok(false), _) | (_, Ok(false)) => Ok(false),
+        (Ok(true), Ok(true)) => Ok(true),
+        _ => Err(()),
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -147,7 +177,7 @@ fn classification_params(curve: &FeatureCurve, tol: &ResolvedTolerances) -> Vec<
 
 /// Bisect an alive/dead transition. Port of `bisectTransition`.
 fn bisect_transition(
-    tree: &SfccTree<'_>,
+    alive: &impl Fn(f64) -> bool,
     curve: &FeatureCurve,
     t_alive: f64,
     t_dead: f64,
@@ -160,7 +190,7 @@ fn bisect_transition(
         if curve.param_distance(a, d) < tol.corner_merge_tol / 4.0 {
             break;
         }
-        if curve_point_alive(tree, curve, m, tol) {
+        if alive(m) {
             a = m;
         } else {
             d = m;
@@ -176,23 +206,29 @@ pub fn trim_curve(
     curve: &FeatureCurve,
     curve_idx: usize,
     tol: &ResolvedTolerances,
-) -> Vec<TrimmedRun> {
+) -> (Vec<TrimmedRun>, usize) {
+    if let Some(result) = super::segment_exposure::trim(tree, curve, curve_idx, tol) { return result; }
+    let unresolved = std::cell::Cell::new(false);
+    let classify = |t| match curve_point_status(tree, curve, t, tol) {
+        Ok(alive) => alive,
+        Err(()) => { unresolved.set(true); false }
+    };
     let params = classification_params(curve, tol);
-    let alive: Vec<bool> = params.iter().map(|&t| curve_point_alive(tree, curve, t, tol)).collect();
+    let alive: Vec<bool> = params.iter().map(|&t| classify(t)).collect();
     if alive.iter().all(|&a| a) {
-        return vec![TrimmedRun { curve_idx, t0: curve.t_min, t1: curve.t_max, full_closed: curve.closed }];
+        return (vec![TrimmedRun { curve_idx, t0: curve.t_min, t1: curve.t_max, full_closed: curve.closed }], 0);
     }
     if alive.iter().all(|&a| !a) {
-        return Vec::new();
+        return (Vec::new(), usize::from(unresolved.get()));
     }
 
     let mut runs: Vec<TrimmedRun> = Vec::new();
     let mut run_start: Option<f64> = if alive[0] { Some(curve.t_min) } else { None };
     for i in 1..params.len() {
         if alive[i] && run_start.is_none() {
-            run_start = Some(bisect_transition(tree, curve, params[i], params[i - 1], tol));
+            run_start = Some(bisect_transition(&classify, curve, params[i], params[i - 1], tol));
         } else if !alive[i] && run_start.is_some() {
-            let end = bisect_transition(tree, curve, params[i - 1], params[i], tol);
+            let end = bisect_transition(&classify, curve, params[i - 1], params[i], tol);
             let start = run_start.unwrap();
             if curve.param_distance(start, end) > tol.corner_merge_tol {
                 runs.push(TrimmedRun { curve_idx, t0: start, t1: end, full_closed: false });
@@ -214,12 +250,13 @@ pub fn trim_curve(
             runs.push(TrimmedRun { curve_idx, t0: last.t0 - wrap, t1: first.t1, full_closed: false });
         }
     }
-    runs
+    (runs, usize::from(unresolved.get()))
 }
 
 pub struct TrimResult {
     pub curves: Vec<FeatureCurve>,
     pub corners: Vec<SfccCorner>,
+    pub unresolved_trims: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -483,11 +520,14 @@ pub fn trim_and_wire(
 
     // 1. Trim every curve; collect run endpoints as corner candidates.
     let mut all_runs: Vec<TrimmedRun> = Vec::new();
+    let mut unresolved_trims = 0;
     let is_curve_end = |curve: &FeatureCurve, t: f64| -> bool {
         !curve.closed && ((t - curve.t_min).abs() < 1e-9 || (t - curve.t_max).abs() < 1e-9)
     };
     for (ci, curve) in raw_curves.iter().enumerate() {
-        for run in trim_curve(tree, curve, ci, tol) {
+        let (runs, unresolved) = trim_curve(tree, curve, ci, tol);
+        unresolved_trims += unresolved;
+        for run in runs {
             all_runs.push(run);
             if !run.full_closed {
                 for t in [run.t0, run.t1] {
@@ -706,7 +746,12 @@ pub fn trim_and_wire(
     let mut unique: Vec<FeatureCurve> = Vec::new();
     for mut curve in out {
         let duplicate = unique.iter().any(|prev| {
-            if curve.adjacent_strata != prev.adjacent_strata || curve.closed != prev.closed {
+            // Carrier order is incidence, not curve orientation. Keep the
+            // surviving arc's original parameterization and endpoint wiring.
+            let reversed_primitives = curve.adjacent_strata == [prev.adjacent_strata[1], prev.adjacent_strata[0]]
+                && curve.adjacent_strata.iter().all(|&id| !matches!(tree.strata[id].kind,
+                    crate::strata::CarrierKind::Field | crate::strata::CarrierKind::Compound));
+            if (curve.adjacent_strata != prev.adjacent_strata && !reversed_primitives) || curve.closed != prev.closed {
                 return false;
             }
             let endpoints = (curve.corner_start, curve.corner_end);
@@ -771,5 +816,5 @@ pub fn trim_and_wire(
     }
     let final_corners: Vec<SfccCorner> =
         keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
-    TrimResult { curves: out, corners: final_corners }
+    TrimResult { curves: out, corners: final_corners, unresolved_trims }
 }

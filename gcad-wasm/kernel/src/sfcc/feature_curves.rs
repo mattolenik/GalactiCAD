@@ -159,6 +159,54 @@ impl FeatureCurve {
         }
     }
 
+    /// Enclose the represented curve between indexing knots. For traced curves,
+    /// every successful Newton query stays within max_displacement of its chord.
+    /// This encloses that representation, not undiscovered carrier components.
+    pub(crate) fn index_bounds(&self) -> Vec<([f64; 3], [f64; 3])> {
+        let segments = match &self.geom {
+            Geom::Segment { .. } => 1,
+            Geom::Circle { .. } => (self.index_polyline.len() / 3).saturating_sub(1).max(1),
+            Geom::Traced(td) => td.n.saturating_sub(1),
+        };
+        (0..segments).map(|i| {
+            let t0 = self.t_min + (self.t_max - self.t_min) * i as f64 / segments as f64;
+            let t1 = self.t_min + (self.t_max - self.t_min) * (i + 1) as f64 / segments as f64;
+            let (a, b) = match &self.geom {
+                Geom::Traced(td) => (
+                    std::array::from_fn(|k| td.samples[i * 3 + k]),
+                    std::array::from_fn(|k| td.samples[(i + 1) * 3 + k]),
+                ),
+                _ => (self.interpolated_point(t0), self.interpolated_point(t1)),
+            };
+            let mut lo: [f64; 3] = std::array::from_fn(|k| a[k].min(b[k]));
+            let mut hi: [f64; 3] = std::array::from_fn(|k| a[k].max(b[k]));
+            if let Geom::Circle { c, e1, e2, r, .. } = &self.geom {
+                for k in 0..3 {
+                    let phase = e2[k].atan2(e1[k]);
+                    let amplitude = e1[k].hypot(e2[k]);
+                    for (extremum, sign) in [(phase, 1.), (phase + PI, -1.)] {
+                        let t = extremum + TAU * ((t0 - extremum) / TAU).ceil();
+                        if t >= t0 && t <= t1 {
+                            let x = c[k] + sign * r * amplitude;
+                            lo[k] = lo[k].min(x);
+                            hi[k] = hi[k].max(x);
+                        }
+                    }
+                }
+            }
+            let displacement = match &self.geom {
+                Geom::Traced(td) => td.refine.max_displacement.max(0.),
+                _ => 0.,
+            };
+            for k in 0..3 {
+                let padding = displacement + 32. * f64::EPSILON * (1. + lo[k].abs() + hi[k].abs() + displacement);
+                lo[k] -= padding;
+                hi[k] += padding;
+            }
+            (lo, hi)
+        }).collect()
+    }
+
     /// Best-effort query used by tracing/trim. Numerical failure is explicit in
     /// the export diagnostics; mesh sampling can require `point_at_checked`.
     pub fn point_at(&self, t: f64) -> [f64; 3] {

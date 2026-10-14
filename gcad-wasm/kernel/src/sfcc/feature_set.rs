@@ -398,6 +398,50 @@ struct LoftCarrier {
     b_vertex: i64,
 }
 
+/// Match the same polygon's edges across cyclic starts and reversed winding.
+/// Equality is exact: nearby profiles and different segmentations stay distinct.
+pub(crate) fn equivalent_profile_edges(a: &[f64], wa: f64, b: &[f64], wb: f64) -> Option<Vec<usize>> {
+    if a.len() != b.len() || a.len() < 6 || a.len() % 2 != 0 || wa.abs() != 1. || wb.abs() != 1. {
+        return None;
+    }
+    let n = a.len() / 2;
+    // A zero-length edge has no side carrier; leave degenerate profiles on
+    // the general path instead of certifying a polygon correspondence.
+    if (0..n).any(|j| {
+        let k = (j + 1) % n;
+        a[2 * k] == a[2 * j] && a[2 * k + 1] == a[2 * j + 1]
+    }) {
+        return None;
+    }
+    for start in 0..n {
+        let vertex = |j| if wa == wb { (start + j) % n } else { (start + n - j) % n };
+        if (0..n).all(|j| a[2 * j..2 * j + 2] == b[2 * vertex(j)..2 * vertex(j) + 2]) {
+            return Some((0..n).map(|j| if wa == wb { vertex(j) } else { vertex((j + 1) % n) }).collect());
+        }
+    }
+    None
+}
+
+/// One canonical profile for a constant loft, for feature construction only.
+/// The original loft expression remains the source of scalar values and domains.
+fn constant_loft_profile(profs: &[Vec<f64>], winds: &[f64]) -> Option<Vec<f64>> {
+    if profs.len() < 2 || winds.len() != profs.len() {
+        return None;
+    }
+    for (profile, &wind) in profs.iter().zip(winds) {
+        equivalent_profile_edges(&profs[0], winds[0], profile, wind)?;
+    }
+    let first = &profs[0];
+    let n = first.len() / 2;
+    let start = (0..n).min_by(|&a, &b| {
+        first[2 * a].total_cmp(&first[2 * b]).then(first[2 * a + 1].total_cmp(&first[2 * b + 1]))
+    })?;
+    Some((0..n).flat_map(|j| {
+        let k = if winds[0] < 0. { (start + j) % n } else { (start + n - j) % n };
+        [first[2 * k], first[2 * k + 1]]
+    }).collect())
+}
+
 /// Side carriers of one loft segment between lower profile `a` and upper profile
 /// `b`, as an angular cyclic merge of the two profiles' corners — a monotone
 /// `(a_edge, b_edge)` staircase of length ≤ `na + nb` (corresponding corners are
@@ -745,6 +789,11 @@ pub(crate) fn all_loft_side_fields(leaf: &Leaf) -> Vec<Stratum> {
     let Shape::Loft { profs, winds, h } = &leaf.shape else {
         return Vec::new();
     };
+    if constant_loft_profile(profs, winds).is_some() {
+        // The native graph already has every side. Cross-pairing different
+        // edges of the same distance field creates no valid open patch.
+        return Vec::new();
+    }
     let edge = |profile: usize, j: usize| {
         let p = &profs[profile];
         let next = (j + 1) % (p.len() / 2);
@@ -755,8 +804,12 @@ pub(crate) fn all_loft_side_fields(leaf: &Leaf) -> Vec<Stratum> {
     let mut out = Vec::new();
     let seg_h = 2. * h / (profs.len() - 1) as f64;
     for segment in 0..profs.len() - 1 {
+        let matching = equivalent_profile_edges(&profs[segment], winds[segment], &profs[segment + 1], winds[segment + 1]);
         for a in 0..profs[segment].len() / 2 {
             for b in 0..profs[segment + 1].len() / 2 {
+                if matching.as_ref().is_some_and(|edges| edges[a] != b) {
+                    continue;
+                }
                 let (a_x, a_z, a_x1, a_z1, a_nx, a_nz) = edge(segment, a);
                 let (b_x, b_z, b_x1, b_z1, b_nx, b_nz) = edge(segment + 1, b);
                 let ident = sid(0, usize::MAX, 0, leaf.sign);
@@ -822,7 +875,13 @@ pub fn build_leaf_strata(leaf: &Leaf, leaf_index: usize, first_id: usize) -> Vec
         Shape::Extrude { verts, wind, h, twist_rad } => {
             build_extrude_strata(leaf, leaf_index, first_id, verts, *wind, *h, *twist_rad)
         }
-        Shape::Loft { profs, winds, h } => build_loft_strata(leaf, leaf_index, first_id, profs, winds, *h),
+        Shape::Loft { profs, winds, h } => {
+            if let Some(profile) = constant_loft_profile(profs, winds) {
+                build_loft_strata(leaf, leaf_index, first_id, &[profile.clone(), profile], &[-1.; 2], *h)
+            } else {
+                build_loft_strata(leaf, leaf_index, first_id, profs, winds, *h)
+            }
+        }
         Shape::Lathe { edges } => build_lathe_strata(leaf, leaf_index, first_id, edges),
     }
 }
@@ -1765,8 +1824,11 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
             }
             Shape::Loft { profs, winds, h } => {
                 let h = *h;
-                let profs = profs.clone();
-                let winds = winds.clone();
+                let (profs, winds) = if let Some(profile) = constant_loft_profile(profs, winds) {
+                    (vec![profile.clone(), profile], vec![-1.; 2])
+                } else {
+                    (profs.clone(), winds.clone())
+                };
                 let strata = build_loft_strata(leaf, leaf_index, first_id, &profs, &winds, h);
                 track_leaf_diag(leaf, &mut diag);
                 emit_loft_features(leaf, first_id, &profs, &winds, h, &strata, &mut curves, &mut corners);
@@ -1777,7 +1839,7 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
 
     let mut index = SfccSpatialIndex::new(diag / 32.0);
     for c in &curves {
-        index.insert_curve_polyline(c.id, &c.index_polyline);
+        index.insert_curve(c);
     }
     for c in &corners {
         index.insert_corner(c.id, c.x, c.y, c.z);
@@ -1869,11 +1931,16 @@ pub fn compile_feature_set(
     }
     let mut raw = native_curves;
     raw.extend(seam_curves);
+    let aliases = super::blend_surfaces::canonical_primitive_strata(&mut tree);
+    for curve in &mut raw {
+        curve.adjacent_strata = curve.adjacent_strata.map(|id| aliases[id]);
+    }
     let trimmed = trim_and_wire(&tree, &raw, &native.corners, tol);
+    diagnostics.unresolved_trims += trimmed.unresolved_trims;
 
     let mut index = SfccSpatialIndex::new(index_cell_size(&tree));
     for c in &trimmed.curves {
-        index.insert_curve_polyline(c.id, &c.index_polyline);
+        index.insert_curve(c);
     }
     for c in &trimmed.corners {
         index.insert_corner(c.id, c.x, c.y, c.z);
@@ -1894,6 +1961,29 @@ pub fn compile_feature_set(
 mod tests {
     use super::*;
     use crate::sdf::leaf_at;
+
+    #[test]
+    fn equivalent_polygon_loft_does_not_exhaust_the_cartesian_branch_budget() {
+        let profile: Vec<_> = (0..16).map(|i| {
+            let angle = i as f64 * std::f64::consts::TAU / 16.;
+            [2. * angle.cos(), 2. * angle.sin()]
+        }).collect();
+        let mut upper = profile.clone();
+        upper.rotate_left(5);
+        upper.reverse();
+        let loft = crate::scene_bridge::build_csg_tree(&crate::scene_bridge::BridgeNode::Loft {
+            node_id: 0, pos: [0.; 3], profiles: vec![profile, upper], h: 2.,
+        }).unwrap();
+        let root = CsgNode::Blend {
+            kind: crate::sdf::BlendKind::Smax,
+            mode: crate::primitives::smin::SminMode::Chamfer,
+            r: 1., n: 4.,
+            children: vec![loft, leaf_at(Shape::Cuboid { half: [10., 0.6, 10.] }, [0.; 3])],
+        };
+        let mut tree = build_tree(&root, build_leaf_strata);
+        let (_, unresolved) = super::super::branch_surfaces::append_branch_pairs(&mut tree, 1e-8);
+        assert!(unresolved.is_empty(), "16 equivalent edges must not require 256 independent edge pairs");
+    }
 
     #[test]
     fn worker_fingerprint_includes_junction_incidence() {

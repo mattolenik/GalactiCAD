@@ -16,9 +16,9 @@ pub struct ResolvedTolerances {
     pub curve_eps: f64,
     /// Flank-probe offset for seam trimming (mm).
     pub probe_delta: f64,
-    /// cos(min_dihedral_deg): boolean-seam crease gate.
+    /// Legacy resolved setting; no longer used to discard exposed creases.
     pub min_dihedral_cos: f64,
-    /// cos(min_tangency_angle_deg): native-curve crease gate.
+    /// Legacy resolved setting; min_tangency_sin still controls tracing conditioning.
     pub native_crease_cos: f64,
     /// sin(min_tangency_angle_deg): tracer tangency floor.
     pub min_tangency_sin: f64,

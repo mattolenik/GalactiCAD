@@ -325,14 +325,41 @@ export class Polygon2D extends Node {
         return `fPolygon2D_${this.id}_combined`
     }
 
+    /** Meridian distance omits axis edges, which are not boundaries of a revolved solid. */
+    get wgslRevolvedFuncName(): string { return `${this.wgslFuncName}_revolved` }
+    get wgslRevolvedCombinedFuncName(): string { return `${this.wgslCombinedFuncName}_revolved` }
+
     override compileAux(): string { return "" }
 
     override compileAuxFast(): string {
         const N = this.vertices.length
         const BASE = this.bufferOffset
+        const wind = polygon2dWindingSign(this.vertices).toFixed(1)
 
         return `
+fn ${this.wgslFuncName}_length(v: vec2f) -> f32 {
+    let scale = max(abs(v.x), abs(v.y));
+    if (scale == 0.0) { return 0.0; }
+    return scale * length(v / scale);
+}
+
+fn ${this.wgslFuncName}_segmentOffset(e: vec2f, w: vec2f) -> vec3f {
+    let scale = max(abs(e.x), abs(e.y));
+    if (scale == 0.0) { return vec3f(w, 0.0); }
+    let u = e / scale;
+    let along = clamp(dot(w, u) / dot(u, u), 0.0, scale);
+    return vec3f(w - u * along, select(0.0, 1.0, along > 0.0 && along < scale));
+}
+
 fn ${this.wgslFuncName}(p: vec2f) -> f32 {
+    return ${this.wgslFuncName}_field(p, false);
+}
+
+fn ${this.wgslRevolvedFuncName}(p: vec2f) -> f32 {
+    return ${this.wgslFuncName}_field(p, true);
+}
+
+fn ${this.wgslFuncName}_field(p: vec2f, revolved: bool) -> f32 {
     const N = ${N}u;
     const BASE = ${BASE}u;
     // Stream vertices straight from storage with a carry (vj = previous vi)
@@ -340,23 +367,26 @@ fn ${this.wgslFuncName}(p: vec2f) -> f32 {
     // array's per-invocation register footprint (N x vec2f) throttles
     // occupancy. One read per iteration; the loop visits every edge, so the
     // start distance only needs to be a safe upper bound.
-    var d = 1e30;
+    var d = ${this.wgslFuncName}_length(p - polygonVertices[BASE]);
+    if (revolved) { d = 1e30; }
     var s = 1.0;
     var vj = polygonVertices[BASE + N - 1u];
     for (var i = 0u; i < N; i++) {
         let vi = polygonVertices[BASE + i];
         let e = vj - vi;
         let w = p - vi;
-        let eLen2 = max(dot(e, e), 1e-12);
-        let b = w - e * clamp(dot(w, e) / eLen2, 0.0, 1.0);
-        d = min(d, dot(b, b));
+        let b = ${this.wgslFuncName}_segmentOffset(e, w).xy;
+        // Axis edges participate in parity but are interior to a revolved solid.
+        if (any(e != vec2f(0.0)) && (!revolved || vi.x != 0.0 || vj.x != 0.0)) {
+            d = min(d, ${this.wgslFuncName}_length(b));
+        }
         let c0 = p.y >= vi.y;
         let c1 = p.y < vj.y;
         let c2 = e.x * w.y > e.y * w.x;
         if ((c0 && c1 && c2) || (!c0 && !c1 && !c2)) { s = -s; }
         vj = vi;
     }
-    return s * sqrt(d);
+    return s * d;
 }
 
 fn ${this.wgslClosestEdgeFuncName}(p: vec2f) -> u32 {
@@ -371,10 +401,9 @@ fn ${this.wgslClosestEdgeFuncName}(p: vec2f) -> u32 {
         let vi = polygonVertices[BASE + i];
         let e = vj - vi;
         let w = p - vi;
-        let eLen2 = max(dot(e, e), 1e-12);
-        let b = w - e * clamp(dot(w, e) / eLen2, 0.0, 1.0);
-        let dd = dot(b, b);
-        if (dd < minDist) { minDist = dd; closest = jIdx; }
+        let b = ${this.wgslFuncName}_segmentOffset(e, w).xy;
+        let dd = ${this.wgslFuncName}_length(b);
+        if (any(e != vec2f(0.0)) && dd < minDist) { minDist = dd; closest = jIdx; }
         jIdx = i;
         vj = vi;
     }
@@ -382,25 +411,44 @@ fn ${this.wgslClosestEdgeFuncName}(p: vec2f) -> u32 {
 }
 
 fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec4f {
+    return ${this.wgslCombinedFuncName}_field(p, false);
+}
+
+fn ${this.wgslRevolvedCombinedFuncName}(p: vec2f) -> vec4f {
+    return ${this.wgslCombinedFuncName}_field(p, true);
+}
+
+fn ${this.wgslCombinedFuncName}_field(p: vec2f, revolved: bool) -> vec4f {
     const N = ${N}u;
     const BASE = ${BASE}u;
     // Carry-streamed like ${this.wgslFuncName} (no local vertex array).
-    var d = 1e30;
+    var d = ${this.wgslFuncName}_length(p - polygonVertices[BASE]);
+    if (revolved) { d = 1e30; }
     var s = 1.0;
     var minDist = 1e30;
     var closest = 0u;
-    var closestB = vec2f(0.0);
+    var closestB = p - polygonVertices[BASE];
+    var closestNormal = vec2f(0.0);
+    var closestInterior = false;
     var jIdx = N - 1u;
     var vj = polygonVertices[BASE + N - 1u];
     for (var i = 0u; i < N; i++) {
         let vi = polygonVertices[BASE + i];
         let e = vj - vi;
         let w = p - vi;
-        let eLen2 = max(dot(e, e), 1e-12);
-        let b = w - e * clamp(dot(w, e) / eLen2, 0.0, 1.0);
-        let dd = dot(b, b);
-        d = min(d, dd);
-        if (dd < minDist) { minDist = dd; closest = jIdx; closestB = b; }
+        let projection = ${this.wgslFuncName}_segmentOffset(e, w);
+        let b = projection.xy;
+        let dd = ${this.wgslFuncName}_length(b);
+        if (any(e != vec2f(0.0)) && (!revolved || vi.x != 0.0 || vj.x != 0.0)) {
+            d = min(d, dd);
+            if (dd < minDist) {
+                minDist = dd; closest = jIdx; closestB = b;
+                closestInterior = projection.z > 0.0;
+                closestNormal = vec2f(0.0);
+                let eLen = ${this.wgslFuncName}_length(e);
+                if (eLen > 0.0) { closestNormal = ${wind} * vec2f(e.y, -e.x) / eLen; }
+            }
+        }
         let c0 = p.y >= vi.y;
         let c1 = p.y < vj.y;
         let c2 = e.x * w.y > e.y * w.x;
@@ -408,9 +456,10 @@ fn ${this.wgslCombinedFuncName}(p: vec2f) -> vec4f {
         jIdx = i;
         vj = vi;
     }
-    let bLen = length(closestB);
-    let g2d = select(s * (closestB / bLen), vec2f(1.0, 0.0), bLen < 1e-6);
-    return vec4f(s * sqrt(d), f32(closest), g2d.x, g2d.y);
+    let bLen = ${this.wgslFuncName}_length(closestB);
+    var g2d = closestNormal;
+    if (bLen > 0.0 && !closestInterior) { g2d = s * (closestB / bLen); }
+    return vec4f(s * d, f32(closest), g2d.x, g2d.y);
 }
 `
     }

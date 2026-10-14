@@ -61,11 +61,11 @@ pub struct PipelineTuning {
     pub normal_variation_deg: f64,
     pub blend_curvature_refine: bool,
     pub blend_curvature_deg: f64,
-    /// Lever 2: use the analytic closed-form blend-curvature bound instead of the
-    /// sampled ∇f cone (opt-in; default OFF — the sampled cone stays the proven path).
+    /// Retained for saved tuning compatibility. Blend refinement uses sampled
+    /// normal variation; no analytic blend shortcut is currently justified.
     pub blend_curvature_analytic: bool,
-    /// Lever 2: analytic per-stratum normal-variation bound (κ·cellSize) for the
-    /// smoothCrit (iii-b) cert instead of the sampled ∇f cone (opt-in; default OFF).
+    /// Optional per-carrier κ·cellSize refinement heuristic; not a continuous
+    /// normal-variation certificate. Default OFF.
     pub normal_variation_analytic: bool,
     pub surface_tol_mm: f64,
     pub edge_root_tol_fraction: f64,
@@ -779,11 +779,6 @@ pub(crate) fn build_pipeline_context<'a>(
     // Coarse-region pruning pays off only when a coarse cell touches a small fraction
     // of the tree; below a handful of leaves the full-tree tight loop wins.
     let prune = tree.leaf_count() > crate::sfcc::octree::LEVER1_MIN_LEAVES;
-    let blend_curvature_analytic = if tuning.blend_curvature_analytic && tuning.blend_curvature_refine {
-        tree.blend_curvature_bound()
-    } else {
-        None
-    };
     let smooth_opts = SmoothCriteriaOptions {
         normal_variation_cos: (tuning.normal_variation_deg * PI / 180.0).cos(),
         blend_normal_variation_cos: if tuning.blend_curvature_refine {
@@ -791,7 +786,6 @@ pub(crate) fn build_pipeline_context<'a>(
         } else {
             1.0 // ≥1 disables (iii-d)
         },
-        blend_curvature_analytic,
         normal_variation_analytic: tuning.normal_variation_analytic,
     };
     let feature_opts = FeatureCriteriaOptions {

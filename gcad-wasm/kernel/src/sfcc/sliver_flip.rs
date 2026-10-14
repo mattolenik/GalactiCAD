@@ -1,15 +1,15 @@
-//! Shape-improving edge flips for long-thin sliver triangles. Port of
-//! `src/export/sfcc/sliver-flip.mts`.
+//! Shape-improving edge flips for long-thin sliver triangles.
 //!
-//! Cell-loop triangulation occasionally emits "cap" slivers (a boundary vertex
-//! micrometres from the opposite edge of a long triangle): geometrically
-//! negligible but they streak under flat shading and no vertex weld can reach
-//! them (the small dimension is vertex-to-edge, not a vertex pair). The repair:
-//! flip the sliver's longest edge into the neighbor quad when that strictly
-//! improves the worse aspect ratio of the pair. Flips preserve closure, winding
-//! consistency and the outer edges; the change is bounded by the sliver height.
+//! Only convex, exactly coplanar pairs may flip, in both working f64 and emitted
+//! f32 coordinates. Both diagonals then cover the same oriented patch: the flip
+//! cannot introduce a surface displacement or intersection. This preserves an
+//! existing embedding; it does not repair invalid input geometry.
 
-use crate::sfcc::point_table::PointTable;
+use super::{
+    point_table::PointTable,
+    predicates::{orient2d, orient3d},
+    triangle_quality as q,
+};
 use std::collections::{HashMap, HashSet};
 
 const SLIVER_ASPECT: f64 = 0.02; // height/longest-edge below this is a flip candidate
@@ -49,8 +49,27 @@ fn shape(points: &PointTable, a: usize, b: usize, c: usize) -> (f64, usize) {
     (area2 / (lmax * lmax), long_edge)
 }
 
-/// Flip sliver triangles' longest edges where it strictly improves the pair's
-/// worst aspect ratio. Returns `(tris, flips)`. Port of `flipSliverTriangles`.
+fn preserves_patch(points: [q::P3; 4]) -> bool {
+    // ponytail: reject nonplanar pairs; changing their surface requires a separate
+    // fidelity/intersection check, as in the optional quality-remeshing path.
+    [points, points.map(q::rounded)].into_iter().all(|points| {
+        let [p, q, r, d] = points;
+        if !points.iter().flatten().all(|x| x.is_finite()) || orient3d(p, q, r, d) != 0 {
+            return false;
+        }
+        (0..3).any(|axis| {
+            let [p, q, r, d] = points.map(|p| [p[(axis + 1) % 3], p[(axis + 2) % 3]]);
+            let sign = orient2d(p, q, r);
+            sign != 0
+                && orient2d(q, p, d) == sign
+                && orient2d(r, p, d) == sign
+                && orient2d(d, q, r) == sign
+        })
+    })
+}
+
+/// Flip sliver triangles' longest edges when the oriented patch is unchanged and
+/// its worst aspect ratio improves. Returns `(tris, flips)`.
 pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: usize) -> (Vec<usize>, usize) {
     let mut cur = tris.to_vec();
     let tri_count = cur.len() / 3;
@@ -60,7 +79,10 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
         let mut dir: HashMap<(usize, usize), usize> = HashMap::new();
         for t in 0..tri_count {
             for e in 0..3 {
-                dir.insert((cur[t * 3 + e], cur[t * 3 + (e + 1) % 3]), t);
+                // A duplicate directed edge is ambiguous, not a usable neighbor.
+                dir.entry((cur[t * 3 + e], cur[t * 3 + (e + 1) % 3]))
+                    .and_modify(|owner| *owner = usize::MAX)
+                    .or_insert(t);
             }
         }
         let mut touched = vec![false; tri_count];
@@ -71,7 +93,7 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
                 continue;
             }
             let (q0, long_edge) = shape(points, cur[t * 3], cur[t * 3 + 1], cur[t * 3 + 2]);
-            if q0 >= SLIVER_ASPECT || q0 <= 0.0 {
+            if !q0.is_finite() || q0 >= SLIVER_ASPECT || q0 <= 0.0 {
                 continue;
             }
             // Flip across the LONGEST edge (p→q), r opposite.
@@ -79,9 +101,11 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
             let p = cur[t * 3 + e];
             let q = cur[t * 3 + (e + 1) % 3];
             let r = cur[t * 3 + (e + 2) % 3];
-            if points.edge_is_protected(p, q) { continue; }
+            if points.edge_is_protected(p, q) || dir.get(&(p, q)) != Some(&t) {
+                continue;
+            }
             let o = match dir.get(&(q, p)) {
-                Some(&o) if o != t && !touched[o] => o,
+                Some(&o) if o < tri_count && o != t && !touched[o] => o,
                 _ => continue,
             };
             let mut d = usize::MAX;
@@ -105,7 +129,10 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
             let before = q0.min(q_o);
             // (p,q,r)+(q,p,d) ⇒ (r,p,d)+(d,q,r)
             let after = shape(points, r, p, d).0.min(shape(points, d, q, r).0);
-            if after <= before * 2.0 || after <= 1e-6 {
+            if !after.is_finite() || after <= before * 2.0 || after <= 1e-6 {
+                continue;
+            }
+            if !preserves_patch([p, q, r, d].map(|i| q::pos(points, i))) {
                 continue;
             }
             new_edges.insert((r, d));
@@ -135,6 +162,82 @@ fn hypot3(x: f64, y: f64, z: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn table(positions: [q::P3; 4]) -> PointTable {
+        let mut points = PointTable::new();
+        for [x, y, z] in positions {
+            points.add(x, y, z, 0., 0., 1.);
+        }
+        points
+    }
+
+    const PATCH: [q::P3; 4] = [[-1., 0., 0.], [1., 0., 0.], [0., 1. / 1024., 0.], [0., -1., 0.]];
+    const TRIS: [usize; 6] = [0, 1, 2, 1, 0, 3];
+
+    #[test]
+    fn slanted_plane_flip_accepts_both_orientations() {
+        for axis in 0..3 {
+            // A slanted plane with exactly representable coordinates also flips.
+            let points = table(PATCH.map(|[x, y, _]| {
+                let p = [x, y, x + y];
+                [p[axis], p[(axis + 1) % 3], p[(axis + 2) % 3]]
+            }));
+            for tris in [TRIS, [1, 0, 2, 0, 1, 3]] {
+                let (out, flips) = flip_sliver_triangles(&points, &tris, 4);
+                assert_eq!(flips, 1);
+                assert!(out.chunks_exact(3).all(|t| t.contains(&2) && t.contains(&3)));
+            }
+        }
+    }
+
+    #[test]
+    fn nonplanar_and_nonfinite_patches_are_unchanged() {
+        for z in [1e-12, 0.1, f64::NAN, f64::INFINITY] {
+            let mut positions = PATCH;
+            positions[2][2] = z;
+            let (out, flips) = flip_sliver_triangles(&table(positions), &TRIS, 4);
+            assert_eq!((out, flips), (TRIS.to_vec(), 0), "z={z}");
+        }
+    }
+
+    #[test]
+    fn rounding_must_preserve_the_retriangulated_patch() {
+        // Exactly coplanar in f64; rounding only z breaks coplanarity in f32.
+        let positions = PATCH.map(|[x, y, _]| [x, y, 1048576. + x + y]);
+        let [p, q, r, d] = positions;
+        assert_eq!(orient3d(p, q, r, d), 0);
+        assert_ne!(orient3d(q::rounded(p), q::rounded(q), q::rounded(r), q::rounded(d)), 0);
+        let (out, flips) = flip_sliver_triangles(&table(positions), &TRIS, 4);
+        assert_eq!((out, flips), (TRIS.to_vec(), 0));
+
+        // Both old f32 triangles are valid, but the new r-p-d triangle collapses.
+        let c = 131072.;
+        let positions = [
+            [c - 3. / 1024., 0., 0.],
+            [c + 1., 0., 0.],
+            [c, 1. / 1024., 0.],
+            [c, -1., 0.],
+        ];
+        let [p, q, r, d] = positions.map(q::rounded).map(|p| [p[0], p[1]]);
+        assert_eq!(orient2d(p, q, r), 1);
+        assert_eq!(orient2d(q, p, d), 1);
+        assert_eq!(orient2d(r, p, d), 0);
+        let points = table(positions);
+        let (out, flips) = flip_sliver_triangles(&points, &TRIS, 4);
+        assert_eq!((out, flips), (TRIS.to_vec(), 0));
+    }
+
+    #[test]
+    fn ambiguous_edge_incidence_is_not_a_flip_neighbor() {
+        let points = table(PATCH);
+        for duplicate in [[0, 1, 2], [1, 0, 3]] {
+            let mut tris = TRIS.to_vec();
+            tris.extend(duplicate);
+            let (out, flips) = flip_sliver_triangles(&points, &tris, 4);
+            assert_eq!((out, flips), (tris, 0));
+        }
+    }
+
     #[test]
     fn crease_lock_prevents_an_otherwise_beneficial_flip() {
         let mut p = PointTable::new();

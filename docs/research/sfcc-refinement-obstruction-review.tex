@@ -1,0 +1,281 @@
+% Standalone review; generated output belongs outside the repository.
+% latexmk -pdf -interaction=nonstopmode -halt-on-error \
+%   -outdir=/tmp/sfcc-refinement-obstruction-review \
+%   docs/research/sfcc-refinement-obstruction-review.tex
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,array,enumitem,xurl}
+\usepackage[colorlinks=true,linkcolor=blue,urlcolor=blue]{hyperref}
+\setlist{itemsep=3pt,topsep=5pt}
+\setlength{\emergencystretch}{2em}
+\newcommand{\Q}{\mathbb Q}
+\newcommand{\R}{\mathbb R}
+\newcommand{\conv}{\operatorname{conv}}
+\title{SFCC Refinement Obstruction: Independent Review}
+\author{Galacticad research documentation}
+\date{October 13, 2026}
+\begin{document}
+\maketitle
+
+\paragraph{Verdict and scope.}
+Result B of \path{docs/research/sfcc-correctness-proofs.tex} is correct
+under its stated exact-geometric premises: the specified tetrahedron has
+no finite face-$2{:}1$ balanced dyadic octree whose leaves all satisfy the
+one-edge-or-one-corner rule. The $24$-neighbor obstruction is also correct
+for distinct straight edges with generic face crossings. Neither result
+proves that the finite-budget Rust exporter runs forever, nor certifies
+its output. This review does not validate Results A, C, or D or the
+curved-surface estimates. The pre-existing proof source was left unchanged.
+Source mapping below was inspected at repository commit
+\texttt{ce1c870}; this document and the proof are separate working-tree
+research artifacts.
+
+\section{Premises required by the obstruction}
+
+The mathematical input is a bounded, full-dimensional rational convex
+polyhedron, or a regularized Boolean combination of such polyhedra, with
+an embedded closed manifold boundary. Its complete geometric feature
+graph consists of genuine straight crease segments and their corners.
+The partition consists of axis-aligned dyadic cubes in one fixed root;
+leaf interiors are disjoint. Every surface-intersecting leaf must be
+accepted. Acceptance allows at most one feature edge, or exactly one
+corner and only edges incident to that corner. Positive-area face
+neighbors differ in depth by at most one. No unrestricted local
+arrangement or other fallback may replace this acceptance requirement.
+
+These are substantive premises. A missed feature, a deleted surface
+cell, a depth cap, or a fallback allowing several nonincident curves is
+not a proof of finite acceptance under the rule. Conversely, the rule
+does not prohibit meshing the solid by a different construction.
+
+\section{Independent check of the tetrahedron}
+
+Put $v=(1/3,1/3,1/3)$ and
+\[
+ w_1=(0,1,-61),\quad w_2=(1,0,-61),\quad
+ w_3=(-3,-2,-61),\qquad b_i=v+w_i/366.
+\]
+All vertices lie strictly inside $[0,1]^3$. The base height is $1/6$,
+and
+\[
+ \det(b_1-v,b_2-v,b_3-v)=\frac{1}{133956}\ne0.
+\]
+The solid is a nondegenerate convex tetrahedron; its boundary is an
+embedded sphere, and all six edges are genuine creases. No Boolean
+regularization subtlety is needed for this witness.
+
+\paragraph{The all-depth step.}
+Depths $0$ and $1$ cannot contain an accepted apex leaf because the
+apex cell also contains all three base corners. For an apex leaf at
+depth $d\ge2$, let $h=2^{-d}$, $z_0=h\lfloor 2^d/3\rfloor$, and
+$\Delta=1/3-z_0$. Since $2^d$ alternates between $1$ and $2$ modulo $3$,
+\[
+ \Delta/h\in\{1/3,2/3\}.
+\]
+This is an induction on a two-state recurrence, not an inference from
+checking finitely many depths. Each horizontal apex coordinate is at
+least $h/3$ from a side and $h/6$ from the face midline. The exit point
+of edge $i$ on the lower face is
+\[
+ p_i=\left(\frac13+\frac{\Delta w_{ix}}{61},
+            \frac13+\frac{\Delta w_{iy}}{61},z_0\right).
+\]
+Its maximum horizontal displacement is at most
+$3\Delta/61\le2h/61<h/6$. Thus all three segments first leave the apex
+cell through one and the same open quarter of the lower face.
+The crossings occur before the base endpoints because
+$z_0\ge1/4>1/6$.
+
+\paragraph{Why balancing forces a contradiction.}
+An adjacent leaf has side $2h$, $h$, or $h/2$. Its transverse boundary
+coordinates are multiples of $h/2$; none can cut the interior of the
+chosen quarter. Consequently all three exits enter a single neighboring
+leaf $N$. They enter its interior because the crossings are transverse
+and avoid its side boundaries. The apex is strictly above $N$.
+The only endpoint common to all three apex edges is $v$, so no other
+corner in $N$ can justify all three edges. The neighbor violates both
+alternatives of the acceptance rule. This proves impossibility for
+\emph{every finite adaptive partition}, not merely a uniform grid or
+one particular refinement traversal.
+
+\paragraph{Genericity is genuinely satisfied.}
+Each $w_i$ has three pairwise distinct residues modulo $3$. If two
+coordinates of $v+t w_i$ were dyadic, then
+\[
+ w_{ij}p_k-w_{ik}p_j=(w_{ij}-w_{ik})/3
+\]
+would be dyadic, although its reduced denominator is divisible by $3$.
+Thus no apex edge meets any dyadic grid edge at any depth. The base
+edges have nondyadic height and satisfy, respectively,
+\[
+ x+y=245/366,\quad x-y=-1/366,\quad x-2y=-121/366.
+\]
+None can have both horizontal coordinates dyadic. A parallel feature
+line is disjoint from the corresponding grid planes; all its actual
+face crossings are transverse. The tetrahedron obstruction does not
+rely on a vertex on the grid, tangency, or numerical roundoff.
+
+\paragraph{Quantifiers and translations.}
+The explicit theorem is $\exists P$ for the fixed root $[0,1]^3$.
+An axis-preserving affine map $p\mapsto o+Lp$ transfers it to any
+rational root $o+[0,L]^3$: $\forall Q\ \exists P_Q$ with the same
+obstruction. It does not prove that this particular tetrahedron fails
+for every translated grid, nor for a sequence of grids whose origins
+change with the requested maximum depth.
+
+\section{The 24-neighbor argument}
+
+An accepted cell containing a corner of degree at least $25$ contains
+no other edge endpoint. Each incident straight segment must therefore
+exit the cell. Generic crossings put each exit in a face interior.
+Face-$2{:}1$ balance permits at most four neighboring leaves per face,
+and hence at most $6\cdot4=24$ across the six faces. At least two
+distinct edges enter the same neighbor. Distinct straight segments with
+common endpoint $v$ cannot also share their other endpoint: they
+would be the same geometric segment. The neighbor does not contain
+$v$, so it cannot be accepted.
+
+The straightness and genericity assumptions are necessary to this
+proof as written: two curved arcs can share both endpoints, and a
+grid-edge exit requires different incidence accounting. Degree $24$
+is only a necessary counting bound, never a sufficiency result; the
+degree-three tetrahedron already refutes sufficiency. Unlike the
+tetrahedron's particular quarter argument, this counting obstruction
+applies to \emph{any} grid satisfying the generic-crossing premise.
+
+The checker includes an explicit rational witness for existence of
+such corners. With $K=6\cdot997\cdot16$ and $i=-12,\ldots,12$, take
+\[
+ b_i=v+(3i,3i^2+1,-997)/K.
+\]
+These $25$ points form a strictly convex polygon in $z=31/96$;
+its convex hull with $v$ is a manifold pyramid with $25$ apex edges.
+The points lie inside the root. Apex directions again have distinct
+residues modulo $3$. Every base edge joining indices $i,j$ satisfies
+\[
+ y-(i+j)x=(1-i-j)/3+(1-3ij)/K,
+\]
+with a nondyadic right-hand side. Together with the nondyadic base
+height, this excludes all dyadic grid-edge contacts. This finite exact
+witness verifies that the high-valence hypothesis is nonvacuous.
+
+\section{What transfers to the current Rust implementation}
+
+The following mapping uses function bodies, not documentation claims.
+Paths are relative to \path{gcad-wasm/kernel/src/}.
+
+\begin{description}[style=nextline,leftmargin=0pt,labelwidth=0pt,labelsep=0pt]
+\item[Feature rule: \path{sfcc/refine_criteria.rs}, \texttt{classify\_cell\_features}.]
+Two in-cell corners require a split. A corner accepts only incident
+curves with one boundary crossing. A cornerless cell accepts at most
+one curve with two crossings; per-face multiplicity, small tangent
+dot products, and pin visibility can require further splitting.
+The obstruction applies to this idealized rule if the complete graph
+is discovered and the geometric queries are correct. Actual queries
+are numerical and operate on compiled candidates. Acceptance caused
+by omission or tolerance merging does not evade the exact theorem;
+it violates a premise.
+
+\item[Balance: \path{sfcc/octree.rs}, \texttt{ripple\_balance}.]
+Face balancing is unconditional. The \texttt{enforce\_edge\_balance}
+switch adds edge-neighbor balancing; switching it off does not remove
+the obstruction's face-balance premise.
+
+\item[Finite budgets: \path{sfcc/octree.rs}, \texttt{apply\_decision}.]
+A requested split at \texttt{depth\_max} marks the cell degenerate and
+returns. The default maximum depth is $8$, and
+\path{tuning.rs} caps the lattice at $14$.
+The obstruction concerns reaching an all-accepted partition, not
+termination of this bounded procedure. The pipeline includes
+degenerate leaves in \texttt{unresolved\_cells}; validation cannot
+pass while that count is positive.
+
+\item[Grid: \path{sfcc/pipeline.rs}, \texttt{build\_pipeline\_context}.]
+The root is padded, then shifted on axis $i$ by
+$j_i=c_i L2^{-D}/4$, with
+$c_i\in\{\sqrt2-1,\sqrt3-1,\sqrt5-2\}$ and
+$D=\texttt{depth\_max}$. A run uses one fixed hierarchy, but changing
+$D$ changes its origin. The exact fixed-root example is therefore
+not an all-budget floating-point runtime fixture. The implemented
+values are f64 approximations, not irrational numbers. Generic grid
+placement alone does not solve the high-valence counting obstruction.
+
+\item[Corner exemption: \path{sfcc/pipeline.rs}, \texttt{decide\_cell}.]
+After feature classification succeeds, a corner cell bypasses both
+the sign-change gate and the smooth criteria. Consequently the
+proof's additional observation about a closed triangular face trace
+does not mean this implementation rejects every such apex cell by
+its sign pattern. Its neighbor can still violate the feature rule.
+
+\item[Fallback: \path{sfcc/cell_mesh.rs}, \texttt{mesh\_cells\_subset}.]
+Multiple corners, certain degenerate multi-curve cells, and curved
+corner arcs trigger \path{mesh_feature_graph}. This is a richer
+filling rule; it can produce geometry in an unresolved leaf. It does
+not clear the octree's degenerate tag. The graph routine also requires
+exactly one boundary loop and is not the unrestricted arrangement
+completion proposed in Result C. No success theorem for it follows
+from either obstruction.
+
+\item[Input class: \path{scene_bridge.rs}, \texttt{BridgeNode}.]
+The bridge supports boxes, spheres, cylinders, cones, profile
+extrusions, lofts, lathes, similarities, and Boolean/blend nodes. It
+has no arbitrary rational-halfspace polyhedron or tetrahedron leaf.
+In ideal real arithmetic, finitely many sufficiently large rotated
+boxes can realize the tetrahedron's supporting halfspaces near the
+root, hence their intersection can realize the tetrahedron. That
+representation uses numerical rotations in the actual bridge and
+does not preserve these exact rational coordinates automatically.
+The check supplied here tests the mathematical input class; it is
+not evidence that a particular JSON scene compiles its exact graph.
+\end{description}
+
+\paragraph{Angular rejection is a separate obstruction.}
+For a fixed straight edge direction $t$ crossing planes normal to
+$e_i$, the value $|t\cdot e_i|$ does not increase under subdivision.
+Thus a nonzero crossing rejected by a fixed positive
+\texttt{tangential\_epsilon} remains rejected on that family of
+faces. Exact transversality is not a uniform angle bound. This is
+separate from the balanced-neighbor argument; the tetrahedron's
+lower-face exits are almost perpendicular to that face.
+
+\section{Reproduction and interpretation of a passing check}
+
+Run from the repository root:
+\begin{verbatim}
+python3 scripts/check-sfcc-refinement-obstruction.py
+\end{verbatim}
+It uses only integer arithmetic and \texttt{fractions.Fraction}.
+It checks the tetrahedron volume, root inclusion, base planes,
+modulo-$3$ genericity invariants, the two-state recurrence, all exits
+and possible neighboring grid levels at depths $2$ through $199$,
+and that every apex-cell vertex is outside. It also checks strict
+convexity and genericity of the explicit $25$-gon pyramid.
+The $198$ depth instances check transcription. The recurrence,
+drift inequality, dyadic alignment, and pigeonhole arguments above
+provide the all-depth reasoning; a finite sweep alone would not.
+
+A successful exit means \emph{the obstruction's arithmetic was
+verified}, not that the exporter succeeds. Future runtime regressions
+must record returned geometry, unresolved counts, and recovery mode
+separately. A still-failing correctness test should retain its desired
+correctness assertion and an explicit known-failure/ignored marker
+with its counterexample and reason, rather than invert the assertion
+to accept wrong geometry silently. A test requiring unresolved status
+is appropriate when it explicitly checks honest budget reporting.
+An impossible all-accepted-partition requirement cannot become a
+passing regression until at least one of the obstruction's premises
+is deliberately changed.
+
+\paragraph{Next theoretical decision.}
+Keep the obstruction as a design constraint. A completion must relax
+the one-feature restriction, face balance at protected cells, the
+fixed-grid partition model, or the requirement that refinement alone
+make every leaf simple. Merely increasing depth, improving numerical
+precision, or adding a genericity shift is not a universal termination
+argument for the stated rule.
+
+\end{document}

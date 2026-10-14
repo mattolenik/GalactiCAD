@@ -290,6 +290,7 @@ fn make_leaf(shape: Shape, sim: Similarity, pos: [f64; 3]) -> CsgNode {
 
 /// Build operands in their ordinary orientation. Only subtraction complements
 /// its completed RHS; rewriting during traversal would apply De Morgan twice.
+/// Blend radii use the same accumulated world-space scale as their leaf fields.
 fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<CsgNode> {
     match node {
         // --- primitives ------------------------------------------------------
@@ -385,7 +386,7 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
                 Some(CsgNode::Blend {
                     kind: sdf::BlendKind::Smin,
                     mode: m,
-                    r: *radius,
+                    r: *radius * sim.s,
                     n,
                     children: kids,
                 })
@@ -420,7 +421,7 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
                 Some(CsgNode::Blend {
                     kind: sdf::BlendKind::Smax,
                     mode: m,
-                    r: *radius,
+                    r: *radius * sim.s,
                     n,
                     children: vec![l, r],
                 })
@@ -447,7 +448,7 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
                 Some(CsgNode::Blend {
                     kind: sdf::BlendKind::Smax,
                     mode: m,
-                    r: *radius,
+                    r: *radius * sim.s,
                     n,
                     children: vec![l, r],
                 })

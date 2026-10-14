@@ -148,7 +148,7 @@ impl Leaf {
             }
             Shape::Loft { profs, winds, h } => {
                 // Prismatic lofts (all profiles identical) are 1-Lipschitz.
-                let prismatic = profs.iter().all(|p| p.iter().zip(profs[0].iter()).all(|(a, b)| a == b));
+                let prismatic = profs.iter().all(|p| p == &profs[0]);
                 if prismatic {
                     return None;
                 }
@@ -931,9 +931,14 @@ impl<'a> Pruned<'a> {
                     .iter()
                     .enumerate()
                     .filter(|(j, _)| {
-                        // A child outside the smallest two can never enter the
-                        // nearest-pair fold (≥2 siblings strictly dominate it).
-                        iv.iter().enumerate().filter(|(k, &(_, hk))| *k != *j && hk < iv[*j].0).count() < 2
+                        // Smin selects the two smallest fields; Smax selects
+                        // the two largest. Only drop a child dominated by two siblings.
+                        iv.iter().enumerate().filter(|(k, &(lo, hi))| {
+                            *k != *j && match kind {
+                                BlendKind::Smin => hi < iv[*j].0,
+                                BlendKind::Smax => lo > iv[*j].1,
+                            }
+                        }).count() < 2
                     })
                     .map(|(_, x)| x.prune_to_ball(c, r))
                     .collect();

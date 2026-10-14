@@ -18,6 +18,8 @@ test("SFCC WASM reports performed and skipped audits distinctly", () => {
             assert.equal(validation.status, checkVertexLinks ? "passed" : "incomplete")
             assert.equal(validation.vertexLinks, checkVertexLinks ? "passed" : "notChecked")
             assert.equal(validation.vertexResiduals, "passed")
+            assert.equal(validation.triangleNondegeneracy, "passed")
+            assert.equal(validation.invalidTriangles, 0)
         } finally { result.free() }
     }
 })
@@ -51,5 +53,40 @@ test("SFCC WASM workers retain serial diagnostics and support reversed completio
         assert.deepEqual(merged.verts, serial.verts)
         assert.deepEqual(merged.tris, serial.tris)
         assert.equal(merged.ok, serial.ok)
+    } finally { serial.free(); merged.free() }
+})
+
+test("SFCC WASM rejects float32-collapsed triangles in serial and worker output", () => {
+    const sphere = JSON.stringify({ kind: "sphere", pos: [1000, 1000, 1000], r: 1 })
+    const cube = [999, 999, 999, 2] as const
+    const leaves = sfcc_worker_prepare(sphere, "{}", ...cube)
+    const partials = [1, 0].map(i => sfcc_worker_mesh_partition(sphere, "{}", ...cube, leaves, i, 2))
+    const serial = export_sfcc(sphere, "{}", ...cube)
+    const merged = sfcc_worker_merge(sphere, "{}", ...cube, partials)
+    try {
+        for (const result of [serial, merged]) {
+            const verts = result.verts
+            const tris = result.tris
+            let collapsed = 0
+            for (let i = 0; i < tris.length; i += 3) {
+                const a = tris[i] * 8
+                const b = tris[i + 1] * 8
+                const c = tris[i + 2] * 8
+                const u = [0, 1, 2].map(j => verts[b + j] - verts[a + j])
+                const v = [0, 1, 2].map(j => verts[c + j] - verts[a + j])
+                if (u[1] * v[2] === u[2] * v[1] && u[2] * v[0] === u[0] * v[2] && u[0] * v[1] === u[1] * v[0]) collapsed++
+            }
+            assert.ok(collapsed > 0, "exercise actual output collapse")
+            const { validation } = JSON.parse(result.stats_json)
+            assert.equal(validation.edgeIncidence, "passed")
+            assert.equal(validation.vertexLinks, "passed")
+            assert.equal(validation.vertexResiduals, "passed")
+            assert.equal(validation.triangleNondegeneracy, "failed")
+            assert.equal(validation.invalidTriangles, collapsed)
+            assert.equal(validation.status, "failed")
+            assert.equal(result.ok, false)
+        }
+        assert.equal(JSON.parse(merged.stats_json).serialRecovery, false)
+        assert.deepEqual(JSON.parse(merged.stats_json).validation, JSON.parse(serial.stats_json).validation)
     } finally { serial.free(); merged.free() }
 })

@@ -113,11 +113,14 @@ pub struct SfccValidation {
     pub vertex_links: AuditStatus,
     pub face_segments: AuditStatus,
     pub vertex_residuals: AuditStatus,
+    /// Finite, noncollinear emitted triangles; does not check embedding or coverage.
+    pub triangle_non_degeneracy: AuditStatus,
     pub unresolved_cells: usize,
     pub feature_fallback_cells: usize,
     pub numerical: NumericalFailures,
     pub off_surface_vertices: usize,
     pub max_vertex_residual: f64,
+    pub invalid_triangles: usize,
 }
 impl SfccValidation {
     pub fn with_topology(m: &ManifoldReport, check_vertex_links: bool) -> Self {
@@ -149,8 +152,31 @@ impl SfccValidation {
         }
         self.vertex_residuals = AuditStatus::from_passed(self.off_surface_vertices == 0);
     }
+    /// Check the f32 positions actually shipped, using exact projected orientation
+    /// signs so a small valid triangle is not rejected by an arbitrary area epsilon.
+    pub fn check_triangles(&mut self, verts: &[f32], tris: &[u32]) {
+        self.invalid_triangles = usize::from(verts.len() % 8 != 0 || tris.len() % 3 != 0);
+        for t in tris.chunks_exact(3) {
+            let mut p = [[0.; 3]; 3];
+            let finite = t.iter().enumerate().all(|(i, &id)| {
+                let id = id as usize;
+                if id >= verts.len() / 8 {
+                    return false;
+                }
+                p[i] = std::array::from_fn(|j| verts[id * 8 + j] as f64);
+                p[i].iter().all(|v| v.is_finite())
+            });
+            if !finite || [(0, 1), (1, 2), (2, 0)].iter().all(|&(x, y)| {
+                let [a, b, c] = p.map(|v| [v[x], v[y]]);
+                super::predicates::orient2d(a, b, c) == 0
+            }) {
+                self.invalid_triangles += 1;
+            }
+        }
+        self.triangle_non_degeneracy = AuditStatus::from_passed(self.invalid_triangles == 0);
+    }
     pub fn status(&self) -> &'static str {
-        let checks = [self.edge_incidence, self.vertex_links, self.face_segments, self.vertex_residuals];
+        let checks = [self.edge_incidence, self.vertex_links, self.face_segments, self.vertex_residuals, self.triangle_non_degeneracy];
         if checks.contains(&AuditStatus::Failed) || self.quality.as_ref().is_some_and(|q| !q.passed()) {
             "failed"
         } else if checks.contains(&AuditStatus::NotChecked)
@@ -173,7 +199,7 @@ impl SfccValidation {
         format!(
             concat!(
                 "{{\"quality\":{},\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
-                "\"faceSegments\":\"{}\",\"vertexResiduals\":\"{}\",\"unresolvedCells\":{},",
+                "\"faceSegments\":\"{}\",\"vertexResiduals\":\"{}\",\"triangleNondegeneracy\":\"{}\",\"invalidTriangles\":{},\"unresolvedCells\":{},",
                 "\"featureFallbackCells\":{},\"curveProjectionFailures\":{},\"faceProjectionFailures\":{},",
                 "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{},",
                 "\"featureTrace\":{{\"pairsConsidered\":{},\"seedsFound\":{},\"curvesTraced\":{},",
@@ -187,6 +213,8 @@ impl SfccValidation {
             self.vertex_links.as_str(),
             self.face_segments.as_str(),
             self.vertex_residuals.as_str(),
+            self.triangle_non_degeneracy.as_str(),
+            self.invalid_triangles,
             self.unresolved_cells,
             self.feature_fallback_cells,
             self.numerical.curve_projection,
@@ -215,6 +243,7 @@ mod tests {
             vertex_links: AuditStatus::Passed,
             face_segments: AuditStatus::Passed,
             vertex_residuals: AuditStatus::Passed,
+            triangle_non_degeneracy: AuditStatus::Passed,
             ..Default::default()
         }
     }
@@ -223,6 +252,9 @@ mod tests {
         assert!(passed().ok());
         let mut v = passed();
         v.vertex_links = AuditStatus::NotChecked;
+        assert_eq!(v.status(), "incomplete");
+        v = passed();
+        v.triangle_non_degeneracy = AuditStatus::NotChecked;
         assert_eq!(v.status(), "incomplete");
         v = passed();
         v.unresolved_cells = 1;
@@ -261,5 +293,38 @@ mod tests {
         v.check_vertices(&tree, &verts, 1e-6);
         assert!(!v.ok());
         assert!(!v.to_json().contains("NaN"));
+    }
+
+    #[test]
+    fn triangle_audit_rejects_invalid_geometry_without_an_area_threshold() {
+        let mut audit = passed();
+        let mut verts = [0.; 24];
+        // An arbitrarily small noncollinear triangle is still valid.
+        verts[8] = f32::from_bits(1);
+        verts[17] = f32::from_bits(1);
+        audit.check_triangles(&verts, &[0, 1, 2]);
+        assert!(audit.ok());
+        assert_eq!(audit.invalid_triangles, 0);
+
+        // Distinct indices can occupy the same line or the same point.
+        verts[16] = verts[8] * 2.;
+        verts[17] = 0.;
+        audit.check_triangles(&verts, &[0, 1, 2]);
+        assert_eq!(audit.invalid_triangles, 1);
+        assert_eq!(audit.status(), "failed");
+        audit.check_triangles(&verts, &[0, 1, 1]);
+        assert_eq!(audit.invalid_triangles, 1);
+
+        verts[17] = f32::NAN;
+        audit.check_triangles(&verts, &[0, 1, 2]);
+        assert_eq!(audit.invalid_triangles, 1);
+        assert!(!audit.to_json().contains("NaN"));
+        audit.check_triangles(&verts, &[0, 1, 3]);
+        assert_eq!(audit.invalid_triangles, 1);
+        audit.check_triangles(&verts, &[0, 1]);
+        assert_eq!(audit.status(), "failed");
+
+        audit.check_triangles(&[], &[]);
+        assert!(audit.ok(), "a valid empty solid needs no triangles");
     }
 }

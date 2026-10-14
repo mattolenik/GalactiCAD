@@ -1,0 +1,1530 @@
+% Standalone source; no external bibliography or figures are required.
+% Build without writing generated files into the repository:
+% mkdir -p /tmp/sfcc-correctness-proofs
+% latexmk -pdf -interaction=nonstopmode -halt-on-error \
+%   -outdir=/tmp/sfcc-correctness-proofs \
+%   docs/research/sfcc-correctness-proofs.tex
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,array}
+\usepackage{enumitem}
+\usepackage{xurl}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\hypersetup{pdftitle={SFCC correctness proofs: polyhedral completions and obstructions},
+  pdfsubject={Exact rational polyhedral contouring; theory, not implementation certification}}
+\setlist{itemsep=3pt,topsep=5pt}
+\setlength{\emergencystretch}{2em}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{algorithm}[theorem]{Algorithm}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newcommand{\R}{\mathbb R}
+\newcommand{\Q}{\mathbb Q}
+\newcommand{\Z}{\mathbb Z}
+\newcommand{\Fq}{\mathbb F_q}
+\newcommand{\cl}{\operatorname{cl}}
+\newcommand{\intr}{\operatorname{int}}
+\newcommand{\relint}{\operatorname{relint}}
+\newcommand{\reg}{\operatorname{reg}}
+\newcommand{\dist}{\operatorname{dist}}
+\newcommand{\diam}{\operatorname{diam}}
+\newcommand{\conv}{\operatorname{conv}}
+\newcommand{\aff}{\operatorname{aff}}
+\newcommand{\supp}{\operatorname{supp}}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\abs}[1]{\left\lvert #1\right\rvert}
+\newcommand{\Binf}[2]{B_\infty(#1,#2)}
+\newcommand{\Ninf}[2]{N_\infty(#1,#2)}
+\newcommand{\symdiff}{\mathbin{\triangle}}
+
+\title{SFCC Correctness Proofs:\\
+  Polyhedral Completions, Refinement Obstructions,\\
+  and the Remaining Curved-Surface Obligations}
+\author{Galacticad research documentation}
+\date{October 13, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Stratified Feature-Conforming Contouring (SFCC) proposes to compile surface
+strata, feature curves, and corners; refine an octree; compute each shared face
+trace once; and fill smooth, edge, and corner cells. Those design ingredients
+alone do not prove feature completeness, termination, manifoldness, or an
+intersection-free embedding.
+
+This document gives four separate results for exact rational polyhedra.
+First, a support-coordinate certificate makes the simple-cell construction
+terminate for regularized Boolean combinations of axis-aligned boxes.
+Second, an explicit rational tetrahedron prevents termination of the original
+one-feature-or-one-corner rule on a fixed face-balanced dyadic octree.
+Third, a finite arrangement completion gives an exact, unrestricted fallback.
+Fourth, the main theorem proves termination and exactness for a
+\emph{protected-neighborhood completion}: corner and edge volume cells are
+frozen, arbitrary depth differences are allowed at their boundaries, complete
+shared face graphs are constructed exactly, and the remaining cells are
+certified planar. The resulting geometric simplicial complex equals the solid
+boundary as a set and preserves every true corner and straight crease.
+
+These are constructive mathematical specifications, not certificates for the
+current exporter. Curved carriers, floating-point output, triangle quality, and
+practical complexity are outside the proved theorem. Local residual and
+conditioning estimates are supplied to state some of the obligations of a
+future curved extension precisely.
+\end{abstract}
+
+\paragraph{Status and reading guide.}
+The historical
+\href{http://md.localhost/Users/matt/gcad/galacticad/docs/research/sfcc-algorithm-design.md}{SFCC design}
+and the
+\href{http://md.localhost/Users/matt/gcad/galacticad/docs/sfcc-meshing-algorithm.md}{implementation description}
+provide project context, not premises of these proofs. In particular, the
+protected-cell theorem changes the stopping and interface rules. It must not be
+quoted as a proof that the original rules terminate, nor as a proof about the
+Rust implementation. All results below use exact predicates and exact rational
+constructions. There is no implementation change in this document.
+
+\tableofcontents
+
+\section{Target, inputs, and meanings of correctness}
+\label{sec:target}
+
+\subsection{Regularized solids, not every zero of a field}
+
+For a subset $A\subseteq\R^3$, define
+\[
+  \reg(A)=\cl(\intr A).
+\]
+A solid is \emph{regular closed} when $A=\reg(A)$. The three operations in
+this document are
+\[
+  A\mathbin{\cup^*}B=\reg(A\cup B),\qquad
+  A\mathbin{\cap^*}B=\reg(A\cap B),\qquad
+  A\mathbin{\setminus^*}B=\reg(A\setminus B).
+\]
+They are evaluated recursively in the supplied finite Boolean expression.
+This is the regularized-solid convention described, for example, in the CGAL
+Nef-polyhedra manual~\cite{cgal-nef}. Regularization removes isolated
+lower-dimensional material; it does \emph{not} make every result manifold.
+
+Our geometric target is
+\[
+  M=\partial S,
+\]
+where $S$ is that expression's regularized solid. A numerical field $f$ used
+to represent the expression need not satisfy $f^{-1}(0)=M$.
+
+Two elementary examples explain why this distinction is necessary.
+If $d_A$ is negative inside $A$, the usual difference field for $A\setminus A$
+is $\max(d_A,-d_A)=|d_A|$. It vanishes on $\partial A$, although
+$A\setminus^* A=\varnothing$. Likewise, let two boxes share a full face and
+occupy opposite sides of it. The minimum of their distance fields vanishes
+on the shared face, while its relative interior lies inside the union solid.
+Extracting all field zeros would retain a ghost sheet in either example.
+
+\subsection{Standing assumptions}
+
+Except in the orthogonal specialization, input primitives are bounded,
+full-dimensional convex polyhedra given by finite rational linear
+inequalities. Empty or lower-dimensional primitives can first be regularized
+to the empty set. The expression uses only the three operations above.
+There are no blends, offsets, transcendental surfaces, or unbounded root
+complements. Consequently $S$ is bounded and regular closed.
+
+We assume that nonempty $M$ is an embedded, closed topological $2$-manifold.
+For a finite embedded polyhedral complex, this condition is decidable by the
+edge-incidence and vertex-link checks described in Section~\ref{sec:features}.
+Thus it can be an exact input-validation step, not an untestable promise.
+The empty solid has the empty mesh as its output. Different connected
+components, cavities, and arbitrary genus are allowed.
+
+A root cube $Q=o+[0,L]^3$, with rational origin and positive rational side,
+contains $S$ in its interior. In the generic-grid constructions, $L$ is a
+positive integral power of two. A dyadic depth-$d$ cell has side
+$h_d=L2^{-d}$. Cells are treated as \emph{closed} cubes; their interiors are
+disjoint, and contacts on faces, edges, and vertices matter.
+The notation $\Binf{p}{r}$ denotes the open ball for the maximum norm,
+and $\Ninf{A}{r}=\{x:\dist_\infty(x,A)<r\}$ denotes its open metric
+neighborhood about a set. A ``surface cell'' means a cube $C$ with
+$M\cap C\ne\varnothing$, not merely a nonempty volume cube.
+
+\subsection{What the output theorem asserts}
+
+The output $T$ is a finite \emph{geometric simplicial complex}: its triangles
+are nondegenerate, and two simplices intersect only in a common simplex or
+not at all. Its realization, the union of all triangles, is $|T|$.
+The exact theorems assert
+\[
+  |T|=M. \tag{1}\label{eq:exact}
+\]
+In particular they imply zero Hausdorff error, the correct topology, a
+closed embedded $2$-manifold, and the identity ambient isotopy. Every true
+corner is a mesh vertex, and every maximal straight crease is a union of
+mesh edges with exactly its original geometric support. Artificial planar
+and collinear subdivisions may remain in the mesh.
+
+Equation~\eqref{eq:exact} is stronger than putting mesh vertices on the
+surface. For a genuinely curved feature, finitely many straight mesh edges
+cannot equal the feature as a set unless that feature is already piecewise
+linear. A curved extension must specify approximation error and topology;
+``exact feature vertices'' alone does not give exact curved features.
+
+\section{Proof obligations that face sharing does not discharge}
+\label{sec:obligations}
+
+The following obligations are logically separate.
+\begin{enumerate}[label=\textbf{O\arabic*.}]
+\item \textbf{Semantics and completeness.} Recover the exposed boundary
+  of the regularized solid and all of its genuine features. Candidate
+  carrier intersections or finite sampled residuals do not prove this.
+\item \textbf{Local geometry and topology.} Prove what $M\cap C$ is in
+  every accepted cell, including components invisible at cube vertices.
+\item \textbf{Termination.} Prove that the prescribed refinement and
+  balancing rules reach accepted cells after finitely many steps.
+\item \textbf{Complete interfaces.} Represent all of $M\cap\partial C$
+  compatibly across adjacent cells, including pins and all subdivisions.
+\item \textbf{Embedded filling.} Fill the specified patch without folds,
+  crossings, omissions, or extraneous triangles, and respect its features.
+\item \textbf{Assembly.} Show that the local triangulations fit as a
+  geometric complex with the target surface and its orientation.
+\end{enumerate}
+
+Computing a face trace once is an effective way of enforcing identical
+interface data; it does not prove the other obligations. Even ``every mesh
+edge has two incident triangles'' allows two closed triangulated surfaces
+to meet at a vertex, where the link has two cycles. Abstract manifoldness
+also does not rule out intersecting geometric triangles. Finally, filling
+an arbitrary spatial boundary loop by a fan can cross itself or leave the
+intended surface. We will justify every fan by an exact plane or cone
+description, rather than by its combinatorial form.
+
+For approximate surfaces a useful gluing premise would be local
+homeomorphisms that agree on their shared boundaries, together with a
+separate embedding argument; an ambient isotopy needs still more control.
+The polyhedral proofs avoid that gap by proving actual set equality in
+every leaf and then checking simplex intersections.
+
+\section{Exact S1: a finite complete boundary and feature compiler}
+\label{sec:s1}
+
+For S1 choose any auxiliary rational cube $Q_{\mathrm{aux}}$ strictly
+enclosing the input primitives. It need not be the final octree root $Q$:
+the latter is chosen after the genuine features have been compiled.
+Changing the enclosing cube or its artificial clipping subdivisions
+does not change the extracted solid boundary or its genuine features.
+
+Let $\mathcal H$ be the finite set of distinct supporting planes of all
+input inequalities, together with the auxiliary cube planes for clipping.
+Write each plane as $a\cdot x=b$, with integer $a\ne0$ and integer $b$,
+after clearing denominators. Coincident planes are identified.
+
+\subsection{Chambers and occupancy}
+
+The arrangement of $\mathcal H$ in $Q_{\mathrm{aux}}$ is a finite rational polytopal
+complex. Its open $3$-dimensional chambers have constant signs for all
+source inequalities. Each nonempty chamber has a rational interior witness.
+Evaluating the Boolean expression at that witness labels the chamber
+occupied or empty. On these witnesses ordinary Boolean evaluation and
+recursive regularized evaluation agree, because no supporting plane is
+encountered.
+
+This construction is effective without an oracle. For example, enumerate
+sign vectors, intersect the corresponding halfspaces with $Q_{\mathrm{aux}}$, and test
+strict feasibility by maximizing a rational slack $\epsilon$ subject to
+every chamber and auxiliary cube inequality having slack at least $\epsilon$.
+A positive optimum certifies a full-dimensional chamber and yields a
+rational witness. Arrangement faces and all incidences are obtained by
+finite linear equalities and inequalities. This deliberately permits an
+expensive finite enumeration; it is an existence and decidability argument.
+
+Select each closed arrangement facet separating two chambers with
+opposite occupancy labels. No auxiliary cube facet is selected, since
+$S\subset\intr Q_{\mathrm{aux}}$.
+Let $K$ be their union, with all their induced lower-dimensional faces.
+
+\begin{theorem}[Complete exposed-boundary extraction]
+\label{thm:arrangement-boundary}
+The selected boundary complex satisfies $K=\partial S$.
+\end{theorem}
+
+\begin{proof}
+Away from the union of source planes, primitive truth values are locally
+constant. Induction on the Boolean expression shows the same for its
+regularized evaluation. Regularization cannot change a truth value on an
+open ball where that value is constant. Because the final set is regular
+closed, it is precisely the closure of the union of its occupied chambers.
+Indeed, the complement of finitely many planes is dense in every open
+subset of $\intr S$.
+
+In the relative interior of a selected facet there is an occupied chamber
+on one side and an empty chamber on the other. Every neighborhood meets
+both $S$ and its complement, so that facet interior is in $\partial S$;
+closedness of the boundary includes the whole facet. Thus $K\subseteq M$.
+
+Conversely, fix $x\in M$. A sufficiently small ball about $x$ meets no
+arrangement plane that does not contain $x$. Its full-dimensional sectors
+are therefore cones of the local arrangement. At least one sector is
+occupied and at least one is empty: regular closedness supplies interior
+solid points near $x$, while the boundary condition supplies exterior
+points. The adjacency graph of these sectors across codimension-one faces
+is connected. To see this, join interior points by a slightly perturbed
+path in the ball that avoids the finite codimension-two arrangement
+skeleton; it crosses only sector facets. A path from an occupied to an
+empty sector must cross an unlike-label facet. The closure of this local
+facet contains $x$, since the local arrangement is central at $x$.
+It is part of a selected global facet. Hence $x\in K$.
+\end{proof}
+
+\subsection{Genuine strata, edges, and corners}
+\label{sec:features}
+
+Use the exact complex to remove artificial subdivisions. Define $G$ as
+the set where the boundary fails to be locally an open subset of one
+affine plane. It is a finite union of straight segments and their endpoints.
+The closed planar strata $F_1,\ldots,F_N$ are the closures of the maximal
+connected regular planar patches of $M\setminus G$. They are finite unions
+of rational polygons, on carrier planes $P_1,\ldots,P_N$, and satisfy
+\[
+  M=\bigcup_i F_i,\qquad
+  F_i\cap F_j\subseteq G\ (i\ne j),\qquad
+  \partial_{P_i}F_i\subseteq G. \tag{2}\label{eq:strata}
+\]
+Here $\partial_{P_i}$ is the boundary within the carrier plane. Coplanar
+facets are merged across artificial edges where the surface has a planar
+germ. Merely touching at a true corner is not a reason to identify two
+different regular patches.
+
+Subdivide $G$ at every change in direction or incident face germs, then
+merge collinear degree-two subdivisions with unchanged flanking germs.
+Write $E$ for the resulting maximal closed straight edges and $V$ for
+their endpoints, including all true geometric corners. At every point
+of $\relint e$, for $e\in E$, exactly two noncoplanar planar half-sheets
+meet in a fixed wedge. The two incident closed strata are denoted
+$F_{e,1}$ and $F_{e,2}$. An edge endpoint cannot be removed merely because
+two sampled normals are close: removal requires exact equality of the
+local geometry.
+
+All these decisions are finite arrangement and incidence decisions.
+Locally, inspect the cyclic occupied/empty sectors and the selected planar
+facets. This also checks the manifold premise: first triangulate the
+embedded boundary arrangement conformingly; every mesh edge must have
+exactly two incident triangles, and every vertex link must be a single
+cycle. Since the arrangement already supplies a geometric complex,
+there is no additional geometric self-intersection assumption hidden in
+those combinatorial tests. Regularized Boolean solids can fail them;
+for example, two boxes joined only along an edge are outside the theorem.
+
+\begin{remark}[What exact S1 replaces]
+This S1 uses exposed arrangement facets, not all pairwise carrier
+intersections. It consequently includes Boolean-created seams and corners,
+removes hidden carrier intersections and ghost sheets, and merges
+geometrically artificial subdivisions. It is an exact polyhedral boundary
+compiler. No claim is made that a sampled feature tracer implements it.
+\end{remark}
+
+\section{Result A: orthogonal-box completion with simple cells}
+\label{sec:orthogonal}
+
+Suppose now that every input primitive is an axis-aligned rational box.
+Let $X,Y,Z$ be the finite sets of its support coordinates. These partition
+the root into rectangular chambers. Rational interior witnesses and exact
+Boolean occupancy select the exposed rectangles just as in
+Theorem~\ref{thm:arrangement-boundary}. Their closures are the whole of $M$.
+
+\begin{theorem}[Orthogonal simple-cell theorem]
+\label{thm:orthogonal}
+For a regularized Boolean combination of bounded rational axis-aligned
+boxes with embedded closed manifold boundary, there is an effective
+rational dyadic root grid and a finite, optionally $2{:}1$ balanced octree
+such that every leaf with nonempty surface intersection contains exactly
+a smooth disk, an edge disk, or a one-corner disk. Complete shared face
+arcs and the exact fillings below
+produce a geometric simplicial complex satisfying~\eqref{eq:exact}.
+The sufficient stopping certificate is: \emph{at most one support plane
+per coordinate axis intersects the cell}. This is a new exact certificate,
+not a consequence of corner signs or sampled normal tests.
+\end{theorem}
+
+\subsection{An all-depth grid and a finite stopping depth}
+
+Choose an odd prime $q$ dividing none of the denominators of the input
+coordinates in lowest terms. Choose integers $b_i$ below the geometry,
+put $o_i=b_i+1/q$, and take a sufficiently large power-of-two side $L$.
+For any support coordinate $a=p/s$ with $q\nmid s$,
+\[
+  \frac{a-o_i}{L}
+  =\frac{pq-b_i sq-s}{sqL}.
+\]
+Its numerator is $-s$ modulo $q$, hence its reduced denominator still
+contains the odd factor $q$. It cannot be dyadic. Thus no support plane
+coincides with any grid plane at any depth.
+
+Let $\delta$ be the minimum positive gap between two distinct support
+coordinates on the same axis, omitting axes with fewer than two. Choose
+finite $D$ with
+\[
+  L2^{-D}<\delta. \tag{3}\label{eq:orth-depth}
+\]
+If there are no such gaps, any depth with the stated one-plane certificate
+suffices. At depth $D$ every closed cell meets at most one support plane
+per axis. This certificate is inherited by children. Refine cells until
+it holds and optionally add face or edge $2{:}1$ balancing. Balancing
+cannot create depth $D+1$: a split forced solely by imbalance is applied
+to a coarser neighbor of a finer existing cell, and does not exceed that
+cell's depth. Induction bounds every created depth by $D$.
+
+\subsection{Every accepted cell is a truncated cone}
+
+Fix an accepted cell $C$. Define $v\in\intr C$ by using the unique support
+coordinate on each axis that has a cut and the cell midpoint on each
+missing axis. All primitive signs in $C$ depend only on the signs of
+$x_i-v_i$ for the present cuts. Missing axes do not change any label.
+Therefore the occupied set, and hence its boundary, are invariant along
+rays from $v$ until those rays exit $C$. There is an exact polyhedral
+cone $\mathcal K_v$ such that
+\[
+  M\cap C=\mathcal K_v\cap C.
+\]
+If this set is nonempty, $v\in M$. The link of the boundary cone on a
+small sphere around $v$ is a single simple cycle: at each link point the
+manifold premise gives degree two, and multiple link cycles would make
+the cone tip a nonmanifold point. Radial projection from $v$ to the cube
+boundary is a homeomorphism on directions. Thus $M\cap C$ is a disk,
+with boundary $M\cap\partial C$.
+
+\subsection{The link gives the three cell classes without a lookup table}
+
+Extend the sign description to eight octants by duplicating labels on
+missing axes. The coordinate great circles divide a sphere into eight
+triangles. Their one-skeleton is the octahedron graph, with vertices
+$\pm e_1,\pm e_2,\pm e_3$. The link consists of edges separating octants
+with opposite labels.
+
+At any octahedron vertex, four octants occur cyclically. Alternating
+labels would produce four incident link edges, corresponding to a
+nonmanifold coordinate ray. All used vertices therefore have degree
+two, and the manifold condition at $v$ leaves one cycle. Along a link
+edge the surface lies in one coordinate plane. A \emph{turn} at a link
+vertex means that the two incident link edges use different coordinate
+great circles; exactly these turns represent genuine sharp rays.
+
+If there are no turns, the cycle is one coordinate great circle and
+the patch is planar. If all turns are on one coordinate axis, they are
+the two antipodal vertices of that axis: a change of great circle can
+return only at their other intersection. The patch has one continuing
+straight crease. In all other cases sharp rays use at least two axes,
+and $v$ is a genuine corner incident to all of them. This proves the
+three classes directly; it assumes no maximum valence beyond what the
+orthogonal geometry itself permits.
+
+For an independent finite cross-check, enumeration of the $2^8$ occupancy
+masks gives the following counts. This table is not a premise of the proof.
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Local configuration & Number of masks\\
+\midrule
+No boundary & 2\\
+Plane & 6\\
+Continuing edge & 24\\
+Corner of degree $3$ & 64\\
+Corner of degree $4$ & 24\\
+Corner of degree $6$ & 8\\
+At least one nonmanifold coordinate ray & 120\\
+Degree-two rays but disconnected vertex link & 8\\
+\midrule
+Total & 256\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Faces, witnesses, and exact filling}
+
+Each cell face has at most two perpendicular coordinate cuts. Its sectors
+have a cube-corner witness each. With two cuts, the only ambiguous
+checkerboard labeling would give a nonmanifold ray perpendicular to the
+face; it is excluded by the manifold premise. The face boundary trace
+is consequently empty, a straight arc, or one L-shaped arc. With fewer
+cuts the same conclusion is immediate. Every three-dimensional sign
+sector has a cube-corner witness as well. There are no hidden sheets or
+closed face loops under this particular support-coordinate certificate.
+
+Compute each shared face arc once, including crease pins and all
+subdivisions required by neighboring leaves. A full-depth-$D$ interface
+subdivision is a finite, simple conforming choice, although much less
+subdivision normally suffices.
+
+For a corner cell, cone each consecutive boundary segment $[a,b]$ to
+$v$. The segment lies on a single actual support plane through $v$,
+and every radial segment $[v,p]$, $p\in[a,b]$, belongs to the exact
+surface. Thus the triangle $[v,a,b]$ lies in $M$. Each ray from an
+interior point of a convex cube has a unique exit, so these triangles
+cover the patch and have disjoint relative interiors. Smooth and edge
+cells can use the same argument or planar fans on their one or two
+convex polygonal pieces. Shared subdivisions are retained.
+
+These local triangulations agree across faces. The precise assembly
+argument in Section~\ref{sec:assembly} applies verbatim and proves
+Theorem~\ref{thm:orthogonal}.
+
+\section{Result B: fixed-grid balanced refinement need not terminate}
+\label{sec:obstruction}
+
+\subsection{The rule being refuted}
+
+Consider the following rules on a fixed dyadic root:
+\begin{enumerate}[label=(\roman*)]
+\item Each accepted leaf meets at most one genuine feature edge, or
+  contains exactly one corner and only feature edges incident to it.
+\item Leaves sharing positive face area differ in depth by at most one
+  (face $2{:}1$ balance).
+\item Refinement alone is used to make every leaf accepted.
+\end{enumerate}
+Feature contacts below are transverse, so interpreting ``meets'' via
+interior crossings instead of closed-cube contacts does not remove the
+obstruction. The claim refuted is universal finite acceptance on the
+specified grid, not the possibility of meshing a tetrahedron by other rules.
+
+\begin{theorem}[A rational tetrahedron obstruction]
+\label{thm:tetrahedron}
+On the root $[0,1]^3$, let
+\[
+  v=(1/3,1/3,1/3),
+\]
+and define
+\begin{align*}
+ b_1&=v+(0,1,-61)/366,\\
+ b_2&=v+(1,0,-61)/366,\\
+ b_3&=v+(-3,-2,-61)/366.
+\end{align*}
+The boundary of $\conv\{v,b_1,b_2,b_3\}$ is an embedded closed rational
+polyhedral $2$-manifold, but no finite octree can satisfy all three rules
+above for this boundary.
+\end{theorem}
+
+\begin{proof}
+All three base vertices have $z=1/6$. In the base plane, the determinant
+of $(1,-1)$ and $(-3,-3)$ is $-6$, so the base is nondegenerate and the
+apex is off its plane. All four vertices are strictly inside the root.
+
+The apex leaf cannot have depth $0$ or $1$, since at either depth its
+cell contains all four corners. Suppose its depth is $d\ge2$ and let
+$h=2^{-d}$. Each coordinate of the apex has fractional position
+\[
+  \{2^d/3\}\in\{1/3,2/3\}
+\]
+within that cell. Its distance from every side face is at least $h/3$,
+and its projected distance from either midline of a horizontal face is
+$h/6$.
+
+Write $z_0=h\lfloor 2^d/3\rfloor$ for the lower face height and
+$\Delta=1/3-z_0\in\{h/3,2h/3\}$. Along each of the three apex edges,
+horizontal slope per unit downward displacement is one of
+\[
+  (0,1)/61,\qquad(1,0)/61,\qquad(-3,-2)/61.
+\]
+The horizontal drift before reaching $z=z_0$ is at most
+\[
+  \frac{3\Delta}{61}\le\frac{2h}{61}<\frac h6.
+  \tag{4}\label{eq:tetra-drift}
+\]
+Thus all three edges exit the lower face, none can reach a side first,
+and all three exit points lie strictly inside the same quarter of the
+lower face. Since $z_0\ge1/4>1/6$, these crossings precede the base
+vertices and are interior points of their edges.
+
+Face $2{:}1$ balance permits only depth-$d-1$, depth-$d$, or depth-$d+1$
+neighbors across that face. Dyadic alignment implies that its chosen
+open quarter is contained in one neighboring leaf $N$; no permitted
+neighbor boundary can split that quarter. All three edges therefore
+enter the interior of $N$. The neighbor cannot contain $v$, being below
+$z_0$. No other tetrahedron vertex is incident to all three apex edges.
+It follows that $N$ has neither one feature edge nor one corner with
+only its incident edges. This contradicts acceptance.
+\end{proof}
+
+\subsection{This example is not a grid-coincidence pathology}
+
+All four vertices have nondyadic coordinates. Each apex direction
+\[
+  w\in\{(0,1,-61),(1,0,-61),(-3,-2,-61)\}
+\]
+has three components pairwise distinct modulo $3$.
+If two coordinates of a point $p=v+tw$
+were dyadic, then
+\[
+  w_jp_i-w_ip_j=(w_j-w_i)/3
+\]
+would be both dyadic and a rational with reduced denominator divisible
+by $3$, an impossibility. Hence no apex edge meets a dyadic grid edge.
+
+The three base edges are in $z=1/6$. Their projected lines respectively
+satisfy
+\[
+  x+y=245/366,\qquad x-y=-1/366,\qquad x-2y=-121/366.
+\]
+These right-hand sides are nondyadic, so their projections contain no
+point with two dyadic coordinates. The base edges avoid every grid edge
+as well. A feature line parallel to a grid face does not meet that face;
+all actual feature/face crossings are transverse. The obstruction comes
+from clustered directions and balancing, not exact incidences or
+tangencies.
+
+\subsection{Two further obstructions and their scope}
+
+\begin{proposition}[The $24$-neighbor obstruction]
+\label{prop:valence}
+Under face $2{:}1$ balance and generic feature/face intersections, a
+one-corner cell with at least $25$ distinct incident straight edges
+cannot have every face neighbor satisfy the stated simple-cell rule.
+\end{proposition}
+
+\begin{proof}
+An accepted corner cell contains no other edge endpoint. Each incident
+edge exits through a face interior. There are at most four neighbors
+per face, hence at most $24$ face-neighbor leaves. Two edges enter one
+neighbor by the pigeonhole principle. They have no common corner other
+than the original corner: distinct straight segments sharing both
+endpoints would be the same geometric edge. The neighbor does not
+contain the original corner and therefore cannot be accepted.
+\end{proof}
+
+Rational pyramids over rational convex $25$-gons provide such manifold
+corners in generic position. The tetrahedron theorem shows that degree
+at most $24$ is far from sufficient; degree three already fails.
+
+For the tetrahedron apex cell, the exact trace on its lower face is a
+small closed triangle entirely in that face's interior. All cube
+corners, and all face corners, are outside the solid. A literal
+Marching-Cubes complex-face test that rejects sign-change-free face
+contours consequently rejects this cap at every depth. A feature-aware
+cone certificate can accept it, but that is a different certificate.
+The topology result of Varadhan et al.~\cite{varadhan} does not supply
+termination for this modified setting merely by being cited.
+
+Finally, a fixed positive threshold on the angle between a straight
+feature and a grid face cannot be repaired by shrinking cells: the
+line direction and face normal remain unchanged. The same observation
+applies to any fixed angular exclusion for an unchanged carrier plane.
+Exact nonzero transversality is weaker than a uniform positive angle
+cutoff. None of the positive results below requires such a cutoff.
+
+\section{Result C: unrestricted exact arrangement completion}
+\label{sec:fallback}
+
+\begin{theorem}[Finite arrangement fallback]
+\label{thm:fallback}
+For the rational-polyhedral input class, any finite octree admits a
+finite exact arrangement completion whose triangle realization is $M$.
+This includes arbitrary local feature arrangements and surface pieces
+that coincide with leaf faces. The construction terminates without
+the simple-cell stopping rule.
+\end{theorem}
+
+\begin{proof}
+Take all source support planes and all supporting planes of all leaf
+faces. There are finitely many. Their global arrangement in $Q$ is a
+finite rational polytopal complex. Label its $3$-chambers and select
+unlike-label facets. Adding leaf planes changes only subdivisions, so
+Theorem~\ref{thm:arrangement-boundary} identifies their union with $M$.
+
+The arrangement ensures that adjacent selected convex polygons have
+exactly the same subdivided common edges. Insert one canonical midpoint
+on each arrangement edge. For each polygon choose a rational interior
+point, for example the mean of its extreme vertices, and connect it to
+each consecutive boundary subsegment. These are the usual facewise
+barycentric fans. Convexity proves that they tile the polygon with
+nonoverlapping nondegenerate triangles. Shared edge subdivisions agree,
+so the result is a geometric simplicial complex with realization $M$.
+
+If a selected facet lies in a grid face, it is a two-dimensional
+interface patch, not a contour arc. Emit it once with a deterministic
+ownership convention. All incidences are still inherited from the one
+global arrangement, so this coincidence causes no geometric ambiguity.
+Every enumeration, feasibility decision, and triangulation is finite.
+\end{proof}
+
+One may stop octree refinement at any fixed depth and invoke this
+fallback. It is an exact boundary-representation mesher organized
+around an octree, and it permits many patches or features in one leaf.
+It is \emph{not} a proof of termination for the original smooth/edge/corner
+rule. The next theorem keeps those three volume-cell templates by
+changing protection and interface handling instead.
+
+\section{Result D: protected-neighborhood completion}
+\label{sec:protected}
+
+\begin{theorem}[Protected polyhedral SFCC]
+\label{thm:main}
+Let $S$ satisfy the rational-polyhedral and embedded-manifold assumptions
+of Section~\ref{sec:target}. There is an effective exact-arithmetic
+algorithm that returns a finite octree with frozen corner and edge
+leaves, complete compatible face graphs, and a finite rational
+geometric triangulation $T$ such that $|T|=\partial S$.
+Every leaf with nonempty surface intersection has one of these surface
+patches:
+\begin{enumerate}[label=(\alph*)]
+\item a disk cut from one affine plane;
+\item a disk formed by two convex planar polygons meeting along one
+  straight crease segment;
+\item an exact conical disk about one true corner, containing only its
+  incident feature rays, with unrestricted corner valence.
+\end{enumerate}
+All true corners and straight creases are preserved exactly. The
+algorithm terminates at three finite, effectively chosen depths
+$D_0\le D_1\le D_2$. It does not impose $2{:}1$ balancing across
+protected volume boundaries, and it does not subdivide a protected
+volume leaf to simplify its boundary graph.
+\end{theorem}
+
+\subsection{A rational generic grid valid at every depth}
+\label{sec:generic-grid}
+
+We need the following incidence exclusions:
+\begin{enumerate}[label=(\roman*)]
+\item no feature vertex lies on a grid face plane;
+\item no feature line meets a grid edge line;
+\item no surface carrier plane contains a grid vertex.
+\end{enumerate}
+These also exclude a carrier plane coincident with a grid face and
+a feature segment lying in a grid face. They do not demand a lower
+bound on nonzero intersection angles.
+
+\begin{lemma}[Effective all-depth rational genericity]
+\label{lem:grid}
+A rational origin and power-of-two side $L$ satisfying these exclusions
+at all dyadic depths can be constructed by a finite calculation.
+\end{lemma}
+
+\begin{proof}
+Build a finite list of rational affine forbidden planes containing:
+all primitive support planes; all three coordinate planes through every
+feature vertex; and the following projected-line planes. For a feature
+line $x=p+tu$, and each coordinate pair $i,j$ with $(u_i,u_j)\ne(0,0)$,
+include
+\[
+  u_jx_i-u_ix_j=u_jp_i-u_ip_j. \tag{5}\label{eq:projected-plane}
+\]
+If both components are zero, coordinate planes through an endpoint
+already exclude the corresponding constant projection. Here ``source
+support planes'' means primitive planes, not auxiliary clipping planes
+or final octree root planes. The latter are excluded from this list:
+root planes intentionally contain grid vertices. Each listed plane has
+an equation $a\cdot x=c$ with all coefficients integral, including the
+right-hand side $c$, and with nonzero integer normal $a$, after clearing
+denominators. Let the number of planes be $m$.
+
+Choose an odd prime $q>m$ such that every listed normal remains nonzero
+modulo $q$. Only finitely many primes are excluded, so trial search
+terminates. For each normal, the set of $r\in\Fq^3$ satisfying
+$a\cdot r=0$ has $q^2$ elements. The union of the $m$ forbidden sets
+has at most $mq^2<q^3$ elements. Exhaustive finite search therefore
+finds $r$ with $a\cdot r\ne0$ for every listed normal.
+
+Represent $r$ by integers in $\{0,\ldots,q-1\}$ and put
+$o=b+r/q$, where $b\in\Z^3$ lies sufficiently far below the geometry.
+Choose an integral power of two $L$ with $S\subset\intr Q$. If a grid
+vertex $x=o+Lk/2^d$ were on a forbidden plane, multiplying its equation
+by $q2^d$ and reducing modulo $q$ would give
+\[
+  2^d a\cdot r=0\pmod q,
+\]
+contradicting the choice of $r$. This proves avoidance at every depth
+simultaneously, including vertices of the infinite extension of the grid.
+
+A feature vertex on a coordinate grid plane would put a grid vertex
+on its forbidden coordinate plane. A feature line meeting a grid edge
+would have two coordinates equal to grid coordinates; substituting
+these into~\eqref{eq:projected-plane} would put a grid vertex on that
+forbidden plane. The constant-projection case is covered by the
+endpoint coordinate planes. Carrier-plane/grid-vertex incidences are
+excluded directly. This proves all three claims.
+\end{proof}
+
+\subsection{Exact conical neighborhoods of corners}
+\label{sec:corners}
+
+For $v\in V$, each source plane $a\cdot x=b$ not passing through $v$
+keeps its sign in a sufficiently small cube. Specifically choose
+rational $r_v>0$ so that
+\[
+  r_v<\min_{a\cdot v\ne b}
+    \frac{|a\cdot v-b|}{2\norm{a}_1}. \tag{6}\label{eq:corner-radius}
+\]
+Omit the minimum when its index set is empty. Also take $r_v$ smaller
+than suitable positive distances to other vertices, nonincident
+closed features, and $\partial Q$. These distances are rationally
+computable as shown in Section~\ref{sec:effective}.
+
+\begin{lemma}[Conical corner germ]
+\label{lem:corner-cone}
+There is an exact boundary cone $\mathcal K_v$ centered at $v$ such that
+$M\cap\Binf{v}{r_v}=\mathcal K_v\cap\Binf{v}{r_v}$. Its link is a
+single embedded polygonal cycle. If a closed cube $C$ contains $v$ in
+its interior and lies in this neighborhood, then $M\cap C$ is a radial
+disk with boundary $M\cap\partial C$.
+\end{lemma}
+
+\begin{proof}
+For a nonthrough plane, the change of $a\cdot x-b$ from its value at
+$v$ is bounded by $\norm a_1\norm{x-v}_\infty$, hence its sign is
+fixed by~\eqref{eq:corner-radius}. Equations of through planes are
+homogeneous about $v$. Every chamber label, and therefore the
+regularized boundary, is constant along each ray within this
+neighborhood. This gives the exact cone.
+
+Intersect the cone with a small sphere about $v$. It is a finite
+embedded graph of arcs of great circles. Away from its vertices a
+surface sheet gives an arc; at every graph vertex the surface-manifold
+condition forces degree two. The link is thus a union of circles.
+If it had more than one circle, a punctured sufficiently small
+neighborhood of $v$ in $M$ would have more than one component, whereas
+a punctured disk is connected. Hence it is one circle.
+
+For a convex cube containing $v$ in its interior, every ray has a
+unique boundary exit, continuously dependent on direction. Radial
+projection sends the link homeomorphically to $M\cap\partial C$;
+adjoining all radial segments makes a cone over a circle, hence a disk.
+Convexity of the solid or of the spherical region enclosed by the link
+is not required. Reflex and high-valence corners are included.
+\end{proof}
+
+By Lemma~\ref{lem:grid}, every feature vertex belongs to the interior
+of a unique cell at each depth. Choose a common finite $D_0$ so that
+the owning cubes $C_v$ lie in their conical neighborhoods and have
+pairwise disjoint closures. Such a depth exists because cell diameter
+tends to zero and distinct vertices have positive separation.
+\emph{Freeze these volume cells.} Every later step retains them as
+leaves, even when adjacent leaves become much smaller.
+
+\subsection{Exact wedge neighborhoods of clipped edges}
+\label{sec:edges}
+
+For each feature edge remove the interiors of its endpoint corner cubes:
+\[
+  e^*=e\setminus\bigcup_{v\in V}\intr C_v.
+\]
+The corner choices ensure that this is a closed segment separated from
+the true endpoints, and that no nonincident corner cube cuts it.
+Different such clipped edges are disjoint compact sets. Empty clipped
+pieces, if any redundant case is present, can be omitted.
+
+Let $W_e$ be the complete straight wedge obtained by extending the two
+local incident half-planes along the carrier line of $e$. Define
+\[
+  B_e=V\ \cup\!\bigcup_{f\in E,\,f\ne e}f
+    \ \cup\!\bigcup_{F_i\notin\{F_{e,1},F_{e,2}\}}F_i.
+  \tag{7}\label{eq:edge-bad}
+\]
+All sets here are closed and bounded. By the exact stratification,
+$e^*\cap B_e=\varnothing$, so
+\[
+  d_e=\dist_\infty(e^*,B_e)>0.
+\]
+One may include $\partial Q$ in $B_e$ to keep every chosen neighborhood
+within the root. If a bad set is empty, choose any positive rational
+bound in its place. Take $0<\rho_e<d_e/4$ and put
+\[
+  U_e=\Ninf{e^*}{\rho_e}
+      =e^*+(-\rho_e,\rho_e)^3.
+\]
+It is a convex open tube.
+
+\begin{lemma}[Uniform exact edge wedge]
+\label{lem:edge-wedge}
+The exact boundary in this tube is $M\cap U_e=W_e\cap U_e$.
+\end{lemma}
+
+\begin{proof}
+The tube meets no vertex, other feature edge, or nonincident stratum.
+Its intersection with the carrier line is a connected interval within
+the interior of the same feature edge: moving beyond that edge would
+require reaching an endpoint in $V$.
+
+In either incident carrier plane, removing that line divides the tube
+into two convex, hence connected, relative-open half-plane pieces.
+By~\eqref{eq:strata}, membership in the incident closed stratum cannot
+change within one such piece without meeting a planar boundary in
+$G$. No such boundary is present. Membership is therefore constant
+on each piece. The known two-face wedge germ at any point of $e^*$
+determines exactly which half is present on each plane. No other
+stratum is present, so the union is exactly $W_e\cap U_e$.
+\end{proof}
+
+Choose common $D_1\ge D_0$ so that
+\[
+  h_{D_1}<\min_e\rho_e. \tag{8}\label{eq:edge-depth}
+\]
+Refine all noncorner cells to depth $D_1$, without refining any $C_v$.
+\emph{Freeze every remaining cell whose closed cube meets $G$.}
+Every such cell $C$ contains a point $p\in e^*$, so
+$C\subset\Ninf{e^*}{\rho_e}$ by~\eqref{eq:edge-depth}.
+It meets no other edge or corner.
+
+Genericity excludes a feature line touching only a cube edge or vertex
+or lying in a cube face. Thus $e\cap C$ is a nontrivial segment through
+the cube interior. Each half-plane of $W_e$ cuts $C$ in a convex planar
+polygon with positive relative area. They meet exactly in that crease
+segment, on both polygon boundaries. Their union is an exact disk.
+This is the edge-cell template, even if the two planes meet at a very
+small or reflex dihedral angle.
+
+\begin{remark}[An alternative exact clearance certificate]
+One can instead form the closed rational polyhedral bad set
+\[
+  D_e=\cl\bigl((M\symdiff W_e)\cap Q\bigr).
+\]
+Every point of $e^*$ has a wedge neighborhood, so $e^*\cap D_e$ is
+empty and its distance is positive. This is an effective exact set
+comparison using the S1 arrangement and wedge planes, including
+lower-dimensional strata. It is not enough to compare only sampled
+points or only positive-area pieces. The explicit bad set
+\eqref{eq:edge-bad} gives a direct geometric proof and usually a more
+transparent certificate.
+\end{remark}
+
+\subsection{Why closed contacts protect an open neighborhood}
+\label{sec:open-neighborhood}
+
+\begin{lemma}[Open neighborhood from closed-contact freezing]
+\label{lem:open-neighborhood}
+After the corner and edge steps, the union of frozen cells contains an
+ambient open neighborhood of $G$.
+\end{lemma}
+
+\begin{proof}
+Let $R$ be the union of the \emph{closed} cells that remain unfrozen.
+It is a finite union of compact cubes. Every remaining cube has empty
+intersection with $G$, since all closed-contact cubes were frozen.
+Consequently $R\cap G=\varnothing$. If $R$ is nonempty, compactness
+gives $\dist_\infty(R,G)>0$; if it is empty, no separation is needed.
+The graph also has positive distance from $\partial Q$. A sufficiently
+small ambient neighborhood of $G$ therefore stays in $Q$ and avoids
+$R$. Since all cells together cover $Q$, that neighborhood lies in the
+union of frozen cells.
+\end{proof}
+
+The word ``closed'' is essential. If only cells with an interior
+feature intersection were frozen, a cell touching a feature on its
+boundary could remain. Then $R\cap G$ need not be empty, and the
+positive-distance argument for the smooth remainder would fail.
+
+\subsection{Positive separation makes the remainder planar}
+\label{sec:smooth}
+
+For each closed stratum let
+\[
+  A_i=F_i\cap R,\qquad
+  B_i=G\cup\bigcup_{j\ne i}F_j.
+\]
+Omit empty $A_i$. Equation~\eqref{eq:strata} and
+Lemma~\ref{lem:open-neighborhood} imply $A_i\cap B_i=\varnothing$.
+Both sets are compact, so choose positive rational
+\[
+  s_i<\tfrac14\dist_\infty(A_i,B_i). \tag{9}\label{eq:smooth-clearance}
+\]
+As before, including $\partial Q$ or assigning a bound to an empty
+bad set is harmless.
+
+\begin{lemma}[Planar remainder]
+\label{lem:smooth}
+If a remaining descendant cube $C\subseteq R$ has side less than
+$s_i$ and meets $F_i$, then $M\cap C=P_i\cap C$. In particular every
+nonempty sufficiently fine remaining cell contains just one convex
+planar disk.
+\end{lemma}
+
+\begin{proof}
+Choose $p\in C\cap F_i\subseteq A_i$. The cube lies inside
+$\Binf{p}{s_i}$. That ball contains no $G$ and no other closed stratum.
+Its intersection with $P_i$ is convex and connected. The subset
+belonging to $F_i$ is nonempty, closed, and relatively open there,
+because its planar boundary is contained in $G$. It is therefore the
+entire planar section. No other surface is present. Thus
+$M\cap C=P_i\cap C$.
+
+The generic grid excludes a plane touching the cube only at a vertex
+or along an edge: either contact would contain a grid vertex. It
+also excludes a plane coincident with a cube face. A nonempty
+intersection is consequently a convex polygon with positive area.
+\end{proof}
+
+Refine the remaining cells to common $D_2\ge D_1$ with
+$h_{D_2}<\min_i s_i$. Protected cells remain unchanged. This proves
+finite geometric simplification of the remainder. It is not a corner-sign
+argument: a thin slab can have two parallel sheets through a cube and
+all eight corners outside, with no crease in the cube. The positive
+distance from other closed strata is what excludes that example.
+
+An equivalent exact certificate uses
+$D_i=\cl((M\symdiff P_i)\cap Q)$. Each $A_i$ is disjoint from $D_i$,
+and a positive distance to $D_i$ certifies the same local plane equality.
+Again this comparison must respect lower-dimensional strata.
+
+\subsection{Every bound and decision is effective}
+\label{sec:effective}
+
+For two nonempty disjoint compact rational polytopes $A,B$, their
+$L^\infty$ distance is the optimum of the rational linear program
+\[
+\begin{aligned}
+  \text{minimize }&t\\
+  \text{subject to }&x\in A,\quad y\in B,\quad t\ge0,\\
+  &-t\le x_k-y_k\le t\quad(k=1,2,3).
+\end{aligned} \tag{10}\label{eq:lp-distance}
+\]
+Equalities handle segments and planar polygons without artificially
+thickening them. The optimum is rational and positive when the compact
+sets are disjoint. For finite unions of rational polytopes take the
+minimum over nonempty component pairs. All sets used above have that
+form, including clipped edges, $R$, and closed strata.
+
+The construction of $r_v$, separation of corner cells, and choices of
+$D_0,D_1,D_2$ are thus finite searches with rational comparisons. Empty
+index sets impose no restriction. Distances can be extremely small,
+and the resulting depths large, but positivity is proved rather than
+assumed. Neither a global angle bound nor a floating-point tolerance
+is used to infer separation.
+
+\section{Interfaces, local triangulations, and the final assembly}
+\label{sec:assembly}
+
+\subsection{Complete shared face graphs without volume balancing}
+
+The finite leaf octree just constructed can have arbitrarily different
+depths on opposite sides of a protected cell face. The interface must
+accommodate this without subdividing that protected volume.
+
+One explicit finite solution is to subdivide \emph{every actual leaf
+face} into depth-$D_2$ grid squares. This is a subdivision of the
+two-dimensional interfaces only; it adds no children to corner or edge
+volume cells. Square identities are canonical by axis, grid coordinate,
+and in-plane indices. On each square $F$, compute
+\[
+  \Gamma_F=M\cap F
+\]
+once, by exact clipping of the exposed S1 boundary facets. Since a
+carrier plane never coincides with a grid face, this is a finite
+straight-segment graph, with no two-dimensional patches.
+
+Node every segment at all its intersections, feature pins, and shared
+interface subdivisions. Merge coincident segments and identify points
+by exact rational position, retaining feature incidence labels.
+Subdivisions on the common edges of interface squares are reconciled
+globally. Both incident volume cells then consume the same graph;
+a coarse face consumes the union of its constituent square graphs.
+
+The representation must admit multiple arcs, closed face loops, and
+multiple roots on a coarse grid edge. It cannot rely on a perimeter
+sign change to seed every component. The tetrahedron's corner cap
+gives a complete loop on a single coarse face. Its correct corner
+fill is a cone from the apex; triangulating the loop \emph{inside the
+face plane} would instead insert a spurious lid.
+
+Uniform depth-$D_2$ interface subdivision is only an existence
+construction. A common adaptive face refinement works too if it
+gives exactly the same complete graph and all shared subdivisions.
+Fewer interface squares change the cost, not the proof obligations.
+
+\subsection{Three exact filling templates}
+
+\paragraph{Corner leaf $C_v$.}
+Its complete boundary graph is one simple polygonal loop by
+Lemma~\ref{lem:corner-cone}. Split it at every change of carrier plane,
+crease pin, cell-face transition, and required interface node. For
+each nonzero consecutive segment $[a,b]$, emit $[v,a,b]$.
+Every such segment is in a support plane through $v$; radial cone
+equality puts the whole triangle on $M$. Because $v\in\intr C_v$
+and $[a,b]$ lies on a cube face, the triangle is nondegenerate. Unique
+radial exits prove exact coverage and nonoverlap, including for
+reflex or nonconvex boundary loops. Crease rays occur as mesh edges
+from the exact corner to the appropriate boundary pins.
+
+\paragraph{Edge leaf $C$.}
+The exact patch is the union of the two convex planar polygons of
+Lemma~\ref{lem:edge-wedge}, joined along $e\cap C$. Add every prescribed
+boundary node from the interface graph and a common subdivision of
+the crease if one is needed. In each polygon choose a rational point
+in its relative interior and cone it to the consecutive boundary
+subsegments. The mean of the polygon's extreme vertices is suitable.
+Both polygons have interior points in $\intr C$; the fan points may
+and do lie there. Convexity proves exact coverage and nondegeneracy,
+and their only common geometry is the prescribed crease chain.
+Equivalently, an appropriately subdivided fan from a point inside
+the crease can be used; a separate interior point for each planar
+piece avoids needing that variant in the proof.
+
+\paragraph{Smooth leaf $C$.}
+The exact patch $P_i\cap C$ is one convex polygon. Retain all of its
+boundary nodes, choose a rational relative-interior point in
+$\intr C$, and fan to the boundary subsegments. Empty cells emit
+nothing. No quality improvement, vertex perturbation, or face-node
+deletion is part of these exact templates.
+
+\begin{lemma}[Exact compatible assembly]
+\label{lem:assembly}
+The three templates with the complete shared graphs form a finite
+rational geometric simplicial complex $T$ satisfying $|T|=M$.
+Its facets can be oriented consistently from the occupied side of
+the boundary to the empty side.
+\end{lemma}
+
+\begin{proof}
+Each template gives a nondegenerate, nonoverlapping triangulation of
+exactly $M\cap C$, using the prescribed subdivision of
+$M\cap\partial C$. For a planar fan this follows from convexity;
+for a corner fan it follows from the unique radial exit. In an edge
+cell the two planar fans meet only along their identical crease chain.
+
+Within a leaf, simplices therefore meet face-to-face. A triangle's
+intersection with the leaf boundary is its prescribed boundary base
+edge or its endpoints: the fan point is in the volume interior.
+Two distinct leaves have disjoint interiors. All possible
+inter-leaf triangle intersections lie on interfaces, where the
+same noded segment graph is used. Two such triangle bases are
+identical, disjoint, or meet at one common node. Therefore triangles
+from different leaves also intersect only in common simplices.
+The globally identified vertices and all simplices constitute a
+geometric simplicial complex.
+
+The leaves cover $Q$, so
+\[
+  |T|=\bigcup_C(M\cap C)=M.
+\]
+In particular all edge and vertex links are those of the assumed
+embedded manifold, not just a complex passing an edge-count check.
+At a regular facet the chamber occupancy determines the outward
+orientation. These choices are compatible across the boundary of
+the regular solid, so adjacent triangles induce opposite directions
+on each common edge. This includes interfaces and crease edges.
+
+Corner fan centers are the exact true corners. In all three
+templates, crease portions are retained as mesh edges and shared
+pins are identified. Their union is exactly $G$, with its original
+corner incidence and geometry.
+\end{proof}
+
+\subsection{A finite algorithm and its dependency chain}
+
+\begin{algorithm}[Protected polyhedral SFCC]
+\label{alg:protected}
+Given the rational hard-CSG input:
+\begin{enumerate}
+\item Construct the support arrangement; label chambers; extract
+  exposed boundary facets. Check manifold incidence and links.
+  If empty, return the empty mesh; if nonmanifold, report that the
+  theorem's input condition fails.
+\item Merge artificial planar and collinear subdivisions to obtain
+  $F_i$, $G$, $E$, and $V$ with exact incidence and side labels.
+\item Construct the all-depth generic rational grid of
+  Lemma~\ref{lem:grid}.
+\item Compute corner radii. Choose common $D_0$ with disjoint owning
+  corner cubes contained in their cone neighborhoods; freeze them.
+\item Compute clipped edges and their wedge clearances. Refine only
+  noncorner cells to $D_1$ satisfying~\eqref{eq:edge-depth}; freeze
+  every cell whose \emph{closed} cube meets $G$.
+\item Form the finite closed remainder $R$. Compute the planar
+  clearances~\eqref{eq:smooth-clearance}; refine only remaining cells
+  to $D_2$. The protected volume leaves remain frozen.
+\item Build a finite common interface subdivision. Compute and node
+  each complete exact shared face trace once.
+\item Apply the corner, edge, and smooth filling templates; identify
+  common vertices and edges; orient by occupied-to-empty sides.
+\end{enumerate}
+\end{algorithm}
+
+\begin{proof}[Proof of Theorem~\ref{thm:main}]
+Exact S1 and its finite checks follow from
+Theorem~\ref{thm:arrangement-boundary} and
+Section~\ref{sec:features}. Lemma~\ref{lem:grid} constructs the fixed
+grid in finitely many rational and finite-field operations.
+Lemma~\ref{lem:corner-cone} and finite separation give $D_0$.
+Lemma~\ref{lem:edge-wedge} and compact separation give $D_1$.
+Lemma~\ref{lem:open-neighborhood} is the crucial bridge to the
+strictly positive smooth clearances, and Lemma~\ref{lem:smooth}
+gives $D_2$. Section~\ref{sec:effective} makes each choice
+computable and finite. The resulting finite octree has exactly the
+claimed classes for leaves with nonempty surface intersection. The common interface
+construction is finite, and Lemma~\ref{lem:assembly} proves exactness,
+embedding, orientation, and feature preservation.
+\end{proof}
+
+The dependency chain is, explicitly,
+\[
+\begin{gathered}
+\text{regularized occupancy}
+ \Longrightarrow \text{complete S1 complex and genuine strata}\\
+\Longrightarrow \text{generic grid and exact corner cones}
+ \Longrightarrow \text{frozen corners}\\
+\Longrightarrow \text{positive clipped-edge clearances and exact wedges}
+ \Longrightarrow \text{closed-contact edge protection}\\
+\Longrightarrow \text{open neighborhood of }G
+ \Longrightarrow \text{positive planar-remainder clearances}\\
+\Longrightarrow \text{finite simple volume cells}
+ \Longrightarrow \text{complete common face graphs}\\
+\Longrightarrow \text{exact local fillings}
+ \Longrightarrow |T|=M.
+\end{gathered}
+\]
+
+\subsection{Required changes and limits of the construction}
+
+Four changes are indispensable to this proof specification:
+\begin{enumerate}
+\item protect corner and edge \emph{volume} cells instead of repeatedly
+  subdividing all difficult feature neighborhoods;
+\item allow arbitrary finite neighbor-depth differences at protected
+  boundaries, with no balancing step that reopens protected cells;
+\item use complete shared face graphs, including interior loops and
+  every required boundary subdivision;
+\item replace sampled or MC-style stopping heuristics by exact local
+  cone, wedge, or plane certificates.
+\end{enumerate}
+Exact arrangements supply S1, clearances/certificates, and face traces.
+They are not used here to mesh an arbitrary arrangement inside every
+leaf: the volume fillings retain only the three proved templates.
+This distinguishes Result D from Result C.
+
+The construction deliberately uses uniform depths for each remaining
+region and a full finest-depth interface subdivision. These are finite
+but can be very expensive. No bound is asserted on practical memory,
+running time, mesh size relative to an optimum, minimum triangle angle,
+or aspect ratio. In particular exact preservation can retain tiny
+segments and produce thin triangles. Any subsequent optimization must
+prove that it preserves the established complex and features.
+
+\section{Curved carriers: useful local bounds, still no global theorem}
+\label{sec:curved}
+
+The previous sections exploit equality to affine planes, straight
+wedges, and exact cones. A sphere, cylinder, general intersection
+curve, or smooth blend is not covered merely by substituting its
+carrier name into those arguments. The following estimates clarify
+some obligations of a future extension; they do not close them.
+
+\subsection{A Hessian bound controls triangle residuals}
+
+\begin{lemma}[Triangle residual bound]
+\label{lem:triangle-residual}
+Let $\tau=\conv\{p_0,p_1,p_2\}$ and let $f$ be $C^2$ on a
+neighborhood of $\tau$. Suppose
+\[
+  |f(p_i)|\le\eta,\qquad
+  \norm{D^2 f(x)}_2\le H\quad(x\in\tau).
+\]
+Then, for every $x\in\tau$,
+\[
+  |f(x)|\le \eta+\frac{H\,\diam(\tau)^2}{6}.
+  \tag{11}\label{eq:triangle-residual}
+\]
+\end{lemma}
+
+\begin{proof}
+Write $x=\sum_i\lambda_i p_i$ with $\lambda_i\ge0$ and
+$\sum_i\lambda_i=1$. Taylor expansion from $x$ to each vertex has
+remainder at most $H\norm{p_i-x}^2/2$. The weighted linear terms
+cancel, giving
+\[
+  \left|f(x)-\sum_i\lambda_i f(p_i)\right|
+  \le\frac H2\sum_i\lambda_i\norm{p_i-x}^2
+  =\frac H2\sum_{i<j}\lambda_i\lambda_j\norm{p_i-p_j}^2.
+\]
+Since $\sum_{i<j}\lambda_i\lambda_j
+=(1-\sum_i\lambda_i^2)/2\le1/3$, the right-hand side is at
+most $H\diam(\tau)^2/6$. The weighted vertex residual is at most
+$\eta$, proving the claim.
+\end{proof}
+
+The bound is for a specified $C^2$ branch with a certified Hessian
+bound on the whole triangle, not for a nonsmooth minimum or maximum
+across a crease. It controls a field residual; converting that residual
+to Euclidean distance needs additional hypotheses.
+
+\subsection{A graph prism converts residual to one-sided distance}
+
+\begin{lemma}[Certified graph-prism estimate]
+\label{lem:graph-prism}
+Let $e$ be a unit vector, let $D\subset e^\perp$, and consider a
+prism of fibers $y+te$ with $y\in D$ and
+$\alpha(y)\le t\le\beta(y)$. Suppose $f$ is $C^1$ there and
+\[
+  \partial_e f\ge m>0,\qquad
+  f(y+\alpha(y)e)\le0\le f(y+\beta(y)e)
+  \quad\text{for every }y\in D.
+\]
+Then each fiber has one root $y+g(y)e$. Every prism point $x=y+te$
+satisfies
+\[
+  \dist(x,f^{-1}(0))\le |t-g(y)|\le\frac{|f(x)|}{m}.
+  \tag{12}\label{eq:prism-distance}
+\]
+\end{lemma}
+
+\begin{proof}
+The bracket and continuity give existence; strict directional
+monotonicity gives uniqueness. Apply the one-variable mean value
+theorem on the fiber segment joining $t$ and $g(y)$. That segment
+stays in the certified prism, so
+$|f(y+te)-f(y+g(y)e)|\ge m|t-g(y)|$.
+The first inequality follows because the graph root is a zero of $f$.
+\end{proof}
+
+If a triangle lies in such a prism, combining
+\eqref{eq:triangle-residual} and~\eqref{eq:prism-distance} gives the
+one-sided mesh-to-surface bound
+\[
+  \sup_{x\in\tau}\dist(x,f^{-1}(0))
+  \le \frac{\eta+H\diam(\tau)^2/6}{m}.
+\]
+The target zero must also be the intended exposed carrier branch.
+A residual bound without a certified root bracket and a region on
+which the derivative lower bound holds does not justify this step.
+
+Reverse coverage is a separate obligation. For example, if a candidate
+mesh is proved to be a graph over \emph{all} of $D$ in the same prism,
+and has residual at most $\epsilon$ everywhere, then comparison on
+each fiber also bounds the distance from every target graph point to
+the mesh by $\epsilon/m$. The residual estimate alone proves neither
+that graph property nor coverage of $D$, and does not prevent extra
+components, missing features, or a wrong gluing of charts.
+
+\subsection{Pair constraints become ill-conditioned near tangency}
+
+For two unit carrier normals $n_A,n_B$ put $c=n_A\cdot n_B$ and
+form the $2\times3$ constraint Jacobian
+\[
+  J=\begin{pmatrix}n_A^T\\n_B^T\end{pmatrix}.
+\]
+Since
+\[
+  JJ^T=\begin{pmatrix}1&c\\c&1\end{pmatrix},
+\]
+its nonzero singular values are $\sqrt{1+c}$ and $\sqrt{1-c}$;
+the smaller is
+\[
+  \sigma_{\min}(J)=\sqrt{1-|c|}. \tag{13}\label{eq:conditioning}
+\]
+For two independent affine plane equations, the minimum-norm correction
+from residual vector $r$ to their intersection has norm
+$\norm{J^+r}\le\norm r/\sigma_{\min}(J)$. The amplification is
+unbounded as the planes become parallel or antiparallel. For curved
+carriers, the same Jacobian calculation describes local conditioning,
+but a finite error theorem additionally needs a certified neighborhood,
+control of derivative variation, and existence and uniqueness of the
+intended intersection branch. Small pairwise residuals alone are not
+a uniform geometric feature-location guarantee.
+
+\subsection{A round-blend radius is not a curvature bound by itself}
+
+For a concrete local example, let $a(x)$ and $b(x)$ be affine signed
+plane functions with unit gradients $n_A,n_B$, put $c=n_A\cdot n_B$,
+and take the active round-union branch
+\[
+  f(x)=r-\sqrt{(r-a(x))^2+(r-b(x))^2},\qquad r>0.
+\]
+This formula applies in the branch where both radial coordinates are
+positive. Assume $-1<c<1$ and evaluate at the symmetric zero where
+\[
+  a=b=r(1-1/\sqrt2).
+\]
+At that point,
+\[
+  \nabla f=(n_A+n_B)/\sqrt2,\qquad
+  \norm{\nabla f}=\sqrt{1+c},
+\]
+and direct differentiation gives
+\[
+  D^2 f=-\frac{(n_A-n_B)(n_A-n_B)^T}{2r}.
+\]
+The unit tangent across the blend is
+$t=(n_A-n_B)/\sqrt{2(1-c)}$. The normal-curvature magnitude in
+that direction is therefore
+\[
+  \kappa=\frac{|t^T(D^2 f)t|}{\norm{\nabla f}}
+    =\frac{1-c}{r\sqrt{1+c}}. \tag{14}\label{eq:round-curvature}
+\]
+The intersection-line direction has zero curvature in this planar
+example. Even here $r$ alone does not control curvature uniformly:
+as $c\to-1$, the denominator collapses. Other blend definitions or
+other branches require their own calculation. This local identity
+is not a global curvature certificate for an arbitrary CSG blend.
+
+\subsection{What a curved-SFCC theorem would still need}
+
+A complete extension would have to supply all of the following,
+with compatible hypotheses and a termination proof:
+\begin{enumerate}
+\item complete exposed smooth strata, intersection curves, and corner
+  incidence under the intended solid semantics;
+\item certified local surface and feature charts, including narrow
+  separations and all relevant tangencies or an explicit exclusion
+  of them;
+\item protected neighborhoods with controlled geometry in place of
+  exact cone/wedge equality, and positive bounds that survive
+  interface refinement;
+\item complete common face traces and error-controlled curve chords,
+  with correct ordering and incidence;
+\item embedded local patches and relative-boundary homeomorphisms
+  or isotopies that agree across every interface;
+\item both directions of geometric error control, followed by a
+  global gluing and, if claimed, ambient-isotopy argument.
+\end{enumerate}
+Plantinga--Vegter's smooth regular-zero-set theorem~\cite{pv} does
+not by itself supply this composition at nonsmooth CSG junctions.
+Nor does the polyhedral protected-cell proof show that its certificates
+can simply be replaced by sampled normal variation. The curved extension
+remains open in this document.
+
+\section{Relationship to prior work and exact scope}
+\label{sec:scope}
+
+The ingredients have substantial prior history. Cubical Marching
+Squares~\cite{cms} organizes contouring around shared face segments
+and independent cell filling. Its shared-interface idea is relevant
+here; it is not used as a substitute for a proof of complete feature
+recovery, exact embedding, or termination.
+
+Varadhan et al.~\cite{varadhan} analyze local compatibility conditions
+for topology-preserving Marching-Cubes extraction. Those conditions
+motivate keeping local topology and interface behavior explicit.
+They cannot be applied without their premises, particularly where
+feature-aware cells deliberately retain a contour absent from face
+corner signs. Plantinga and Vegter~\cite{pv} prove isotopic meshing
+for smooth regular implicit surfaces using interval-driven subdivision;
+the nonsmooth hard-CSG case here has different local certificates.
+
+Protecting lower-dimensional features before refining higher-dimensional
+pieces is established in piecewise-smooth-complex meshing, including
+Cheng, Dey, and Ramos~\cite{psc} and Dey and Levine~\cite{dey-levine}.
+Their weighted Delaunay constructions are not the octree construction
+proved here. They are primary background for protection and termination,
+and their distinct hypotheses should not be silently transferred.
+
+Regularized boundary evaluation and rational arrangements are also
+established ideas~\cite{cgal-nef}. This document develops a particular
+constructive proof for an SFCC-style specification and records its
+obstructions. It claims no general absence of prior art and no priority
+for the individual ingredients.
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.27\linewidth}
+                >{\raggedright\arraybackslash}p{0.64\linewidth}}
+\toprule
+Statement & Scope\\
+\midrule
+Orthogonal result & Exact support-coordinate stopping certificate;
+  finite balanced refinement; exact simple-cell filling.\\[3pt]
+Fixed-grid obstruction & A rational tetrahedron defeats the specified
+  face-balanced simple-cell rule at every depth on $[0,1]^3$.\\[3pt]
+Arrangement fallback & Exact and finite for any finite octree; permits
+  arbitrary local arrangements and coincident interface patches.\\[3pt]
+Protected-cell theorem & Exact and finite for rational polyhedral
+  manifold boundaries after the explicit protection, interface,
+  and certification changes.\\[3pt]
+Curved-carrier estimates & Local lemmas and identified obligations;
+  no completed curved-SFCC correctness or termination theorem.\\[3pt]
+Current implementation & Not certified by this document; no assertion
+  about its predicates, feature completeness, finite tolerances,
+  or exported floating-point triangles.\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+In particular, rounding the rational mesh to a finite floating-point
+format can identify distinct vertices, collapse triangles, or change
+an exact intersection. A separate rounding or perturbation theorem
+would be needed to preserve these guarantees after conversion.
+No mathematical statement above automatically transfers to the app's
+GPU sampling or Rust export pipeline.
+
+\appendix
+\section{Reproducibility and finite arithmetic cross-checks}
+
+The source is self-contained and uses standard LaTeX packages. From the
+repository root, build with generated output outside the repository:
+\begin{verbatim}
+mkdir -p /tmp/sfcc-correctness-proofs
+latexmk -pdf -interaction=nonstopmode -halt-on-error \
+  -outdir=/tmp/sfcc-correctness-proofs \
+  docs/research/sfcc-correctness-proofs.tex
+\end{verbatim}
+No application build or runtime rendering is needed for this document.
+
+The orthogonal mask table can be independently reproduced as follows.
+Associate a bit with each sign triple in $\{0,1\}^3$. For every pair
+of triples differing in one coordinate, add their shared octahedron
+edge exactly when their occupancy bits differ. First reject any
+octahedron vertex of degree four. Among the remaining nonempty graphs,
+reject disconnected graphs. The rest are simple cycles. At a cycle
+vertex, a turn occurs exactly when the two neighboring vertices lie
+on different coordinate axes. Count cycles by their turns as in
+Section~\ref{sec:orthogonal}. Enumeration of all $256$ masks gives
+the displayed counts; the table-free argument proves the result.
+
+The tetrahedron checks use exact rational arithmetic: its three base
+heights equal $1/6$, its three projected base-line invariants have the
+values displayed in Section~\ref{sec:obstruction}, and its apex exit
+coordinates have the formula
+\[
+  (x,y)=(1/3,1/3)+\frac{1/3-z_0}{61}(w_x,w_y),
+\]
+for $(w_x,w_y)=(0,1),(1,0),(-3,-2)$. Direct rational checks at depths
+$2$ through $199$ agree with the same-quarter-face conclusion. Those
+finite checks are a transcription check only; inequality
+\eqref{eq:tetra-drift} proves the claim for all depths.
+
+\begin{thebibliography}{9}
+
+\bibitem{cms}
+C.-C. Ho, F.-C. Wu, B.-Y. Chen, Y.-Y. Chuang, and M. Ouhyoung.
+\emph{Cubical Marching Squares: Adaptive Feature Preserving Surface
+Extraction from Volume Data.}
+Computer Graphics Forum, 24(3), Eurographics 2005.
+\url{https://www.csie.ntu.edu.tw/~cyy/publications/papers/Ho2005CMS.pdf}.
+
+\bibitem{cgal-nef}
+CGAL Project.
+\emph{3D Boolean Operations on Nef Polyhedra: User Manual}, especially
+``Regularized Set Operations.''
+\url{https://doc.cgal.org/latest/Nef_3/index.html}.
+Accessed October 13, 2026.
+
+\bibitem{psc}
+S.-W. Cheng, T. K. Dey, and E. A. Ramos.
+\emph{Delaunay Refinement for Piecewise Smooth Complexes.}
+Author manuscript; conference version, ACM--SIAM Symposium on Discrete
+Algorithms (SODA), 2007.
+\url{https://cse.hkust.edu.hk/~scheng/pub/soda2007a-psc.pdf}.
+
+\bibitem{dey-levine}
+T. K. Dey and J. A. Levine.
+\emph{Delaunay Meshing of Piecewise Smooth Complexes without Expensive
+Predicates.}
+Algorithms, 2(4):1327--1349, 2009.
+\url{https://doi.org/10.3390/a2041327}.
+
+\bibitem{varadhan}
+G. Varadhan, S. Krishnan, T. V. N. Sriram, and D. Manocha.
+\emph{Topology Preserving Surface Extraction Using Adaptive Subdivision.}
+Eurographics Symposium on Geometry Processing, 2004.
+\url{https://gamma.cs.unc.edu/RECONS/topology.pdf}.
+
+\bibitem{pv}
+S. Plantinga and G. Vegter.
+\emph{Isotopic Meshing of Implicit Surfaces.}
+The Visual Computer, 23:45--58, 2007.
+\url{https://doi.org/10.1007/s00371-006-0083-6}.
+Author-hosted publication copy:
+\url{https://pure.rug.nl/ws/files/2777927/2007VisCompPlantinga.pdf}.
+
+\end{thebibliography}
+\end{document}

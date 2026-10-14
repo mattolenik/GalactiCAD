@@ -2,8 +2,7 @@
  * Serialize an SFCC-subset scene to the `BridgeNode` JSON shape the Rust
  * `scene_bridge` (gcad-wasm/kernel) ingests at the WASM boundary.
  *
- * Mirrors the dispatch of `compileCpuSdf`'s `walk` exactly (same v1 subset, same
- * field extraction): 7 primitives + Translate/Rotate/uniform-Scale +
+ * Supports 7 primitives + Translate/Rotate/uniform-Scale +
  * Union/Subtract/Intersect (hard + smooth). The GPU-render `SerializedNode[]` is
  * insufficient for SFCC — it lacks Rotate's `getWgslMatrices().fwd`, profile
  * vertices, and operator blend modes — so this is a dedicated SFCC serializer.
@@ -27,46 +26,52 @@ import { Intersect } from "../../scene/operators/intersect.mjs"
 import { Translate } from "../../scene/operators/translate.mjs"
 import { Rotate } from "../../scene/operators/rotate.mjs"
 import { Scale } from "../../scene/operators/scale.mjs"
+import { eulerMatrices } from "../../scene/transform-math.mjs"
 
 const nid = (n: Node): number => (typeof (n as { id?: number }).id === "number" ? (n as { id: number }).id : -1)
 const pos3 = (n: { pos: { x: number; y: number; z: number } }): [number, number, number] => [n.pos.x, n.pos.y, n.pos.z]
 
+function serializePrimitive(n: Box | Cylinder | Cone | Extrude | Loft | Lathe, fields: object): unknown {
+    const primitive = { kind: n.getShapeType(), node_id: nid(n), pos: pos3(n), ...fields }
+    if (n.rot.x === 0 && n.rot.y === 0 && n.rot.z === 0) return primitive
+    // Primitive rot acts before pos, so rotate an origin-centered payload and
+    // restore its position outside the rotation. Reuse the existing bridge ops.
+    return {
+        kind: "translate", node_id: nid(n), d: primitive.pos,
+        arg: {
+            kind: "rotate", node_id: nid(n), fwd: eulerMatrices(n.rot.x, n.rot.y, n.rot.z).fwd,
+            arg: { ...primitive, pos: [0, 0, 0] },
+        },
+    }
+}
+
 /** Recursive `BridgeNode` (matches the Rust `scene_bridge::BridgeNode` enum). */
 export function serializeBridgeNode(n: Node): unknown {
-    if (n instanceof Box) return { kind: "box", node_id: nid(n), pos: pos3(n), half: [n.size.x, n.size.y, n.size.z] }
+    if (n instanceof Box) return serializePrimitive(n, { half: [n.size.x, n.size.y, n.size.z] })
     if (n instanceof Sphere) return { kind: "sphere", node_id: nid(n), pos: pos3(n), r: n.r }
     if (n instanceof Cylinder)
-        return {
-            kind: "cylinder",
-            node_id: nid(n),
-            pos: pos3(n),
+        return serializePrimitive(n, {
             r: n.r,
             h: n.h,
             fillet_top: n.filletTop,
             fillet_bottom: n.filletBottom,
             chamfer_top: n.chamferTop,
             chamfer_bottom: n.chamferBottom,
-        }
-    if (n instanceof Cone) return { kind: "cone", node_id: nid(n), pos: pos3(n), r: n.r, h: n.h }
+        })
+    if (n instanceof Cone) return serializePrimitive(n, { r: n.r, h: n.h })
     if (n instanceof Extrude)
-        return {
-            kind: "extrude",
-            node_id: nid(n),
-            pos: pos3(n),
+        return serializePrimitive(n, {
             verts: n.child.vertices.map(v => [v[0], v[1]]),
             h: n.h,
             twist_degrees: n.twistDegrees,
-        }
+        })
     if (n instanceof Loft)
-        return {
-            kind: "loft",
-            node_id: nid(n),
-            pos: pos3(n),
+        return serializePrimitive(n, {
             profiles: n.profiles.map(p => p.vertices.map(v => [v[0], v[1]])),
             h: n.h,
-        }
+        })
     if (n instanceof Lathe)
-        return { kind: "lathe", node_id: nid(n), pos: pos3(n), verts: n.child.vertices.map(v => [v[0], v[1]]) }
+        return serializePrimitive(n, { verts: n.child.vertices.map(v => [v[0], v[1]]) })
     if (n instanceof Translate)
         return { kind: "translate", node_id: nid(n), d: [n.dx, n.dy, n.dz], arg: serializeBridgeNode(n.arg) }
     if (n instanceof Rotate)

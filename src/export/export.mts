@@ -96,6 +96,9 @@ export interface MeshSfccValidation {
     vertexLinks: "passed" | "failed" | "notChecked"
     faceSegments: "passed" | "failed" | "notChecked"
     vertexResiduals: "passed" | "failed" | "notChecked"
+    /** Finite, noncollinear emitted triangles; does not establish embedding or coverage. */
+    triangleNondegeneracy: "passed" | "failed" | "notChecked"
+    invalidTriangles: number
     unresolvedCells: number
     featureFallbackCells: number
     curveProjectionFailures: number

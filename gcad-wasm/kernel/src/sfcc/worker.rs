@@ -804,6 +804,7 @@ pub fn merge_partials(
     validation.numerical = numerical;
     validation.numerical.chord_budget += unresolved_triangles;
     validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
+    validation.check_triangles(&verts, &out_tris);
     let ok = validation.ok();
 
     MergedMesh {

@@ -1449,6 +1449,7 @@ fn run_sfcc_pipeline_impl(
     validation.numerical = validation::numerical_failures();
     validation.numerical.chord_budget += unresolved_triangles;
     validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
+    validation.check_triangles(&verts, &out_tris);
     let ok = validation.ok();
     phase_mark(now, &mut ph_last, &mut ph_assemble);
     emit(SFCC_PHASE_COUNT, "Done");

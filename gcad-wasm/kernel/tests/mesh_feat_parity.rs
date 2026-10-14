@@ -89,7 +89,9 @@ fn assert_invariants(name: &str, tree: &CsgNode, r: &SfccPipelineResult, expect_
         assert!(r.ok, "{name}: {:?}", r.validation);
     } else {
         assert!(r.validation.unresolved_cells > 0, "{name}: expected bounded refinement");
-        assert_eq!(r.validation.status(), "incomplete", "{name}: {:?}", r.validation);
+        // Emitted-triangle failures take precedence over unfinished refinement.
+        let expected = if r.validation.invalid_triangles > 0 { "failed" } else { "incomplete" };
+        assert_eq!(r.validation.status(), expected, "{name}: {:?}", r.validation);
         assert!(!r.ok);
     }
     assert!(

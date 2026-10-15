@@ -6,6 +6,8 @@
 //! 0), lives in the octree descent itself — culled cells are never created.
 //!
 //! Implemented here:
+//! - Necessary original-tree sphere/box discovery via strict corner signs and
+//!   same-sign edge/face exclusion, before feature-corner exemptions.
 //! - (iii-b) per-stratum normal variation: for each smooth patch active near the
 //!   cell, stratum normals at the 8 corners + center must agree pairwise to
 //!   `normal_variation_cos` (Plantinga–Vegter small-normal-variation surrogate).
@@ -25,7 +27,7 @@ use crate::math::grid::{
     cell_aabb, cell_center_world, cell_size_at_level, corner_offset, point_to_world, stride_at_level, SfccLattice,
     CELL_EDGES,
 };
-use crate::sdf::SdfQuery;
+use crate::sdf::{CsgNode, Indeterminate, Leaf, SdfQuery, ZeroOwner};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::strata::{CarrierKind, Stratum};
 use std::collections::HashSet;
@@ -86,6 +88,184 @@ pub fn has_corner_sign_change(probe: &RefineProbe) -> bool {
         }
     }
     false
+}
+
+/// Necessary primitive visibility only; passing does not certify components.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiscoveryCheck {
+    NoDiscoveryRejection {
+        /// A surviving blend/unsupported scope is outside this guard's theorem.
+        opaque: bool,
+    },
+    NeedsSplit,
+    Indeterminate,
+}
+
+impl DiscoveryCheck {
+    pub fn needs_split(self) -> bool {
+        !matches!(self, Self::NoDiscoveryRejection { .. })
+    }
+}
+
+/// Enclose the actual endpoint coordinates, including midpoint roundoff. Zero
+/// extents stay zero for point, edge and face interval queries.
+fn enclosing_box(lo: [f64; 3], hi: [f64; 3]) -> Result<([f64; 3], [f64; 3]), Indeterminate> {
+    let mut c = [0.0; 3];
+    let mut half = [0.0; 3];
+    for a in 0..3 {
+        if !lo[a].is_finite() || !hi[a].is_finite() || lo[a] > hi[a] {
+            return Err(Indeterminate);
+        }
+        if lo[a] == hi[a] {
+            c[a] = lo[a];
+        } else {
+            c[a] = (lo[a] * 0.5 + hi[a] * 0.5).clamp(lo[a], hi[a]);
+            half[a] = (c[a] - lo[a]).max(hi[a] - c[a]).next_up();
+        }
+        if !c[a].is_finite() || !half[a].is_finite()
+            || !(c[a] - half[a]).is_finite() || !(c[a] + half[a]).is_finite()
+            || c[a] - half[a] > lo[a] || c[a] + half[a] < hi[a]
+        {
+            return Err(Indeterminate);
+        }
+    }
+    Ok((c, half))
+}
+
+/// Check original signed sphere/box occurrences, never the sampled winners or
+/// a coarse pruned tree. The reused numeric enclosure is an engineering
+/// allowance; this is not an exact-f64 or general component certificate.
+pub fn discovery_guard(root: &CsgNode, probe: &RefineProbe) -> DiscoveryCheck {
+    crate::sfcc::perf::add(18, 1);
+    let result = match check_discovery(root, probe) {
+        Ok(result) => result,
+        Err(Indeterminate) => DiscoveryCheck::Indeterminate,
+    };
+    match result {
+        DiscoveryCheck::NeedsSplit => crate::sfcc::perf::add(25, 1),
+        DiscoveryCheck::Indeterminate => crate::sfcc::perf::add(26, 1),
+        _ => {}
+    }
+    result
+}
+
+fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck, Indeterminate> {
+    if !probe.cell_size.is_finite() || probe.cell_size <= 0.0 {
+        return Err(Indeterminate);
+    }
+    let point = |i: usize| [probe.pts[i * 3], probe.pts[i * 3 + 1], probe.pts[i * 3 + 2]];
+    let lo = point(0);
+    let hi = point(7);
+    if (0..3).any(|a| lo[a] >= hi[a] || !probe.pts[24 + a].is_finite()
+        || probe.pts[24 + a] < lo[a] || probe.pts[24 + a] > hi[a])
+    {
+        return Err(Indeterminate);
+    }
+    let (c, half) = enclosing_box(lo, hi)?;
+    for i in 0..8 {
+        for a in 0..3 {
+            if probe.pts[i * 3 + a] != if i & (1 << a) == 0 { lo[a] } else { hi[a] } {
+                return Err(Indeterminate);
+            }
+        }
+    }
+    let owners = root.zero_owners_over_box(c, half)?;
+    #[cfg(feature = "sfcc-profile")]
+    crate::sfcc::perf::add(21, owners.entries.iter().filter(|e| matches!(e, ZeroOwner::Primitive(_))).count());
+    if owners.interval.0 > 0.0 || owners.interval.1 < 0.0 {
+        crate::sfcc::perf::add(29, 1);
+        return Ok(DiscoveryCheck::NoDiscoveryRejection { opaque: false });
+    }
+    let mut opaque = false;
+    let mut corner_signs = Vec::with_capacity(owners.entries.len());
+    for owner in owners.entries {
+        let ZeroOwner::Primitive(leaf) = owner else {
+            opaque = true;
+            continue;
+        };
+        let mut negative = 0u8;
+        for i in 0..8 {
+            crate::sfcc::perf::add(22, 1);
+            let (a, b) = leaf.discovery_interval_over_box(point(i), [0.0; 3])?;
+            if b < 0.0 {
+                negative |= 1 << i;
+            } else if a <= 0.0 {
+                return Ok(DiscoveryCheck::NeedsSplit);
+            }
+        }
+        if negative == 0 || negative == u8::MAX {
+            return Ok(DiscoveryCheck::NeedsSplit);
+        }
+        for &[a, b] in &CELL_EDGES {
+            if (negative >> a) & 1 == (negative >> b) & 1 {
+                let (ec, eh) = enclosing_box(point(a), point(b))?;
+                crate::sfcc::perf::add(23, 1);
+                let (l, h) = leaf.discovery_interval_over_box(ec, eh)?;
+                if l <= 0.0 && h >= 0.0 {
+                    return Ok(DiscoveryCheck::NeedsSplit);
+                }
+            }
+        }
+        for axis in 0..3 {
+            for side in 0..2 {
+                let first = side << axis;
+                let last = first | (7 ^ (1 << axis));
+                let sign = (negative >> first) & 1;
+                if (0..8).filter(|i| (i >> axis) & 1 == side).all(|i| (negative >> i) & 1 == sign) {
+                    let (fc, fh) = enclosing_box(point(first), point(last))?;
+                    crate::sfcc::perf::add(24, 1);
+                    let (l, h) = leaf.discovery_interval_over_box(fc, fh)?;
+                    if l <= 0.0 && h >= 0.0 {
+                        return Ok(DiscoveryCheck::NeedsSplit);
+                    }
+                }
+            }
+        }
+        corner_signs.push((leaf, negative));
+    }
+    if !opaque {
+        // Removed children are strict neutral signs at each retained ancestor
+        // (positive at Min, negative at Max). Reuse the reliable leaf signs in
+        // original tree order instead of eight extra whole-tree interval queries.
+        let mut next = 0;
+        let signs = retained_corner_signs(root, &corner_signs, &mut next).ok_or(Indeterminate)?;
+        if next != corner_signs.len() {
+            return Err(Indeterminate);
+        }
+        if signs == 0 || signs == u8::MAX {
+            return Ok(DiscoveryCheck::NeedsSplit);
+        }
+    }
+    Ok(DiscoveryCheck::NoDiscoveryRejection { opaque })
+}
+
+fn retained_corner_signs(root: &CsgNode, signs: &[(&Leaf, u8)], next: &mut usize) -> Option<u8> {
+    crate::sfcc::perf::add(28, 1);
+    match root {
+        CsgNode::Leaf(leaf) => {
+            let &(candidate, bits) = signs.get(*next)?;
+            if std::ptr::eq(leaf, candidate) {
+                *next += 1;
+                Some(bits)
+            } else {
+                None
+            }
+        }
+        CsgNode::Min(children) | CsgNode::Max(children) => {
+            let mut result = None;
+            for child in children {
+                if let Some(bits) = retained_corner_signs(child, signs, next) {
+                    result = Some(match result {
+                        None => bits,
+                        Some(prev) if matches!(root, CsgNode::Min(_)) => prev | bits,
+                        Some(prev) => prev & bits,
+                    });
+                }
+            }
+            result
+        }
+        CsgNode::Blend { .. } => None,
+    }
 }
 
 /// Strata active near this cell: for each probe point within √3·cellSize·gradBound
@@ -282,10 +462,22 @@ pub struct SmoothCriteriaOptions {
     pub normal_variation_analytic: bool,
 }
 
-/// Combined P3 criteria: returns true when the cell needs splitting. Port of
-/// `needsSplitSmooth`. `grad_bound` / `has_blend` are the tree-level advisories
+/// Discovery followed by P3 criteria: `tree` must be the original full root.
+/// `grad_bound` / `has_blend` are the tree-level advisories
 /// (`CsgNode::grad_bound` / `CsgNode::has_blend`), hoisted by the caller.
-pub fn needs_split_smooth<T: SdfQuery + ?Sized>(
+pub fn needs_split_smooth(
+    tree: &CsgNode,
+    probe: &RefineProbe,
+    opts: &SmoothCriteriaOptions,
+    grad_bound: f64,
+    has_blend: bool,
+) -> bool {
+    discovery_guard(tree, probe).needs_split()
+        || needs_split_smooth_after_discovery(tree, probe, opts, grad_bound, has_blend)
+}
+
+/// The feature-aware entries already ran discovery before their corner return.
+pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
     tree: &T,
     probe: &RefineProbe,
     opts: &SmoothCriteriaOptions,
@@ -549,4 +741,536 @@ pub fn classify_cell_features(
         return FeatureCellClass { split: false, curve: -1, corner: corner_in_cell };
     }
     FeatureCellClass { split: false, curve: through_curve, corner: -1 }
+}
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::*;
+    use crate::math::similarity::Similarity;
+    use crate::primitives::smin::SminMode;
+    use crate::sdf::{self, Shape};
+
+    fn probe(tree: &CsgNode, lo: [f64; 3], hi: [f64; 3]) -> RefineProbe {
+        let mut pts = [0.0; 27];
+        let mut f = [0.0; 9];
+        for i in 0..9 {
+            let p = std::array::from_fn(|a| {
+                if i == 8 { (lo[a] + hi[a]) * 0.5 }
+                else if i & (1 << a) == 0 { lo[a] } else { hi[a] }
+            });
+            pts[i * 3..i * 3 + 3].copy_from_slice(&p);
+            f[i] = tree.f(p);
+        }
+        RefineProbe { pts, f, level: 0, cell_size: hi[0] - lo[0] }
+    }
+
+    fn sphere(r: f64, pos: [f64; 3]) -> CsgNode {
+        sdf::leaf_at(Shape::Sphere { r }, pos)
+    }
+
+    const LOOSE: SmoothCriteriaOptions = SmoothCriteriaOptions {
+        normal_variation_cos: -1.0,
+        blend_normal_variation_cos: 1.0,
+        normal_variation_analytic: false,
+    };
+
+    #[test]
+    fn hidden_unindexed_primitives_split_even_with_quality_disabled() {
+        for tree in [
+            sdf::union(vec![
+                sdf::leaf_at(Shape::Cuboid { half: [1.25, 3., 3.] }, [-1.75, 0., 0.]),
+                sphere(0.1, [0.5, 0., 0.]),
+            ]),
+            sdf::subtract(
+                sdf::leaf_at(Shape::Cuboid { half: [1.75, 3., 3.] }, [-1.25, 0., 0.]),
+                sphere(0.1, [0.; 3]),
+            ),
+        ] {
+            let p = probe(&tree, [-1.; 3], [1.; 3]);
+            assert!(has_corner_sign_change(&p));
+            assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::NeedsSplit);
+            assert!(needs_split_smooth(&tree, &p, &LOOSE, 1.0, false));
+        }
+    }
+
+    #[test]
+    fn ordinary_sphere_and_box_patches_pass() {
+        for tree in [sphere(1., [0.; 3]), sdf::leaf_at(Shape::Cuboid { half: [1.; 3] }, [0.; 3])] {
+            let p = probe(&tree, [0.8, -0.1, -0.1], [1.2, 0.1, 0.1]);
+            assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::NoDiscoveryRejection { opaque: false });
+            assert!(!needs_split_smooth(&tree, &p, &LOOSE, 1., false));
+        }
+    }
+
+    #[test]
+    fn invisible_edge_roots_and_face_loop_request_splits() {
+    for (r, lo, hi, face_only) in [
+        (1., [0.919, -0.04, -0.04], [0.999, 0.04, 0.04], false),
+        (10., [8.99, -0.5, -0.5], [9.99, 0.5, 0.5], true),
+    ] {
+        let t = sphere(r, [0.; 3]);
+        let CsgNode::Leaf(l) = &t else { unreachable!() };
+        let p = probe(&t, lo, hi);
+        assert!(has_corner_sign_change(&p));
+        let high_corner_radius2 = hi[0] * hi[0] + hi[1] * hi[1] + hi[2] * hi[2];
+        let high_edge_min_radius2 = hi[0] * hi[0] + hi[1] * hi[1];
+        assert!(high_corner_radius2 > r * r);
+        assert!(
+            hi[0] * hi[0] < r * r,
+            "high face has an analytic interior circle"
+        );
+        assert_eq!(high_edge_min_radius2 > r * r, face_only);
+        if face_only {
+            for [a, b] in CELL_EDGES {
+                if (p.f[a] < 0.) == (p.f[b] < 0.) {
+                    let mut min2 = 0.;
+                    let mut max2 = 0.;
+                    for k in 0..3 {
+                        let u = p.pts[a * 3 + k];
+                        let v = p.pts[b * 3 + k];
+                        min2 += if u.min(v) <= 0. && u.max(v) >= 0. { 0. }
+                            else { u.abs().min(v.abs()).powi(2) };
+                        max2 += u.abs().max(v.abs()).powi(2);
+                    }
+                    assert!(max2 < r * r || min2 > r * r);
+                }
+            }
+        }
+        let mut uncertain_equal_edges = 0;
+        for [a, b] in CELL_EDGES {
+            if (p.f[a] < 0.) == (p.f[b] < 0.) {
+                let pa = std::array::from_fn(|k| p.pts[a * 3 + k]);
+                let pb = std::array::from_fn(|k| p.pts[b * 3 + k]);
+                let (c, h) = enclosing_box(pa, pb).unwrap();
+                let (l, h) = l.discovery_interval_over_box(c, h).unwrap();
+                uncertain_equal_edges += usize::from(l <= 0. && h >= 0.);
+            }
+        }
+        assert_eq!(uncertain_equal_edges == 0, face_only);
+        assert_eq!(discovery_guard(&t, &p), DiscoveryCheck::NeedsSplit);
+    }
+}
+
+    #[test]
+    fn opaque_scope_preserves_supported_sibling_guard() {
+        let cylinder = sdf::leaf_at(Shape::Cylinder { r: 1., h: 1. }, [0.; 3]);
+        let p = probe(&cylinder, [-1.; 3], [1.; 3]);
+        let blend = sdf::union_smooth(
+            vec![sphere(1., [-0.5, 0., 0.]), sphere(1., [0.5, 0., 0.])],
+            SminMode::Round, 0.1, 2.,
+        );
+        for opaque in [cylinder, blend] {
+            assert_eq!(discovery_guard(&opaque, &p), DiscoveryCheck::NoDiscoveryRejection { opaque: true });
+            for mixed in [
+                sdf::union(vec![opaque.clone(), sphere(0.1, [0.; 3])]),
+                sdf::intersect(vec![opaque, sphere(0.1, [0.; 3])]),
+            ] {
+                assert_eq!(discovery_guard(&mixed, &p), DiscoveryCheck::NeedsSplit);
+            }
+        }
+    }
+
+    #[test]
+    fn touching_zero_and_collapsed_cells_are_not_exclusions() {
+        let tree = sphere(1., [0.; 3]);
+        let p = probe(&tree, [1., 0., 0.], [2., 1., 1.]);
+        assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::NeedsSplit);
+        let p = probe(&tree, [1., 0., 0.], [1., 1., 1.]);
+        assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::Indeterminate);
+    }
+
+    #[test]
+    fn removed_hard_subtree_is_neutral_in_root_sign_fold() {
+        let outer = sphere(1., [0.; 3]);
+        let p = probe(&outer, [0.8, -0.1, -0.1], [1.2, 0.1, 0.1]);
+        let distant = CsgNode::Max(vec![sphere(1., [10.; 3]), sphere(2., [10.; 3])]);
+        for tree in [
+            CsgNode::Min(vec![distant.clone(), outer.clone()]),
+            CsgNode::Min(vec![outer.clone(), distant]),
+            CsgNode::Max(vec![CsgNode::Min(vec![sphere(5., [0.; 3]), sphere(6., [0.; 3])]), outer]),
+        ] {
+            assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::NoDiscoveryRejection { opaque: false });
+        }
+    }
+
+    #[test]
+    fn every_ancestor_can_exclude_a_nonowning_hidden_occurrence() {
+        let patch = sphere(1., [0.; 3]);
+        let p = probe(&patch, [0.8, -0.1, -0.1], [1.2, 0.1, 0.1]);
+        let hidden = sphere(0.01, [1., 0., 0.]);
+        for tree in [
+            sdf::union(vec![patch.clone(), sdf::intersect(vec![sphere(1., [100., 0., 0.]), hidden.clone()])]),
+            sdf::intersect(vec![sdf::union(vec![hidden, sphere(5., [0.; 3])]), patch]),
+        ] {
+            assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::NoDiscoveryRejection { opaque: false });
+        }
+    }
+
+    #[test]
+    fn whole_root_sign_rule_rejects_visible_primitives_but_not_the_hidden_lens_scope_limit() {
+        // Every primitive is visible, but the intersection's root corners are all positive.
+        let lens = CsgNode::Max(vec![sphere(10.01, [10., 0., 0.]), sphere(10.01, [-10., 0., 0.])]);
+        let ring_radius = (10.01_f64.powi(2) - 100.).sqrt();
+        assert!(ring_radius > 0.4 && ring_radius < 1.);
+        assert!(lens.f([0., ring_radius, 0.]).abs() < 1e-12);
+        assert!(lens.f([0.; 3]) < 0. && lens.f([0.02, 0., 0.]) > 0.);
+        assert_eq!(discovery_guard(&lens, &probe(&lens, [-1.; 3], [1.; 3])), DiscoveryCheck::NeedsSplit);
+        // A separate box supplies mixed root signs; the disjoint lens is still
+        // hidden. Passing this necessary guard does not certify its discovery.
+        let tree = sdf::union(vec![
+            lens,
+            sdf::leaf_at(Shape::Cuboid { half: [1.25, 3., 3.] }, [-1.75, 0., 0.]),
+        ]);
+        let p = probe(&tree, [-1.; 3], [1.; 3]);
+        assert!(tree.f([0.; 3]) < 0. && tree.f([-0.25, 0., 0.]) > 0. && tree.f([-0.75, 0., 0.]) < 0.);
+        assert!(has_corner_sign_change(&p));
+        assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::NoDiscoveryRejection { opaque: false });
+    }
+
+    #[test]
+    fn invalid_or_collapsed_supported_geometry_is_indeterminate() {
+        let valid = sphere(1., [0.; 3]);
+        let p = probe(&valid, [0.8, -0.1, -0.1], [1.2, 0.1, 0.1]);
+        let mut bad_sign = valid.clone();
+        if let CsgNode::Leaf(l) = &mut bad_sign { l.sign = 0.; }
+        for tree in [
+            sphere(f64::NAN, [0.; 3]), sphere(0., [0.; 3]), sphere(1., [f64::INFINITY; 3]),
+            sphere(0.01, [1e20; 3]),
+            sdf::leaf(Shape::Sphere { r: 0.01 }, Similarity::from_translation(1e20, 1e20, 1e20), [0.; 3]),
+            sdf::leaf(Shape::Sphere { r: 1. }, Similarity { s: 0., ..Similarity::identity() }, [0.; 3]),
+            sdf::leaf(Shape::Sphere { r: 1. }, Similarity { r: [1.; 9], ..Similarity::identity() }, [0.; 3]),
+            sdf::leaf(Shape::Sphere { r: 1. }, Similarity {
+                r: [-1., 0., 0., 0., 1., 0., 0., 0., 1.], ..Similarity::identity()
+            }, [0.; 3]),
+            sdf::leaf_at(Shape::Cuboid { half: [1., f64::NAN, 1.] }, [0.; 3]),
+            bad_sign,
+        ] {
+            assert_eq!(discovery_guard(&tree, &p), DiscoveryCheck::Indeterminate);
+        }
+    }
+
+    #[test]
+    fn entity_boxes_enclose_actual_translated_and_subnormal_endpoints() {
+        for (lo, hi) in [
+            ([1e16, -1e16, 4.], [1e16 + 2., -1e16 + 6., 4.]),
+            ([1e16, -1e16, 4.], [1e16 + 2., -1e16, 4.]),
+            ([f64::from_bits(1); 3], [f64::from_bits(3); 3]),
+        ] {
+            let (c, h) = enclosing_box(lo, hi).unwrap();
+            for a in 0..3 {
+                assert!(c[a] - h[a] <= lo[a] && c[a] + h[a] >= hi[a]);
+                assert_eq!(h[a] == 0.0, lo[a] == hi[a]);
+            }
+        }
+        assert!(enclosing_box([1.; 3], [0.; 3]).is_err());
+        assert!(enclosing_box([0.; 3], [f64::NAN; 3]).is_err());
+    }
+
+
+    fn cuboid(half: [f64; 3], pos: [f64; 3]) -> CsgNode { sdf::leaf_at(Shape::Cuboid { half }, pos) }
+
+    const PASS: DiscoveryCheck = DiscoveryCheck::NoDiscoveryRejection { opaque: false };
+
+    fn plane_box(right: f64) -> CsgNode {
+        sdf::leaf_at(
+            Shape::Cuboid {
+                half: [1.25, 3., 3.],
+            },
+            [right - 1.25, 0., 0.],
+        )
+    }
+
+    fn owners(root: &CsgNode, c: [f64; 3], half: [f64; 3]) -> Vec<&Leaf> {
+        root.zero_owners_over_box(c, half)
+            .unwrap()
+            .entries
+            .into_iter()
+            .filter_map(|o| match o {
+                ZeroOwner::Primitive(l) => Some(l),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn at_path<'a>(mut root: &'a CsgNode, path: &[usize]) -> &'a CsgNode {
+        for &i in path {
+            root = match root {
+                CsgNode::Min(ch) | CsgNode::Max(ch) => &ch[i],
+                _ => panic!("invalid test path"),
+            };
+        }
+        root
+    }
+
+    fn assert_owner(root: &CsgNode, path: &[usize], witness: [f64; 3]) {
+        for n in 0..=path.len() {
+            assert!(
+                at_path(root, &path[..n]).f(witness).abs() < 1e-12,
+                "witness does not reach ancestor {n}"
+            );
+        }
+        let CsgNode::Leaf(target) = at_path(root, path) else {
+            panic!("not leaf")
+        };
+        assert!(owners(root, [0.; 3], [1.; 3])
+            .iter()
+            .any(|l| std::ptr::eq(*l, target)));
+        assert_eq!(target.index, 0);
+        assert!(target.strata.is_empty());
+    }
+
+    #[test]
+    fn center_winner_negative_cavity_nested_subtraction_and_double_negation_keep_zero_owners() {
+        let small = sphere(0.1, [0.; 3]);
+        let center_winner = sdf::union(vec![plane_box(-0.5), small.clone()]);
+        assert!(small.f([0.; 3]) < plane_box(-0.5).f([0.; 3]));
+        assert_owner(&center_winner, &[1], [0.1, 0., 0.]);
+        let cavity = sdf::subtract(plane_box(0.5), small.clone());
+        assert_owner(&cavity, &[1], [0.1, 0., 0.]);
+        let subtract_union = sdf::subtract(
+            sphere(5., [0.; 3]),
+            sdf::union(vec![small.clone(), sphere(0.1, [3., 0., 0.])]),
+        );
+        assert_owner(&subtract_union, &[1, 0], [0.1, 0., 0.]);
+        let subtract_intersection = sdf::subtract(
+            sphere(5., [0.; 3]),
+            sdf::intersect(vec![small.clone(), sphere(0.2, [0.; 3])]),
+        );
+        assert_owner(&subtract_intersection, &[1, 0], [0.1, 0., 0.]);
+        let nested = sdf::intersect(vec![
+            sdf::union(vec![
+                plane_box(-0.5),
+                sdf::intersect(vec![small.clone(), sphere(2., [0.; 3])]),
+            ]),
+            sphere(4., [0.; 3]),
+        ]);
+        assert_owner(&nested, &[0, 1, 0], [0.1, 0., 0.]);
+        let double = sdf::negate(sdf::negate(small));
+        assert_owner(&double, &[], [0.1, 0., 0.]);
+        let loose = SmoothCriteriaOptions {
+            normal_variation_cos: -1.,
+            blend_normal_variation_cos: 1.,
+            normal_variation_analytic: false,
+        };
+        for t in [
+            center_winner,
+            cavity,
+            subtract_union,
+            subtract_intersection,
+            nested,
+            double,
+        ] {
+            let p = probe(&t, [-1.; 3], [1.; 3]);
+            assert_eq!(discovery_guard(&t, &p), DiscoveryCheck::NeedsSplit);
+            assert!(needs_split_smooth(&t, &p, &loose, 1., false));
+        }
+    }
+
+    #[test]
+    fn path_burial_rejects_false_ownership_even_when_leaf_and_root_are_both_zero() {
+        let hidden = sphere(0.05, [0.; 3]);
+        let patch = plane_box(0.);
+        let witness = [0., 0.05, 0.];
+        for t in [
+            sdf::union(vec![
+                patch.clone(),
+                sdf::intersect(vec![hidden.clone(), sphere(1., [10.; 3])]),
+            ]),
+            sdf::intersect(vec![patch, sdf::union(vec![hidden, sphere(10., [0.; 3])])]),
+        ] {
+            assert_eq!(t.f(witness), 0.);
+            let CsgNode::Leaf(target) = at_path(&t, &[1, 0]) else {
+                unreachable!()
+            };
+            assert_eq!(target.f(witness), 0.);
+            assert!(!owners(&t, [0.; 3], [0.2; 3])
+                .iter()
+                .any(|l| std::ptr::eq(*l, target)));
+            assert_eq!(
+                discovery_guard(&t, &probe(&t, [-0.2; 3], [0.2; 3])),
+                DiscoveryCheck::NoDiscoveryRejection { opaque: false }
+            );
+        }
+    }
+
+    #[test]
+    fn duplicates_order_opposite_signs_and_thin_shell_never_merge_occurrences() {
+        let s = sphere(0.1, [0.; 3]);
+        for t in [
+            sdf::union(vec![cuboid([0.1; 3], [0.; 3]); 2]),
+            sdf::intersect(vec![cuboid([0.1; 3], [0.; 3]); 2]),
+            sdf::union(vec![s.clone(), s.clone()]),
+            sdf::intersect(vec![s.clone(), s.clone()]),
+            sdf::union(vec![s.clone(), sdf::negate(s.clone())]),
+            sdf::intersect(vec![s.clone(), sdf::negate(s.clone())]),
+            sdf::subtract(sphere(0.100000001, [0.; 3]), s.clone()),
+        ] {
+            let retained = owners(&t, [0.; 3], [1.; 3]);
+            assert_eq!(retained.len(), 2);
+            assert!(!std::ptr::eq(retained[0], retained[1]));
+            assert_eq!(
+                discovery_guard(&t, &probe(&t, [-1.; 3], [1.; 3])),
+                DiscoveryCheck::NeedsSplit
+            );
+        }
+        let shell = sdf::subtract(sphere(0.100000001, [0.; 3]), s.clone());
+        assert!(shell.f([0.1, 0., 0.]).abs() < 1e-14);
+        assert!(shell.f([0.100000001, 0., 0.]).abs() < 1e-14);
+        assert!(shell.f([0.1000000005, 0., 0.]) < 0.);
+        let ch = vec![plane_box(-0.5), s, sphere(0.1, [10.; 3])];
+        let mut reverse = ch.clone();
+        reverse.reverse();
+        for t in [sdf::union(ch), sdf::union(reverse)] {
+            assert_eq!(owners(&t, [0.; 3], [1.; 3]).len(), 2);
+            assert_eq!(
+                discovery_guard(&t, &probe(&t, [-1.; 3], [1.; 3])),
+                DiscoveryCheck::NeedsSplit
+            );
+        }
+    }
+
+    #[test]
+    fn rotated_flat_boxes_and_local_world_factorizations_keep_decisions() {
+        let angle = 0.37_f64;
+        let (s, c) = angle.sin_cos();
+        for scale in [1e-9, 1., 1e9] {
+            for factor in [0.125, 1., 8.] {
+                let sim = Similarity {
+                    r: [c, -s, 0., s, c, 0., 0., 0., 1.],
+                    t: [-1.98 * c * scale, -1.98 * s * scale, 0.],
+                    s: scale * factor,
+                };
+                let t = sdf::leaf(
+                    Shape::Cuboid {
+                        half: [2. / factor; 3],
+                    },
+                    sim,
+                    [0.; 3],
+                );
+                assert_eq!(
+                    discovery_guard(&t, &probe(&t, [-0.1 * scale; 3], [0.1 * scale; 3])),
+                    PASS,
+                    "scale={scale} factor={factor}"
+                );
+                let t = sdf::leaf(
+                    Shape::Sphere { r: 0.125 / factor },
+                    Similarity {
+                        s: scale * factor,
+                        t: [0.; 3],
+                        ..sim
+                    },
+                    [0.; 3],
+                );
+                assert_eq!(
+                    discovery_guard(&t, &probe(&t, [-scale; 3], [scale; 3])),
+                    DiscoveryCheck::NeedsSplit
+                );
+            }
+        }
+        for scale in [1., 0.001] {
+            let shift = [1e9, -1e9, 1e9];
+            let sim = Similarity { s: scale, t: shift, ..Similarity::identity() };
+            let tree = sdf::union(vec![
+                sdf::leaf(Shape::Cuboid { half: [50., 100., 100.] }, sim, [-50., 0., 0.]),
+                sdf::leaf(Shape::Sphere { r: 0.01650382162580301 }, sim, [0.04125955406450752, 1.53, 1.53]),
+            ]);
+            let lo = [-0.08251910812902, 1.447911753179639, 0.749845832607463];
+            let hi = [0.71435589187098, 2.244786753179639, 1.546720832607463];
+            assert!(discovery_guard(&tree, &probe(&tree,
+                std::array::from_fn(|a| lo[a] * scale + shift[a]),
+                std::array::from_fn(|a| hi[a] * scale + shift[a]))).needs_split());
+        }
+        for shift in [1e6, 1e12, 1e15] {
+            let t = sphere(0.125, [shift; 3]);
+            assert!(
+                discovery_guard(&t, &probe(&t, [shift - 1.; 3], [shift + 1.; 3])).needs_split(),
+                "translation={shift}"
+            );
+        }
+    }
+
+    #[test]
+    fn tiny_features_and_collapsed_translations_stay_uncertain_instead_of_empty() {
+        for radius in [1e-30, 1e-100, 1e-300] {
+            let tree = sphere(radius, [0.; 3]);
+            let p = probe(&tree, [-4. * radius; 3], [4. * radius; 3]);
+            assert!(discovery_guard(&tree, &p).needs_split(), "radius={radius}");
+        }
+        let tree = sphere(2_f64.powi(-20), [1e12; 3]);
+        assert_eq!(
+            discovery_guard(&tree, &probe(&tree, [1e12 - 1.; 3], [1e12 + 1.; 3])),
+            DiscoveryCheck::Indeterminate
+        );
+    }
+
+    #[test]
+    fn strict_ancestor_exclusion_and_malformed_siblings_are_distinct() {
+        let opaque = sdf::leaf_at(Shape::Cylinder { r: 1., h: 1. }, [0.; 3]);
+        for tree in [
+            sdf::union(vec![sphere(5., [0.; 3]), opaque.clone()]),
+            sdf::intersect(vec![sphere(1., [10.; 3]), opaque.clone()]),
+        ] {
+            assert!(tree.zero_owners_over_box([0.; 3], [1.; 3]).unwrap().entries.is_empty());
+            assert_eq!(discovery_guard(&tree, &probe(&tree, [-1.; 3], [1.; 3])), PASS);
+        }
+        let unit = sphere(1., [0.; 3]);
+        assert_eq!(discovery_guard(&unit, &probe(&unit, [1.001, 0., 0.], [2.001, 1., 1.])), PASS);
+        for bad in [
+            sphere(f64::INFINITY, [0.; 3]), sphere(-1., [0.; 3]), sphere(1., [f64::NAN, 0., 0.]),
+            sdf::leaf(Shape::Sphere { r: 1. }, Similarity { s: f64::MAX, ..Similarity::identity() }, [0.; 3]),
+            CsgNode::Min(vec![]), CsgNode::Max(vec![]),
+        ] {
+            for tree in [sdf::union(vec![sphere(5., [0.; 3]), bad.clone()]), sdf::intersect(vec![bad, opaque.clone()])] {
+                assert_eq!(discovery_guard(&tree, &probe(&unit, [-1.; 3], [1.; 3])), DiscoveryCheck::Indeterminate);
+            }
+        }
+        for index in [0, 3, 24] {
+            let mut p = probe(&unit, [-1.; 3], [1.; 3]);
+            p.pts[index] = f64::NAN;
+            assert_eq!(discovery_guard(&unit, &p), DiscoveryCheck::Indeterminate);
+        }
+        let mut p = probe(&unit, [-1.; 3], [1.; 3]);
+        p.pts[3] = 0.;
+        assert_eq!(discovery_guard(&unit, &p), DiscoveryCheck::Indeterminate);
+        p = probe(&unit, [-1.; 3], [1.; 3]);
+        p.cell_size = 0.;
+        assert_eq!(discovery_guard(&unit, &p), DiscoveryCheck::Indeterminate);
+    }
+
+    #[cfg(feature = "sfcc-profile")]
+    #[test]
+    fn discovery_work_is_linear_and_scratch_tracks_peak_pending_candidates() {
+        use crate::sfcc::perf;
+        let flat = plane_box(0.);
+        for n in [1, 4, 16, 64, 256] {
+            let tree = sdf::union(vec![flat.clone(); n]);
+            let p = probe(&tree, [-1.; 3], [1.; 3]);
+            perf::reset();
+            assert_eq!(discovery_guard(&tree, &p), PASS);
+            let c = perf::snapshot();
+            assert_eq!(c[18], 1);
+            assert_eq!(c[19], n + 1);
+            assert_eq!(c[20], n);
+            assert_eq!(c[21], n);
+            assert_eq!(c[22], 8 * n);
+            assert!(c[23] <= 12 * n && c[24] <= 6 * n);
+            assert_eq!(c[27], n);
+            assert_eq!(c[28], n + 1);
+            assert_eq!(c[30], c[20] + c[22] + c[23] + c[24], "root sign fold adds no interval queries");
+        }
+        let mut buried = vec![sphere(0.125, [0.; 3]); 256];
+        buried.push(cuboid([4.; 3], [0.; 3]));
+        let tree = sdf::intersect(vec![sdf::union(buried), flat]);
+        perf::reset();
+        assert_eq!(discovery_guard(&tree, &probe(&tree, [-1.; 3], [1.; 3])), PASS);
+        let c = perf::snapshot();
+        assert_eq!(c[19], 260);
+        assert_eq!(c[20], 258);
+        assert_eq!(c[21], 1);
+        assert_eq!(c[22], 8);
+        assert!(c[23] <= 12 && c[24] <= 6);
+        assert_eq!(c[28], 260);
+        assert_eq!(c[30], c[20] + c[22] + c[23] + c[24]);
+        assert!(c[27] >= 256, "scratch includes candidates later removed by an ancestor");
+    }
 }

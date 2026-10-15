@@ -28,7 +28,7 @@ use crate::math::grid::{
 use crate::sdf::{CsgNode, Pruned};
 use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::refine_criteria::{
-    classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
+    classify_cell_features, discovery_guard, has_corner_sign_change, make_probe, needs_split_smooth_after_discovery, FeatureCriteriaOptions,
     SmoothCriteriaOptions,
 };
 use std::cell::RefCell;
@@ -924,10 +924,11 @@ pub fn build_octree_feature_aware<'a>(
             cell.iy,
             cell.iz,
         );
+        if discovery_guard(tree, &probe).needs_split() {
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+        }
         if cls.corner >= 0 {
-            // Corner cells are exempt from the per-stratum smoothness certificates
-            // AND from the sign-change gate (the corner IS the carrier
-            // singularity). A corner cell with no visible crossings meshes nothing.
+            // Corner features exempt sampled smoothness, but never discovery.
             return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         // A feature in a cell whose corners don't see a sign change is invisible to
@@ -936,7 +937,7 @@ pub fn build_octree_feature_aware<'a>(
         if cls.curve >= 0 && !has_corner_sign_change(&probe) {
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
-        let split = needs_split_smooth(q, &probe, smooth_opts, grad_bound, has_blend);
+        let split = needs_split_smooth_after_discovery(q, &probe, smooth_opts, grad_bound, has_blend);
         CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
     })
 }

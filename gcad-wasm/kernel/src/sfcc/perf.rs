@@ -4,9 +4,12 @@
 //! maximum limb length, patch preparations, coarse retries, classification hits,
 //! retained lattice hits, scalar composition calls, raw composition calls,
 //! reference limb allocation sites, boundary projection hits, workspace grows,
-//! workspace reuses. These are work counts, not correctness diagnostics.
+//! workspace reuses. Discovery counters 18..30: calls, traversal nodes, cell
+//! interval queries, retained supported candidates, point/edge/face queries,
+//! split/indeterminate results, peak pending entries, root sign-walk nodes,
+//! strict root exclusions, all discovery interval calls. These are work counts, not correctness diagnostics.
 #[cfg(feature = "sfcc-profile")]
-thread_local! { static COUNTS: std::cell::Cell<[usize;18]> = const { std::cell::Cell::new([0;18]) }; }
+thread_local! { static COUNTS: std::cell::Cell<[usize;31]> = const { std::cell::Cell::new([0;31]) }; }
 
 #[inline]
 pub(crate) fn add(index: usize, amount: usize) {
@@ -32,10 +35,10 @@ pub(crate) fn maximum(index: usize, value: usize) {
 }
 #[cfg(feature = "sfcc-profile")]
 pub fn reset() {
-    COUNTS.with(|c| c.set([0; 18]));
+    COUNTS.with(|c| c.set([0; 31]));
 }
 #[cfg(feature = "sfcc-profile")]
-pub fn snapshot() -> [usize; 18] {
+pub fn snapshot() -> [usize; 31] {
     COUNTS.with(|c| c.get())
 }
 

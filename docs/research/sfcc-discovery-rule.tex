@@ -1,0 +1,727 @@
+% Standalone source. Generated output belongs outside the repository.
+% latexmk -pdf -interaction=nonstopmode -halt-on-error \
+%   -outdir=/tmp/sfcc-discovery-rule docs/research/sfcc-discovery-rule.tex
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs,array,enumitem,xurl}
+\usepackage[colorlinks=true,linkcolor=blue,urlcolor=blue]{hyperref}
+\setlist{itemsep=3pt,topsep=5pt}
+\setlength{\emergencystretch}{2em}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newcommand{\R}{\mathbb R}
+\newcommand{\zeros}{\operatorname{zeros}}
+\newcommand{\sgn}{\operatorname{sgn}}
+\title{SFCC Primitive Discovery Guard:\\Exclusion Proof and Implementation Contract}
+\author{Galacticad research documentation}
+\date{October 14, 2026}
+
+\begin{document}
+\maketitle
+
+\paragraph{Decision.}
+Implement a conservative, original-tree zero-owner enumeration, followed by
+primitive cell, edge, and face visibility checks. An inconclusive supported
+check requests subdivision; at the existing depth ceiling it remains an
+unresolved cell. Apply the same guard before both feature-corner acceptance
+paths and in the public smooth-refinement entry point. Retain the existing
+split/degenerate reporting channel and ordinary feature/quality criteria.
+
+This is a \emph{necessary discovery condition}, not a sufficient certificate
+that every hard-CSG component, local patch, or output triangle is accounted
+for. Call success \texttt{NoDiscoveryRejection}, never \texttt{Complete} or
+\texttt{Covered}. The supplied hidden sphere is within the proved rejection
+class. Section~\ref{sec:limits} gives a different hidden component that passes
+the guard, so the boundary of the result is testable rather than implicit.
+
+\section{Observed failure and source boundary}
+
+The source inspection is against baseline \texttt{3adc144}. All paths below are
+relative to \path{gcad-wasm/kernel/}; line numbers identify that baseline.
+The ignored regression is
+\path{tests/known_reconstruction_failures.rs:103},
+\texttt{separate\_sphere\_is\_reconstructed\_or\_reported\_as\_unresolved}.
+The coordinating agent reproduced one mesh component and zero unresolved cells.
+
+\begin{itemize}
+\item \path{src/sdf.rs:59--118} stores signed primitive occurrences and supplies
+existing sphere/cuboid box bounds. Hard-node bounds are composed at line 394;
+pointwise winner queries begin at line 416. Subtraction is normalized to
+\(\max(A,-B)\), with recursive De Morgan negation, around lines 950--1028.
+\item \path{src/sfcc/refine_criteria.rs:94--123} samples winners at eight
+corners and a center, then retains one closest stratum per sampled winner.
+At lines 288--365, the whole-field same-sign safeguard ceases to apply once
+the root has mixed corner signs. Sampled winners cannot exclude other branches.
+\item \path{src/sfcc/pipeline.rs:544--620} contains the shared serial/worker
+decision and an early feature-corner acceptance. The public
+\path{src/sfcc/octree.rs:843--940} has a second such acceptance. Direct smooth
+callers also exist in \path{tests/octree_parity.rs} and
+\path{tests/contour_parity.rs}.
+\item \path{src/sfcc/octree.rs:334--339} culls by the root box interval;
+lines 433--465 turn an unfulfilled split into \texttt{degenerate} at the
+depth ceiling. \path{src/sfcc/pipeline.rs:1440--1442} reports these cells even
+when another part of the same cell meshes successfully.
+\item \path{src/sfcc/worker.rs:584,757,802} carries and aggregates degeneracy.
+Its public \texttt{merge}, at lines 630--670, can rerun serial recovery.
+Testing recovery alone does not test the raw distributed reporting path.
+\item Coarse pruning is enabled above 12 leaves in
+\path{src/sfcc/pipeline.rs:781} and \path{src/sfcc/octree.rs:860}.
+The ball bounds used by \path{src/sdf.rs:792--850} have no formal outward
+rounding. The new discovery input is the original tree, even when existing
+point and normal queries use a pruned view.
+\end{itemize}
+
+No new scene evaluator, GPU path, mesher, or worker wire format is required.
+The Rust kernel already supplies the field and interval operations reused here.
+
+\section{Zero ownership and sound exclusion}
+
+Let \(Q\subset\R^3\) be a closed cell. Initially let \(F\) be a finite,
+nonempty min/max tree of continuous signed fields \(f_i\).
+A leaf identity is an \emph{occurrence}, including its sign and ancestor path.
+At a point \(p\), occurrence \(i\) is a zero owner if its own value and every
+node on that path equal zero. Leaf/root equality alone is insufficient:
+\(\max(\min(A,B),C)=0\) with \(A=0,B=-1,C=0\) does not expose \(A\).
+
+Suppose every interval \(I_v(Q)=[L_v,U_v]\) encloses its node's values on \(Q\).
+For hard nodes use
+\[
+ I_{\min_j v_j}=[\min_j L_{v_j},\min_j U_{v_j}],\qquad
+ I_{\max_j v_j}=[\max_j L_{v_j},\max_j U_{v_j}].
+\]
+Correlation loss enlarges the possibilities; it does not invalidate these
+enclosures. Define the candidate set
+\[
+ \mathcal C(Q)=\{i:0\in I_v(Q)\text{ for every node }v
+                       \text{ on the path from }i\text{ to the root}\}.
+\]
+
+\begin{theorem}[Zero-owner cover]
+Every root-zero point has at least one zero owner. Every occurrence owning
+a root-zero point in \(Q\) belongs to \(\mathcal C(Q)\).
+\end{theorem}
+\begin{proof}
+A finite min or max attains the value of some child. Starting with a root
+value zero, repeatedly choose an attaining child; this gives a path of zeros
+ending at a leaf. Conversely, every node on any zero-owning path has value
+zero at that point, so its enclosing interval contains zero.
+\end{proof}
+
+At a min ancestor, a zero child survives only where every sibling is
+nonnegative. A sibling bound \(U_s<0\) therefore excludes the route throughout
+\(Q\). At a max ancestor the dual exclusion is \(L_s>0\). These strict tests,
+or equivalently a zero-excluding interval at any ancestor, are valid for
+negative leaves and arbitrary alternating hard nesting. Equality and ties
+remain possible. A sampled non-winner is not an exclusion.
+
+Compute the intervals once in postorder. Append candidate references while
+walking children, and truncate the current subtree's appended entries when
+its interval excludes zero. This is \(O(N)\) node/interval work with
+\(O(P+h)\) temporary storage for peak pending candidates \(P\le N\) and
+height \(h\). A subtree can append many candidates before its parent excludes
+them; a vector retains that peak capacity even if the final candidate count
+\(K\) is small. The traversal does not recursively recompute sibling trees
+once per candidate.
+
+\paragraph{Unsupported subtrees.}
+A blend zero need not be a primitive zero. Stop at a blend or unsupported leaf
+and retain it as an opaque entry with interval \([{-\infty},+\infty]\).
+Do not stop at a hard node merely because one descendant is unsupported;
+visit its other branches. An ancestor can remove this entry only by
+its own valid exclusion. This extends the theorem to a hard tree whose atomic
+fields include opaque subexpressions, without claiming primitive coverage
+inside them. Keep the opaque/scope marker alongside the supported candidates;
+never encode it as a proven-empty vector. Supported candidates elsewhere in
+the same expression still receive the guard. The opaque entry alone does not
+force the legacy blend/unsupported pipeline to maximum depth.
+
+\section{The chosen guard and its exact guarantee}
+
+For a retained sphere/cuboid occurrence, assume a finite nondegenerate convex
+solid under a valid positive uniform similarity. Its sign may be either
+orientation. For each corner, obtain a \emph{strict} sign; the existing leaf
+box interval with zero half-extents can supply a conservative point-sign
+query. An interval touching zero, an invalid interval, or uncertain arithmetic
+does not supply a strict sign.
+
+Apply these checks independently of all normal/curvature settings:
+\begin{enumerate}[label=G\arabic*.]
+\item If the eight primitive corner signs are not all reliable, or are all
+the same, request subdivision. The candidate's cell interval already includes
+zero; neither a center winner nor a root sign change discharges this check.
+\item For each of the 12 edges whose endpoint signs agree, require the leaf
+interval on that edge to exclude zero strictly. Otherwise request subdivision.
+Represent an edge by a box with two zero half-extents.
+\item For each of the six faces whose four corner signs agree, require the
+leaf interval on that face to exclude zero strictly. Otherwise request
+subdivision. Represent a face by a box with one zero half-extent.
+\end{enumerate}
+
+The pre-existing whole-field same-sign rule also remains a discovery rule:
+in a fully supported hard tree, no reliable root corner sign change plus an
+inconclusive root interval requests subdivision, including a feature-corner
+cell. A feature tag may exempt sampled smoothness; it does not prove discovery.
+Where unsupported opaque entries remain, preserve legacy behavior except for
+rejections already justified by retained supported candidates.
+
+\begin{theorem}[Necessary primitive visibility]
+Under the enclosure and strict-sign premises, a supported cell passing G1--G3
+has the following properties for every possible supported zero owner:
+its primitive has mixed corner signs; each cell edge contains no primitive
+zero when its endpoints have equal signs, and exactly one primitive zero
+when they have opposite signs; every face with homogeneous primitive corner
+signs contains no primitive zero.
+\end{theorem}
+\begin{proof}
+G1 and the zero-owner cover prove the first assertion. Interval exclusion
+proves the equal-sign edge and homogeneous-face assertions. Undo the leaf sign
+on an opposite-sign edge. One endpoint is strictly inside a convex sphere or
+box and the other strictly outside. The solid's intersection with the line is
+an interval, whose interior endpoint-to-exterior endpoint portion has exactly
+one boundary exit. These primitives have no zero plateau on such a segment.
+\end{proof}
+
+\begin{corollary}[Wholly hidden primitive]
+An exposed nondegenerate sphere or box wholly contained in a cell cannot pass
+G1, even when another branch creates the root's corner sign change. The same
+holds for a contained cavity represented by a negative occurrence.
+\end{corollary}
+\begin{proof}
+Every cell corner lies outside or on the primitive boundary, so its signs
+are homogeneous or uncertain; reversing the occurrence's sign preserves this
+property. An exposed zero retains its occurrence
+by the cover theorem. G1 rejects the homogeneous signs.
+\end{proof}
+
+For the supplied regression, the sphere has center
+\((0.04125955406450752,1.53,1.53)\), radius
+\(0.01650382162580301\), and a positive gap to the box face \(x=0\).
+At depth 8 the jittered cell has side \(0.796875\) and bounds approximately
+\[
+\begin{aligned}
+ x&\in[-0.08251910812902,0.71435589187098],\\
+ y&\in[1.447911753179639,2.244786753179639],\\
+ z&\in[0.749845832607463,1.546720832607463].
+\end{aligned}
+\]
+The entire sphere lies strictly inside it. Its own corner signs are positive.
+Thus this cell requests a split at the ceiling and is unresolved, regardless
+of whether its box portion yields a closed mesh. Sound ancestor/cell exclusion
+cannot discard a cell containing these exposed zeros earlier.
+
+\section{Adjudication and explicit limits}\label{sec:limits}
+
+The three independent proposals agree on occurrence-level exclusion and the
+existing unresolved channel. Their acceptance policies differ materially:
+\begin{itemize}
+\item A's own-corner guard suffices for the supplied contained primitive, but
+misses invisible double edge roots and closed face contours. G2--G3 are
+constant primitive queries and close these specific gaps, so they are included.
+\item B's cell/edge/face checks are the selected necessary guard. Its proposed
+rewrite to feed every carrier into smoothness is not required for this
+discovery contract; sampled smoothness remains an approximation heuristic.
+\item C's single-equivalent-primitive, single-disk condition is a useful
+sufficient special case, but is not a mandatory acceptance gate here. At a true
+seam, two inequivalent zero-owning primitives survive at every depth. Making
+that condition mandatory would mark every such seam unresolved, even when its
+feature representation is already adequate. That is a substantially different
+acceptance policy from this targeted repair.
+\end{itemize}
+
+\paragraph{Edge adversary.}
+A unit sphere in
+\([0.919,0.999]\times[-0.04,0.04]^2\) has mixed corner signs and four
+disconnected surface patches. On the high face,
+\(y^2+z^2\ge 0.001999\), with
+\(0.04^2<0.001999<2(0.04)^2\). Thus the patches cannot cross either
+coordinate axis. Each high-face edge has two roots despite positive endpoint
+values. Its sampled normal cone is about \(7.05^\circ\); G2 rejects it.
+
+\paragraph{Face adversary.}
+A radius-10 sphere in
+\([8.99,9.99]\times[-0.5,0.5]^2\) passes own-corner and same-sign edge
+checks. On the high face, every edge has squared radius at least
+\(9.99^2+0.5^2=100.0501>100\), but the face contains a closed zero circle
+of radius \(\sqrt{0.1999}<0.5\). G3 rejects this case. Edge checks alone
+do not prove that every face contour reaches its boundary.
+
+\paragraph{A hidden component that still passes the guard.}
+In \(Q=[-1,1]^3\), intersect two spheres centered at
+\((10,0,0)\) and \((-10,0,0)\), both of radius \(10.01\). Their lens is
+contained in
+\[
+ |x|\le0.01,\qquad y^2+z^2\le 10.01^2-10^2=0.2001.
+\]
+It is wholly inside \(Q\). Each sphere nevertheless has four inside and four
+outside cell corners, unique roots on its sign-changing edges, and strictly
+zero-free homogeneous faces and edges. Union this lens with
+\([-3,-0.5]\times[-3,3]^2\). The box supplies mixed root corner signs and
+is disjoint from the lens. Every retained primitive passes G1--G3.
+Complete seam-loop discovery may reject the cell later; G1--G3 alone cannot.
+This exact counterexample rules out interpreting the chosen guard as universal
+hidden-component detection, even within sphere/box hard CSG.
+
+More generally, one carrier may be clipped into several exposed pieces.
+A sampled owner, a primitive ID, or a sampled normal cone is not a component
+identifier. Full local component acceptance still needs a proved regional
+arrangement/topology certificate, or explicit unknown when that stronger
+certificate is requested. Triangle embedding, geometric error, and f32
+quantization remain separate obligations. The existing validation disclaimer
+in \path{src/sfcc/validation.rs:1--3} must remain accurate.
+
+\paragraph{Why C's sufficient special case is plausible but deferred.}
+With complete candidates all having one identical signed primitive geometry,
+a certified connected primitive surface \(S\) and a reliable root sign change
+imply \(F^{-1}(0)\cap Q=S\). Indeed root zeros are a nonempty closed subset
+of \(S\). If they had a relative boundary, take nonzero-root points on \(S\)
+approaching it and fix an attaining leaf/path along a subsequence. That leaf
+is not the common primitive, whose value on \(S\) is zero. At the limit its
+whole path becomes zero, contradicting candidate completeness. Hence the
+subset is also open and equals connected \(S\). A single-disk proof additionally
+requires complete transverse edge/face intersections and one boundary cycle;
+G1--G3 intentionally do not supply or claim that general topology test.
+
+\section{Numeric and implementation obligations}
+
+The proofs are exact-real statements conditional on valid enclosures and
+reliable strict signs. The current \(32\epsilon\) leaf-box allowance has no
+complete published derivation for arbitrary transforms, magnitudes, or
+subnormal arithmetic. It is an engineering allowance, not a universal f64
+proof. Existing root empty-culling has the same qualification. Reusing the
+full original tree avoids an additional dependence on unrounded ball-pruning;
+it does not repair all numeric assumptions of the exporter.
+
+Within the new query, require finite ordered cell coordinates, positive cell
+size, finite positive scale/radius/box extents, sign \(\pm1\), and finite
+transform entries. A genuine similarity is a modeling premise. Reject an
+obviously invalid rotation; a tolerance check for orthogonality is not an exact
+proof that a rounded matrix is orthogonal. Nonfinite/inverted bounds, collapsed
+geometry, zero-touching point intervals, and unresolved arithmetic request
+refinement. Intentional opaque full-range intervals are a separate state from
+arithmetic failure. Do not let f64 min/max silently hide a NaN. Regions passed
+to interval queries must conservatively contain the actual cell/edge/face.
+
+\begin{itemize}
+\item Preserve original borrowed occurrences; do not deduplicate by
+\texttt{node\_id}, \texttt{Leaf.index}, sampled owner, or a pruned child position.
+Raw constructors use index zero and may have no strata. G1--G3 need neither.
+\item Exact duplicate occurrences need no special geometric deduplication:
+they make the same guard decisions. Opposite signs retain their distinct
+ancestor semantics. Approximate equality must not erase a thin shell.
+\item Whole-cell ancestor exclusion is the chosen burial mechanism. With a
+resolvable strict burial margin it excludes inert primitives as cells refine.
+When a tiny buried primitive and the outer wall share a finest cell, intervals
+may remain inconclusive; a conservative unresolved report is permitted.
+\item Support-AABB tightening is deferred. It is sound only with an enclosing
+primitive support box and every ancestor test on that restricted domain.
+The current transformed-corner AABB has no outward-rounding proof; recomputing
+whole subtrees per candidate can also introduce \(O(NK)\) work. Neither is
+needed to fix the stated regression.
+\item Use one shared guard in direct smooth calls and before both corner
+returns. Earlier feature/forced split decisions need no extra discovery query.
+Pass the original root separately from the pruned numerical query if needed;
+do not change all \texttt{SdfQuery} implementors merely to recover that root.
+\item Do not add a user knob, increase depth, skip large leaf counts, or clear
+degeneracy after successful meshing. No new worker flag or validation
+\texttt{Complete} boolean is warranted.
+\end{itemize}
+
+\section{Required validation and cost}
+
+Milestone 2 implements the contract; milestone 3 tests it. Required evidence:
+\begin{enumerate}
+\item Unignore the supplied regression without weakening its independent
+component/localization alternative. Keep the standalone-sphere control. Also
+assert rejection/degeneracy in the actual sphere-containing cell, so an
+unrelated warning cannot make the regression pass accidentally.
+\item Exercise center-winning hidden primitives, negative cavities, nested
+subtractions/De Morgan forms, original unindexed/no-strata constructors,
+zero-touching bounds, and analytic path-burial examples.
+\item Include the exact edge and face adversaries above, ordinary sphere and
+box passes, exact duplicate/reordered operands, a near-duplicate thin shell,
+and comfortably buried and distant noncontributing controls.
+\item Include the lens example as an explicit scope test: guard success does
+not establish coverage. Preserve independent geometric/feature tests; do not
+label a candidate-ID assertion as component reconstruction.
+\item Test both corner exemptions, direct smooth calls, disabled/loosened
+quality knobs, and deliberately insufficient depth. Split requests must keep
+feature tags and become degenerate at the ceiling.
+\item Test serial, resumable, and 1/2/4/8-partition decisions, tagged-leaf
+round trips, reversed completion order, and actual mesh/merge. Require a
+no-recovery fixture with zero failed cells to prove raw unresolved propagation;
+separately test recovery and preserve existing public serial/worker parity.
+\item Cross the actual 12-leaf pruning threshold. The discovery input must
+still be the original tree. Compare actual zero-owner retention, not equality
+of arbitrary conservative candidate supersets.
+\item Translate and positively uniformly scale scene, cube, padding, and
+geometric tolerances together; include rotated boxes and differing scale
+factorizations. Tiny features below numeric resolution may become unresolved,
+never be deliberately excluded by an absolute small-radius threshold.
+\item Test explicit opaque scope and invalid arithmetic. Unsupported must not
+be mistaken for proven empty, and a mixed expression's retained supported
+hidden sphere must still reject. Invalid new-query inputs must fail closed.
+\end{enumerate}
+
+For each decided cell, the chosen implementation uses \(O(N)\) interval
+enumeration plus at most \(26K\) primitive point/entity interval queries
+(eight corners, 12 edges, six faces), short-circuiting on rejection. With
+the already computed cell bound, that is at most 27 region queries per
+retained primitive. It uses \(O(P+h)\) scratch, where \(P\le N\) is the peak
+pending candidate count rather than the final \(K\), no per-cell scene clone,
+and the unchanged finite depth ceiling. It promises no uniform bound on
+false-positive refinement or ordinary-scene timing.
+
+Measure release medians and structural counters against baseline on a box,
+sphere, ordinary hard seam, the regression, duplicates, buried leaves, and an
+existing many-leaf benchmark. Report decided/final/degenerate cells and query
+work. A full-scene scan hidden inside every candidate query is a complexity
+failure. Blanket maximum-depth refinement of a flat box is a failed control.
+Tests and timings are evidence about the implementation, not a replacement
+for the enclosure premises or a proof of the remaining component theorem.
+
+\paragraph{Work performed for the milestone-1 note.}
+Read all three independent reports, the relevant source, and local Rust and
+Ponytail guidance. Exact rational scalar checks verified the edge, face, and
+lens controls. No production code, browser, visual QA, full build/test suite,
+or benchmark was run by the consensus agent. The proof is self-contained;
+no external literature result is used as an implementation certificate.
+
+\section{Milestone-2 implementation consensus}
+
+The implementation uses the shared \texttt{discovery\_guard} in
+\path{gcad-wasm/kernel/src/sfcc/refine_criteria.rs}. Its success result is
+\texttt{NoDiscoveryRejection}, carrying a surviving opaque-scope flag.
+\path{gcad-wasm/kernel/src/sdf.rs} enumerates original borrowed signed leaf
+occurrences in one postorder append/truncate pass. Checked queries reuse the
+existing primitive box enclosure; no primitive field formula is duplicated.
+Malformed supported geometry and failed arithmetic are distinct from opaque
+blend/unsupported subexpressions. The checks reject collapsed local or world
+extents and grossly malformed proper-rotation matrices. Their \(10^{-6}\)
+orthogonality/determinant tolerance is a sanity check, not an orthogonality
+or floating-point enclosure proof.
+
+Eight strict primitive corner signs are cached as a bit mask. Equal-sign edge
+and homogeneous-face boxes use the actual probe endpoints, preserving zero
+widths and rounding nonzero half-widths outward. A second linear structural
+walk reconstructs root corner signs with bitwise OR at min and AND at max,
+without any further primitive interval queries. An entirely omitted subtree
+returns no mask. At its retaining parent its excluded field must have the
+strict neutral sign: positive under min, negative under max; otherwise that
+parent would also have been excluded. It is therefore skipped there rather
+than assigned the identity of its own nested operator. Matching uses original
+leaf addresses and traversal order, so duplicate indices do not merge
+occurrences.
+
+Both feature-aware entries run discovery on the original root before their
+corner exemption, preserving tags when it requests a split. Direct
+\texttt{needs\_split\_smooth} now requires the original \texttt{CsgNode};
+all repository direct callers already provide it. The feature-aware entries
+then invoke the remaining generic quality checks with their existing pruned
+query, avoiding a second discovery run. The depth ceiling, sampled strata,
+serial/worker degeneracy transport, and validation status remain unchanged.
+
+This selects B's compact traversal/sign composition, A/C's stronger numeric
+and coordinate-enclosure checks, and distinct ancestor-burial, hidden-cell,
+and corner-exemption controls. A's extra interval queries in the root-sign
+pass are unnecessary. The selected root-sign fold remains \(O(N)\); total
+scratch is \(O(P+h)\), including temporary candidates later truncated. No
+additional candidate budget, setting, dependency, or wire flag is introduced.
+
+The regression is enabled with its original component/localization alternative
+and standalone insufficient-depth control intact. It additionally decodes the
+prepared tagged leaves and requires the actual sphere-containing finest cell
+to reject discovery and remain degenerate. Focused unit controls cover both
+corner exemptions, direct smooth entry, disabled quality heuristics, ordinary
+sphere/box patches, the exact edge/face cases, both ancestor-burial polarities,
+opaque siblings, strict-zero ambiguity, invalid/collapsed inputs, and translated
+entity boxes. The lens-plus-box control explicitly passes the guard and keeps
+the component-completeness limitation visible. Full worker/recovery, pruning,
+transform, and measured performance matrices remain milestone-3 obligations.
+
+The integrated source passed 34 focused native release test executions:
+11 discovery/entry controls, eight reconstruction regressions, nine reliability
+checks, two analytic smoothness controls, the existing forced-decision cache
+control, ordinary sphere/box mesh invariants, and ordinary-box serial/worker mesh
+equivalence for 1/2/4/8 partitions. The box used actual worker merge without
+serial recovery. Missing sphere/box binary fixtures skipped only those tests'
+external TS comparisons; no TS-oracle coverage is claimed. Single-run durations
+are not benchmark medians. The coordinating agent owns the full build and
+milestone-3 matrix.
+
+\section{Milestone-3 validation and cost consensus}
+\label{sec:validation-consensus}
+
+Three independent candidates exercised the agreed contract before a fourth
+agent reconciled their source and results. None demonstrated an algorithm
+failure requiring a change to the selected guard. The consensus keeps A's
+explicit ancestor-path and borrowed-occurrence assertions, B's structural
+work accounting, and C's independent connected-component localization and
+real Node worker transport. Redundant candidate suites were not all installed.
+Existing discovery tests were strengthened; the original hidden-sphere and
+feature-corner assertions were preserved. Production additions in this
+milestone are optional work counters, not acceptance or depth-policy changes.
+
+The durable native matrix is
+\path{gcad-wasm/kernel/tests/discovery_contract.rs}, using
+\path{gcad-wasm/kernel/tests/support/discovery.rs}. Analytic ownership and
+exclusion tests remain with \texttt{discovery\_tests} in
+\path{gcad-wasm/kernel/src/sfcc/refine_criteria.rs}. The fixture-free WASM
+matrix is \path{gcad-wasm/fixtures/sfcc-discovery_test.mts}, with the separate
+worker entry \path{gcad-wasm/fixtures/sfcc-discovery-worker.mjs}.
+
+\subsection{What the retained tests establish}
+
+\begin{enumerate}[label=T\arabic*.]
+\item The supplied default-depth regression now identifies its actual
+sphere-containing finest cell, requires discovery rejection and degeneracy,
+and preserves the original requirement to reconstruct and localize the
+component or report unresolved cells, together with the standalone
+insufficient-depth control. At depth 8 the output
+has one component, 3,974 leaves and four unresolved cells, versus one component,
+3,908 leaves and zero unresolved cells before the change. Unrelated diagnostics
+cannot satisfy the actual-cell assertion.
+\item Analytic radial witnesses reach zero at \emph{every} named ancestor of
+center-winning spheres, negative cavities, nested min/max trees, differences
+against unions or intersections, and double-negation examples. Original borrowed
+leaf identity survives despite index zero and absent strata. Dual buried-path
+examples have root and leaf zero but a nonzero intermediate ancestor; those
+occurrences must be excluded.
+\item Strict exclusion remains distinct from zero touching, opaque scope and
+invalid arithmetic. Hard ancestors may remove an opaque entry; surviving
+opaque min \emph{and} max siblings cannot suppress a supported hidden sphere.
+Invalid/collapsed supported geometry, invalid probes and malformed siblings
+request uncertainty even when another hard sibling would otherwise mask them.
+\item Independent squared-distance calculations isolate the face-only
+adversary: every same-sign edge is zero-free while the face interior contains
+a zero circle. The edge example retains its interior double-root witness.
+Ordinary sphere/box patches pass. The lens-plus-box example retains geometric
+interior/zero/gap witnesses and deliberately passes the guard, exposing the
+remaining component-discovery limitation.
+\item Exact duplicate sphere/cuboid occurrences retain separate addresses;
+operand reordering, opposite signs and thin shells do not erase them. The
+shell has two distinct radial zeros and a negative interior witness.
+Comfortably buried and distant controls keep useful closed box output without
+new degeneracy; a near-buried example permits conservative uncertainty.
+Rotated planar boxes remain accepted under equivalent scale factorizations.
+\item Existing tests exercise both actual feature-corner exemptions and
+preserve their tags on rejection. Direct smooth entry and end-to-end depth
+ceilings 6 and 8 still reject hidden geometry with normal restrictions loosened,
+blend refinement disabled and optional quality transformations disabled.
+\item Native serial/resumable construction and 1/2/4/8 decision slices agree
+byte-for-byte after reversed delivery and ordered reassembly. Tagged-leaf
+round trips preserve the fingerprint, indices, tags and degeneracy. An
+18-leaf hard scene reaches the actual level-5 padded coarse-pruning region;
+that numerical query is shorter, retains an analytic zero witness, and each
+discovery call still visits all 19 original nodes. Real Node worker threads
+instantiate independent WASM instances for decision and mesh partitions.
+Forward and reversed actual merges preserve validation and canonical oriented
+triangles (all eight vertex fields), with zero failed cells and explicitly
+\texttt{serialRecovery=false}. A separate hidden-sphere plus twisted-extrude
+fixture forces public serial recovery at 1/2/4/8 partitions; both orders keep
+its unresolved/chord-budget diagnosis and exact serial buffers. This does not
+purport to test browser scheduling or message races.
+\item Scene, world cube, bounds padding and geometric tolerances co-scale and
+translate together while the actual hidden cell remains unresolved. Direct
+queries include proper rotations, local/world scale factorizations, large
+translations with tiny gaps, and sub-representable features. The latter may
+be indeterminate; there is no deliberate absolute-radius exclusion. These
+finite cases are not a universal floating-point or output-embedding proof.
+\end{enumerate}
+
+A separate depth-14 fixture independently recovers two connected components
+and localizes one to the small sphere and one to the box. The native mesh is
+manifold, with 4,199 leaves, zero failed cells and \emph{36 unresolved cells}.
+It requests \texttt{surfaceTolMm=1e-5}; the observed maximum sphere vertex radial
+residual is \(1.75736\,10^{-7}\) mm, below the fixture's one-percent-of-radius
+check. This is a vertex residual, not a mesh Hausdorff-error bound.
+Independent WASM triangle connectivity and whole-component localization
+also pass. The default \(0.01\) mm surface tolerance is not evidence for that
+much tighter residual. Recovering both components does not imply all 36 cells
+resolved, nor identify each cell's reason for remaining unresolved.
+
+Focused selected-source runs passed 17 discovery library tests and six native
+pipeline tests. With \texttt{sfcc-profile}, 18 library tests (including the
+structural work bound) and the same six pipeline tests passed. All four real
+WASM tests passed. The counts include pre-existing discovery/entry assertions,
+not 51 independent new tests. The root coordinator owns the final full build
+and broader suites. Missing external TS binary-oracle sections are not credited
+as parity coverage; these controls use analytic expectations and actual native
+and WASM execution.
+
+\begin{verbatim}
+cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml \
+  -p gcad-kernel --lib discovery
+cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml \
+  -p gcad-kernel --test discovery_contract
+# Repeat both native commands with --features sfcc-profile.
+node --import tsx --test gcad-wasm/fixtures/sfcc-discovery_test.mts
+\end{verbatim}
+
+\subsection{Controlled release measurements}
+
+The same \path{gcad-wasm/kernel/examples/sfcc_discovery_bench.rs} source was
+built natively against baseline \texttt{3adc144} and the final selected source, with
+\texttt{sfcc-profile} disabled. Nine fast scenes use five samples per version.
+Each measured process performs one untimed warmup; the paired order alternates
+baseline/selected and selected/baseline, one scene at a time. The expensive
+existing 48-sphere blend uses three matched samples per version, alternating
+in the same way, with no additional warmup. Other agent tests, compiles and
+benchmarks were stopped throughout. The host is arm64 macOS 26.5.1 (build 25F80), using Homebrew
+\texttt{rustc 1.99.0} (\texttt{b940084d7}) and Cargo 1.99.0
+(\texttt{5f94df478}). Both workspaces use release optimization level 3,
+LTO enabled and one codegen unit. Ordinary operating-system background
+activity was not controlled; these are local medians, not universal timing
+bounds or release thresholds. These measure the native pipeline, not browser
+export latency, GPU execution or WASM performance.
+
+For each measured fast pair, invoke each version's executable with
+\texttt{<scene> 1 1}; repeat five times while alternating which version goes
+first. The blob uses \texttt{existing-48-blob 1 0}, repeated three times per
+version. A separate \texttt{--features sfcc-profile} build supplies one
+structural run per selected case, outside the timing sequence.
+
+All raw samples, result counts, separately instrumented structural observations,
+and the benchmark-source hash are retained in
+\path{docs/research/sfcc-discovery-costs.jsonl}. Table~\ref{tab:discovery-cost}
+uses only uninstrumented measurements. The default hard seam is box half-size
+10 minus a radius-6 sphere at \((5,5,5)\); the small seam is box half-size 3
+minus radius 2 at \((2,2,2)\). Duplicate cases use four or sixteen identical
+radius-9 sphere occurrences. The buried case is a half-size-10 box with fourteen
+small interior spheres. The many-hard case adds fourteen buried spheres to
+the supplied box-plus-hidden-sphere scene. The 48-sphere round blend preserves
+the geometry and depth 4--7 tuning of the existing \texttt{lever1\_bench} case.
+
+\begin{table}[htbp]
+\centering\footnotesize
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Case & Baseline ms & Selected ms & Ratio & Leaves B/S & Unresolved B/S \\
+\midrule
+Box & 112.98 & 117.60 & 1.041 & 4376/4376 & 0/0 \\
+Sphere & 40.99 & 42.61 & 1.039 & 2763/2763 & 0/0 \\
+Hard seam & 233.10 & 251.25 & 1.078 & 7606/7606 & 521/521 \\
+Small seam & 105.98 & 105.41 & 0.995 & 1181/1193 & 24/27 \\
+Hidden sphere & 105.04 & 107.92 & 1.027 & 3908/3974 & 0/4 \\
+4 duplicates & 47.32 & 59.86 & 1.265 & 2763/2763 & 0/0 \\
+16 duplicates & 74.95 & 119.75 & 1.598 & 2763/2763 & 0/0 \\
+Buried (15 leaves) & 133.55 & 147.70 & 1.106 & 4376/4376 & 0/0 \\
+Hidden (16 leaves) & 151.51 & 161.36 & 1.065 & 3908/3974 & 0/4 \\
+48-sphere blend & 105583.36 & 105572.56 & 1.000 & 48378/48378 & 22142/22142 \\
+\bottomrule
+\end{tabular}
+\caption{Uninstrumented local release medians. B/S means baseline/selected. All rows have zero failed cells; unresolved status is independent of that count.}
+\label{tab:discovery-cost}
+\end{table}
+
+The plain box and sphere, duplicate and comfortably buried controls retain
+successful output and unchanged geometry counts. The hidden-sphere cases now
+report uncertainty instead of silently claiming success for a box alone.
+The default hard seam already has 521 unresolved cells in the baseline, and
+the 48-sphere blend already has 22,142 unresolved cells and 19 output
+components; neither is a successful reconstruction oracle. The small seam
+gains 12 leaves and three unresolved cells. A sub-percent timing difference
+there is measurement variation, not evidence of a speed improvement.
+Exact duplicate occurrences are a material cost even when geometry and cell
+counts remain unchanged; their identity must not be removed by fuzzy geometry
+merging or a silent leaf cap.
+
+\subsection{Structural work and remaining limits}
+
+The existing optional profiler keeps counters 0--17 unchanged. Counters
+18--30 record guard calls, enumeration nodes, cell queries, retained supported
+occurrences, point/edge/face queries, split/indeterminate results, peak pending
+entries, structural root-sign visits, strict root exclusions and all discovery
+interval calls. The total interval counter checks that the root-sign walk
+performs zero extra interval evaluations. Counter calls disappear in normal
+release builds; instrumented durations are excluded from timing comparisons.
+There is no new dependency, setting, worker wire field or success status.
+
+The direct structural regression uses 1, 4, 16, 64 and 256 duplicate ordinary
+patches. For \(n\) occurrences it visits \(n+1\) enumeration nodes, retains all
+\(n\) distinct entries, performs \(8n\) point queries and at most \(12n\) edge
+plus \(6n\) face queries, and visits \(n+1\) nodes in the structural sign fold.
+A separately excluded subtree reaches at least 256 pending entries but ends
+with one retained candidate, while only that final candidate gets entity
+queries. This validates the \(O(P+h)\) peak-storage interpretation, not
+\(O(K_{\mathrm{final}}+h)\). It checks linear work; it does not prove a uniform
+bound on the number of cells required by the full mesher.
+
+\begin{table}[htbp]
+\centering\footnotesize
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Case & Decided & Guards & Nodes & $\sum K$ & Bounds & $P_{\max}$ \\
+\midrule
+Box & 4376 & 4376 & 4376 & 4376 & 83160 & 1 \\
+Sphere & 2821 & 2821 & 2821 & 2821 & 53615 & 1 \\
+Hard seam & 8822 & 8822 & 26466 & 10979 & 215280 & 2 \\
+Small seam & 1571 & 1571 & 4713 & 1895 & 37204 & 2 \\
+Hidden sphere & 3996 & 3996 & 11988 & 4000 & 79968 & 2 \\
+4 duplicates & 2821 & 2821 & 14105 & 11284 & 214460 & 4 \\
+16 duplicates & 2821 & 2821 & 47957 & 45136 & 857840 & 16 \\
+Buried (15 leaves) & 4376 & 4376 & 70016 & 4376 & 144424 & 2 \\
+Hidden (16 leaves) & 3996 & 3996 & 67932 & 4000 & 135912 & 3 \\
+48-sphere blend & 129062 & 126138 & 126138 & 0 & 0 & 1 \\
+\bottomrule
+\end{tabular}
+\caption{Selected structural runs, summed across refinement rounds. Nodes count original-tree enumeration; bounds count all discovery primitive box queries, including points, edges and faces. Candidate counts are occurrences, not components.}
+\label{tab:discovery-work}
+\end{table}
+
+The opaque 48-sphere blend visits one opaque atom per guard and performs zero
+supported primitive interval queries. Of its 129062 decided cells,
+2924 already require a split and skip discovery. Opaque scope alone
+forces no new refinement. The many-hard hidden case performs a full
+17-node original-tree visit per guard despite the shortened numerical query.
+
+
+These observations support the agreed necessary guard on the tested domain.
+They do not establish the missing general hard-CSG arrangement/component
+certificate, a universal outward-rounding bound, proper-similarity validity
+from a tolerance test, correctness of the pre-existing empty-cull under all
+floating-point inputs, or topology/embedding preservation after f32 output.
+The lens remains an explicit counterexample to treating guard acceptance as
+a general component-completeness certificate; this is not an end-to-end claim
+that every feature-aware pipeline misses that lens. Opaque blend internals
+remain outside the theorem. Optimizing repeated occurrence work or tightening
+burial exclusions requires preserving signed ancestor semantics and the same
+uncertainty channel; this milestone supplies evidence, not authority to skip
+those obligations for performance.
+
+\subsection{Final workspace validation}
+
+After integration, the full native workspace suite passed \textbf{324 tests}
+with zero failures and zero ignored tests. All \textbf{23 WASM fixture tests}
+passed with zero failures or skips against the freshly rebuilt artifact.
+The application build passed its WASM compilation, TypeScript check and
+application bundling. The separate focused profiling checks above also passed;
+their repeated tests are not added to the full-suite count.
+
+The native suite used the same Homebrew Rust 1.99 toolchain as the measurements.
+The application and WASM build used the installed Rustup Rust 1.96 toolchain
+and its WASM target; the default Homebrew installation lacked that target.
+Existing dependencies were reused by skipping the Makefile's setup
+target, while all build and type-check steps ran. No source change was needed
+for this toolchain selection.
+
+\begin{verbatim}
+PATH="/Users/matt/.cargo/bin:$PATH" CARGO_NET_OFFLINE=true \
+  make build -o setup TSX='node --import tsx'
+RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test \
+  --offline --release --manifest-path gcad-wasm/Cargo.toml \
+  --workspace --no-fail-fast
+node --import tsx --test --test-concurrency=1 \
+  gcad-wasm/fixtures/*_test.mts
+\end{verbatim}
+
+Absent external TS binary-oracle sections in native tests remain unexercised,
+despite their surrounding native invariant checks passing. No browser or visual
+QA was performed. These validation results do not remove the mathematical and
+numerical limitations stated above.
+
+\end{document}

@@ -1,7 +1,6 @@
-//! Adversarial reconstruction regressions. Resolved cases run normally; remaining
-//! failures are explicitly ignored and assert the intended behavior. Run those with:
-//! `cargo test --offline --release -p gcad-kernel --test known_reconstruction_failures -- --ignored`
+//! Adversarial reconstruction regressions. Every case asserts the intended behavior.
 use gcad_kernel::math::similarity::Similarity;
+use gcad_kernel::math::grid::{cell_aabb, point_to_world};
 use gcad_kernel::primitives::smin::SminMode;
 use gcad_kernel::scene_bridge::{build_csg_tree, BridgeNode};
 use gcad_kernel::sdf::{self, CsgNode, Shape};
@@ -11,6 +10,8 @@ use gcad_kernel::sfcc::pipeline::{run_sfcc_pipeline, PipelineTuning, SfccWorldCu
 use gcad_kernel::sfcc::point_table::PointTable;
 use gcad_kernel::sfcc::sliver_flip::flip_sliver_triangles;
 use gcad_kernel::sfcc::spatial_index::SfccSpatialIndex;
+use gcad_kernel::sfcc::refine_criteria::{discovery_guard, make_probe};
+use gcad_kernel::sfcc::worker::{decode_tagged_leaves, prepare};
 use gcad_kernel::tolerances::resolve_tolerances;
 use gcad_kernel::tuning::SfccTuning;
 
@@ -105,7 +106,6 @@ fn hard_intersection_cube_triangles_follow_the_exact_cuboid_boundary() {
 }
 
 #[test]
-#[ignore = "Known: a sign-changing box cell can hide a separate sphere without recording unresolved discovery"]
 fn separate_sphere_is_reconstructed_or_reported_as_unresolved() {
     let center = [0.04125955406450752, 1.53, 1.53];
     let radius = 0.01650382162580301;
@@ -141,6 +141,19 @@ fn separate_sphere_is_reconstructed_or_reported_as_unresolved() {
         n: None,
     })
     .unwrap();
+    let (lat, leaves) = decode_tagged_leaves(&prepare(&tree, &cube, &tuning));
+    let hidden_cell = leaves.iter().find(|cell| {
+        let bounds = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
+        (0..3).all(|a| center[a] - radius > bounds[a] && center[a] + radius < bounds[a + 3])
+    }).expect("the actual sphere-containing leaf must survive culling");
+    let probe = make_probe(
+        &lat, &tree, |x, y, z| tree.f(point_to_world(&lat, x, y, z)),
+        hidden_cell.level, hidden_cell.ix, hidden_cell.iy, hidden_cell.iz,
+    );
+    assert!((0..3).all(|a| center[a] - radius > probe.pts[a] && center[a] + radius < probe.pts[21 + a]));
+    assert!(discovery_guard(&tree, &probe).needs_split());
+    assert_eq!(hidden_cell.level, tuning.depth_max);
+    assert!(hidden_cell.degenerate, "discovery must mark the sphere's own cell unresolved");
     let result = run_sfcc_pipeline(&tree, &cube, &tuning);
     let covered = result.manifold.components == 2
         && result.verts.chunks_exact(8).any(|v| {

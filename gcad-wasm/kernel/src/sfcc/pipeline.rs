@@ -32,7 +32,7 @@ use crate::sfcc::octree::{
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::refine_criteria::{
-    classify_cell_features, has_corner_sign_change, make_probe, needs_split_smooth, FeatureCriteriaOptions,
+    classify_cell_features, discovery_guard, has_corner_sign_change, make_probe, needs_split_smooth_after_discovery, FeatureCriteriaOptions,
     SmoothCriteriaOptions,
 };
 use crate::sfcc::validation::{self, AuditStatus, NumericalGuard, SfccValidation};
@@ -544,7 +544,7 @@ impl<'a> PipelineContext<'a> {
     /// The feature-aware split DECISION for one frontier cell — the SINGLE source
     /// of truth shared by the serial pipeline and the worker `prepare`. Mirrors
     /// `runSfccPipeline`'s `needsSplit` exactly (classify (i)/(ii) → corner-claim
-    /// at max_depth → forced-split → corner exemption → sign-change gate →
+    /// at max_depth → forced-split → discovery → corner exemption → sign-change gate →
     /// per-stratum smoothCrit), returning the split flag + the tags to stamp.
     ///
     /// `forced` is the accumulated forced-split marker list for the current round
@@ -609,14 +609,17 @@ impl<'a> PipelineContext<'a> {
         };
         let probe =
             make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
+        if discovery_guard(self.tree, &probe).needs_split() {
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+        }
         if cls.corner >= 0 {
-            // Corner cells exempt from per-stratum + sign-change gates.
+            // Corner features exempt sampled smoothness, but never discovery.
             return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         if cls.curve >= 0 && !has_corner_sign_change(&probe) {
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
-        let split = needs_split_smooth(q, &probe, &self.smooth_opts, self.grad_bound, self.has_blend);
+        let split = needs_split_smooth_after_discovery(q, &probe, &self.smooth_opts, self.grad_bound, self.has_blend);
         CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
     }
 
@@ -1475,6 +1478,46 @@ fn hypot3(x: f64, y: f64, z: f64) -> f64 {
 #[cfg(test)]
 mod recovery_cache_tests {
     use super::*;
+    #[test]
+    fn discovery_precedes_both_corner_exemptions() {
+        use crate::scene_bridge::{build_csg_tree, BridgeNode};
+        let tree = build_csg_tree(&BridgeNode::Union {
+            node_id: 0,
+            children: vec![
+                BridgeNode::Box { node_id: 0, pos: [-1.; 3], half: [1.; 3] },
+                BridgeNode::Sphere { node_id: 0, pos: [0.45; 3], r: 0.1 },
+            ],
+            radius: 0., mode: None, n: None,
+        }).unwrap();
+        let cube = SfccWorldCube { min_x: -0.25, min_y: -0.25, min_z: -0.25, size: 2. };
+        let tuning = PipelineTuning {
+            depth_min: 1, depth_max: 1, normal_variation_deg: 180., blend_curvature_refine: false,
+            ..Default::default()
+        };
+        let mut ctx = build_pipeline_context(&tree, &cube, &tuning);
+        ctx.lat = make_lattice(1, -0.25, -0.25, -0.25, 2.);
+        let cell = SfccCell {
+            level: 1, ix: 0, iy: 0, iz: 0, key: 0,
+            degenerate: false, feature_curve: -1, feature_corner: -1,
+        };
+        let cls = classify_cell_features(&ctx.features, &ctx.lat, 1, 0, 0, 0, &ctx.feature_opts);
+        assert!(!cls.split, "control must reach the corner exemption");
+        assert!(cls.corner >= 0);
+        let decision = ctx.decide_cell(&cell, &|x, y, z| tree.f(point_to_world(&ctx.lat, x, y, z)), &[]);
+        assert!(decision.split);
+        assert_eq!(decision.feature_corner, cls.corner, "discovery rejection must preserve the corner tag");
+        assert_eq!(decision.feature_curve, cls.curve);
+
+        let oct = crate::sfcc::octree::build_octree_feature_aware(
+            &tree, &ctx.lat,
+            OctreeBuildOptions { depth_min: 1, depth_max: 1, enforce_edge_balance: false },
+            &ctx.features, &ctx.feature_opts, &ctx.smooth_opts,
+        );
+        let leaf = oct.leaves.iter().find(|c| c.ix == 0 && c.iy == 0 && c.iz == 0).unwrap();
+        assert!(leaf.degenerate);
+        assert_eq!(leaf.feature_corner, decision.feature_corner);
+    }
+
     #[test]
     fn cached_classification_does_not_cache_forced_decision() {
         let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);

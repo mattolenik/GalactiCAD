@@ -79,14 +79,27 @@ impl Leaf {
             let reach = self.local_lipschitz(c, radius).unwrap_or(1.0) * radius;
             return (f - reach, f + reach);
         }
+        if c.iter().any(|v| !v.is_finite()) || half.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return (f64::NAN, f64::NAN);
+        }
         let local = self.sim.inv_apply_point(c[0], c[1], c[2]);
+        if local.iter().any(|v| !v.is_finite()) {
+            return (f64::NAN, f64::NAN);
+        }
         let mut near = [0.0; 3];
         let mut far = [0.0; 3];
         for a in 0..3 {
             let h = (0..3).map(|b| self.sim.r[b * 3 + a].abs() * half[b]).sum::<f64>() / self.sim.s;
             let d = (local[a] - self.pos[a]).abs();
+            // `max` must not turn a failed transform/range calculation into zero.
+            if !h.is_finite() || h < 0.0 || !d.is_finite() {
+                return (f64::NAN, f64::NAN);
+            }
             near[a] = (d - h).max(0.0);
             far[a] = d + h;
+            if !far[a].is_finite() {
+                return (f64::NAN, f64::NAN);
+            }
         }
         let (lo, hi) = match self.shape {
             Shape::Sphere { r } => {
@@ -95,8 +108,12 @@ impl Leaf {
                 let center = self.sim.apply_point(self.pos[0], self.pos[1], self.pos[2]);
                 for a in 0..3 {
                     let d = (c[a] - center[a]).abs() / self.sim.s;
-                    near[a] = (d - half[a] / self.sim.s).max(0.0);
-                    far[a] = d + half[a] / self.sim.s;
+                    let h = half[a] / self.sim.s;
+                    if !d.is_finite() || !h.is_finite() || h < 0.0 || !(d + h).is_finite() {
+                        return (f64::NAN, f64::NAN);
+                    }
+                    near[a] = (d - h).max(0.0);
+                    far[a] = d + h;
                 }
                 (near[0].hypot(near[1]).hypot(near[2]) - r, far[0].hypot(far[1]).hypot(far[2]) - r)
             }
@@ -110,13 +127,80 @@ impl Leaf {
             ),
             _ => unreachable!(),
         };
+        if !lo.is_finite() || !hi.is_finite() || lo > hi {
+            return (f64::NAN, f64::NAN);
+        }
         let (lo, hi) = if self.sign < 0.0 { (-hi, -lo) } else { (lo, hi) };
-        // Outward roundoff allowance: never reject a box because of a last-bit
-        // cancellation in the transform/range arithmetic.
+        // Engineering roundoff allowance, reused by discovery; this is not a
+        // universal enclosure proof for arbitrary transforms or f64 magnitudes.
         let slack = 32.0 * f64::EPSILON * (1.0 + c.iter().map(|v| v.abs()).sum::<f64>()
             + self.sim.t.iter().map(|v| v.abs()).sum::<f64>()
             + self.sim.s * (lo.abs() + hi.abs() + self.pos.iter().map(|v| v.abs()).sum::<f64>()));
         (lo * self.sim.s - slack, hi * self.sim.s + slack)
+    }
+
+    /// Reuse the primitive enclosure after cell-level discovery validation.
+    pub(crate) fn discovery_interval_over_box(
+        &self,
+        c: [f64; 3],
+        half: [f64; 3],
+    ) -> Result<(f64, f64), Indeterminate> {
+        crate::sfcc::perf::add(30, 1);
+        let (lo, hi) = self.interval_over_box(c, half);
+        if !lo.is_finite() || !hi.is_finite() || lo > hi {
+            return Err(Indeterminate);
+        }
+        Ok((lo, hi))
+    }
+
+    fn valid_discovery_primitive(&self) -> bool {
+        let extent = match self.shape {
+            Shape::Sphere { r } => [r; 3],
+            Shape::Cuboid { half } => half,
+            _ => return false,
+        };
+        let positive = |v: f64| v.is_finite() && v > 0.0;
+        if !matches!(self.sign, -1.0 | 1.0)
+            || !positive(self.sim.s)
+            || self.pos.iter().chain(&self.sim.t).chain(&self.sim.r).any(|v| !v.is_finite())
+        {
+            return false;
+        }
+        let valid_extent = |v: f64| positive(v) && positive(v * self.sim.s);
+        if !extent.iter().all(|&v| valid_extent(v)) {
+            return false;
+        }
+        // This rejects grossly malformed matrices; genuine similarities remain a
+        // modeling premise, not a theorem established by a floating tolerance.
+        let r = &self.sim.r;
+        for a in 0..3 {
+            for b in a..3 {
+                let dot = (0..3).map(|k| r[k * 3 + a] * r[k * 3 + b]).sum::<f64>();
+                if !dot.is_finite() || (dot - if a == b { 1.0 } else { 0.0 }).abs() > 1e-6 {
+                    return false;
+                }
+            }
+        }
+        let det = r[0] * (r[4] * r[8] - r[5] * r[7])
+            - r[1] * (r[3] * r[8] - r[5] * r[6])
+            + r[2] * (r[3] * r[7] - r[4] * r[6]);
+        if !det.is_finite() || (det - 1.0).abs() > 1e-6 {
+            return false;
+        }
+        let center = self.sim.apply_point(self.pos[0], self.pos[1], self.pos[2]);
+        let scaled = extent.map(|e| e * self.sim.s);
+        (0..3).all(|a| {
+            let world_extent = if matches!(self.shape, Shape::Sphere { .. }) {
+                scaled[a]
+            } else {
+                (0..3).map(|b| r[a * 3 + b].abs() * scaled[b]).sum::<f64>()
+            };
+            let (lo, hi) = (center[a] - world_extent, center[a] + world_extent);
+            let (local_lo, local_hi) = (self.pos[a] - extent[a], self.pos[a] + extent[a]);
+            lo.is_finite() && hi.is_finite() && lo < center[a] && center[a] < hi
+                && local_lo.is_finite() && local_hi.is_finite()
+                && local_lo < self.pos[a] && self.pos[a] < local_hi
+        })
     }
     pub fn f(&self, p: [f64; 3]) -> f64 {
         let l = self.sim.inv_apply_point(p[0], p[1], p[2]);
@@ -190,6 +274,92 @@ pub enum CsgNode {
         n: f64,
         children: Vec<CsgNode>,
     },
+}
+
+/// Arithmetic failure is distinct from an intentionally opaque full interval.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Indeterminate;
+
+#[derive(Debug)]
+pub(crate) enum ZeroOwner<'a> {
+    Primitive(&'a Leaf),
+    Opaque,
+}
+
+pub(crate) struct ZeroOwners<'a> {
+    pub entries: Vec<ZeroOwner<'a>>,
+    pub interval: (f64, f64),
+}
+
+impl CsgNode {
+    /// Original signed occurrences whose whole ancestor path may attain zero.
+    /// Postorder truncation visits each node once; IDs and strata are irrelevant.
+    pub(crate) fn zero_owners_over_box(
+        &self,
+        c: [f64; 3],
+        half: [f64; 3],
+    ) -> Result<ZeroOwners<'_>, Indeterminate> {
+        if c.iter().any(|v| !v.is_finite()) || half.iter().any(|v| !v.is_finite() || *v <= 0.0)
+            || (0..3).any(|a| !(c[a] - half[a]).is_finite() || !(c[a] + half[a]).is_finite())
+        {
+            return Err(Indeterminate);
+        }
+        let mut entries = Vec::new();
+        let interval = self.collect_zero_owners(c, half, &mut entries)?;
+        Ok(ZeroOwners { entries, interval })
+    }
+
+    fn collect_zero_owners<'a>(
+        &'a self,
+        c: [f64; 3],
+        half: [f64; 3],
+        entries: &mut Vec<ZeroOwner<'a>>,
+    ) -> Result<(f64, f64), Indeterminate> {
+        crate::sfcc::perf::add(19, 1);
+        let start = entries.len();
+        let (lo, hi) = match self {
+            Self::Leaf(leaf) if matches!(leaf.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) => {
+                if !leaf.valid_discovery_primitive() {
+                    return Err(Indeterminate);
+                }
+                crate::sfcc::perf::add(20, 1);
+                let interval = leaf.discovery_interval_over_box(c, half)?;
+                entries.push(ZeroOwner::Primitive(leaf));
+                crate::sfcc::perf::maximum(27, entries.len());
+                interval
+            }
+            Self::Min(children) | Self::Max(children) => {
+                if children.is_empty() {
+                    return Err(Indeterminate);
+                }
+                let is_min = matches!(self, Self::Min(_));
+                let init = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
+                let (mut lo, mut hi) = (init, init);
+                for child in children {
+                    let (a, b) = child.collect_zero_owners(c, half, entries)?;
+                    // All endpoints are checked, or intentionally infinite for
+                    // an opaque scope. No NaN reaches min/max composition.
+                    if is_min {
+                        lo = lo.min(a);
+                        hi = hi.min(b);
+                    } else {
+                        lo = lo.max(a);
+                        hi = hi.max(b);
+                    }
+                }
+                (lo, hi)
+            }
+            Self::Blend { .. } | Self::Leaf(_) => {
+                entries.push(ZeroOwner::Opaque);
+                crate::sfcc::perf::maximum(27, entries.len());
+                (f64::NEG_INFINITY, f64::INFINITY)
+            }
+        };
+        if lo > 0.0 || hi < 0.0 {
+            entries.truncate(start);
+        }
+        Ok((lo, hi))
+    }
 }
 
 /// The nearest two transformed field values (smallest first), matching the

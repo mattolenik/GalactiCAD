@@ -1,0 +1,360 @@
+--- a/gcad-wasm/kernel/src/sfcc/local_coverage.rs
++++ b/gcad-wasm/kernel/src/sfcc/local_coverage.rs
+@@ -183,12 +183,54 @@
+         return Err("sphere_spurious_curve_membership");
+     }
+     Ok(())
++}
++/// Freezes face pins during one meshing/reverification call. The only mutable
++/// access updates consumption counters, which do not affect parameter lookup.
++pub(crate) struct CoverageFaces<'a> {
++    faces: &'a mut [HashMap<i64, FaceRecord>; 3],
++    parameters: std::cell::OnceCell<HashMap<(usize, usize), Result<u64, &'static str>>>,
++}
++impl<'a> CoverageFaces<'a> {
++    pub(crate) fn new(faces: &'a mut [HashMap<i64, FaceRecord>; 3]) -> Self {
++        Self { faces, parameters: std::cell::OnceCell::new() }
++    }
++    pub(crate) fn records(&self) -> &[HashMap<i64, FaceRecord>; 3] {
++        self.faces
++    }
++    pub(crate) fn consume(&mut self, axis: usize, key: i64, segment: usize, reversed: bool) {
++        let record = self.faces[axis].get_mut(&key).unwrap();
++        if reversed {
++            record.consumed_rev[segment] += 1;
++        } else {
++            record.consumed_fwd[segment] += 1;
++        }
++    }
++    fn parameter(&self, point: usize, curve_id: usize) -> Result<Option<f64>, &'static str> {
++        let parameters = self.parameters.get_or_init(|| {
++            crate::sfcc::perf::add(31, 1);
++            let mut parameters = HashMap::new();
++            for pin in self.faces.iter().flat_map(|f| f.values()).flat_map(|f| &f.pins) {
++                crate::sfcc::perf::add(32, 1);
++                let bits = pin.t.to_bits();
++                let entry = parameters.entry((pin.point_id, pin.curve_id)).or_insert(Ok(bits));
++                if *entry != Ok(bits) {
++                    *entry = Err("box_conflicting_pin_parameter");
++                }
++            }
++            crate::sfcc::perf::maximum(34, parameters.len());
++            crate::sfcc::perf::maximum(35, parameters.capacity());
++            parameters
++        });
++        crate::sfcc::perf::add(33, 1);
++        parameters.get(&(point, curve_id)).copied().transpose().map(|v| v.map(f64::from_bits))
++    }
+ }
++
+ pub(crate) fn record(
+     scope: &Scope,
+     oct: &SfccOctree,
+     c: &SfccCell,
+-    faces: &[HashMap<i64, FaceRecord>; 3],
++    face_context: &CoverageFaces<'_>,
+     pt: &mut PointTable,
+     tris: &[usize],
+     features: Option<&SfccFeatureSet>,
+@@ -200,7 +242,7 @@
+         pt.coverage_cells.insert(id(c)),
+         "duplicate local cell ownership"
+     );
+-    let result = verify(scope, oct, c, faces, pt, tris, features);
++    let result = verify_with_pin_index(scope, oct, c, face_context.records(), pt, tris, features, Some(face_context));
+     let reason = result.as_ref().err().map(|s| (*s).to_owned()).or_else(|| {
+         pt.coverage_edge_failures
+             .iter()
+@@ -543,16 +585,18 @@
+         actual, owned,
+         "worker local triangle ownership is incomplete or duplicated"
+     );
++    let pin_parameters = CoverageFaces::new(&mut records);
+     let mut witnesses = std::mem::take(&mut pt.coverage);
+     for w in &mut witnesses {
+-        let result = verify(
++        let result = verify_with_pin_index(
+             &scope,
+             &oct,
+             &w.cell,
+-            &records,
++            pin_parameters.records(),
+             pt,
+             &w.triangles.iter().flatten().copied().collect::<Vec<_>>(),
+             Some(features),
++            Some(&pin_parameters),
+         );
+         match result {
+             Ok(faces) if w.reason.is_none() => {
+@@ -1336,6 +1380,7 @@
+     Ok(boundary)
+ }
+ 
++#[cfg(all(test, feature = "serde"))]
+ pub(crate) fn verify(
+     scope: &Scope,
+     oct: &SfccOctree,
+@@ -1345,12 +1390,25 @@
+     tris: &[usize],
+     features: Option<&SfccFeatureSet>,
+ ) -> Result<Vec<FaceProof>, &'static str> {
++    verify_with_pin_index(scope, oct, c, faces, pt, tris, features, None)
++}
++
++fn verify_with_pin_index(
++    scope: &Scope,
++    oct: &SfccOctree,
++    c: &SfccCell,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    pt: &PointTable,
++    tris: &[usize],
++    features: Option<&SfccFeatureSet>,
++    pin_parameters: Option<&CoverageFaces<'_>>,
++) -> Result<Vec<FaceProof>, &'static str> {
+     if matches!(scope, Scope::Outside) {
+         return Err("outside_scope");
+     }
+     let cb = cell_box(&oct.lat, c)?;
+     if let Scope::Cuboid { .. } = scope {
+-        return verify_box(scope, oct, c, faces, pt, tris, features);
++        return verify_box(scope, oct, c, faces, pt, tris, features, pin_parameters);
+     }
+     let Scope::Sphere { center, r } = scope else {
+         unreachable!()
+@@ -1559,19 +1617,25 @@
+     faces: &[HashMap<i64, FaceRecord>; 3],
+     point: usize,
+     curve_id: usize,
++    pin_parameters: Option<&CoverageFaces<'_>>,
+ ) -> Result<Option<f64>, &'static str> {
+-    let mut found = None;
+-    for pin in faces
+-        .iter()
+-        .flat_map(|f| f.values())
+-        .flat_map(|f| &f.pins)
+-        .filter(|p| p.point_id == point && p.curve_id == curve_id)
+-    {
+-        if found.is_some_and(|t: f64| t.to_bits() != pin.t.to_bits()) {
+-            return Err("box_conflicting_pin_parameter");
++    let mut found = if let Some(index) = pin_parameters {
++        index.parameter(point, curve_id)?
++    } else {
++        let mut found = None;
++        for pin in faces
++            .iter()
++            .flat_map(|f| f.values())
++            .flat_map(|f| &f.pins)
++            .filter(|p| p.point_id == point && p.curve_id == curve_id)
++        {
++            if found.is_some_and(|t: f64| t.to_bits() != pin.t.to_bits()) {
++                return Err("box_conflicting_pin_parameter");
++            }
++            found = Some(pin.t);
+         }
+-        found = Some(pin.t);
+-    }
++        found
++    };
+     if let PointKey::Str(key) = pt.key_at(point) {
+         if let Some(id) = key.strip_prefix("corner:") {
+             let corner = features
+@@ -1859,6 +1923,7 @@
+     pt: &PointTable,
+     tris: &[usize],
+     features: Option<&SfccFeatureSet>,
++    pin_parameters: Option<&CoverageFaces<'_>>,
+ ) -> Result<Vec<FaceProof>, &'static str> {
+     let Scope::Cuboid { bounds: b, .. } = scope else {
+         return Err("box_scope");
+@@ -1990,7 +2055,7 @@
+                     let curve = &features.curves[interval.curve_id];
+                     for (point, t, mapped) in [(a, interval.start, p), (bid, interval.end, q)] {
+                         let event =
+-                            canonical_parameter(pt, features, faces, point, interval.curve_id)?;
++                            canonical_parameter(pt, features, faces, point, interval.curve_id, pin_parameters)?;
+                         if event.is_some_and(|expected| expected.to_bits() != t.to_bits()) {
+                             return Err("box_noncanonical_crease_endpoint");
+                         }
+@@ -2126,6 +2191,52 @@
+         }
+     }
+     #[test]
++    fn pin_index_preserves_all_parameter_bits_conflicts_and_key_identity() {
++        use super::super::face_contour::FacePin;
++        let tree = crate::scene_bridge::build_csg_tree_from_json(
++            r#"{"kind":"box","pos":[0,0,0],"half":[1,1,1]}"#,
++        ).unwrap();
++        let features = super::super::feature_set::compile_native_features(&tree);
++        let mut points = PointTable::new();
++        for _ in 0..4 { points.add(0., 0., 0., 0., 0., 1.); }
++        let values = [0, (-0.0_f64).to_bits(), 1, 1.0_f64.to_bits(),
++            f64::INFINITY.to_bits(), 0x7ff8_0000_0000_0001, 0x7ff8_0000_0000_0002];
++        for a in values {
++            for b in values {
++                let mut faces: [HashMap<i64, FaceRecord>; 3] = std::array::from_fn(|_| HashMap::new());
++                for (axis, t) in [a, b].into_iter().enumerate() {
++                    faces[axis].insert(9, FaceRecord {
++                        axis, key: 9, len: 4, segments: Vec::new(),
++                        pins: vec![FacePin { point_id: 0, curve_id: 0, t: f64::from_bits(t) },
++                            FacePin { point_id: 0, curve_id: 1, t: f64::from_bits(a) },
++                            FacePin { point_id: 1, curve_id: 0, t: f64::from_bits(b) }],
++                        consumed_fwd: Vec::new(), consumed_rev: Vec::new(),
++                    });
++                }
++                let mut index = CoverageFaces::new(&mut faces);
++                assert!(index.parameters.get().is_none());
++                for (point, curve) in [(0,0), (0,1), (1,0), (2,0), (0,2)] {
++                    let direct = canonical_parameter(&points, &features, index.records(), point, curve, None)
++                        .map(|t| t.map(f64::to_bits));
++                    let indexed = canonical_parameter(&points, &features, index.records(), point, curve, Some(&index))
++                        .map(|t| t.map(f64::to_bits));
++                    assert_eq!(direct, indexed, "bits={a:x}/{b:x}; key={point}/{curve}");
++                }
++                assert_eq!(index.parameters.get().unwrap().len(), 3);
++                // An independent invocation after reusing the same IDs sees new pins.
++                index.faces[0].get_mut(&9).unwrap().consumed_fwd.push(0);
++                index.consume(0, 9, 0, false);
++                assert_eq!(index.records()[0][&9].consumed_fwd, [1]);
++                assert_eq!(index.parameter(0, 1).unwrap().unwrap().to_bits(), a);
++                drop(index);
++                faces[0].get_mut(&9).unwrap().pins[0].t = 2.;
++                let next = CoverageFaces::new(&mut faces);
++                assert_eq!(next.parameter(0, 0), Err("box_conflicting_pin_parameter"));
++            }
++        }
++    }
++
++    #[test]
+     fn exact_arithmetic_and_grid_do_not_equate_rounded_formulas() {
+         assert!(!exact_affine_eq(1., 2_f64.powi(-54), 1., 1.));
+         let mut lat = crate::math::grid::make_lattice(2, 0., 0., 0., 1.);
+@@ -2560,6 +2671,21 @@
+         assert_eq!(pt.coverage.len(), n);
+         assert!(reasons.is_empty());
+         assert!(cm.failed_cells.is_empty());
++        let pin_index = CoverageFaces::new(&mut faces.faces);
++        for w in &pt.coverage {
++            let tris: Vec<_> = w.triangles.iter().flatten().copied().collect();
++            let scope = Scope::new(&tree);
++            assert_eq!(
++                verify(&scope, &oct, &w.cell, pin_index.records(), &pt, &tris, Some(&ctx.features)),
++                verify_with_pin_index(&scope, &oct, &w.cell, pin_index.records(), &pt, &tris,
++                    Some(&ctx.features), Some(&pin_index)),
++                "same local certificate and first error with or without pin sharing",
++            );
++        }
++        if matches!(Scope::new(&tree), Scope::Sphere { .. }) {
++            assert!(pin_index.parameters.get().is_none(), "sphere does not construct the index");
++        }
++        drop(pin_index);
+         let (out, _, _) = super::super::assembly::finish(
+             &tree,
+             &ctx.features,
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -232,6 +232,7 @@
+     let mut segs: Vec<Seg> = Vec::new();
+     let mut pins: Vec<FacePin> = Vec::new();
+     let coverage_scope=super::local_coverage::Scope::new(tree);
++    let mut coverage_faces=super::local_coverage::CoverageFaces::new(faces);
+     let atomic_box_guard=super::local_coverage::AtomicBoxGuard::new(tree);
+ 
+     // Quality triangulation performs enough queries to amortize a pruned view
+@@ -249,9 +250,9 @@
+         let diagnostic_start = tris.len();
+         segs.clear();
+         pins.clear();
+-        gather_segments(faces, &lat, cell, &mut segs, &mut pins);
++        gather_segments(coverage_faces.records(), &lat, cell, &mut segs, &mut pins);
+         if segs.is_empty() {
+-            if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&[],opts.features) {failed_cells.push(*cell);}
++            if super::local_coverage::record(&coverage_scope,oct,cell,&coverage_faces,points,&[],opts.features) {failed_cells.push(*cell);}
+             continue;
+         }
+ 
+@@ -267,7 +268,7 @@
+         }
+         if degenerate {
+             failed_cells.push(*cell);
+-            super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features);
++            super::local_coverage::record(&coverage_scope,oct,cell,&coverage_faces,points,&tris[coverage_start..],opts.features);
+             continue;
+         }
+ 
+@@ -313,7 +314,7 @@
+         }
+         if broken || loops.is_empty() {
+             failed_cells.push(*cell);
+-            super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features);
++            super::local_coverage::record(&coverage_scope,oct,cell,&coverage_faces,points,&tris[coverage_start..],opts.features);
+             continue;
+         }
+         if loops.len() > 1 {
+@@ -322,12 +323,7 @@
+ 
+         // Loops are valid — record consumption for the S4 face audit.
+         for s in &segs {
+-            let rec = faces[s.face.0].get_mut(&s.face.1).unwrap();
+-            if s.reversed {
+-                rec.consumed_rev[s.idx] += 1;
+-            } else {
+-                rec.consumed_fwd[s.idx] += 1;
+-            }
++            coverage_faces.consume(s.face.0, s.face.1, s.idx, s.reversed);
+         }
+ 
+         let cbox = cell_aabb(&lat, cell.level, cell.ix, cell.iy, cell.iz);
+@@ -367,7 +363,7 @@
+             if let Some((mesh, owner)) = candidate {
+                 for t in mesh.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], owner); }
+                 tris.extend(mesh);
+-                if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
++                if super::local_coverage::record(&coverage_scope,oct,cell,&coverage_faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
+                 #[cfg(feature = "sfcc-profile")]
+                 super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "planar-domains", false);
+                 continue;
+@@ -402,7 +398,7 @@
+             });
+             if corners.len() > 1 || (cell.degenerate && distinct_curves.len() > 1) || curved_corner {
+                 if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris) {
+-                    if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
++                    if super::local_coverage::record(&coverage_scope,oct,cell,&coverage_faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
+                     if corners.is_empty() {
+                         edge_cells += 1;
+                     } else {
+@@ -521,7 +517,7 @@
+         }
+         #[cfg(feature = "sfcc-profile")]
+         super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "cell-loops", fallback_cells.last().is_some_and(|c| c.level == cell.level && c.key == cell.key));
+-        if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
++        if super::local_coverage::record(&coverage_scope,oct,cell,&coverage_faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
+     }
+ 
+     for failure in &points.coverage_edge_failures {
+--- a/gcad-wasm/kernel/src/sfcc/perf.rs
++++ b/gcad-wasm/kernel/src/sfcc/perf.rs
+@@ -8,8 +8,10 @@
+ //! interval queries, retained supported candidates, point/edge/face queries,
+ //! split/indeterminate results, peak pending entries, root sign-walk nodes,
+ //! strict root exclusions, all discovery interval calls. These are work counts, not correctness diagnostics.
++//! Pin-index counters 31..35: builds, input pins visited, lookups, peak unique
++//! entries and peak retained capacity.
+ #[cfg(feature = "sfcc-profile")]
+-thread_local! { static COUNTS: std::cell::Cell<[usize;31]> = const { std::cell::Cell::new([0;31]) }; }
++thread_local! { static COUNTS: std::cell::Cell<[usize;36]> = const { std::cell::Cell::new([0;36]) }; }
+ 
+ #[inline]
+ pub(crate) fn add(index: usize, amount: usize) {
+@@ -35,10 +37,10 @@
+ }
+ #[cfg(feature = "sfcc-profile")]
+ pub fn reset() {
+-    COUNTS.with(|c| c.set([0; 31]));
++    COUNTS.with(|c| c.set([0; 36]));
+ }
+ #[cfg(feature = "sfcc-profile")]
+-pub fn snapshot() -> [usize; 31] {
++pub fn snapshot() -> [usize; 36] {
+     COUNTS.with(|c| c.get())
+ }
+ 

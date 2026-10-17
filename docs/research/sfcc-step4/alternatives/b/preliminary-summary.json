@@ -1,0 +1,317 @@
+[
+  {
+    "scene": "default-box-flips",
+    "baseline_ms": [
+      46.789,
+      48.604917,
+      48.438125
+    ],
+    "candidate_ms": [
+      48.974042,
+      48.808458,
+      49.166042
+    ],
+    "baseline_median_ms": 48.438125,
+    "candidate_median_ms": 48.974042,
+    "median_change_percent": 1.106395014257866,
+    "paired_change_percent": [
+      4.669990809805724,
+      0.41876627420225354,
+      1.5027769964258475
+    ]
+  },
+  {
+    "scene": "clipped-box",
+    "baseline_ms": [
+      11.254167,
+      11.567708,
+      11.310292
+    ],
+    "candidate_ms": [
+      11.588709,
+      11.638292,
+      11.308834
+    ],
+    "baseline_median_ms": 11.310292,
+    "candidate_median_ms": 11.588709,
+    "median_change_percent": 2.461625217103136,
+    "paired_change_percent": [
+      2.9726056135473966,
+      0.6101813773307541,
+      -0.012890913868546239
+    ]
+  },
+  {
+    "scene": "three-sheets-coarse",
+    "baseline_ms": [
+      17.119833,
+      17.630458,
+      17.481042
+    ],
+    "candidate_ms": [
+      18.243208,
+      17.34475,
+      17.74775
+    ],
+    "baseline_median_ms": 17.481042,
+    "candidate_median_ms": 17.74775,
+    "median_change_percent": 1.5256985252938726,
+    "paired_change_percent": [
+      6.561833868356071,
+      -1.6205364602553174,
+      1.5256985252938726
+    ]
+  },
+  {
+    "scene": "three-sheets-fine",
+    "baseline_ms": [
+      149.191917,
+      154.914959,
+      146.927958
+    ],
+    "candidate_ms": [
+      151.945417,
+      150.97025,
+      149.674709
+    ],
+    "baseline_median_ms": 149.191917,
+    "candidate_median_ms": 150.97025,
+    "median_change_percent": 1.191976774452197,
+    "paired_change_percent": [
+      1.8456093703789644,
+      -2.5463706187341284,
+      1.8694542804440273
+    ]
+  },
+  {
+    "scene": "nonadjacent-duplicates",
+    "baseline_ms": [
+      239.156625,
+      236.925125,
+      237.288542
+    ],
+    "candidate_ms": [
+      236.446625,
+      232.379292,
+      230.639959
+    ],
+    "baseline_median_ms": 237.288542,
+    "candidate_median_ms": 232.379292,
+    "median_change_percent": -2.0688946708602662,
+    "paired_change_percent": [
+      -1.1331486217452613,
+      -1.9186791607686215,
+      -2.8018980368634927
+    ]
+  },
+  {
+    "scene": "unique-16",
+    "baseline_ms": [
+      253.087084,
+      251.831875,
+      250.283125
+    ],
+    "candidate_ms": [
+      252.79475,
+      250.572792,
+      252.038667
+    ],
+    "baseline_median_ms": 251.831875,
+    "candidate_median_ms": 252.038667,
+    "median_change_percent": 0.08211510159308322,
+    "paired_change_percent": [
+      -0.1155072773290966,
+      -0.49996967222676325,
+      0.7014224390877288
+    ]
+  },
+  {
+    "scene": "box",
+    "baseline_ms": [
+      268.446833,
+      269.699,
+      267.315417
+    ],
+    "candidate_ms": [
+      272.942584,
+      272.892209,
+      264.35
+    ],
+    "baseline_median_ms": 268.446833,
+    "candidate_median_ms": 272.892209,
+    "median_change_percent": 1.6559614245849286,
+    "paired_change_percent": [
+      1.6747267791384246,
+      1.1839899295140066,
+      -1.1093325754571004
+    ]
+  },
+  {
+    "scene": "sphere",
+    "baseline_ms": [
+      144.856083,
+      149.253125,
+      147.308541
+    ],
+    "candidate_ms": [
+      146.062917,
+      145.183541,
+      143.246708
+    ],
+    "baseline_median_ms": 147.308541,
+    "candidate_median_ms": 145.183541,
+    "median_change_percent": -1.4425504356872287,
+    "paired_change_percent": [
+      0.8331262139678275,
+      -2.726632356943959,
+      -2.7573642182770475
+    ]
+  },
+  {
+    "scene": "ordinary-seam",
+    "baseline_ms": [
+      264.181625,
+      261.168208,
+      263.072209
+    ],
+    "candidate_ms": [
+      264.549833,
+      262.401625,
+      258.08725
+    ],
+    "baseline_median_ms": 263.072209,
+    "candidate_median_ms": 262.401625,
+    "median_change_percent": -0.2549049185199048,
+    "paired_change_percent": [
+      0.1393768397025985,
+      0.4722691974821114,
+      -1.8949014108898155
+    ]
+  },
+  {
+    "scene": "hidden-box-sphere",
+    "baseline_ms": [
+      105.379334,
+      105.893042,
+      104.344292
+    ],
+    "candidate_ms": [
+      105.72225,
+      105.2605,
+      103.577083
+    ],
+    "baseline_median_ms": 105.379334,
+    "candidate_median_ms": 105.2605,
+    "median_change_percent": -0.11276784117842942,
+    "paired_change_percent": [
+      0.3254110526073273,
+      -0.5973404749294087,
+      -0.7352668605964507
+    ]
+  },
+  {
+    "scene": "duplicates-4",
+    "baseline_ms": [
+      90.517333,
+      92.474208,
+      91.221792
+    ],
+    "candidate_ms": [
+      68.51775,
+      66.573125,
+      65.783375
+    ],
+    "baseline_median_ms": 91.221792,
+    "candidate_median_ms": 66.573125,
+    "median_change_percent": -27.02059065009378,
+    "paired_change_percent": [
+      -24.304276618490285,
+      -28.008980623007872,
+      -27.88633772947585
+    ]
+  },
+  {
+    "scene": "duplicates-16",
+    "baseline_ms": [
+      242.251958,
+      238.463542,
+      243.9375
+    ],
+    "candidate_ms": [
+      125.07875,
+      122.302542,
+      125.022875
+    ],
+    "baseline_median_ms": 242.251958,
+    "candidate_median_ms": 125.022875,
+    "median_change_percent": -48.391387201914796,
+    "paired_change_percent": [
+      -48.36832237285776,
+      -48.71226814202063,
+      -48.74798872662055
+    ]
+  },
+  {
+    "scene": "small-seam",
+    "baseline_ms": [
+      65.631166,
+      63.244334,
+      66.588333
+    ],
+    "candidate_ms": [
+      64.608291,
+      66.317125,
+      62.839166
+    ],
+    "baseline_median_ms": 65.631166,
+    "candidate_median_ms": 64.608291,
+    "median_change_percent": -1.5585202310743673,
+    "paired_change_percent": [
+      -1.5585202310743673,
+      4.858602827567138,
+      -5.630366208446769
+    ]
+  },
+  {
+    "scene": "buried-15",
+    "baseline_ms": [
+      186.008625,
+      182.584625,
+      185.231666
+    ],
+    "candidate_ms": [
+      185.071459,
+      189.809458,
+      186.537875
+    ],
+    "baseline_median_ms": 185.231666,
+    "candidate_median_ms": 186.537875,
+    "median_change_percent": 0.705175863396934,
+    "paired_change_percent": [
+      -0.5038293251186543,
+      3.956977757574065,
+      0.705175863396934
+    ]
+  },
+  {
+    "scene": "many-hard-hidden-16",
+    "baseline_ms": [
+      220.916833,
+      213.509458,
+      217.399541
+    ],
+    "candidate_ms": [
+      217.424333,
+      215.313917,
+      213.479292
+    ],
+    "baseline_median_ms": 217.399541,
+    "candidate_median_ms": 215.313917,
+    "median_change_percent": -0.9593506915453909,
+    "paired_change_percent": [
+      -1.5809116727651062,
+      0.8451424198735014,
+      -1.8032462175253672
+    ]
+  }
+]

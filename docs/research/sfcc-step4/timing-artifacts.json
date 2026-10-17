@@ -1,0 +1,12 @@
+{
+  "baseline": {
+    "path": "/private/tmp/sfcc-step4-consensus-artifacts/baseline-fast",
+    "sha256": "d1937fdf3d1f22a199702ff3b959322f252a5e838685bb20679e7416e000d6a5",
+    "bytes": 1747008
+  },
+  "candidate": {
+    "path": "/private/tmp/sfcc-step4-consensus-artifacts/candidate-fast",
+    "sha256": "a8897b9b8b3084fa55f7b777a684dd8fe0da47279787ac9098299f7005ea5218",
+    "bytes": 1747104
+  }
+}

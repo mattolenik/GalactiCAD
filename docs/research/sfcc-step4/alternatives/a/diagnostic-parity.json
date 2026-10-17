@@ -1,0 +1,38 @@
+[
+  {
+    "file": "hidden-controls.json",
+    "same": true
+  },
+  {
+    "file": "cap-and-positive-controls.json",
+    "same": true
+  },
+  {
+    "file": "lens-depth10-invalid-origins.json",
+    "same": true
+  },
+  {
+    "file": "lens-rotate.json",
+    "same": true
+  },
+  {
+    "file": "lens-only-depth10.json",
+    "same": true
+  },
+  {
+    "file": "recovery-rounds.json",
+    "same": true
+  },
+  {
+    "file": "lens-matrix.json",
+    "same": true
+  },
+  {
+    "file": "aligned-lens.json",
+    "same": true
+  },
+  {
+    "file": "hidden-fine-ledger.json",
+    "same": true
+  }
+]

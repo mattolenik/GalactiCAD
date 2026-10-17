@@ -1,0 +1,184 @@
+[
+  {
+    "scene": "represented-rotation",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "opaque-separated-repeats",
+    "counterChanges": {
+      "20": [
+        5642,
+        2821
+      ],
+      "22": [
+        45136,
+        22568
+      ],
+      "23": [
+        45152,
+        22576
+      ],
+      "24": [
+        11300,
+        5650
+      ],
+      "30": [
+        107230,
+        53615
+      ]
+    },
+    "cellHits": 2821,
+    "completedVisibilityHits": 2821
+  },
+  {
+    "scene": "default-box-flips",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "clipped-box",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "three-sheets-coarse",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "three-sheets-fine",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "nonadjacent-duplicates",
+    "counterChanges": {
+      "22": [
+        349888,
+        338744
+      ],
+      "23": [
+        349352,
+        337354
+      ],
+      "24": [
+        86936,
+        83296
+      ],
+      "30": [
+        831504,
+        804722
+      ]
+    },
+    "cellHits": 0,
+    "completedVisibilityHits": 1393
+  },
+  {
+    "scene": "unique-16",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "box",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "sphere",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "ordinary-seam",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "hidden-box-sphere",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "duplicates-4",
+    "counterChanges": {
+      "20": [
+        11284,
+        2821
+      ],
+      "22": [
+        90272,
+        22568
+      ],
+      "23": [
+        90304,
+        22576
+      ],
+      "24": [
+        22600,
+        5650
+      ],
+      "30": [
+        214460,
+        53615
+      ]
+    },
+    "cellHits": 8463,
+    "completedVisibilityHits": 8463
+  },
+  {
+    "scene": "duplicates-16",
+    "counterChanges": {
+      "20": [
+        45136,
+        2821
+      ],
+      "22": [
+        361088,
+        22568
+      ],
+      "23": [
+        361216,
+        22576
+      ],
+      "24": [
+        90400,
+        5650
+      ],
+      "30": [
+        857840,
+        53615
+      ]
+    },
+    "cellHits": 42315,
+    "completedVisibilityHits": 42315
+  },
+  {
+    "scene": "small-seam",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "buried-15",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  },
+  {
+    "scene": "many-hard-hidden-16",
+    "counterChanges": {},
+    "cellHits": 0,
+    "completedVisibilityHits": 0
+  }
+]

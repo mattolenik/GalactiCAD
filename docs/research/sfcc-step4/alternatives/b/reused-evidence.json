@@ -1,0 +1,8 @@
+{
+  "wasm-comparison.json": {
+    "sha256": "d10159e00583dc622f6fce4c3f90afe317d838896b98931c06334602499039a6",
+    "bytes": 566167,
+    "retainedAt": "../../wasm-comparison.json",
+    "reason": "Exact original bytes also independently reproduced by the final consensus; stored once."
+  }
+}

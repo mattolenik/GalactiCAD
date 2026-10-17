@@ -1,0 +1,114 @@
+{
+  "runtimeFrozenBeforeGate": true,
+  "native": {
+    "passed": 252,
+    "library": 199,
+    "integrations": 53,
+    "countsBySuite": [
+      199,
+      2,
+      6,
+      11,
+      6,
+      3,
+      13,
+      3,
+      9
+    ],
+    "features": "serde,sfcc-profile",
+    "failed": 0,
+    "ignored": 0
+  },
+  "wasm": {
+    "passed": 23,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchingRebuiltPackage": true
+  },
+  "nativeCrossVersion": {
+    "scenes": 17,
+    "equalFiles": 102
+  },
+  "wasmCrossVersion": {
+    "scenes": 13,
+    "differences": 0
+  },
+  "coordinatorBroadGate": "pending",
+  "logs": [
+    {
+      "name": "native-tests",
+      "path": "validation/native-tests.log",
+      "sha256": "84a9f4cbeb9a8973e4275f4c9e3c84b1b1949722ccd25d82dd1138a319ea6360"
+    },
+    {
+      "name": "wasm-build",
+      "path": "validation/wasm-build.log",
+      "sha256": "dade4c19c1ed13b059359721da811f531d744c5da7601b64745e139686c7f0b4"
+    },
+    {
+      "name": "wasm-tests",
+      "path": "validation/wasm-tests.log",
+      "sha256": "36c3e1446495777cb88254dc53193b4f5aee87bf6149856e62ea18aca47c5a03"
+    },
+    {
+      "name": "wasm-comparison",
+      "path": "validation/wasm-comparison.log",
+      "sha256": "b74487f08e5a57d3fad2a66c9425f73bb204430d5a526d2ccfb4e821fdc6c663"
+    },
+    {
+      "name": "candidate-fast-build",
+      "path": "validation/candidate-fast-build.log",
+      "sha256": "6bd553f3195189c259017479b573373d4f525bd668132b0e98a30f1dd6da8e0c"
+    },
+    {
+      "name": "baseline-fast-build",
+      "path": "validation/baseline-fast-build.log",
+      "sha256": "10ece65f3eb95015472cf024c0fd5a6507443187f627f6a0192b43236cf7758a"
+    },
+    {
+      "name": "candidate-profile-build",
+      "path": "validation/candidate-profile-build.log",
+      "sha256": "3541a36e45793ead154ae61062d2bd35f2f15e01610cbee95b8c3dd73a42f6ce"
+    },
+    {
+      "name": "baseline-profile-build",
+      "path": "validation/baseline-profile-build.log",
+      "sha256": "56af747e3fd0f5b052067c9c27b66e1cdc6f1601e17a8569ac6db269e5b42295"
+    }
+  ],
+  "limitations": [
+    "Native tests with absent external TS oracle files do not establish those comparisons.",
+    "No visual QA or WASM/native timing equivalence claim."
+  ],
+  "commands": {
+    "native": "CARGO_TARGET_DIR=/tmp/sfcc-step4-consensus-native CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --lib --test diagnosis_contract --test discovery_contract --test coverage_obstruction --test numerical_exclusion --test lever1_prune_parity --test scene_transforms --test worker_partition --test cancel -- --test-threads=1",
+    "wasmBuild": "PATH=/Users/matt/.cargo/bin:/opt/homebrew/bin:$PATH CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/sfcc-step4-consensus-wasm RUSTFLAGS='-C target-feature=+simd128' wasm-pack build gcad-wasm/wasm --target web --release",
+    "wasmTests": "/opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/sfcc-coverage-obstruction_test.mjs gcad-wasm/fixtures/sfcc-discovery_test.mts gcad-wasm/fixtures/sfcc-numerical-exclusion_test.mts gcad-wasm/fixtures/sfcc-scene-transforms_test.mts gcad-wasm/fixtures/sfcc-quality_test.mts",
+    "wasmComparison": "/opt/homebrew/bin/node docs/research/sfcc-step4/compare-wasm.mjs /tmp/sfcc-step3-focused/pkg gcad-wasm/wasm/pkg docs/research/sfcc-step4/wasm-comparison.json",
+    "fastBuild": "CARGO_TARGET_DIR=/tmp/sfcc-step4-consensus-fast CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo build --offline --release --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde --example sfcc_cost_bench",
+    "baselineFastBuild": "CARGO_TARGET_DIR=/tmp/sfcc-step4-consensus-baseline-fast CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo build --offline --release --manifest-path /tmp/sfcc-step4-consensus-baseline-src/gcad-wasm/Cargo.toml -p gcad-kernel --features serde --example sfcc_cost_bench",
+    "nativeComparisonBaseline": "SFCC_COST_EVIDENCE=/tmp/sfcc-step4-consensus-native-evidence/baseline /tmp/sfcc-step4-consensus-baseline-profile/release/examples/sfcc_cost_bench fast 1 0",
+    "nativeComparisonCandidate": "SFCC_COST_EVIDENCE=/tmp/sfcc-step4-consensus-native-evidence/candidate /tmp/sfcc-step4-consensus-native/release/examples/sfcc_cost_bench fast 1 0",
+    "fixedTiming": "python3 docs/research/sfcc-step4/measure.py /tmp/sfcc-step4-consensus-artifacts/baseline-fast /tmp/sfcc-step4-consensus-artifacts/candidate-fast docs/research/sfcc-step4 /tmp/sfcc-step4-consensus-measurements",
+    "candidateProfileBuild": "CARGO_TARGET_DIR=/tmp/sfcc-step4-consensus-native CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo build --offline --release --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --example sfcc_cost_bench",
+    "baselineProfileBuild": "CARGO_TARGET_DIR=/tmp/sfcc-step4-consensus-baseline-profile CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo build --offline --release --manifest-path /tmp/sfcc-step4-consensus-baseline-src/gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --example sfcc_cost_bench"
+  },
+  "performance": {
+    "fastPairs": 5,
+    "fastScenes": 17,
+    "fastRows": 170,
+    "fastWarmupsPerScenePerInvocation": 1,
+    "slowPairs": 3,
+    "slowRows": 6,
+    "slowWarmups": 0,
+    "otherAgentsHeavyJobsStopped": true,
+    "allMeasuredStructuralResultsEqual": true,
+    "allSlowOutputFilesByteIdentical": true,
+    "nativeOnly": true,
+    "oneFinalCampaign": true
+  },
+  "allConsensusOwnedProcessesEnded": true,
+  "sourceAndHarnessFrozenAfterTiming": true,
+  "failures": "No failing consensus build, correctness test, differential comparison or measurement assertion. Preliminary alternate A timeout remains preserved as historical evidence. An OS process listing was unavailable under sandbox; quiet ownership was established by completed tool sessions and coordinator confirmations."
+}

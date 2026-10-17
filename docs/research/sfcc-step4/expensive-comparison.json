@@ -1,0 +1,132 @@
+{
+  "samples": 6,
+  "byteIdenticalOutputs": true,
+  "files": [
+    {
+      "pair": 0,
+      "version": "baseline",
+      "name": "features.bin",
+      "bytes": 243232,
+      "sha256": "1ab7b31b33e97a6cb8e7eb39ff0cfec43d6a9a07dea8a51623393fa2e22a27e4"
+    },
+    {
+      "pair": 0,
+      "version": "baseline",
+      "name": "geometry.bin",
+      "bytes": 3657752,
+      "sha256": "c197f203d5b04e3aa7f19a9e548ed0fa19fe68c5f0e4e0bb391de1789f91db0b"
+    },
+    {
+      "pair": 0,
+      "version": "baseline",
+      "name": "validation.txt",
+      "bytes": 23737,
+      "sha256": "e61ffd7b3d1e601612da6c6c3e7e848682e088bf82557fffac2dcc226b0f340a"
+    },
+    {
+      "pair": 0,
+      "version": "candidate",
+      "name": "features.bin",
+      "bytes": 243232,
+      "sha256": "1ab7b31b33e97a6cb8e7eb39ff0cfec43d6a9a07dea8a51623393fa2e22a27e4"
+    },
+    {
+      "pair": 0,
+      "version": "candidate",
+      "name": "geometry.bin",
+      "bytes": 3657752,
+      "sha256": "c197f203d5b04e3aa7f19a9e548ed0fa19fe68c5f0e4e0bb391de1789f91db0b"
+    },
+    {
+      "pair": 0,
+      "version": "candidate",
+      "name": "validation.txt",
+      "bytes": 23737,
+      "sha256": "e61ffd7b3d1e601612da6c6c3e7e848682e088bf82557fffac2dcc226b0f340a"
+    },
+    {
+      "pair": 1,
+      "version": "candidate",
+      "name": "features.bin",
+      "bytes": 243232,
+      "sha256": "1ab7b31b33e97a6cb8e7eb39ff0cfec43d6a9a07dea8a51623393fa2e22a27e4"
+    },
+    {
+      "pair": 1,
+      "version": "candidate",
+      "name": "geometry.bin",
+      "bytes": 3657752,
+      "sha256": "c197f203d5b04e3aa7f19a9e548ed0fa19fe68c5f0e4e0bb391de1789f91db0b"
+    },
+    {
+      "pair": 1,
+      "version": "candidate",
+      "name": "validation.txt",
+      "bytes": 23737,
+      "sha256": "e61ffd7b3d1e601612da6c6c3e7e848682e088bf82557fffac2dcc226b0f340a"
+    },
+    {
+      "pair": 1,
+      "version": "baseline",
+      "name": "features.bin",
+      "bytes": 243232,
+      "sha256": "1ab7b31b33e97a6cb8e7eb39ff0cfec43d6a9a07dea8a51623393fa2e22a27e4"
+    },
+    {
+      "pair": 1,
+      "version": "baseline",
+      "name": "geometry.bin",
+      "bytes": 3657752,
+      "sha256": "c197f203d5b04e3aa7f19a9e548ed0fa19fe68c5f0e4e0bb391de1789f91db0b"
+    },
+    {
+      "pair": 1,
+      "version": "baseline",
+      "name": "validation.txt",
+      "bytes": 23737,
+      "sha256": "e61ffd7b3d1e601612da6c6c3e7e848682e088bf82557fffac2dcc226b0f340a"
+    },
+    {
+      "pair": 2,
+      "version": "baseline",
+      "name": "features.bin",
+      "bytes": 243232,
+      "sha256": "1ab7b31b33e97a6cb8e7eb39ff0cfec43d6a9a07dea8a51623393fa2e22a27e4"
+    },
+    {
+      "pair": 2,
+      "version": "baseline",
+      "name": "geometry.bin",
+      "bytes": 3657752,
+      "sha256": "c197f203d5b04e3aa7f19a9e548ed0fa19fe68c5f0e4e0bb391de1789f91db0b"
+    },
+    {
+      "pair": 2,
+      "version": "baseline",
+      "name": "validation.txt",
+      "bytes": 23737,
+      "sha256": "e61ffd7b3d1e601612da6c6c3e7e848682e088bf82557fffac2dcc226b0f340a"
+    },
+    {
+      "pair": 2,
+      "version": "candidate",
+      "name": "features.bin",
+      "bytes": 243232,
+      "sha256": "1ab7b31b33e97a6cb8e7eb39ff0cfec43d6a9a07dea8a51623393fa2e22a27e4"
+    },
+    {
+      "pair": 2,
+      "version": "candidate",
+      "name": "geometry.bin",
+      "bytes": 3657752,
+      "sha256": "c197f203d5b04e3aa7f19a9e548ed0fa19fe68c5f0e4e0bb391de1789f91db0b"
+    },
+    {
+      "pair": 2,
+      "version": "candidate",
+      "name": "validation.txt",
+      "bytes": 23737,
+      "sha256": "e61ffd7b3d1e601612da6c6c3e7e848682e088bf82557fffac2dcc226b0f340a"
+    }
+  ]
+}

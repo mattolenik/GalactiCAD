@@ -1,0 +1,83 @@
+[
+  {
+    "scene": "box",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 28538,
+    "eligibilityPreparations": 1,
+    "discoveryPreparedQueries": 83160,
+    "originalCellEligibilityCalls": 4376
+  },
+  {
+    "scene": "sphere",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 18915,
+    "eligibilityPreparations": 1,
+    "discoveryPreparedQueries": 53615,
+    "originalCellEligibilityCalls": 2821
+  },
+  {
+    "scene": "ordinary-seam",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 109380,
+    "eligibilityPreparations": 2,
+    "discoveryPreparedQueries": 215280,
+    "originalCellEligibilityCalls": 17644
+  },
+  {
+    "scene": "hidden-box-sphere",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 51524,
+    "eligibilityPreparations": 2,
+    "discoveryPreparedQueries": 79968,
+    "originalCellEligibilityCalls": 7992
+  },
+  {
+    "scene": "duplicates-4",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 75660,
+    "eligibilityPreparations": 4,
+    "discoveryPreparedQueries": 214460,
+    "originalCellEligibilityCalls": 11284
+  },
+  {
+    "scene": "duplicates-16",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 302640,
+    "eligibilityPreparations": 16,
+    "discoveryPreparedQueries": 857840,
+    "originalCellEligibilityCalls": 45136
+  },
+  {
+    "scene": "small-seam",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 19336,
+    "eligibilityPreparations": 2,
+    "discoveryPreparedQueries": 37204,
+    "originalCellEligibilityCalls": 3142
+  },
+  {
+    "scene": "buried-15",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 428070,
+    "eligibilityPreparations": 15,
+    "discoveryPreparedQueries": 144424,
+    "originalCellEligibilityCalls": 65640
+  },
+  {
+    "scene": "many-hard-hidden-16",
+    "originalCountersEqual": true,
+    "changedOriginalCounters": [],
+    "primitivePreparationsIncludingDirectCulls": 412192,
+    "eligibilityPreparations": 16,
+    "discoveryPreparedQueries": 135912,
+    "originalCellEligibilityCalls": 63936
+  }
+]

@@ -155,6 +155,22 @@ impl Leaf {
         Ok((lo, hi))
     }
 
+    /// Exact arithmetic identity only; occurrence IDs, strata and ancestor paths
+    /// remain distinct. Used solely by call-local hard-discovery memo entries.
+    pub(crate) fn same_discovery_primitive(&self, other: &Self) -> bool {
+        let bits_eq = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits());
+        let same_shape = match (&self.shape, &other.shape) {
+            (Shape::Sphere { r: a }, Shape::Sphere { r: b }) => a.to_bits() == b.to_bits(),
+            (Shape::Cuboid { half: a }, Shape::Cuboid { half: b }) => bits_eq(a, b),
+            _ => false,
+        };
+        same_shape && self.sign.to_bits() == other.sign.to_bits()
+            && self.sim.s.to_bits() == other.sim.s.to_bits()
+            && bits_eq(&self.pos, &other.pos)
+            && bits_eq(&self.sim.t, &other.sim.t)
+            && bits_eq(&self.sim.r, &other.sim.r)
+    }
+
     fn valid_discovery_primitive(&self) -> bool {
         let extent = match self.shape {
             Shape::Sphere { r } => [r; 3],
@@ -326,7 +342,9 @@ impl CsgNode {
             return Err(Indeterminate);
         }
         let mut entries = Vec::new();
-        let interval = self.collect_zero_owners(c, half, &mut entries)?;
+        // The region is fixed for this traversal. Keep just the last successful
+        // primitive result; no state escapes the immutable tree borrow.
+        let interval = self.collect_zero_owners(c, half, &mut entries, &mut None)?;
         Ok(ZeroOwners { entries, interval })
     }
 
@@ -335,16 +353,23 @@ impl CsgNode {
         c: [f64; 3],
         half: [f64; 3],
         entries: &mut Vec<ZeroOwner<'a>>,
+        previous: &mut Option<(&'a Leaf, (f64, f64))>,
     ) -> Result<(f64, f64), Indeterminate> {
         crate::sfcc::perf::add(19, 1);
         let start = entries.len();
         let (lo, hi) = match self {
             Self::Leaf(leaf) if matches!(leaf.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) => {
-                if !leaf.valid_discovery_primitive() {
-                    return Err(Indeterminate);
-                }
-                crate::sfcc::perf::add(20, 1);
-                let interval = leaf.discovery_interval_over_box(c, half)?;
+                let interval = if let Some((_, interval)) = previous.filter(|(prior, _)| leaf.same_discovery_primitive(prior)) {
+                    interval
+                } else {
+                    if !leaf.valid_discovery_primitive() {
+                        return Err(Indeterminate);
+                    }
+                    crate::sfcc::perf::add(20, 1);
+                    let interval = leaf.discovery_interval_over_box(c, half)?;
+                    *previous = Some((leaf, interval));
+                    interval
+                };
                 entries.push(ZeroOwner::Primitive(leaf));
                 crate::sfcc::perf::maximum(27, entries.len());
                 interval
@@ -357,7 +382,7 @@ impl CsgNode {
                 let init = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
                 let (mut lo, mut hi) = (init, init);
                 for child in children {
-                    let (a, b) = child.collect_zero_owners(c, half, entries)?;
+                    let (a, b) = child.collect_zero_owners(c, half, entries, previous)?;
                     // All endpoints are checked, or intentionally infinite for
                     // an opaque scope. No NaN reaches min/max composition.
                     if is_min {
@@ -1267,6 +1292,67 @@ pub fn negate(node: CsgNode) -> CsgNode {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn discovery_identity_uses_every_arithmetic_bit_but_not_ownership() {
+        let super::CsgNode::Leaf(base) = super::leaf_at(super::Shape::Sphere { r: 1. }, [0.; 3]) else { unreachable!() };
+        let mut other = base.clone();
+        other.index = 987;
+        assert!(base.same_discovery_primitive(&other));
+        let mut cases = Vec::new();
+        other.sign = -1.; cases.push(other);
+        for value in [-0., f64::from_bits(1), f64::NAN, f64::INFINITY] {
+            for axis in 0..3 {
+                let mut p = base.clone(); p.pos[axis] = value; cases.push(p);
+                let mut p = base.clone(); p.sim.t[axis] = value; cases.push(p);
+            }
+        }
+        for axis in 0..9 {
+            let mut p = base.clone(); p.sim.r[axis] = p.sim.r[axis].next_up(); cases.push(p);
+        }
+        let mut p = base.clone(); p.sim.s = 1_f64.next_up(); cases.push(p);
+        let mut p = base.clone(); p.shape = super::Shape::Sphere { r: 1_f64.next_up() }; cases.push(p);
+        let mut p = base.clone(); p.shape = super::Shape::Cuboid { half: [1.; 3] }; cases.push(p.clone());
+        for axis in 0..3 {
+            let mut q = p.clone();
+            let super::Shape::Cuboid { half } = &mut q.shape else { unreachable!() };
+            half[axis] = 1_f64.next_up();
+            assert!(!p.same_discovery_primitive(&q));
+        }
+        assert!(cases.iter().all(|other| !base.same_discovery_primitive(other)));
+    }
+
+    #[test]
+    fn discovery_interval_reuse_retains_occurrences_domains_and_direct_validation() {
+        use super::{leaf_at, CsgNode, Shape, ZeroOwner};
+        let shape = || leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
+        let c = [1., 0., 0.]; let h = [0.1; 3];
+        let mut root = CsgNode::Min(vec![shape(), CsgNode::Max(vec![shape(), shape()])]);
+        let expected = root.zero_owners_over_box(c, h).unwrap().interval;
+        let owners = root.zero_owners_over_box(c, h).unwrap();
+        assert_eq!(owners.entries.len(), 3);
+        let pointers = owners.entries.iter().map(|o| match o { ZeroOwner::Primitive(l) => *l as *const _, _ => panic!("primitive") }).collect::<std::collections::HashSet<_>>();
+        assert_eq!(pointers.len(), 3, "equal fields retain all original occurrences");
+        assert!(root.zero_owners_over_box([3., 0., 0.], h).unwrap().entries.is_empty());
+        assert_eq!(root.zero_owners_over_box(c, h).unwrap().interval, expected);
+        let CsgNode::Min(ch) = &mut root else { unreachable!() };
+        let CsgNode::Max(nested) = &mut ch[1] else { unreachable!() };
+        let CsgNode::Leaf(last) = &mut nested[1] else { unreachable!() };
+        last.shape = Shape::Sphere { r: f64::NAN };
+        assert!(root.zero_owners_over_box(c, h).is_err(), "reused index cannot hide a later mutation");
+        let malformed = CsgNode::Min(vec![shape(), leaf_at(Shape::Sphere { r: f64::from_bits(1) }, [1.; 3])]);
+        assert!(malformed.zero_owners_over_box(c, h).is_err());
+        let opaque = super::union_smooth(vec![shape(), shape()], crate::primitives::smin::SminMode::Round, 0.1, 2.);
+        let separated = CsgNode::Min(vec![shape(), opaque, shape()]);
+        let owners = separated.zero_owners_over_box(c, h).unwrap();
+        assert_eq!(owners.entries.len(), 3);
+        assert!(matches!(owners.entries[1], ZeroOwner::Opaque));
+        let unique = CsgNode::Min(vec![shape(), leaf_at(Shape::Sphere { r: 1.01 }, [0.; 3]), shape()]);
+        assert_eq!(unique.zero_owners_over_box(c, h).unwrap().entries.len(), 3);
+        let opposite = CsgNode::Max(vec![shape(), super::negate(shape())]);
+        assert_eq!(opposite.zero_owners_over_box(c, h).unwrap().entries.len(), 2);
+        assert!(opposite.zero_owners_over_box(c, [f64::NAN; 3]).is_err());
+    }
+
     use super::*;
 
     fn sphere(r: f64) -> Shape {

@@ -1,0 +1,79 @@
+{
+  "wasmContract": {
+    "baseline": "/tmp/sfcc-step4-a-baseline-wasm-contract.jsonl",
+    "candidate": "/tmp/sfcc-step4-a-candidate-wasm-contract.jsonl",
+    "baselineSha256": "0f44a042bd56d10d3530e63036b4061be6923388d68c3601a1ff32206f0afe7e",
+    "candidateSha256": "0f44a042bd56d10d3530e63036b4061be6923388d68c3601a1ff32206f0afe7e",
+    "parsedEqual": true
+  },
+  "nativeBounds": {
+    "baseline": "/private/tmp/sfcc-next-xv_s_w7u/stage4-a/docs/research/sfcc-step2/native-bounds.json",
+    "candidate": "/tmp/sfcc-step4-a-native-bounds.json",
+    "baselineSha256": "701eb5974358e2e75c34808dd3611aadd3802eb5477d9d9d755e7280900fa4b9",
+    "candidateSha256": "701eb5974358e2e75c34808dd3611aadd3802eb5477d9d9d755e7280900fa4b9",
+    "parsedEqual": true
+  },
+  "wasmBounds": {
+    "baseline": "/private/tmp/sfcc-next-xv_s_w7u/stage4-a/docs/research/sfcc-step2/wasm-bounds.json",
+    "candidate": "/tmp/sfcc-step4-a-wasm-bounds-final.json",
+    "baselineSha256": "a400e0c97968125952de8a79d4970e96c261dc29b48b113c054cb2e45042a5dc",
+    "candidateSha256": "a400e0c97968125952de8a79d4970e96c261dc29b48b113c054cb2e45042a5dc",
+    "parsedEqual": true
+  },
+  "diagnostics": [
+    {
+      "file": "aligned-lens.json",
+      "baselineSha256": "14661cfe626917b688d90b88f6be4f6bff81a359bcec293cddb9bb0bab81b4ed",
+      "candidateSha256": "14661cfe626917b688d90b88f6be4f6bff81a359bcec293cddb9bb0bab81b4ed",
+      "parsedEqual": true
+    },
+    {
+      "file": "cap-and-positive-controls.json",
+      "baselineSha256": "1fdec1bf5d56c028f51f61648c26c44fa836b670b93033645c483ddd464d4d51",
+      "candidateSha256": "1fdec1bf5d56c028f51f61648c26c44fa836b670b93033645c483ddd464d4d51",
+      "parsedEqual": true
+    },
+    {
+      "file": "hidden-controls.json",
+      "baselineSha256": "65088860eec37244d12e13a560b2ff764a044f5a57eade083c7a75127075c58f",
+      "candidateSha256": "65088860eec37244d12e13a560b2ff764a044f5a57eade083c7a75127075c58f",
+      "parsedEqual": true
+    },
+    {
+      "file": "hidden-fine-ledger.json",
+      "baselineSha256": "1f5d73a8f60d0697b44b41c3e986a18b1d48bccc8b1f47c3ef9f149c07096ff2",
+      "candidateSha256": "1f5d73a8f60d0697b44b41c3e986a18b1d48bccc8b1f47c3ef9f149c07096ff2",
+      "parsedEqual": true
+    },
+    {
+      "file": "lens-depth10-invalid-origins.json",
+      "baselineSha256": "01f4f264f2078b540a55607b3d9e1f9115e873c32cf5bda9e380946da652d513",
+      "candidateSha256": "01f4f264f2078b540a55607b3d9e1f9115e873c32cf5bda9e380946da652d513",
+      "parsedEqual": true
+    },
+    {
+      "file": "lens-matrix.json",
+      "baselineSha256": "bfc0a568003519857fe8e7bc9233a4f3d822796a6143bd704d4574c591127fa3",
+      "candidateSha256": "bfc0a568003519857fe8e7bc9233a4f3d822796a6143bd704d4574c591127fa3",
+      "parsedEqual": true
+    },
+    {
+      "file": "lens-only-depth10.json",
+      "baselineSha256": "aca7ab0361b2edfe162a44f779cea2a69c33a2d74e8a191db98f25bf775f6823",
+      "candidateSha256": "aca7ab0361b2edfe162a44f779cea2a69c33a2d74e8a191db98f25bf775f6823",
+      "parsedEqual": true
+    },
+    {
+      "file": "lens-rotate.json",
+      "baselineSha256": "66ab1e363ada00b46ab801c02cfe7d7cacd59649959e2228b44464264e4bd056",
+      "candidateSha256": "66ab1e363ada00b46ab801c02cfe7d7cacd59649959e2228b44464264e4bd056",
+      "parsedEqual": true
+    },
+    {
+      "file": "recovery-rounds.json",
+      "baselineSha256": "997f88c782a2f893129e6f992ff4fe6d5c665d937faa0be8dedd6aa224c36316",
+      "candidateSha256": "997f88c782a2f893129e6f992ff4fe6d5c665d937faa0be8dedd6aa224c36316",
+      "parsedEqual": true
+    }
+  ]
+}

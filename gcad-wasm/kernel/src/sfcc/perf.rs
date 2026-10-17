@@ -5,7 +5,8 @@
 //! retained lattice hits, scalar composition calls, raw composition calls,
 //! reference limb allocation sites, boundary projection hits, workspace grows,
 //! workspace reuses. Discovery counters 18..30: calls, traversal nodes, cell
-//! interval queries, retained supported candidates, point/edge/face queries,
+//! interval computations (exact repeats reused), retained supported candidates,
+//! point/edge/face computations (completed exact repeats reused),
 //! split/indeterminate results, peak pending entries, root sign-walk nodes,
 //! strict root exclusions, all discovery interval calls. These are work counts, not correctness diagnostics.
 #[cfg(feature = "sfcc-profile")]

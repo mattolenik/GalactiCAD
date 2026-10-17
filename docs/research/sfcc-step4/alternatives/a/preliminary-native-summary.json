@@ -1,0 +1,223 @@
+[
+  {
+    "kind": "direct",
+    "name": "Sphere { r: 9.0 }-identity",
+    "baselineMs": 14.854,
+    "candidateMs": 14.878957999999999,
+    "changePct": 0.16802208159418797,
+    "baselineRange": [
+      22.125,
+      14.681,
+      14.854
+    ],
+    "candidateRange": [
+      14.878957999999999,
+      14.583166,
+      14.905333
+    ]
+  },
+  {
+    "kind": "direct",
+    "name": "Sphere { r: 9.0 }-rotated",
+    "baselineMs": 40.592791000000005,
+    "candidateMs": 40.942459,
+    "changePct": 0.8614041838118425,
+    "baselineRange": [
+      50.414333,
+      40.161833,
+      40.592791000000005
+    ],
+    "candidateRange": [
+      40.942459,
+      40.908791,
+      41.130667
+    ]
+  },
+  {
+    "kind": "direct",
+    "name": "Cuboid { half: [3.0, 3.0, 3.0] }-identity",
+    "baselineMs": 14.672333,
+    "candidateMs": 14.629375,
+    "changePct": -0.2927823407497643,
+    "baselineRange": [
+      14.893125,
+      14.493,
+      14.672333
+    ],
+    "candidateRange": [
+      14.646374999999999,
+      14.629375,
+      14.603917
+    ]
+  },
+  {
+    "kind": "direct",
+    "name": "Cuboid { half: [3.0, 3.0, 3.0] }-rotated",
+    "baselineMs": 14.564709,
+    "candidateMs": 14.541042000000001,
+    "changePct": -0.16249552256759614,
+    "baselineRange": [
+      15.076915999999999,
+      14.564709,
+      14.498208
+    ],
+    "candidateRange": [
+      14.475916999999999,
+      14.541042000000001,
+      14.637792000000001
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "box",
+    "baselineMs": 265.371334,
+    "candidateMs": 263.020542,
+    "changePct": -0.8858500142294945,
+    "baselineRange": [
+      277.895542,
+      264.19975,
+      265.371334
+    ],
+    "candidateRange": [
+      267.303,
+      261.288875,
+      263.020542
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "sphere",
+    "baselineMs": 148.155417,
+    "candidateMs": 143.785667,
+    "changePct": -2.9494365366336983,
+    "baselineRange": [
+      149.380792,
+      145.146958,
+      148.155417
+    ],
+    "candidateRange": [
+      142.302458,
+      145.201792,
+      143.785667
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "ordinary-seam",
+    "baselineMs": 264.849791,
+    "candidateMs": 252.9545,
+    "changePct": -4.491334863843632,
+    "baselineRange": [
+      264.849791,
+      269.825542,
+      257.587583
+    ],
+    "candidateRange": [
+      252.9545,
+      258.263042,
+      252.921875
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "hidden-box-sphere",
+    "baselineMs": 104.010292,
+    "candidateMs": 103.407708,
+    "changePct": -0.5793503589048732,
+    "baselineRange": [
+      102.832542,
+      108.962208,
+      104.010292
+    ],
+    "candidateRange": [
+      102.281958,
+      104.744,
+      103.407708
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "duplicates-4",
+    "baselineMs": 91.621541,
+    "candidateMs": 87.922625,
+    "changePct": -4.037168508222311,
+    "baselineRange": [
+      91.621541,
+      92.8005,
+      89.926125
+    ],
+    "candidateRange": [
+      90.036292,
+      85.665917,
+      87.922625
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "duplicates-16",
+    "baselineMs": 243.673292,
+    "candidateMs": 227.434292,
+    "changePct": -6.664251082551964,
+    "baselineRange": [
+      243.673292,
+      259.39775,
+      242.33125
+    ],
+    "candidateRange": [
+      226.644458,
+      228.726417,
+      227.434292
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "small-seam",
+    "baselineMs": 64.242583,
+    "candidateMs": 63.28,
+    "changePct": -1.4983566274101912,
+    "baselineRange": [
+      64.242583,
+      66.258416,
+      61.757584
+    ],
+    "candidateRange": [
+      63.0515,
+      63.562708,
+      63.28
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "buried-15",
+    "baselineMs": 187.58125,
+    "candidateMs": 186.541458,
+    "changePct": -0.5543155299370328,
+    "baselineRange": [
+      187.677875,
+      185.729459,
+      187.58125
+    ],
+    "candidateRange": [
+      188.4115,
+      186.541458,
+      186.021708
+    ]
+  },
+  {
+    "kind": "export",
+    "name": "many-hard-hidden-16",
+    "baselineMs": 215.8995,
+    "candidateMs": 214.010667,
+    "changePct": -0.8748667782926711,
+    "baselineRange": [
+      215.8995,
+      222.249,
+      213.011458
+    ],
+    "candidateRange": [
+      214.010667,
+      213.728125,
+      216.123875
+    ]
+  }
+]

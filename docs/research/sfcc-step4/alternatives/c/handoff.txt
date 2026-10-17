@@ -1,0 +1,22 @@
+CANDIDATE C FINAL — all owned processes ended, no pending work.
+Baseline: f804044d8c960acea3b3f8735678eecffa31952d.
+Isolated source: /tmp/sfcc-next-xv_s_w7u/stage4-c.
+Durable report/proof/evidence: docs/research/sfcc-step4-c/report.md and proof.md.
+
+Selected candidate is a small exclusive-borrow CoverageFaces wrapper, sharing exact face-pin parameter lookup once per meshing/master-reverify call. It retains every conflicting bit-pattern, original corner checks and membership validations; no primitive/interval/discovery decision code changes. Direct test verifier remains uncached. The only mutable face operation exposed is the pre-existing consumed_fwd/rev increment. Lazy index is absent for spheres/outside scope. Exact elementary fold-equivalence and source-lifetime proof plus full caller audit included.
+
+FINAL VALIDATION: 176 default native library tests; 198 serde/profile library plus53integrations;23matchingWASMtests;19cross-revisionWASMcases;13nativebaseline/candidateexactgeometry/featureinterval/tagged-leaf/fullfirstreasontrace comparisons. All pass, no ignored/skipped. All original31workcounters exactly equal. ActualWASM1/2/4/8workers/reversed/raw/recoverycontrols included in focusedfixtures. Finalsource/WASM/nativeartifacts matched; precursorrun and tooling issues separately labeled.
+
+PERFORMANCE CAUTION: initial3alternatingfastpairs largebox-5.31%, half3box-1.20%, clippedbox+0.73%, sphere+6.41%. Coordinator-authorized5pairedfollowup with SAMEfrozenbinaries confirms largebox256.689→242.654ms(-5.47%) and sphere138.4055→142.0334ms(+2.62%), every candidatebox faster and every candidatesphere slower. Original observations retained. Root/A/B idle during both explicitquietwindows. No48blob/noWASMspeedclaim. Recommend NO unconditional integration; fourth may reject C on this measured tradeoff even though lookup soundness appears established. No tuning or further campaign attempted.
+
+MEMORY/WORK: one pin visit + indexed lookup per key request (hash lookup expected/amortized, not worst-case constant). Largebox324pins/672lookups/U324/cap448; half3box96pins/216lookups/U96/cap112; clipped56pins/208lookups/U56/cap56. Other10nativecontrols no index. Current-call O(U)storage, no retained cross-export cache. Actualallocatorbytes not measured.
+
+Runtime logical source SHA256: a8290c13e73928d5204a01649299cf491ffe25c6f12f20de47801a03de40a1e9
+Patch SHA256: 62e8a7d42bd7ff10ffa611423b9ada28bc3fc0a736efac2da3aaa6b7f037395a (228027 bytes; 35 files)
+Manifest SHA256: fe14c0c6ba729d554ac5ef827b7cbf7d91182a876b1b9da439c134e6c39ba19d
+WASM SHA256: bfe49320eec15b5b14765e3eacd7cee0aa8a1f2e87df31f5b2df834f38c56071 (1488688bytes, version0.1.0).
+Normal native baseline:4994ea11f860ac9ac3681f887d3d66ac78d9c3df3dc9d615a1f27604eb64a107.
+Normal native candidate:15456d9cccaae0bd9710a894be02f69efd23a32dbcfef9d670e6a4fe398e59a0.
+Artifacts: /tmp/sfcc-step4-c-artifacts/{baseline,candidate}/sfcc_cost_bench; separate sfcc_cost_bench_profile; pkg/ contains candidateWASM. Full26nativeJSONsnapshots in /tmp/sfcc-step4-c-native-{baseline,candidate}-snapshots; durable hashes in native-differential.json. Logs, rawtimings, dependencylocks, commands, source/artifact manifests all in durable evidence directory.
+
+No canonical edits, commits, pushes, competitor reads, extra agents, browser/visualQA, dist inspection, 48blob campaign or broadapplicationbuild. Shared node_modules read-only. All sessions ended: 82659,50943,5374,91787,25259,37561,23439(toolingpackagefailure),37839,46964,47325,59650. No subprocess left running. Original user task remains with coordinator for distinct fourth consensus and final broad gate.

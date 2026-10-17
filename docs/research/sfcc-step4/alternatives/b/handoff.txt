@@ -1,0 +1,54 @@
+FINAL Step 4 competitor B
+Baseline f804044d8c960acea3b3f8735678eecffa31952d; own copy /tmp/sfcc-next-xv_s_w7u/stage4-b.
+No competitor source/report read. No canonical edits, commits or pushes. All owned build/test/evidence/timing process handles completed exit 0. No heavy processes remain. No 48-blob run.
+
+Recommendation: retain the small call-local exact-repeat optimization, conditional on the fourth agent's final controlled gate. Two single-entry stack memos reuse (1) successful discovery eligibility + whole-cell interval and (2) a completed primitive visibility check + its 8 corner signs. Shape variant and every shape/sign/s/pos/t/R bit must match. Every original occurrence/reference, ancestor walk, candidate, min/max order, root-sign fold and diagnostic rejection remains. Regions cannot go stale because each memo lives inside exactly one immutable fixed-region/probe call. Opaque subtree calculations never enter either supported memo. Direct APIs stay checked, mutations and new queries start fresh, and no worker/recovery/cancellation/global context is added. Production change is roughly forty lines plus precise tests/counter wording; no new dependency or allocation.
+
+Proof and complete results: docs/research/sfcc-step4-b.md.
+Supporting evidence: docs/research/sfcc-step4-b/.
+Common identical baseline/candidate harness: gcad-wasm/kernel/examples/sfcc_cost_b.rs.
+Saved full native equality artifacts: /tmp/sfcc-step4-b-native-evidence/{baseline,candidate}.
+Preserved exact measured binaries and matching package: /tmp/sfcc-step4-b-artifacts/.
+Private copied baseline sources: /tmp/sfcc-step4-b-baseline-src/gcad-wasm/; frozen baseline itself untouched.
+
+Final runtime checks:
+- 199 serde,sfcc-profile library tests + 53 integrations (cancel2, coverage6, diagnosis11, discovery6, prune3, numerical13, transforms3, workers9), all pass.
+- Matching normal-release WASM: 23 focused fixtures passed, 0fail/skip/cancel. Includes actual worker1/2/4/8, reversed order, raw no-recovery and separate explicit recovery.
+- 13 baseline/candidate WASM cases: exact complete mesh + feature-interval bytes, tags, decisions, full validation equal. Includes quality sphere, default box flips, clipped seam, coarse/fine sheets, duplicates4/16, nonadjacent/unique, opposite sign, actual rotation, opaque-separated repeats.
+- 15 baseline/candidate native cases: all90 saved files byte-identical. Complete stride8 f32 vertex bits + index buffers, f64 feature interval bits, full validation, prepared leaf tags, decisions and non-mesh trace events including first rejection reasons.
+- All structural outcomes and every counter outside20/22/23/24/30 exactly equal. No weakened geometric/occurrence assertion. Duplicate n1/4/16/64/256 still retains logical traversal, candidate/scratch and sign-walk counts. Direct key mutation covers every arithmetic bit, signedzero/subnormal/nonfinite; lifetime/domain/opaque-separated controls pass.
+- No failing candidate correctness test. Initial20 discovery-only tests preceded the two added tests and are explicitly not the final gate. Legacy external TS oracle absence remains a caveat, not an invented comparison.
+
+Structural benefit:
+- duplicates4: interval computations214460→53615; cell and completed-visibility hits8463 each.
+- duplicates16:857840→53615; both hit counts42315.
+- alternating duplicate fields:831504→804722;0 cell hits,1393 visibility hits after owner removal makes repeats adjacent.
+- unique16:858544 unchanged.
+All other work counters, decisions, warnings and validation identical. Coarse sheets remain106leaves/700tris/72unresolved; this optimization does not repair them. Sphere/duplicate success remains2763/6776/1component/0unresolved; default box transport and quality withdrawals unchanged.
+
+Quiet preliminary native timing:
+Coordinator explicitly stopped A/C/root heavy jobs. Three alternating pairs [B,C],[C,B],[B,C],15fastcases, matched1warmup/case/process.90rawrows preserved in preliminary-timing.jsonl; summary includes every sample and individual paired ratios. Same Rust1.99,serde,opt3/LTO/codegen1,harness. Profiling/evidence capture disabled. No WASM/browser/GPU speed claim.
+- duplicates4 median91.222→66.573ms (-27.02%); paired -28.01…-24.30%.
+- duplicates16 median242.252→125.023ms (-48.39%); paired -48.75…-48.37%.
+- unique16 median+0.08%; paired -0.50…+0.70%.
+- default box flips median+1.11%; all three paired +0.42…+4.67%: flag possible small real comparison/branch overhead, not claim neutral.
+- clippedbox median+2.46%; paired -0.01…+2.97%.
+- ordinary medians -1.56…+2.46%; wider small-case variation coarse -1.62…+6.56%, smallseam -5.63…+4.86%.
+Final fourth must execute its fixed5pairfast and3sample/version48blob gate; do not choose a favorable new threshold after these observations.
+
+Storage:
+Two constant-size borrowed records, no heap allocations or persistent retained region/scene cache. Existing O(N) candidate vector and O(depth) traversal remain. One extra mutable reference per recursive traversal. Exact compiled stack-frame sizes and process peak RSS unmeasured. Native common binary1746816→1746912bytes (+96); WASM1486223→1486762 (+539). Worker wire unchanged. Nonadjacent distinct supported primitives usually evict one another, intentionally limiting usefulness.
+
+Final identities:
+Patch /tmp/sfcc-next-cost-b.patch: e640e904f6f8003fa961cea692f6da3db58b96db1d03ebd5ca4c9037037ec856 (723419bytes,17files), git apply --check against frozen baseline passed.
+Runtime/Cargo/TS source logical hash93febff42ca87c770209b15e809d598ff11c72e4bb1221e4cede211388ae7c71; encoding and62individual paths explicit in manifest.json.
+Manifest SHA2563ae73e0d3ffd6c1136b26fad787aa96ec014ac49f25b6bde285ee0f70ce6606e.
+Candidate fast69b61f7283f969f859c05bfaa91694bf5ed10bebdb6dc5f87b93d82227c82f2c.
+Candidate profileabdd10cd765fdcd5dec5c61c965b2ed95181c7e133f01e123ab580fdeebf1ea5.
+Baseline fast6fab6cb451bdc8cc71d486302c9a138b3d566941244e6d66666c9f84c7c25601.
+Baseline profileba9242638f430e2391cbac082da415558a229b81d1bd25d4a364272b2a1e1c08.
+Matching WASM5f421ff32c8fbb006804d78ad71357a2f9180218d8a0462f09dd444c9cc72d79, Rustup1.96simd128, VERSIONunset0.1.0.
+Baseline WASM64c7839cf14ce38f7e48a2274f198fed203701db22f16bd354888b8facd95c8d from /tmp/sfcc-step3-focused/pkg, VERSIONunset0.1.0.
+All commands, individual file/artifact hashes, log hashes and exact source fields are in manifest.json and validation.json.
+
+Reserved for coordinator/consensus: full application build, broad native workspace/allWASM fixtures, final5pairfast and expensive48blob. Visual QA remains manual. These reservations are explicit, not failures or claims of completed checks.

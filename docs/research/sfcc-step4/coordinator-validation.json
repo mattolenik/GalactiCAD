@@ -1,0 +1,64 @@
+{
+  "checks": [
+    {
+      "name": "coordinator-final-build",
+      "originalLog": "/tmp/sfcc-step4-final-build.log",
+      "sha256": "028f8a92da662bcf022fc2b8034331816dfdfa712fee8fd869f10db5d315314c",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "command": "PATH=\"/Users/matt/.cargo/bin:/opt/homebrew/bin:$PATH\" CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/sfcc-step3-final-build-target make build -o setup TSX=\"node --import tsx\"",
+      "durableLog": "validation/coordinator-build.log"
+    },
+    {
+      "name": "coordinator-final-native",
+      "originalLog": "/tmp/sfcc-step4-final-native.log",
+      "sha256": "4ab93075d7360876afec5eca02a1255b79252b6b58f856ccf56ab96ba84038e4",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "passed": 364,
+      "failed": 0,
+      "ignored": 0,
+      "command": "CARGO_TARGET_DIR=/tmp/sfcc-step3-final-native-target CARGO_BUILD_JOBS=2 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --workspace --jobs 2 --no-fail-fast",
+      "durableLog": "validation/coordinator-native.log"
+    },
+    {
+      "name": "coordinator-final-wasm",
+      "originalLog": "/tmp/sfcc-step4-final-wasm.log",
+      "sha256": "cfe32977917d3a532fe43ac47a86b07a7bd7466ba48368690f43f73138f56060",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "command": "/opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/*_test.mts gcad-wasm/fixtures/*_test.mjs",
+      "durableLog": "validation/coordinator-wasm.log"
+    },
+    {
+      "name": "coordinator-final-profile",
+      "originalLog": "/tmp/sfcc-step4-final-profile.log",
+      "sha256": "14b662b0b447fa43d11662d73db7d1d0c10180e89d4f20a532e671547fc1f860",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "passed": 222,
+      "failed": 0,
+      "ignored": 0,
+      "command": "SFCC_DIAG_DIR=/tmp/sfcc-step4-final-diagnostics CARGO_TARGET_DIR=/tmp/sfcc-step3-final-profile-target CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --jobs 1 -p gcad-kernel --features serde,sfcc-profile --lib --test diagnosis_contract --test discovery_contract --test coverage_obstruction -- --test-threads=1",
+      "durableLog": "validation/coordinator-profile.log"
+    }
+  ],
+  "runtimeSourceLogicalSha256": "93febff42ca87c770209b15e809d598ff11c72e4bb1221e4cede211388ae7c71",
+  "appWasm": {
+    "path": "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm",
+    "sha256": "ebdc9d30900cf2fcc4a0294b47550f7cdfab59fc8fc8136a2ada88530a4d5492",
+    "bytes": 1486771,
+    "VERSION": "v0.0.0-f804044-dirty",
+    "exportedVersionVerified": "v0.0.0-f804044-dirty"
+  },
+  "notes": [
+    "Application VERSION stamp is separate from the VERSION-unset focused WASM artifact.",
+    "Native tests without external TypeScript binary-oracle fixtures do not establish those missing comparisons.",
+    "Warm build caches were reused; source and final artifacts are separately verified.",
+    "Source and documentation whitespace checks exclude archived runtime.patch and validation/*.log evidence: unified-diff context prefixes and original log trailing whitespace are preserved byte-for-byte for reproducibility."
+  ]
+}

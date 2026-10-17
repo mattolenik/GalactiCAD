@@ -1,0 +1,196 @@
+[
+  {
+    "scene": "default-box-flips",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 386,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "clipped-box",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 132,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "three-sheets-coarse",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 106,
+    "unresolved": 72,
+    "ok": false
+  },
+  {
+    "scene": "three-sheets-fine",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 4372,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "nonadjacent-duplicates",
+    "changedCounters": {
+      "22": [
+        349888,
+        338744
+      ],
+      "23": [
+        349352,
+        337354
+      ],
+      "24": [
+        86936,
+        83296
+      ],
+      "30": [
+        831504,
+        804722
+      ]
+    },
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 1393,
+    "leaves": 2781,
+    "unresolved": 0,
+    "ok": false
+  },
+  {
+    "scene": "unique-16",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 2852,
+    "unresolved": 4,
+    "ok": false
+  },
+  {
+    "scene": "box",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 4376,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "sphere",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 2763,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "ordinary-seam",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 7606,
+    "unresolved": 521,
+    "ok": false
+  },
+  {
+    "scene": "hidden-box-sphere",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 3974,
+    "unresolved": 4,
+    "ok": false
+  },
+  {
+    "scene": "duplicates-4",
+    "changedCounters": {
+      "20": [
+        11284,
+        2821
+      ],
+      "22": [
+        90272,
+        22568
+      ],
+      "23": [
+        90304,
+        22576
+      ],
+      "24": [
+        22600,
+        5650
+      ],
+      "30": [
+        214460,
+        53615
+      ]
+    },
+    "cellIntervalHits": 8463,
+    "completedVisibilityHits": 8463,
+    "leaves": 2763,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "duplicates-16",
+    "changedCounters": {
+      "20": [
+        45136,
+        2821
+      ],
+      "22": [
+        361088,
+        22568
+      ],
+      "23": [
+        361216,
+        22576
+      ],
+      "24": [
+        90400,
+        5650
+      ],
+      "30": [
+        857840,
+        53615
+      ]
+    },
+    "cellIntervalHits": 42315,
+    "completedVisibilityHits": 42315,
+    "leaves": 2763,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "small-seam",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 1193,
+    "unresolved": 27,
+    "ok": false
+  },
+  {
+    "scene": "buried-15",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 4376,
+    "unresolved": 0,
+    "ok": true
+  },
+  {
+    "scene": "many-hard-hidden-16",
+    "changedCounters": {},
+    "cellIntervalHits": 0,
+    "completedVisibilityHits": 0,
+    "leaves": 3974,
+    "unresolved": 4,
+    "ok": false
+  }
+]

@@ -1,0 +1,57 @@
+{
+  "baselineRevision": "f804044d8c960acea3b3f8735678eecffa31952d",
+  "baselineSourceLogicalSha256": "c29db04aa3a0c6e49d05ff54dd3d27b20951cc9d6389135ca708cd2ea63dbad9",
+  "candidateSourceLogicalSha256": "6d09e0fc731204c8695519cfa496df922018890424fb6e2d16ab22839b76dbb5",
+  "sourceHashEncoding": "sha256(concat(path + space + fileSha256 + newline), source-manifest order)",
+  "nativeRust": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+  "wasmRust": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "node": "v26.11.1",
+  "platform": "Darwin arm64",
+  "flags": {
+    "native": "release opt-level3 lto=true codegen-units=1 features serde (timing), serde,sfcc-profile (counter/test)",
+    "wasm": "release opt-level3 lto=true codegen-units=1 RUSTFLAGS=-C target-feature=+simd128 wasm-pack0.15 --target web VERSION unset",
+    "build": "offline jobs1; no new dependencies"
+  },
+  "artifacts": {
+    "baselineNativeTiming": {
+      "path": "/tmp/sfcc-step4-baseline-artifacts/sfcc_discovery_bench",
+      "sha256": "5d0a802d5195c0c0365c5ce15478392dfb5cf23973b779489776870cd245b930",
+      "bytes": 1635104
+    },
+    "candidateNativeTiming": {
+      "path": "/tmp/sfcc-step4-a-normal/release/examples/sfcc_discovery_bench",
+      "sha256": "988762be1899f80f649969426abdf9e7f3e49d36336ff15afd2a2ba458fed7a9",
+      "bytes": 1635664
+    },
+    "baselineDirectProbe": {
+      "path": "/tmp/sfcc-step4-a-baseline-native/release/examples/sfcc_preparation_probe",
+      "sha256": "65645e062e030203f423ee8039388de41bef57d088c578c1ef5aec0b2b3a8272",
+      "bytes": 452256
+    },
+    "candidateDirectProbe": {
+      "path": "/tmp/sfcc-step4-a-normal/release/examples/sfcc_preparation_probe",
+      "sha256": "b209075402947bf1a5385e50127de2a26638e244be39c17b958ac1d9a7c94631",
+      "bytes": 452368
+    },
+    "baselineWasm": {
+      "path": "/tmp/sfcc-step3-focused/pkg/gcad_wasm_bg.wasm",
+      "sha256": "64c7839cf14ce38f7e48a2274f198fed203701db22f16bd354888b8facd95c8d",
+      "bytes": 1486223
+    },
+    "candidateWasm": {
+      "path": "/private/tmp/sfcc-next-xv_s_w7u/stage4-a/gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm",
+      "sha256": "aab3ced225cdd2053865f84de6d16d063007f1ab031c79b55edd3560ac5d10f6",
+      "bytes": 1489764
+    }
+  },
+  "measurements": {
+    "quiet": "coordinator paused B,C; root no heavy processes;3alternatingpairs,1warmup perversion per9-scene export batch",
+    "direct": "100000 calls/case,4cases,3alternatingpairs; exact output hash matched",
+    "counts": "separate sfcc-profile binaries; diagnostic_ms is not timing evidence"
+  },
+  "limitations": [
+    "No48blob campaign in competitor; reserved for fourth",
+    "No WASM speed claim; WASM checks correctness only",
+    "Old9fastcontrols timed; Step3 positives/obstruction/quality exercised for correctness, not timed here"
+  ]
+}

@@ -1,0 +1,210 @@
+[
+  {
+    "scene": "default-box-flips",
+    "baselineMs": [
+      48.777333,
+      47.64275,
+      49.308083
+    ],
+    "candidateMs": [
+      48.192,
+      51.142291,
+      47.079291
+    ],
+    "baselineMedianMs": 48.777333,
+    "candidateMedianMs": 48.192,
+    "medianChangePercent": -1.200010258863471
+  },
+  {
+    "scene": "clipped-box",
+    "baselineMs": [
+      11.35775,
+      11.089917,
+      11.076417
+    ],
+    "candidateMs": [
+      11.170708,
+      11.82775,
+      11.036791
+    ],
+    "baselineMedianMs": 11.089917,
+    "candidateMedianMs": 11.170708,
+    "medianChangePercent": 0.7285086083151038
+  },
+  {
+    "scene": "three-sheets-coarse",
+    "baselineMs": [
+      17.436375,
+      17.870625,
+      17.202542
+    ],
+    "candidateMs": [
+      17.751875,
+      17.352208,
+      17.227917
+    ],
+    "baselineMedianMs": 17.436375,
+    "candidateMedianMs": 17.352208,
+    "medianChangePercent": -0.4827092787348386
+  },
+  {
+    "scene": "three-sheets-fine",
+    "baselineMs": [
+      151.379458,
+      147.170667,
+      147.398291
+    ],
+    "candidateMs": [
+      161.398667,
+      149.143625,
+      145.4635
+    ],
+    "baselineMedianMs": 147.398291,
+    "candidateMedianMs": 149.143625,
+    "medianChangePercent": 1.184093783014073
+  },
+  {
+    "scene": "box",
+    "baselineMs": [
+      254.483916,
+      258.784709,
+      262.323417
+    ],
+    "candidateMs": [
+      265.213083,
+      245.037667,
+      241.846375
+    ],
+    "baselineMedianMs": 258.784709,
+    "candidateMedianMs": 245.037667,
+    "medianChangePercent": -5.312153895460659
+  },
+  {
+    "scene": "sphere",
+    "baselineMs": [
+      138.550708,
+      137.236,
+      138.264709
+    ],
+    "candidateMs": [
+      153.646292,
+      147.130208,
+      141.938709
+    ],
+    "baselineMedianMs": 138.264709,
+    "candidateMedianMs": 147.130208,
+    "medianChangePercent": 6.411975307451745
+  },
+  {
+    "scene": "ordinary-seam",
+    "baselineMs": [
+      254.28425,
+      257.692625,
+      257.240208
+    ],
+    "candidateMs": [
+      270.306459,
+      256.0245,
+      253.996667
+    ],
+    "baselineMedianMs": 257.240208,
+    "candidateMedianMs": 256.0245,
+    "medianChangePercent": -0.4725964146320427
+  },
+  {
+    "scene": "hidden-box-sphere",
+    "baselineMs": [
+      102.53475,
+      103.435125,
+      102.664541
+    ],
+    "candidateMs": [
+      106.543709,
+      103.71625,
+      105.304166
+    ],
+    "baselineMedianMs": 102.664541,
+    "candidateMedianMs": 105.304166,
+    "medianChangePercent": 2.571116545487695
+  },
+  {
+    "scene": "duplicates-4",
+    "baselineMs": [
+      88.934709,
+      89.187709,
+      89.962125
+    ],
+    "candidateMs": [
+      92.959042,
+      91.414,
+      89.971208
+    ],
+    "baselineMedianMs": 89.187709,
+    "candidateMedianMs": 91.414,
+    "medianChangePercent": 2.496185881397639
+  },
+  {
+    "scene": "duplicates-16",
+    "baselineMs": [
+      238.404583,
+      237.357208,
+      241.142
+    ],
+    "candidateMs": [
+      245.664833,
+      241.628333,
+      237.8535
+    ],
+    "baselineMedianMs": 238.404583,
+    "candidateMedianMs": 241.628333,
+    "medianChangePercent": 1.3522181324844729
+  },
+  {
+    "scene": "small-seam",
+    "baselineMs": [
+      62.79675,
+      62.458292,
+      62.658666
+    ],
+    "candidateMs": [
+      65.263,
+      63.620541,
+      62.852584
+    ],
+    "baselineMedianMs": 62.658666,
+    "candidateMedianMs": 63.620541,
+    "medianChangePercent": 1.5351029018077167
+  },
+  {
+    "scene": "buried-15",
+    "baselineMs": [
+      184.15625,
+      185.5005,
+      182.01975
+    ],
+    "candidateMs": [
+      192.864,
+      183.892875,
+      183.093458
+    ],
+    "baselineMedianMs": 184.15625,
+    "candidateMedianMs": 183.892875,
+    "medianChangePercent": -0.1430171389784518
+  },
+  {
+    "scene": "many-hard-hidden-16",
+    "baselineMs": [
+      212.776208,
+      223.254083,
+      213.803625
+    ],
+    "candidateMs": [
+      218.612625,
+      212.532708,
+      213.491
+    ],
+    "baselineMedianMs": 213.803625,
+    "candidateMedianMs": 213.491,
+    "medianChangePercent": -0.1462206265211763
+  }
+]

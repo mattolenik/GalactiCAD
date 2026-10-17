@@ -1,0 +1,758 @@
+--- a/gcad-wasm/kernel/src/sdf.rs
++++ b/gcad-wasm/kernel/src/sdf.rs
+@@ -302,84 +302,113 @@
+ pub(crate) struct Indeterminate;
+ 
+ #[derive(Debug)]
+-pub(crate) enum ZeroOwner<'a> {
+-    Primitive(&'a Leaf),
++pub(crate) enum ZeroOwner<'a, 'ctx> {
++    Primitive(&'ctx enclosure::PreparedPrimitive<'a>),
+     Opaque,
+ }
+ 
+-pub(crate) struct ZeroOwners<'a> {
+-    pub entries: Vec<ZeroOwner<'a>>,
++pub(crate) struct ZeroOwners<'a, 'ctx> {
++    pub entries: Vec<ZeroOwner<'a, 'ctx>>,
+     pub interval: (f64, f64),
+ }
+ 
+-impl CsgNode {
++/// Borrowing the original tree prevents mutation while these pure checked
++/// coefficients are reused. The DFS entries preserve occurrences, not IDs.
++pub(crate) struct DiscoveryContext<'a> {
++    root: &'a CsgNode,
++    nodes: Vec<DiscoveryNode<'a>>,
++}
++
++enum DiscoveryNode<'a> {
++    Primitive { eligible: bool, interval: enclosure::PreparedPrimitive<'a> },
++    Opaque { valid: bool },
++}
++
++impl<'a> DiscoveryContext<'a> {
++    pub(crate) fn root(&self) -> &'a CsgNode { self.root }
++
++    pub(crate) fn new(root: &'a CsgNode) -> Self {
++        fn prepare<'a>(node: &'a CsgNode, nodes: &mut Vec<DiscoveryNode<'a>>) {
++            match node {
++                CsgNode::Leaf(leaf) if matches!(leaf.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) => {
++                    crate::sfcc::perf::add(32, 1);
++                    nodes.push(DiscoveryNode::Primitive {
++                        eligible: leaf.valid_discovery_primitive(),
++                        interval: enclosure::PreparedPrimitive::new(leaf),
++                    });
++                }
++                CsgNode::Min(children) | CsgNode::Max(children) => {
++                    for child in children { prepare(child, nodes); }
++                }
++                _ => nodes.push(DiscoveryNode::Opaque { valid: node.valid_parameters() }),
++            }
++        }
++        let mut nodes = Vec::new();
++        prepare(root, &mut nodes);
++        Self { root, nodes }
++    }
++
+     /// Original signed occurrences whose whole ancestor path may attain zero.
+-    /// Postorder truncation visits each node once; IDs and strata are irrelevant.
++    /// The original walk and its first failing branch remain in query order.
+     pub(crate) fn zero_owners_over_box(
+         &self,
+         c: [f64; 3],
+         half: [f64; 3],
+-    ) -> Result<ZeroOwners<'_>, Indeterminate> {
++    ) -> Result<ZeroOwners<'a, '_>, Indeterminate> {
+         if c.iter().any(|v| !v.is_finite()) || half.iter().any(|v| !v.is_finite() || *v <= 0.0)
+             || (0..3).any(|a| !(c[a] - half[a]).is_finite() || !(c[a] + half[a]).is_finite())
+         {
+             return Err(Indeterminate);
+         }
+         let mut entries = Vec::new();
+-        let interval = self.collect_zero_owners(c, half, &mut entries)?;
++        let mut prepared = self.nodes.iter();
++        let interval = Self::collect_zero_owners(self.root, &mut prepared, c, half, &mut entries)?;
++        debug_assert!(prepared.next().is_none());
+         Ok(ZeroOwners { entries, interval })
+     }
+ 
+-    fn collect_zero_owners<'a>(
+-        &'a self,
++    fn collect_zero_owners<'ctx>(
++        node: &'a CsgNode,
++        prepared: &mut std::slice::Iter<'ctx, DiscoveryNode<'a>>,
+         c: [f64; 3],
+         half: [f64; 3],
+-        entries: &mut Vec<ZeroOwner<'a>>,
++        entries: &mut Vec<ZeroOwner<'a, 'ctx>>,
+     ) -> Result<(f64, f64), Indeterminate> {
+         crate::sfcc::perf::add(19, 1);
+         let start = entries.len();
+-        let (lo, hi) = match self {
+-            Self::Leaf(leaf) if matches!(leaf.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) => {
+-                if !leaf.valid_discovery_primitive() {
++        let (lo, hi) = match node {
++            CsgNode::Leaf(leaf) if matches!(leaf.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) => {
++                let Some(DiscoveryNode::Primitive { eligible: true, interval }) = prepared.next() else {
+                     return Err(Indeterminate);
+-                }
++                };
+                 crate::sfcc::perf::add(20, 1);
+-                let interval = leaf.discovery_interval_over_box(c, half)?;
+-                entries.push(ZeroOwner::Primitive(leaf));
++                let bounds = interval.discovery_interval_over_box(c, half)?;
++                entries.push(ZeroOwner::Primitive(interval));
+                 crate::sfcc::perf::maximum(27, entries.len());
+-                interval
++                bounds
+             }
+-            Self::Min(children) | Self::Max(children) => {
+-                if children.is_empty() {
+-                    return Err(Indeterminate);
+-                }
+-                let is_min = matches!(self, Self::Min(_));
++            CsgNode::Min(children) | CsgNode::Max(children) => {
++                if children.is_empty() { return Err(Indeterminate); }
++                let is_min = matches!(node, CsgNode::Min(_));
+                 let init = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
+                 let (mut lo, mut hi) = (init, init);
+                 for child in children {
+-                    let (a, b) = child.collect_zero_owners(c, half, entries)?;
+-                    // All endpoints are checked, or intentionally infinite for
+-                    // an opaque scope. No NaN reaches min/max composition.
+-                    if is_min {
+-                        lo = lo.min(a);
+-                        hi = hi.min(b);
+-                    } else {
+-                        lo = lo.max(a);
+-                        hi = hi.max(b);
+-                    }
++                    let (a, b) = Self::collect_zero_owners(child, prepared, c, half, entries)?;
++                    if is_min { lo = lo.min(a); hi = hi.min(b); }
++                    else { lo = lo.max(a); hi = hi.max(b); }
+                 }
+                 (lo, hi)
+             }
+-            Self::Blend { .. } | Self::Leaf(_) => {
+-                if !self.valid_parameters() { return Err(Indeterminate); }
++            CsgNode::Blend { .. } | CsgNode::Leaf(_) => {
++                if !matches!(prepared.next(), Some(DiscoveryNode::Opaque { valid: true })) {
++                    return Err(Indeterminate);
++                }
+                 entries.push(ZeroOwner::Opaque);
+                 crate::sfcc::perf::maximum(27, entries.len());
+                 (f64::NEG_INFINITY, f64::INFINITY)
+             }
+         };
+-        if lo > 0.0 || hi < 0.0 {
+-            entries.truncate(start);
+-        }
++        if lo > 0.0 || hi < 0.0 { entries.truncate(start); }
+         Ok((lo, hi))
+     }
+ }
+@@ -1418,5 +1447,97 @@
+         let lathe = leaf(Shape::Lathe { edges }, Similarity::from_translation(5.0, 0.0, 0.0), [0.0, 0.0, 0.0]);
+         assert!(lathe.f([5.0, 0.0, 0.0]) < 0.0);
+         assert!(lathe.f([8.0, 0.0, 0.0]) > 0.0);
++    }
++}
++
++
++#[cfg(test)]
++mod discovery_preparation_tests {
++    use super::*;
++
++    fn leaves(context: &DiscoveryContext<'_>) -> Vec<usize> {
++        context.zero_owners_over_box([0.; 3], [2.; 3]).unwrap().entries.into_iter()
++            .filter_map(|owner| match owner { ZeroOwner::Primitive(p) => Some(p.leaf.index), _ => None })
++            .collect()
++    }
++
++    #[test]
++    fn contexts_preserve_same_id_occurrences_and_do_not_survive_mutation() {
++        let mut tree = union(vec![leaf_at(Shape::Sphere { r: 1. }, [0.; 3]); 2]);
++        if let CsgNode::Min(children) = &mut tree {
++            for child in children { if let CsgNode::Leaf(leaf) = child { leaf.index = 7; } }
++        }
++        assert_eq!(leaves(&DiscoveryContext::new(&tree)), vec![7, 7]);
++        if let CsgNode::Min(children) = &mut tree {
++            if let CsgNode::Leaf(leaf) = &mut children[1] { leaf.sim.s = f64::NAN; }
++        }
++        assert!(DiscoveryContext::new(&tree).zero_owners_over_box([0.; 3], [2.; 3]).is_err());
++        assert!(tree.interval_over_box([0.; 3], [2.; 3]).0.is_nan());
++    }
++
++    #[test]
++    fn independent_contexts_and_repeated_regions_have_no_shared_state() {
++        let a = leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
++        let b = leaf_at(Shape::Cuboid { half: [0.25; 3] }, [4., 0., 0.]);
++        let ca = DiscoveryContext::new(&a);
++        let cb = DiscoveryContext::new(&b);
++        for _ in 0..3 {
++            assert_eq!(leaves(&ca), vec![0]);
++            assert!(leaves(&cb).is_empty());
++            assert!(ca.zero_owners_over_box([8.; 3], [0.25; 3]).unwrap().entries.is_empty());
++            assert!(ca.zero_owners_over_box([f64::NAN, 0., 0.], [1.; 3]).is_err());
++        }
++    }
++
++    #[test]
++    fn an_opaque_ancestor_keeps_its_original_validation_scope() {
++        let child = leaf_at(Shape::Sphere { r: f64::from_bits(1) }, [0.; 3]);
++        // Valid parameters but ineligible discovery extent. It is still opaque.
++        let opaque = union_smooth(vec![child.clone(), child], SminMode::Round, 0.1, 2.);
++        let context = DiscoveryContext::new(&opaque);
++        assert!(matches!(context.zero_owners_over_box([0.; 3], [1.; 3]).unwrap().entries[..], [ZeroOwner::Opaque]));
+     }
++
++    #[test]
++    fn prepared_queries_reject_bad_regions_and_direct_api_revalidates_all_fields() {
++        let mut tree = leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
++        let CsgNode::Leaf(ref mut leaf) = tree else { unreachable!() };
++        for edit in 0..6 {
++            let saved = leaf.clone();
++            {
++                let prepared = enclosure::PreparedPrimitive::new(leaf);
++                for (c, half) in [([f64::NAN, 0., 0.], [0.; 3]), ([0.; 3], [-1., 0., 0.]),
++                    ([0.; 3], [f64::INFINITY, 0., 0.])] {
++                    assert!(prepared.discovery_interval_over_box(c, half).is_err());
++                }
++            }
++            match edit {
++                0 => leaf.sign = -0.,
++                1 => leaf.sim.s = 0.,
++                2 => leaf.pos[0] = f64::NAN,
++                3 => leaf.sim.r[0] = f64::INFINITY,
++                4 => leaf.sim.t[2] = f64::NEG_INFINITY,
++                _ => leaf.shape = Shape::Cuboid { half: [1., 0., 1.] },
++            }
++            assert!(leaf.discovery_interval_over_box([0.; 3], [1.; 3]).is_err());
++            *leaf = saved;
++        }
++    }
++
++    #[cfg(feature = "sfcc-profile")]
++    #[test]
++    fn discovery_preparation_is_once_per_occurrence_not_once_per_region() {
++        crate::sfcc::perf::reset();
++        let tree = union(vec![leaf_at(Shape::Sphere { r: 1. }, [0.; 3]); 16]);
++        let context = DiscoveryContext::new(&tree);
++        for i in 0..10 { context.zero_owners_over_box([i as f64 * 0.01; 3], [2.; 3]).unwrap(); }
++        let counts = crate::sfcc::perf::snapshot();
++        assert_eq!((counts[31], counts[32], counts[33]), (16, 16, 160));
++        assert_eq!(counts[20], 160);
++        assert_eq!(counts[30], 160);
++        eprintln!("discovery preparation sizes: context={} entry={} primitive={} nodes={} capacity={} bytes={}",
++            std::mem::size_of::<DiscoveryContext>(), std::mem::size_of::<DiscoveryNode>(),
++            std::mem::size_of::<enclosure::PreparedPrimitive>(), context.nodes.len(), context.nodes.capacity(),
++            context.nodes.capacity() * std::mem::size_of::<DiscoveryNode>());
++    }
+ }
+--- a/gcad-wasm/kernel/src/sdf/enclosure.rs
++++ b/gcad-wasm/kernel/src/sdf/enclosure.rs
+@@ -9,7 +9,7 @@
+     lo.is_finite() && hi.is_finite() && lo <= hi
+ }
+ 
+-#[derive(Clone, Copy)]
++#[derive(Clone, Copy, Debug)]
+ pub(crate) struct Interval {
+     pub lo: f64,
+     pub hi: f64,
+@@ -85,7 +85,7 @@
+ // Keep a sphere's radial geometry rather than replacing a rotated query by a
+ // loose local AABB. The defect bound uses the *represented* matrix, not a claim
+ // that its columns are orthonormal. Failure falls back to the affine enclosure.
+-fn sphere_metric(leaf: &Leaf, radius: f64, c: [f64; 3], half: [f64; 3]) -> Option<Interval> {
++fn prepare_sphere_metric(leaf: &Leaf, radius: f64) -> Option<SphereMetric> {
+     let r = &leaf.sim.r;
+     let mut defect = 0.0f64;
+     for i in 0..3 {
+@@ -115,19 +115,12 @@
+             rotated_pos[i] = rotated_pos[i].add(Interval::point(leaf.pos[k]).mul(r[i * 3 + k])?)?;
+         }
+     }
+-    let mut world = [Interval::point(0.); 3];
++    let mut centers = [Interval::point(0.); 3];
+     let mut residual = [0.; 3];
+     for a in 0..3 {
+-        let center = rotated_pos[a]
++        centers[a] = rotated_pos[a]
+             .mul(leaf.sim.s)?
+             .add(Interval::point(leaf.sim.t[a]))?;
+-        world[a] = Interval::point(c[a])
+-            .add(Interval {
+-                lo: -half[a],
+-                hi: half[a],
+-            })?
+-            .sub(center)?
+-            .abs();
+         let mut q = Interval::point(0.);
+         for b in 0..3 {
+             q = q.add(rotated_pos[b].mul(r[b * 3 + a])?)?;
+@@ -138,16 +131,46 @@
+             .abs()
+             .hi;
+     }
+-    let residual = norm(residual, true)?;
+-    let near = norm(world.map(|v| v.lo), false)?;
+-    let far = norm(world.map(|v| v.hi), true)?;
+-    let lo = ((near * lower_factor).next_down().max(0.) - residual)
+-        .next_down()
+-        .max(0.);
+-    let hi = ((far * upper_factor).next_up() + residual).next_up();
+-    Interval::checked(lo, hi)?.sub(Interval::point(radius).mul(leaf.sim.s)?)
++    Some(SphereMetric {
++        centers,
++        residual: norm(residual, true)?,
++        lower_factor,
++        upper_factor,
++        radius: Interval::point(radius).mul(leaf.sim.s)?,
++    })
+ }
+ 
++#[derive(Debug)]
++struct SphereMetric {
++    centers: [Interval; 3],
++    residual: f64,
++    lower_factor: f64,
++    upper_factor: f64,
++    radius: Interval,
++}
++
++impl SphereMetric {
++    fn interval(&self, c: [f64; 3], half: [f64; 3]) -> Option<Interval> {
++        let mut world = [Interval::point(0.); 3];
++        for a in 0..3 {
++            world[a] = Interval::point(c[a])
++                .add(Interval {
++                    lo: -half[a],
++                    hi: half[a],
++                })?
++                .sub(self.centers[a])?
++                .abs();
++        }
++        let near = norm(world.map(|v| v.lo), false)?;
++        let far = norm(world.map(|v| v.hi), true)?;
++        let lo = ((near * self.lower_factor).next_down().max(0.) - self.residual)
++            .next_down()
++            .max(0.);
++        let hi = ((far * self.upper_factor).next_up() + self.residual).next_up();
++        Interval::checked(lo, hi)?.sub(self.radius)
++    }
++}
++
+ fn signed_permutation(r: &[f64; 9]) -> bool {
+     (0..3).all(|a| {
+         (0..3).filter(|&b| r[a * 3 + b].abs() == 1.).count() == 1
+@@ -155,84 +178,143 @@
+     }) && r.iter().all(|x| *x == 0. || x.abs() == 1.)
+ }
+ 
+-pub(super) fn primitive(leaf: &Leaf, c: [f64; 3], half: [f64; 3]) -> Option<(f64, f64)> {
+-    if !leaf.valid_parameters()
+-        || c.iter().any(|x| !x.is_finite())
+-        || half.iter().any(|x| !x.is_finite() || *x < 0.)
+-    {
+-        return None;
+-    }
+-    if let Shape::Sphere { r } = leaf.shape {
+-        if !signed_permutation(&leaf.sim.r) {
+-            if let Some(result) = sphere_metric(leaf, r, c, half) {
+-                return Some(if leaf.sign < 0. {
+-                    (-result.hi, -result.lo)
+-                } else {
+-                    (result.lo, result.hi)
+-                });
++/// Query-independent values tied to an immutable leaf borrow. No ID or global
++/// cache can survive mutation of the public Leaf fields.
++#[derive(Debug)]
++pub(crate) struct PreparedPrimitive<'a> {
++    pub(crate) leaf: &'a Leaf,
++    valid: bool,
++    scaled_pos: Option<[Interval; 3]>,
++    extent: Option<[Interval; 3]>,
++    metric: Option<SphereMetric>,
++}
++
++impl<'a> PreparedPrimitive<'a> {
++    pub(super) fn new(leaf: &'a Leaf) -> Self {
++        crate::sfcc::perf::add(31, 1);
++        let valid = leaf.valid_parameters();
++        let scale = |values: [f64; 3]| -> Option<[Interval; 3]> {
++            Some([
++                Interval::point(values[0]).mul(leaf.sim.s)?,
++                Interval::point(values[1]).mul(leaf.sim.s)?,
++                Interval::point(values[2]).mul(leaf.sim.s)?,
++            ])
++        };
++        let scaled_pos = if valid { scale(leaf.pos) } else { None };
++        let extent = if valid {
++            match leaf.shape {
++                Shape::Sphere { r } => Interval::point(r).mul(leaf.sim.s).map(|v| [v; 3]),
++                Shape::Cuboid { half } => scale(half),
++                _ => None,
+             }
++        } else {
++            None
++        };
++        let metric = match leaf.shape {
++            Shape::Sphere { r } if valid && !signed_permutation(&leaf.sim.r) => {
++                prepare_sphere_metric(leaf, r)
++            }
++            _ => None,
++        };
++        Self {
++            leaf,
++            valid,
++            scaled_pos,
++            extent,
++            metric,
+         }
+     }
+-    // Homogeneity removes division by scale without changing the real field:
+-    // s*phi(R^T(p-t)/s-pos) = phi_scaled(R^T(p-t)-s*pos).
+-    let mut delta = [Interval::point(0.); 3];
+-    for a in 0..3 {
+-        delta[a] = Interval::point(c[a])
+-            .add(Interval {
+-                lo: -half[a],
+-                hi: half[a],
+-            })?
+-            .sub(Interval::point(leaf.sim.t[a]))?;
++
++    pub(crate) fn discovery_interval_over_box(
++        &self,
++        c: [f64; 3],
++        half: [f64; 3],
++    ) -> Result<(f64, f64), super::Indeterminate> {
++        crate::sfcc::perf::add(30, 1);
++        crate::sfcc::perf::add(33, 1);
++        self.interval(c, half).ok_or(super::Indeterminate)
+     }
+-    let mut q = [Interval::point(0.); 3];
+-    for a in 0..3 {
+-        let mut row = Interval::point(0.);
+-        for b in 0..3 {
+-            row = row.add(delta[b].mul(leaf.sim.r[b * 3 + a])?)?;
++
++    pub(super) fn interval(&self, c: [f64; 3], half: [f64; 3]) -> Option<(f64, f64)> {
++        if !self.valid
++            || c.iter().any(|x| !x.is_finite())
++            || half.iter().any(|x| !x.is_finite() || *x < 0.)
++        {
++            return None;
+         }
+-        q[a] = row
+-            .sub(Interval::point(leaf.pos[a]).mul(leaf.sim.s)?)?
+-            .abs();
+-    }
+-    let result = match leaf.shape {
+-        Shape::Sphere { r } => {
+-            let d = Interval {
+-                lo: norm(q.map(|v| v.lo), false)?,
+-                hi: norm(q.map(|v| v.hi), true)?,
+-            };
+-            d.sub(Interval::point(r).mul(leaf.sim.s)?)?
++        let leaf = self.leaf;
++        if let Some(result) = self.metric.as_ref().and_then(|m| m.interval(c, half)) {
++            return Some(if leaf.sign < 0. {
++                (-result.hi, -result.lo)
++            } else {
++                (result.lo, result.hi)
++            });
+         }
+-        Shape::Cuboid { half: h } => {
+-            for a in 0..3 {
+-                q[a] = q[a].sub(Interval::point(h[a]).mul(leaf.sim.s)?)?;
++        let scaled_pos = self.scaled_pos?;
++        let extent = self.extent?;
++        // Homogeneity removes division by scale without changing the real field:
++        // s*phi(R^T(p-t)/s-pos) = phi_scaled(R^T(p-t)-s*pos).
++        let mut delta = [Interval::point(0.); 3];
++        for a in 0..3 {
++            delta[a] = Interval::point(c[a])
++                .add(Interval {
++                    lo: -half[a],
++                    hi: half[a],
++                })?
++                .sub(Interval::point(leaf.sim.t[a]))?;
++        }
++        let mut q = [Interval::point(0.); 3];
++        for a in 0..3 {
++            let mut row = Interval::point(0.);
++            for b in 0..3 {
++                row = row.add(delta[b].mul(leaf.sim.r[b * 3 + a])?)?;
+             }
+-            let outside = Interval {
+-                lo: norm(q.map(|v| v.lo.max(0.)), false)?,
+-                hi: norm(q.map(|v| v.hi.max(0.)), true)?,
+-            };
+-            let inside = Interval {
+-                lo: q
+-                    .iter()
+-                    .map(|v| v.lo)
+-                    .fold(f64::NEG_INFINITY, f64::max)
+-                    .min(0.),
+-                hi: q
+-                    .iter()
+-                    .map(|v| v.hi)
+-                    .fold(f64::NEG_INFINITY, f64::max)
+-                    .min(0.),
+-            };
+-            outside.add(inside)?
++            q[a] = row.sub(scaled_pos[a])?.abs();
+         }
+-        _ => return None,
+-    };
+-    Some(if leaf.sign < 0. {
+-        (-result.hi, -result.lo)
+-    } else {
+-        (result.lo, result.hi)
+-    })
++        let result = match leaf.shape {
++            Shape::Sphere { .. } => {
++                let d = Interval {
++                    lo: norm(q.map(|v| v.lo), false)?,
++                    hi: norm(q.map(|v| v.hi), true)?,
++                };
++                d.sub(extent[0])?
++            }
++            Shape::Cuboid { .. } => {
++                for a in 0..3 {
++                    q[a] = q[a].sub(extent[a])?;
++                }
++                let outside = Interval {
++                    lo: norm(q.map(|v| v.lo.max(0.)), false)?,
++                    hi: norm(q.map(|v| v.hi.max(0.)), true)?,
++                };
++                let inside = Interval {
++                    lo: q
++                        .iter()
++                        .map(|v| v.lo)
++                        .fold(f64::NEG_INFINITY, f64::max)
++                        .min(0.),
++                    hi: q
++                        .iter()
++                        .map(|v| v.hi)
++                        .fold(f64::NEG_INFINITY, f64::max)
++                        .min(0.),
++                };
++                outside.add(inside)?
++            }
++            _ => return None,
++        };
++        Some(if leaf.sign < 0. {
++            (-result.hi, -result.lo)
++        } else {
++            (result.lo, result.hi)
++        })
++    }
+ }
+ 
++pub(super) fn primitive(leaf: &Leaf, c: [f64; 3], half: [f64; 3]) -> Option<(f64, f64)> {
++    PreparedPrimitive::new(leaf).interval(c, half)
++}
++
+ /// A real center/half box containing both represented endpoints, including the
+ /// rounded midpoint and subtraction. No endpoint comparison is used as a proof.
+ pub(crate) fn enclosing_box(lo: [f64; 3], hi: [f64; 3]) -> Option<([f64; 3], [f64; 3])> {
+--- a/gcad-wasm/kernel/src/sfcc/octree.rs
++++ b/gcad-wasm/kernel/src/sfcc/octree.rs
+@@ -28,7 +28,7 @@
+ use crate::sdf::{CsgNode, Pruned};
+ use crate::sfcc::feature_set::SfccFeatureSet;
+ use crate::sfcc::refine_criteria::{
+-    classify_cell_features, discovery_guard, has_corner_sign_change, make_probe, needs_split_smooth_after_discovery, FeatureCriteriaOptions,
++    classify_cell_features, discovery_guard_prepared, has_corner_sign_change, make_probe, needs_split_smooth_after_discovery, FeatureCriteriaOptions,
+     SmoothCriteriaOptions,
+ };
+ use std::cell::RefCell;
+@@ -876,6 +876,7 @@
+         HashMap::new()
+     };
+ 
++    let discovery = crate::sdf::DiscoveryContext::new(tree);
+     build_octree(tree, lat, opts, |cell, sampler| {
+         // Feature criteria (i)/(ii) first; on pass they classify the cell.
+         let cls = classify_cell_features(features, lat, cell.level, cell.ix, cell.iy, cell.iz, feature_opts);
+@@ -934,7 +935,7 @@
+             cell.iy,
+             cell.iz,
+         );
+-        if discovery_guard(tree, &probe).needs_split() {
++        if discovery_guard_prepared(&discovery, &probe).needs_split() {
+             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+         }
+         if cls.corner >= 0 {
+--- a/gcad-wasm/kernel/src/sfcc/perf.rs
++++ b/gcad-wasm/kernel/src/sfcc/perf.rs
+@@ -7,9 +7,11 @@
+ //! workspace reuses. Discovery counters 18..30: calls, traversal nodes, cell
+ //! interval queries, retained supported candidates, point/edge/face queries,
+ //! split/indeterminate results, peak pending entries, root sign-walk nodes,
+-//! strict root exclusions, all discovery interval calls. These are work counts, not correctness diagnostics.
++//! strict root exclusions, all discovery interval calls. Counters 31..33:
++//! primitive coefficient preparations, discovery eligibility preparations,
++//! discovery queries reusing prepared coefficients. These are work counts, not correctness diagnostics.
+ #[cfg(feature = "sfcc-profile")]
+-thread_local! { static COUNTS: std::cell::Cell<[usize;31]> = const { std::cell::Cell::new([0;31]) }; }
++thread_local! { static COUNTS: std::cell::Cell<[usize;34]> = const { std::cell::Cell::new([0;34]) }; }
+ 
+ #[inline]
+ pub(crate) fn add(index: usize, amount: usize) {
+@@ -35,10 +37,10 @@
+ }
+ #[cfg(feature = "sfcc-profile")]
+ pub fn reset() {
+-    COUNTS.with(|c| c.set([0; 31]));
++    COUNTS.with(|c| c.set([0; 34]));
+ }
+ #[cfg(feature = "sfcc-profile")]
+-pub fn snapshot() -> [usize; 31] {
++pub fn snapshot() -> [usize; 34] {
+     COUNTS.with(|c| c.get())
+ }
+ 
+--- a/gcad-wasm/kernel/src/sfcc/pipeline.rs
++++ b/gcad-wasm/kernel/src/sfcc/pipeline.rs
+@@ -32,7 +32,7 @@
+ };
+ use crate::sfcc::point_table::{PointKey, PointTable};
+ use crate::sfcc::refine_criteria::{
+-    classify_cell_features, discovery_guard, has_corner_sign_change, make_probe, needs_split_smooth_after_discovery, FeatureCriteriaOptions,
++    classify_cell_features, discovery_guard_prepared, has_corner_sign_change, make_probe, needs_split_smooth_after_discovery, FeatureCriteriaOptions,
+     SmoothCriteriaOptions,
+ };
+ use crate::sfcc::validation::{self, AuditStatus, NumericalGuard, SfccValidation};
+@@ -493,6 +493,7 @@
+     max_depth: u32,
+     total_size: f64,
+     tree: &'a CsgNode,
++    discovery: crate::sdf::DiscoveryContext<'a>,
+     /// Coarse-region pruned views, keyed by `OCTREE_PRUNE_LEVEL` ancestor and reused
+     /// across every leaf under that ancestor — amortizes the `O(tree²)` `prune_to_box`
+     /// build (the cost that sank the per-cell Lever 1). Lazy. Mirrors the coarse contour
+@@ -615,7 +616,7 @@
+         };
+         let probe =
+             make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
+-        if discovery_guard(self.tree, &probe).needs_split() {
++        if discovery_guard_prepared(&self.discovery, &probe).needs_split() {
+             #[cfg(feature = "sfcc-profile")]
+             super::diagnosis::decision(cell, "discovery", true, cls.curve, cls.corner);
+             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+@@ -822,6 +823,7 @@
+         max_depth,
+         total_size,
+         tree,
++        discovery: crate::sdf::DiscoveryContext::new(tree),
+         coarse: std::cell::RefCell::new(std::collections::HashMap::new()),
+         classifications: std::cell::RefCell::new(HashMap::new()),
+     }
+--- a/gcad-wasm/kernel/src/sfcc/refine_criteria.rs
++++ b/gcad-wasm/kernel/src/sfcc/refine_criteria.rs
+@@ -27,7 +27,7 @@
+     cell_aabb, cell_center_world, cell_size_at_level, corner_offset, point_to_world, stride_at_level, SfccLattice,
+     CELL_EDGES,
+ };
+-use crate::sdf::{CsgNode, Indeterminate, Leaf, SdfQuery, ZeroOwner};
++use crate::sdf::{CsgNode, DiscoveryContext, Indeterminate, Leaf, SdfQuery, ZeroOwner};
+ use crate::sfcc::feature_set::SfccFeatureSet;
+ use crate::strata::{CarrierKind, Stratum};
+ use std::collections::HashSet;
+@@ -136,8 +136,12 @@
+ /// a coarse pruned tree. Supported numeric signs enclose the represented real
+ /// field; primitive visibility is still not a component-coverage certificate.
+ pub fn discovery_guard(root: &CsgNode, probe: &RefineProbe) -> DiscoveryCheck {
++    discovery_guard_prepared(&DiscoveryContext::new(root), probe)
++}
++
++pub(crate) fn discovery_guard_prepared(context: &DiscoveryContext<'_>, probe: &RefineProbe) -> DiscoveryCheck {
+     crate::sfcc::perf::add(18, 1);
+-    let result = match check_discovery(root, probe) {
++    let result = match check_discovery(context, probe) {
+         Ok(result) => result,
+         Err(Indeterminate) => { #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_indeterminate", None); DiscoveryCheck::Indeterminate },
+     };
+@@ -149,7 +153,8 @@
+     result
+ }
+ 
+-fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck, Indeterminate> {
++fn check_discovery(context: &DiscoveryContext<'_>, probe: &RefineProbe) -> Result<DiscoveryCheck, Indeterminate> {
++    let root = context.root();
+     if !probe.cell_size.is_finite() || probe.cell_size <= 0.0 {
+         return Err(Indeterminate);
+     }
+@@ -178,7 +183,7 @@
+             }
+         }
+     }
+-    let owners = root.zero_owners_over_box(c, half)?;
++    let owners = context.zero_owners_over_box(c, half)?;
+     #[cfg(feature = "sfcc-profile")]
+     crate::sfcc::perf::add(21, owners.entries.iter().filter(|e| matches!(e, ZeroOwner::Primitive(_))).count());
+     if owners.interval.0 > 0.0 || owners.interval.1 < 0.0 {
+@@ -188,14 +193,15 @@
+     let mut opaque = false;
+     let mut corner_signs = Vec::with_capacity(owners.entries.len());
+     for owner in owners.entries {
+-        let ZeroOwner::Primitive(leaf) = owner else {
++        let ZeroOwner::Primitive(prepared) = owner else {
+             opaque = true;
+             continue;
+         };
++        let leaf = prepared.leaf;
+         let mut negative = 0u8;
+         for i in 0..8 {
+             crate::sfcc::perf::add(22, 1);
+-            let (a, b) = leaf.discovery_interval_over_box(point(i), [0.0; 3])?;
++            let (a, b) = prepared.discovery_interval_over_box(point(i), [0.0; 3])?;
+             if b < 0.0 {
+                 negative |= 1 << i;
+             } else if a <= 0.0 {
+@@ -211,7 +217,7 @@
+             if (negative >> a) & 1 == (negative >> b) & 1 {
+                 let (ec, eh) = enclosing_box(point(a), point(b))?;
+                 crate::sfcc::perf::add(23, 1);
+-                let (l, h) = leaf.discovery_interval_over_box(ec, eh)?;
++                let (l, h) = prepared.discovery_interval_over_box(ec, eh)?;
+                 if l <= 0.0 && h >= 0.0 {
+                     #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_same_sign_edge", Some(leaf.index));
+                     return Ok(DiscoveryCheck::NeedsSplit);
+@@ -226,7 +232,7 @@
+                 if (0..8).filter(|i| (i >> axis) & 1 == side).all(|i| (negative >> i) & 1 == sign) {
+                     let (fc, fh) = enclosing_box(point(first), point(last))?;
+                     crate::sfcc::perf::add(24, 1);
+-                    let (l, h) = leaf.discovery_interval_over_box(fc, fh)?;
++                    let (l, h) = prepared.discovery_interval_over_box(fc, fh)?;
+                     if l <= 0.0 && h >= 0.0 {
+                         #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_same_sign_face", Some(leaf.index));
+                         return Ok(DiscoveryCheck::NeedsSplit);
+@@ -1032,12 +1038,12 @@
+     }
+ 
+     fn owners(root: &CsgNode, c: [f64; 3], half: [f64; 3]) -> Vec<&Leaf> {
+-        root.zero_owners_over_box(c, half)
++        DiscoveryContext::new(root).zero_owners_over_box(c, half)
+             .unwrap()
+             .entries
+             .into_iter()
+             .filter_map(|o| match o {
+-                ZeroOwner::Primitive(l) => Some(l),
++                ZeroOwner::Primitive(l) => Some(l.leaf),
+                 _ => None,
+             })
+             .collect()
+@@ -1261,7 +1267,7 @@
+             sdf::union(vec![sphere(5., [0.; 3]), opaque.clone()]),
+             sdf::intersect(vec![sphere(1., [10.; 3]), opaque.clone()]),
+         ] {
+-            assert!(tree.zero_owners_over_box([0.; 3], [1.; 3]).unwrap().entries.is_empty());
++            assert!(DiscoveryContext::new(&tree).zero_owners_over_box([0.; 3], [1.; 3]).unwrap().entries.is_empty());
+             assert_eq!(discovery_guard(&tree, &probe(&tree, [-1.; 3], [1.; 3])), PASS);
+         }
+         let unit = sphere(1., [0.; 3]);

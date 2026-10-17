@@ -1,0 +1,120 @@
+{
+  "allRuntimeEditsPrecedeFinalMatrix": true,
+  "native": {
+    "features": "serde,sfcc-profile",
+    "libraryPassed": 199,
+    "integrationPassed": 53,
+    "failed": 0,
+    "ignored": 0,
+    "tests": [
+      "cancel",
+      "coverage_obstruction",
+      "diagnosis_contract",
+      "discovery_contract",
+      "lever1_prune_parity",
+      "numerical_exclusion",
+      "scene_transforms",
+      "worker_partition"
+    ],
+    "command": "SFCC_DIAG_DIR=/tmp/sfcc-step4-b-diag CARGO_TARGET_DIR=/tmp/sfcc-step4-b-native CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --lib --test diagnosis_contract --test discovery_contract --test coverage_obstruction --test numerical_exclusion --test lever1_prune_parity --test scene_transforms --test worker_partition --test cancel -- --test-threads=1"
+  },
+  "wasm": {
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "build": "PATH=/Users/matt/.cargo/bin:/opt/homebrew/bin:$PATH CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/sfcc-step4-b-wasm RUSTFLAGS='-C target-feature=+simd128' wasm-pack build gcad-wasm/wasm --target web --release",
+    "command": "/opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/sfcc-coverage-obstruction_test.mjs gcad-wasm/fixtures/sfcc-discovery_test.mts gcad-wasm/fixtures/sfcc-numerical-exclusion_test.mts gcad-wasm/fixtures/sfcc-scene-transforms_test.mts gcad-wasm/fixtures/sfcc-quality_test.mts"
+  },
+  "nativeComparison": {
+    "scenes": 15,
+    "exactFiles": 90,
+    "differences": 0,
+    "directory": "/tmp/sfcc-step4-b-native-evidence",
+    "commonHarness": "gcad-wasm/kernel/examples/sfcc_cost_b.rs",
+    "baselineCopy": "/tmp/sfcc-step4-b-baseline-src/gcad-wasm",
+    "commands": [
+      "SFCC_COST_B_EVIDENCE=/tmp/sfcc-step4-b-native-evidence/baseline /tmp/sfcc-step4-b-baseline-profile/release/examples/sfcc_cost_b fast 1 0",
+      "SFCC_COST_B_EVIDENCE=/tmp/sfcc-step4-b-native-evidence/candidate /tmp/sfcc-step4-b-native/release/examples/sfcc_cost_b fast 1 0"
+    ]
+  },
+  "wasmComparison": {
+    "scenes": 13,
+    "differences": 0,
+    "command": "/opt/homebrew/bin/node docs/research/sfcc-step4-b/compare-wasm.mjs /tmp/sfcc-step3-focused/pkg gcad-wasm/wasm/pkg docs/research/sfcc-step4-b/wasm-comparison.json"
+  },
+  "preliminaryTiming": {
+    "quietWindowAuthorizedByCoordinator": true,
+    "scenes": 15,
+    "pairs": 3,
+    "rawRows": 90,
+    "matchedWarmupsPerSceneInvocation": 1,
+    "order": [
+      "baseline/candidate",
+      "candidate/baseline",
+      "baseline/candidate"
+    ],
+    "command": "python3 docs/research/sfcc-step4-b/measure.py /tmp/sfcc-step4-b-artifacts/baseline-fast /tmp/sfcc-step4-b-artifacts/candidate-fast docs/research/sfcc-step4-b/preliminary-timing.jsonl",
+    "no48Blob": true,
+    "noWasmSpeedClaim": true
+  },
+  "logs": [
+    {
+      "name": "native-tests",
+      "path": "/tmp/sfcc-step4-b-native-tests.log",
+      "sha256": "67e0452df40eb799eb823b662e5451952d6ef486cd16e06d40edb913de9540f3",
+      "exitCode": 0
+    },
+    {
+      "name": "wasm-build",
+      "path": "/tmp/sfcc-step4-b-wasm-build.log",
+      "sha256": "5fd11968363b5cafddb5c5ef93452dcbcba7a02050cbc26986031f45038e2cc1",
+      "exitCode": 0
+    },
+    {
+      "name": "wasm-tests",
+      "path": "/tmp/sfcc-step4-b-wasm-tests.log",
+      "sha256": "6a83352fe3205505443178eb4a3c764ede7376d4c00310e3000632b942d8d8f2",
+      "exitCode": 0
+    },
+    {
+      "name": "wasm-comparison",
+      "path": "/tmp/sfcc-step4-b-wasm-comparison.log",
+      "sha256": "b74487f08e5a57d3fad2a66c9425f73bb204430d5a526d2ccfb4e821fdc6c663",
+      "exitCode": 0
+    },
+    {
+      "name": "baseline-build",
+      "path": "/tmp/sfcc-step4-b-baseline-build.log",
+      "sha256": "3b7d99f4964fada88bdbf4a5575142721119e7e1f8e5a1082b8b647cbfff8cda",
+      "exitCode": 0
+    },
+    {
+      "name": "baseline-profile-build",
+      "path": "/tmp/sfcc-step4-b-baseline-profile-build.log",
+      "sha256": "b2a8cfe5eaca7ef481128b73615a273998736c4cb4d1448055c58a7b534943ac",
+      "exitCode": 0
+    },
+    {
+      "name": "fast-build",
+      "path": "/tmp/sfcc-step4-b-fast-build.log",
+      "sha256": "bcedd893781254bc84457843277cc6cf1d444f4bde4be0ed295f47bb8813c751",
+      "exitCode": 0
+    },
+    {
+      "name": "profile-build",
+      "path": "/tmp/sfcc-step4-b-profile-build.log",
+      "sha256": "372f6d385d36158b3e5a3244f6bec65ff2281d3ea597aae9143efafcf90b2859",
+      "exitCode": 0
+    }
+  ],
+  "allOwnedProcessesEnded": true,
+  "notRun": [
+    "application build",
+    "full native workspace",
+    "all WASM fixtures",
+    "48-blob timing",
+    "visual QA"
+  ],
+  "failureHistory": "No failing candidate correctness checks. Initial 20 discovery tests preceded added tests; final matrix is authoritative. Existing absent external TS oracles are not established by passing native assertions."
+}

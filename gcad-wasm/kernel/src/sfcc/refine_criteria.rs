@@ -187,11 +187,18 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
     }
     let mut opaque = false;
     let mut corner_signs = Vec::with_capacity(owners.entries.len());
+    // Same probe and arithmetic path: a completed visibility check can serve
+    // another exact primitive occurrence without dropping that occurrence.
+    let mut previous: Option<(&Leaf, u8)> = None;
     for owner in owners.entries {
         let ZeroOwner::Primitive(leaf) = owner else {
             opaque = true;
             continue;
         };
+        if let Some((_, negative)) = previous.filter(|(prior, _)| leaf.same_discovery_primitive(prior)) {
+            corner_signs.push((leaf, negative));
+            continue;
+        }
         let mut negative = 0u8;
         for i in 0..8 {
             crate::sfcc::perf::add(22, 1);
@@ -234,6 +241,7 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
                 }
             }
         }
+        previous = Some((leaf, negative));
         corner_signs.push((leaf, negative));
     }
     if !opaque {
@@ -1301,10 +1309,10 @@ mod discovery_tests {
             let c = perf::snapshot();
             assert_eq!(c[18], 1);
             assert_eq!(c[19], n + 1);
-            assert_eq!(c[20], n);
+            assert_eq!(c[20], 1, "identical cell intervals share arithmetic, not owners");
             assert_eq!(c[21], n);
-            assert_eq!(c[22], 8 * n);
-            assert!(c[23] <= 12 * n && c[24] <= 6 * n);
+            assert_eq!(c[22], 8, "one completed visibility check serves identical occurrences");
+            assert!(c[23] <= 12 && c[24] <= 6);
             assert_eq!(c[27], n);
             assert_eq!(c[28], n + 1);
             assert_eq!(c[30], c[20] + c[22] + c[23] + c[24], "root sign fold adds no interval queries");
@@ -1316,7 +1324,7 @@ mod discovery_tests {
         assert_eq!(discovery_guard(&tree, &probe(&tree, [-1.; 3], [1.; 3])), PASS);
         let c = perf::snapshot();
         assert_eq!(c[19], 260);
-        assert_eq!(c[20], 258);
+        assert_eq!(c[20], 3, "256 identical spheres, one box and the exposed box");
         assert_eq!(c[21], 1);
         assert_eq!(c[22], 8);
         assert!(c[23] <= 12 && c[24] <= 6);

@@ -1,0 +1,15 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.21
+   Compiling syn v2.0.117
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling serde_derive v1.0.228
+   Compiling itoa v1.0.18
+   Compiling gcad-kernel v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/kernel)
+   Compiling memchr v2.8.2
+    Finished `release` profile [optimized] target(s) in 33.09s
+   Compiling gcad-kernel v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/kernel)
+    Finished `release` profile [optimized] target(s) in 9.38s

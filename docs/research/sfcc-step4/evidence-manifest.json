@@ -1,0 +1,67 @@
+[
+  {
+    "path": "proof.md",
+    "sha256": "e6b5f1a75ee0a328a4af942c936b9d81cee78658b54c0603ec1ffdd19aea90db",
+    "bytes": 6808
+  },
+  {
+    "path": "measure.py",
+    "sha256": "9a8aa81b73cba1ba0b3203be7343750856d906d82dea3a596a435c2824796cd0",
+    "bytes": 4199
+  },
+  {
+    "path": "compare-wasm.mjs",
+    "sha256": "87a9256786501c4f7266c3a992e4ff0b12aadf0e1a6757c32c53007d06e37c82",
+    "bytes": 3687
+  },
+  {
+    "path": "fast-timing.jsonl",
+    "sha256": "39a0982ba82d639fcfad1fc4af1f546c36646a4a2ce1de3bd5fe0f02a478d465",
+    "bytes": 62905
+  },
+  {
+    "path": "48blob-timing.jsonl",
+    "sha256": "07c3d4821ba41b614c5d7894906709999030abebb58e5b511debdc514919c80c",
+    "bytes": 3962
+  },
+  {
+    "path": "timing-summary.json",
+    "sha256": "d4eb589142370b5867cf04b46298e6fcaaa03afcd1186e37df297ebab403f4d6",
+    "bytes": 13431
+  },
+  {
+    "path": "timing-artifacts.json",
+    "sha256": "44758d23335e53d378645f01b139734da18af8c4be90e1733ba494051a29c0bd",
+    "bytes": 399
+  },
+  {
+    "path": "baseline-work.jsonl",
+    "sha256": "3095a2967b48240562eb5995526c57806281274910ddfdbe3b039e6cfba4d339",
+    "bytes": 7957
+  },
+  {
+    "path": "candidate-work.jsonl",
+    "sha256": "942e35217539139fa400229f9fc721082e2df0cee5ff80b85ce3c9827235b301",
+    "bytes": 7871
+  },
+  {
+    "path": "native-comparison.json",
+    "sha256": "5500cc7776796d40f367577d07358dbbad54cedd1ca1c1fb302302c4087434b6",
+    "bytes": 16649
+  },
+  {
+    "path": "wasm-comparison.json",
+    "sha256": "d10159e00583dc622f6fce4c3f90afe317d838896b98931c06334602499039a6",
+    "bytes": 566167
+  },
+  {
+    "path": "work-comparison.json",
+    "sha256": "6c4df97a22b42c7080e57bb304d6b37a0aa8a52f37397d6529ace7edeefa347a",
+    "bytes": 3043
+  },
+  {
+    "path": "expensive-comparison.json",
+    "sha256": "8d4272f1f39c4a4fce25fadd69e13a8ad659d416b9a3b6029762b96ec62706c4",
+    "bytes": 3599
+  }
+]

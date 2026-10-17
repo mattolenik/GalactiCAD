@@ -1,0 +1,138 @@
+{
+  "snapshotAndTraceFiles": 26,
+  "scenes": 13,
+  "exactJsonEquality": true,
+  "allOriginal31CountersEqual": true,
+  "files": [
+    {
+      "file": "box.json",
+      "sha256": "b076778e6851ca325035dac761c01a472d8785685401e25b7f9a80a1b65e88d8",
+      "bytes": 2328096
+    },
+    {
+      "file": "box.trace.json",
+      "sha256": "2a04749daffb21077bc5c0f40852b01fa873c0abace77eab2f64b58eab0cf475",
+      "bytes": 826935
+    },
+    {
+      "file": "buried-15.json",
+      "sha256": "da7636bd6476fcdfed3ce7a5824ef8cecf38d2dea1376b923e7f87391c93cd11",
+      "bytes": 2328084
+    },
+    {
+      "file": "buried-15.trace.json",
+      "sha256": "2a04749daffb21077bc5c0f40852b01fa873c0abace77eab2f64b58eab0cf475",
+      "bytes": 826935
+    },
+    {
+      "file": "clipped-box.json",
+      "sha256": "08013f6e6e6c87b6ef75231244d78ecf8b33234be6eb47e6f7a01ea50408105a",
+      "bytes": 144673
+    },
+    {
+      "file": "clipped-box.trace.json",
+      "sha256": "2e464bdb7430c3159651ef1db2b2a2a9af922b1981d0b1977d03a6bf952cd2bb",
+      "bytes": 28224
+    },
+    {
+      "file": "default-box-flips.json",
+      "sha256": "896485a0bb31e489978a5702ac1f27ba59df53295521fb3a00916dcd1472c43f",
+      "bytes": 282349
+    },
+    {
+      "file": "default-box-flips.trace.json",
+      "sha256": "6f672e4d3089eed8a16bbe2d5fa7bdadafc77c10b8862b4dc46618a83572655e",
+      "bytes": 75633
+    },
+    {
+      "file": "duplicates-16.json",
+      "sha256": "e286f0ff19c6c2070f609b498a7054228edce6e4602e90216359a7e8a191e701",
+      "bytes": 1797836
+    },
+    {
+      "file": "duplicates-16.trace.json",
+      "sha256": "42655b0d8610fe590883b52af9adf470411f3bc5f04f335a375874e37858a601",
+      "bytes": 541341
+    },
+    {
+      "file": "duplicates-4.json",
+      "sha256": "79382e4116b8b7b8386a795e233b77c2ef2dde9ec590a2db95b2f90c931154f1",
+      "bytes": 1797832
+    },
+    {
+      "file": "duplicates-4.trace.json",
+      "sha256": "42655b0d8610fe590883b52af9adf470411f3bc5f04f335a375874e37858a601",
+      "bytes": 541341
+    },
+    {
+      "file": "hidden-box-sphere.json",
+      "sha256": "29d9ed7f848272f6f25b5e77d3712cd499c0ee2971494a84f6c8c72b96cbc7dd",
+      "bytes": 2074499
+    },
+    {
+      "file": "hidden-box-sphere.trace.json",
+      "sha256": "7395c74de297230d6bae66c035bbb2c4d843df61dc467fefe718e02a72353b50",
+      "bytes": 752013
+    },
+    {
+      "file": "many-hard-hidden-16.json",
+      "sha256": "468186a9c7921ca1b1f842d7c9c0871674755db5df958d5026c1338c6f4446e1",
+      "bytes": 2074498
+    },
+    {
+      "file": "many-hard-hidden-16.trace.json",
+      "sha256": "7395c74de297230d6bae66c035bbb2c4d843df61dc467fefe718e02a72353b50",
+      "bytes": 752013
+    },
+    {
+      "file": "ordinary-seam.json",
+      "sha256": "34e6294dba9a484264371c26a1f8d31c3c2f9f8984f8aec9a5e7119af8abfc75",
+      "bytes": 5683146
+    },
+    {
+      "file": "ordinary-seam.trace.json",
+      "sha256": "f63f17651b2b17728c457ef743a0734e184d3deeca53de40a52c1f7a2b9f3244",
+      "bytes": 1873906
+    },
+    {
+      "file": "small-seam.json",
+      "sha256": "c4f9b478bc0fb7a315082bf05d65a21c16b47c943252bb35ab45b2845f9a55ab",
+      "bytes": 1035652
+    },
+    {
+      "file": "small-seam.trace.json",
+      "sha256": "24209ee07c13b1ec6a5e881070f9cd36ef22e4e7d159c0e41c424f72b88a1db5",
+      "bytes": 313182
+    },
+    {
+      "file": "sphere.json",
+      "sha256": "906d14b15d0a0883db2d16c5556431aebbc37bab13fcee45da188c75a2fdf911",
+      "bytes": 1797829
+    },
+    {
+      "file": "sphere.trace.json",
+      "sha256": "42655b0d8610fe590883b52af9adf470411f3bc5f04f335a375874e37858a601",
+      "bytes": 541341
+    },
+    {
+      "file": "three-sheets-coarse.json",
+      "sha256": "9ea6077f0df6c7fd1022e5b01e6f20d18e53be8c9f2804fdc166e65acafc4a43",
+      "bytes": 157574
+    },
+    {
+      "file": "three-sheets-coarse.trace.json",
+      "sha256": "52de3bf36fec539c8e2978983599062c2c73357b26498e34bdff2bd748bb533f",
+      "bytes": 55022
+    },
+    {
+      "file": "three-sheets-fine.json",
+      "sha256": "fee0b5c312ab970876a3415de54c1c1b3b60137418d1856d3a9d4054594e2e1f",
+      "bytes": 2522244
+    },
+    {
+      "file": "three-sheets-fine.trace.json",
+      "sha256": "2ead144a8baf427a3a661db4a39d0f0fd3720cff36991662535b66feb7556180",
+      "bytes": 846231
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+STEP 4 CANDIDATE A — FINAL
+
+All owned build/test/benchmark processes ended. No commits or pushes. Canonical and frozen baseline were not edited. Worktree: /tmp/sfcc-next-xv_s_w7u/stage4-a.
+
+Implementation: private immutable borrowed discovery context; one pure eligibility/coefficient preparation per original DFS terminal scope; original signed tree/occurrences and all query-time region arithmetic retained. Context installed in shared PipelineContext (serial/workers/recovery) and standalone feature-aware octree. Direct discovery makes a fresh context; direct CSG/pruned interval APIs remain validating. No global/ID-keyed cache or coverage-policy change.
+
+Detailed report: docs/research/sfcc-step4-a/report.md
+Mathematical/lifetime argument: docs/research/sfcc-step4-a/proof.md
+Raw observations, structural comparisons, source/artifact manifests and preserved validation logs are in docs/research/sfcc-step4-a/.
+
+Patch: /tmp/sfcc-next-cost-a.patch
+Patch SHA256: f9bfd1160c919467cfba05bba0108e9f40b8d77165b73c5c42e4c59164d37908
+36 files; 597127 bytes, primarily retained evidence. Six runtime files and one common direct-probe example. git apply --check against frozen baseline passed; all delivered text LF.
+Baseline accepted revision: f804044d8c960acea3b3f8735678eecffa31952d
+Baseline logical runtime source: c29db04aa3a0c6e49d05ff54dd3d27b20951cc9d6389135ca708cd2ea63dbad9
+Final candidate logical runtime source: 6d09e0fc731204c8695519cfa496df922018890424fb6e2d16ab22839b76dbb5
+Matching candidate WASM: aab3ced225cdd2053865f84de6d16d063007f1ab031c79b55edd3560ac5d10f6; 1489764 bytes; +3541 bytes vs VERSION-unset baseline.
+Archived matching package/native timing/profile executables: /tmp/sfcc-step4-a-final/
+Candidate ordinary native benchmark SHA256: 988762be1899f80f649969426abdf9e7f3e49d36336ff15afd2a2ba458fed7a9
+Candidate direct probe SHA256: b209075402947bf1a5385e50127de2a26638e244be39c17b958ac1d9a7c94631
+
+Final validation:
+- 253 targeted native tests passed: 202 library + 6 coverage + 11 diagnosis + 6 discovery + 13 numerical exclusion + 3 transforms + 9 worker partition + 3 pruned query parity.
+- 23 matching WASM fixtures passed, 0 failed/cancelled/skipped, final41.864s diagnostic elapsed.
+- 24 full-scene cross-version WASM comparisons exactly equal: canonical oriented all8f32-field geometry, complete feature endpoint payloads and f64 interval bits, validation/count stats, tagged-leaf bytes, decision bytes. Includes Step3 positive sphere/clipped box/half3 planar flips/coarse+fine three sheets/quality and frozen rotated+opaque controls.
+- 600 additional coefficient/query cases have exact cross-version bound endpoint bits.
+- Native132 and WASM132 actual-input frozen Step2 bound records each exactly equal their matching target baseline.
+- Nine saved native first-reason/final-cell/recovery/provenance ledgers exactly equal final Step3; 11-test diagnostic replay passed.
+- Original profile counters0–30 exactly equal on all9fastcontrols. New counters separate preparation from reuse.
+
+Failures retained:
+Initial WASM focused run22pass/1cancel; existing recovery180s timeout reported308.885s. Same-source/artifact isolated candidate passed12.218s, baseline counterpart11.996s; final whole focused suite23/23. No timeout/assertion changed; environmental cause not proved. Incorrect guessed diagnostic executable and short --exact filter are documented; corrected11-test and1-test runs passed. Release emits a dead-code warning for old crate-private Leaf discovery wrapper now used only by unit tests.
+
+Quiet preliminary native timing (3 alternating pairs/version; identical release flags;1warmup per export batch; other agents/root heavy work paused): median changes sphere−2.95%, ordinary seam−4.49%, duplicates4−4.04%, duplicates16−6.66%, box−0.89%, hidden−0.58%, small seam−1.50%, buried15−0.55%, manyhardhidden16−0.87%. All raw paired ranges retained. These modest observations require fourth final campaign, not blanket performance claims.
+Direct100k-query4case probe (exact output hashes match): identitysphere+0.17%, rotatedsphere+0.86%, identitybox−0.29%, rotatedbox−0.16%. Unused affine setup on radial-success direct calls remains; this bounded probe shows no large penalty, not proof against every regression.
+
+Structural costs: sphere eligibility checks2821→1, discovery prepared queries53615; duplicates16 eligibility45136→16, preparedqueries857840. Direct/culling preparations remain302640 for duplicates16,428070 buried15,412192 manyhardhidden16. No elimination of all validation or interval arithmetic is claimed.
+Native arm64 retained sizes: context32bytes, entry232bytes, primitive224bytes;16entries capacity16=3712heapbytes. O(terminal discovery scopes) per context/worker, no growth with queried cells, freed with export context.
+
+Limits / recommended final gate:
+- Only original9fastcontrols timed; Step3 new controls tested for correctness, not timed. Fourth should include them and a represented-rotation export.
+- No48blob campaign here (fourth only), no WASM/browser/GPU speed claim, no broad app build or visual QA in competitor.
+- Unchanged conservative behavior is the contract: coarse three-sheet geometry remains incomplete/unresolved, quality withdrawals remain honest, outside-scope inputs do not gain certificates.
+- The fourth may reject modest gains if storage/plumbing or final measurements do not justify them. Do not assume additive gains when combining variants.

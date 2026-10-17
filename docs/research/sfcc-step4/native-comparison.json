@@ -1,0 +1,516 @@
+{
+  "scenes": 17,
+  "equalFiles": 102,
+  "comparisons": [
+    {
+      "path": "box/decisions.bin",
+      "bytes": 74404,
+      "sha256": "32dd45322ae61d42a7111f13d58abd4ba29790a516a1b6524d30d2420f5da90b"
+    },
+    {
+      "path": "box/features.bin",
+      "bytes": 10752,
+      "sha256": "854904c45786e43c7f4b3ffb90623ab5bebd94b08793114ad210b03bd7656715"
+    },
+    {
+      "path": "box/geometry.bin",
+      "bytes": 298448,
+      "sha256": "756f4e3f4a0e59e72efe68b8847320b46cc80bc20a86a46c8e26c3fad4fb5ab1"
+    },
+    {
+      "path": "box/leaves.bin",
+      "bytes": 210104,
+      "sha256": "eac8e31258c70f82d1522e286a9b6ee4edba0a693916036a5b1c3d7e8b11658e"
+    },
+    {
+      "path": "box/trace.txt",
+      "bytes": 804381,
+      "sha256": "f26e916733bbd0e28917a17773d5d5726022aa08a19a046952da056c4f54de28"
+    },
+    {
+      "path": "box/validation.txt",
+      "bytes": 993,
+      "sha256": "365f7c31a239f21b55e0d8cd2427d544bf6bbd77c026de99a4e6be2de368a6d7"
+    },
+    {
+      "path": "buried-15/decisions.bin",
+      "bytes": 74404,
+      "sha256": "32dd45322ae61d42a7111f13d58abd4ba29790a516a1b6524d30d2420f5da90b"
+    },
+    {
+      "path": "buried-15/features.bin",
+      "bytes": 10752,
+      "sha256": "854904c45786e43c7f4b3ffb90623ab5bebd94b08793114ad210b03bd7656715"
+    },
+    {
+      "path": "buried-15/geometry.bin",
+      "bytes": 298448,
+      "sha256": "756f4e3f4a0e59e72efe68b8847320b46cc80bc20a86a46c8e26c3fad4fb5ab1"
+    },
+    {
+      "path": "buried-15/leaves.bin",
+      "bytes": 210104,
+      "sha256": "f980f4cfcf3afa298b2ad4dcbd36694f5cefa7b395206762db8e083649c31d31"
+    },
+    {
+      "path": "buried-15/trace.txt",
+      "bytes": 804506,
+      "sha256": "097a72b0a80e34dfc364bf94a54b0c05c75758a09229240534a6cc5399ac903c"
+    },
+    {
+      "path": "buried-15/validation.txt",
+      "bytes": 983,
+      "sha256": "2c04eb583c007ba4c510f1d579303b1c5db2ddbdfe216e8a851702e062f456bd"
+    },
+    {
+      "path": "clipped-box/decisions.bin",
+      "bytes": 2256,
+      "sha256": "730d30749b767e523925272af12b15a88643dc6e5d10a449b304717d3199c157"
+    },
+    {
+      "path": "clipped-box/features.bin",
+      "bytes": 3328,
+      "sha256": "d73fee753a41fe28373269c5bc970fd3cba20c28bc17085ff4e67f6d31583eaa"
+    },
+    {
+      "path": "clipped-box/geometry.bin",
+      "bytes": 18448,
+      "sha256": "7880210cae49795598c4af65a4e90febe7ead268d365e45bb3571f2cd2227c3b"
+    },
+    {
+      "path": "clipped-box/leaves.bin",
+      "bytes": 6392,
+      "sha256": "f930e00e8a5a2a1ff9d821586f538242ba091de68f05f0e3be45eabda1efcff1"
+    },
+    {
+      "path": "clipped-box/trace.txt",
+      "bytes": 28016,
+      "sha256": "4123a7e5d99b925ded0bb8146ea19e63c8e3cc47a897f9186fe73f0d70b853b0"
+    },
+    {
+      "path": "clipped-box/validation.txt",
+      "bytes": 993,
+      "sha256": "fb1bd67fa6fdf638e953bbd10d96ddf941d34e28d1f4a657174a59ba6738e055"
+    },
+    {
+      "path": "default-box-flips/decisions.bin",
+      "bytes": 6574,
+      "sha256": "9925426944c64b5e0bd3d0337224e0224b2237d5f4d43102aa1aa815f823f383"
+    },
+    {
+      "path": "default-box-flips/features.bin",
+      "bytes": 3456,
+      "sha256": "804dc9621ebdaba3bad5d989711a9ddcc9094315802cc199a4eec398c69b7a70"
+    },
+    {
+      "path": "default-box-flips/geometry.bin",
+      "bytes": 36704,
+      "sha256": "0e9cae79840cd358d8c3d79763f48e0b578ee3ec46afc591096d8ab7dc13455c"
+    },
+    {
+      "path": "default-box-flips/leaves.bin",
+      "bytes": 18584,
+      "sha256": "98603cf785aac01881736541eb387ff0ab21cf8c30ee999b90c9da29cdb66bf7"
+    },
+    {
+      "path": "default-box-flips/trace.txt",
+      "bytes": 73983,
+      "sha256": "50468432df85e2c587679646410de30323e4a466b2651c5545529c9e81ec185f"
+    },
+    {
+      "path": "default-box-flips/validation.txt",
+      "bytes": 994,
+      "sha256": "7a19667244e890b898e5cb9a966ec10367ef73b4fa5384f1aaefb994e61a33b5"
+    },
+    {
+      "path": "duplicates-16/decisions.bin",
+      "bytes": 46983,
+      "sha256": "05aafd38559260df901007d11b774090ffda5af23b084a1d5df424c3d6b737d5"
+    },
+    {
+      "path": "duplicates-16/features.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "duplicates-16/geometry.bin",
+      "bytes": 189808,
+      "sha256": "7152696718f6404ba5a28167f7c0a1d185d054cd9c4d287816b70f9917ede7cd"
+    },
+    {
+      "path": "duplicates-16/leaves.bin",
+      "bytes": 132680,
+      "sha256": "e78f2d2f38028b46422265832e9006987b336d3d0768362e5639623e4e24a938"
+    },
+    {
+      "path": "duplicates-16/trace.txt",
+      "bytes": 526625,
+      "sha256": "828b423aa831cae85f76b2a551ddbd8d1913d2fd1707b9c6f3758c7c6e769991"
+    },
+    {
+      "path": "duplicates-16/validation.txt",
+      "bytes": 999,
+      "sha256": "603b5839cac044ad7e9d7e8c2be946ae3829ec81c99f9691ba6e57fead52d496"
+    },
+    {
+      "path": "duplicates-4/decisions.bin",
+      "bytes": 46983,
+      "sha256": "05aafd38559260df901007d11b774090ffda5af23b084a1d5df424c3d6b737d5"
+    },
+    {
+      "path": "duplicates-4/features.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "duplicates-4/geometry.bin",
+      "bytes": 189808,
+      "sha256": "7152696718f6404ba5a28167f7c0a1d185d054cd9c4d287816b70f9917ede7cd"
+    },
+    {
+      "path": "duplicates-4/leaves.bin",
+      "bytes": 132680,
+      "sha256": "89e072627272b0ef82908dacb5e91a22309ebb999fc64cd40ad308d252737b35"
+    },
+    {
+      "path": "duplicates-4/trace.txt",
+      "bytes": 526623,
+      "sha256": "5fcd4c9a91615f04b27d5cc4a122c35d3981badfa0a8436464a7bd2a0237fe70"
+    },
+    {
+      "path": "duplicates-4/validation.txt",
+      "bytes": 997,
+      "sha256": "316c0c8d9317b937dcb6150a8c0ab12f65b4b496ed51830252f40d083ca2b75b"
+    },
+    {
+      "path": "hidden-box-sphere/decisions.bin",
+      "bytes": 67570,
+      "sha256": "ac4b5645396e8337265067cca74a6cdede59ae23ca6aa45a48b75618e3ea1b5e"
+    },
+    {
+      "path": "hidden-box-sphere/features.bin",
+      "bytes": 10368,
+      "sha256": "3480685cfc77e534be4071f10e246a2316af0029ebd71b865dbb37e61c942ec0"
+    },
+    {
+      "path": "hidden-box-sphere/geometry.bin",
+      "bytes": 276608,
+      "sha256": "1677e1b5f417d9674597fe14a1c3ad5d3b9b4674b23a606dfb516880c70471b6"
+    },
+    {
+      "path": "hidden-box-sphere/leaves.bin",
+      "bytes": 190808,
+      "sha256": "cddf4837fd52ab8b0a2374efd8cb48c67978e3b0b8d65e841d7652764fe80ad9"
+    },
+    {
+      "path": "hidden-box-sphere/trace.txt",
+      "bytes": 731611,
+      "sha256": "96da4eaed1ccfff6e05ea86f5a1683a10589325ec533fb09592929f56e64d017"
+    },
+    {
+      "path": "hidden-box-sphere/validation.txt",
+      "bytes": 979,
+      "sha256": "0a8a0b68a109042fdc4c648f45abd780baef386915700cf37e39fde95f8f8c7d"
+    },
+    {
+      "path": "many-hard-hidden-16/decisions.bin",
+      "bytes": 67570,
+      "sha256": "ac4b5645396e8337265067cca74a6cdede59ae23ca6aa45a48b75618e3ea1b5e"
+    },
+    {
+      "path": "many-hard-hidden-16/features.bin",
+      "bytes": 10368,
+      "sha256": "3480685cfc77e534be4071f10e246a2316af0029ebd71b865dbb37e61c942ec0"
+    },
+    {
+      "path": "many-hard-hidden-16/geometry.bin",
+      "bytes": 276608,
+      "sha256": "1677e1b5f417d9674597fe14a1c3ad5d3b9b4674b23a606dfb516880c70471b6"
+    },
+    {
+      "path": "many-hard-hidden-16/leaves.bin",
+      "bytes": 190808,
+      "sha256": "0459dd9f092e05c1d7d7f0978ccfffb41133d63501592c07307d167b433bdfe5"
+    },
+    {
+      "path": "many-hard-hidden-16/trace.txt",
+      "bytes": 731613,
+      "sha256": "77aafff0d6467c88e2976ee30a4b5d524b1fcb7904107569a7c9595a3a0837bb"
+    },
+    {
+      "path": "many-hard-hidden-16/validation.txt",
+      "bytes": 980,
+      "sha256": "689e8f32495ee120ac38ef64eb2a93a33fd9a9068881f3e5449912d814424306"
+    },
+    {
+      "path": "nonadjacent-duplicates/decisions.bin",
+      "bytes": 47289,
+      "sha256": "91c36cd39c05e57cbcd8b7fe383f278317e3b26ded5d89765264c9a7cac0c5b4"
+    },
+    {
+      "path": "nonadjacent-duplicates/features.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "nonadjacent-duplicates/geometry.bin",
+      "bytes": 192888,
+      "sha256": "e60446a81ea67a516c0ad5a137c295dff40639436d06eff4d4d1625ff4704533"
+    },
+    {
+      "path": "nonadjacent-duplicates/leaves.bin",
+      "bytes": 133544,
+      "sha256": "3d0f49acf89d443bcb0c75b42eba33ff6f5a972f3e8d13b93570a77465973964"
+    },
+    {
+      "path": "nonadjacent-duplicates/trace.txt",
+      "bytes": 528662,
+      "sha256": "a9e92109a88425ce1563c35b4fc80139e3b95e6bc1dfe05d137c54b8ae4a97f3"
+    },
+    {
+      "path": "nonadjacent-duplicates/validation.txt",
+      "bytes": 1000,
+      "sha256": "c64d72595f3bd213add15e756d1f84f0c6cb7ed6b4756d650e58503bcb5287de"
+    },
+    {
+      "path": "opaque-separated-repeats/decisions.bin",
+      "bytes": 46983,
+      "sha256": "05aafd38559260df901007d11b774090ffda5af23b084a1d5df424c3d6b737d5"
+    },
+    {
+      "path": "opaque-separated-repeats/features.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "opaque-separated-repeats/geometry.bin",
+      "bytes": 313232,
+      "sha256": "6ba628d4187b5da64574c293c364c818f18947dfe7c4a7ed3661fe6cb12e4ccd"
+    },
+    {
+      "path": "opaque-separated-repeats/leaves.bin",
+      "bytes": 132680,
+      "sha256": "a6359d8ce2f02d006f7eb81a7a57737147042869fdd414c7a871259220f6e945"
+    },
+    {
+      "path": "opaque-separated-repeats/trace.txt",
+      "bytes": 526623,
+      "sha256": "304bcad3de5f99ebfda8430b9122b7c14205b0513c856f50950265cc99d18ee1"
+    },
+    {
+      "path": "opaque-separated-repeats/validation.txt",
+      "bytes": 997,
+      "sha256": "6cb856d6e95e6a2b898b706764c99b4ef589bdf90e6a26fdabe11367c059bc4a"
+    },
+    {
+      "path": "ordinary-seam/decisions.bin",
+      "bytes": 129314,
+      "sha256": "b271352e642cd5ee8da6e5f7b1e359bac831d5677b9b1b47f2883ad4de0b833a"
+    },
+    {
+      "path": "ordinary-seam/features.bin",
+      "bytes": 34752,
+      "sha256": "c438a39ff089edec6ef8e33b054af2d7144eee0fae28ce7917ab2b911e8f3c43"
+    },
+    {
+      "path": "ordinary-seam/geometry.bin",
+      "bytes": 695808,
+      "sha256": "920d6feaddf0dfa01bf8ecffc7ed07488845df86f2de5350a259fff937686b8a"
+    },
+    {
+      "path": "ordinary-seam/leaves.bin",
+      "bytes": 365144,
+      "sha256": "e9a10760f19f7f181df3ebbabd349f5bbdfaa97ed42c342cbdbef54350d7f83a"
+    },
+    {
+      "path": "ordinary-seam/trace.txt",
+      "bytes": 1826946,
+      "sha256": "9bbe79c7e1aa02f7417157697467a2fa4b169b208b0b121beae943087a557ef8"
+    },
+    {
+      "path": "ordinary-seam/validation.txt",
+      "bytes": 999,
+      "sha256": "21dd0f430fa917fc3883467cabc9988fa4b4d9ebf4e2b3ed3d1ba3018ec9090e"
+    },
+    {
+      "path": "represented-rotation/decisions.bin",
+      "bytes": 11079,
+      "sha256": "a733b9f009a0bc5c95bdf55d4d04f3d391a24cb36c2ede54c2559af274ec00bb"
+    },
+    {
+      "path": "represented-rotation/features.bin",
+      "bytes": 6592,
+      "sha256": "4c71f872335f3e1360b116a329185699146c2c05450831d14c4f944c49494d14"
+    },
+    {
+      "path": "represented-rotation/geometry.bin",
+      "bytes": 77192,
+      "sha256": "d3f6ab82512da99d86497848ba1d20ecf2965be30f2d783414f9fec3c47fc054"
+    },
+    {
+      "path": "represented-rotation/leaves.bin",
+      "bytes": 31304,
+      "sha256": "2b37a784c828f0ae0621859e7f832d6262243071393dc95974072cac2562ef0c"
+    },
+    {
+      "path": "represented-rotation/trace.txt",
+      "bytes": 169167,
+      "sha256": "242a04dab0538aedfb9ba8a968cd17cd7b802663fded17b1e0f4574dc4799581"
+    },
+    {
+      "path": "represented-rotation/validation.txt",
+      "bytes": 997,
+      "sha256": "001541a53b6e7f02c21aa76f76302f0da4af2300b25511776e7f5374fdca984a"
+    },
+    {
+      "path": "small-seam/decisions.bin",
+      "bytes": 20293,
+      "sha256": "f88c30bc8f9de7acad760270b919f53241628d6b774d97eb74f4a1cc757c2beb"
+    },
+    {
+      "path": "small-seam/features.bin",
+      "bytes": 8640,
+      "sha256": "a97c36e18e159602283d7887de3ad1605e551487a6569725bc0c373d205668f7"
+    },
+    {
+      "path": "small-seam/geometry.bin",
+      "bytes": 123224,
+      "sha256": "634597d6cebdf2f48241394fb57429002f2ece0f2bb1b1d9a64712ab497ae94b"
+    },
+    {
+      "path": "small-seam/leaves.bin",
+      "bytes": 57320,
+      "sha256": "c672465e50e971ba104f4322691128d2eb48404d530c63a3e9a3942bff4e0bd2"
+    },
+    {
+      "path": "small-seam/trace.txt",
+      "bytes": 305890,
+      "sha256": "f1443f462aa53440d1ea43ff29c81f85c8f3b2ce66fd1d29f324bf2bf5d2ccec"
+    },
+    {
+      "path": "small-seam/validation.txt",
+      "bytes": 999,
+      "sha256": "6714b41f858717a05dd12629d169431e7ec7bc4bafe9c30612192b8e5e21ab88"
+    },
+    {
+      "path": "sphere/decisions.bin",
+      "bytes": 46983,
+      "sha256": "05aafd38559260df901007d11b774090ffda5af23b084a1d5df424c3d6b737d5"
+    },
+    {
+      "path": "sphere/features.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "sphere/geometry.bin",
+      "bytes": 189808,
+      "sha256": "7152696718f6404ba5a28167f7c0a1d185d054cd9c4d287816b70f9917ede7cd"
+    },
+    {
+      "path": "sphere/leaves.bin",
+      "bytes": 132680,
+      "sha256": "6494aec8e40e7fdea6ab0d47deb343a92762234028d8fc172dee7bb5ecfb2e2c"
+    },
+    {
+      "path": "sphere/trace.txt",
+      "bytes": 526623,
+      "sha256": "31bfd023c2bc8a0f0c1fe1c5888b37edd1072afec193997b9eeb3982817a7747"
+    },
+    {
+      "path": "sphere/validation.txt",
+      "bytes": 994,
+      "sha256": "8aae7c153047767d7945ccfd3cd2bdebffee6d9895a482c03ba326351a69426f"
+    },
+    {
+      "path": "three-sheets-coarse/decisions.bin",
+      "bytes": 1814,
+      "sha256": "17e03aad4810cefe41dd789a3f3a63ab93eb4bd36888e794148b28024af2a873"
+    },
+    {
+      "path": "three-sheets-coarse/features.bin",
+      "bytes": 3648,
+      "sha256": "cf33313e8b47194f4e217d1795bd177b39bf0ce30b9f6d626cdcedb4aa3ff972"
+    },
+    {
+      "path": "three-sheets-coarse/geometry.bin",
+      "bytes": 19680,
+      "sha256": "f8d73789335c84a37837d3df3e2997a840813950a8230dc11b7cf0762e137fc5"
+    },
+    {
+      "path": "three-sheets-coarse/leaves.bin",
+      "bytes": 5144,
+      "sha256": "a63452db18a8b2482cad8fd7d56193e4e2217d202d99e507adef126e04ab2756"
+    },
+    {
+      "path": "three-sheets-coarse/trace.txt",
+      "bytes": 55038,
+      "sha256": "0db3baa136778d84d8b7b5e8f3020dc7a8f6b1291698ba003b31c398c9cdae0f"
+    },
+    {
+      "path": "three-sheets-coarse/validation.txt",
+      "bytes": 5940,
+      "sha256": "fca8f5525e03dcd457d7de421e6e417ad875ea6d6a86a4abfcd8bdb5453f33e9"
+    },
+    {
+      "path": "three-sheets-fine/decisions.bin",
+      "bytes": 74336,
+      "sha256": "57c222782f8f9c436bfe96e52aa861ac2c1488ed2fe3d86da6243e1edb4f3e8d"
+    },
+    {
+      "path": "three-sheets-fine/features.bin",
+      "bytes": 16640,
+      "sha256": "f3aba5d28c1502c4808b56804db4e55292be5fa342787537b782be68cff7f7c8"
+    },
+    {
+      "path": "three-sheets-fine/geometry.bin",
+      "bytes": 325168,
+      "sha256": "b0bec99f33ced5eb33499fe9d7f7d26e9bf5ed1f05eb1110500ec8b24499fccb"
+    },
+    {
+      "path": "three-sheets-fine/leaves.bin",
+      "bytes": 209912,
+      "sha256": "0c58d7fdc95c1ff3fb3c3711f269c441ac0e56e33fe9ce109ec5eda952816567"
+    },
+    {
+      "path": "three-sheets-fine/trace.txt",
+      "bytes": 825551,
+      "sha256": "a1065df48fd962edf6f86453434b0eebe2f83f800a7e273cbf0651e7fb37ecc6"
+    },
+    {
+      "path": "three-sheets-fine/validation.txt",
+      "bytes": 982,
+      "sha256": "0f6daea09f4e4f165de4fda79f4b816f8cde3ab8adeb3162027af5bdce128b79"
+    },
+    {
+      "path": "unique-16/decisions.bin",
+      "bytes": 48496,
+      "sha256": "570de3e7d594c0eafbdf24ca888e3bdea67b19f049d8f75a072f6b0a46111fad"
+    },
+    {
+      "path": "unique-16/features.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "unique-16/geometry.bin",
+      "bytes": 199552,
+      "sha256": "6d3661acbc6f19bdc8b58f2391cd8c940a4ef505557efe33bd02346fb8617a7b"
+    },
+    {
+      "path": "unique-16/leaves.bin",
+      "bytes": 136952,
+      "sha256": "dfe22d9162b251b62901e5d0b2986323aa5974876221b74b55b81ade61bef5a3"
+    },
+    {
+      "path": "unique-16/trace.txt",
+      "bytes": 550277,
+      "sha256": "b0105a2adea4378c05be333f666d137b465d6251de7edd32f23e188fbea71f2e"
+    },
+    {
+      "path": "unique-16/validation.txt",
+      "bytes": 1000,
+      "sha256": "a56b7acb3a37360d62e6dd6988e67e4af3f9be76ce0380e52002f22073b1df67"
+    }
+  ]
+}

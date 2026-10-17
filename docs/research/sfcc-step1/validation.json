@@ -1,0 +1,99 @@
+{
+  "scope": "Focused consensus and final coordinator acceptance checks, recorded separately. No browser, render or cost benchmark; no owned process remains.",
+  "cwd": "/Users/matt/gcad/galacticad",
+  "runs": [
+    {
+      "log": "native-feature-count-control.log",
+      "command": "env SFCC_DIAG_DIR=/tmp/sfcc-step1-consensus CARGO_BUILD_JOBS=1 cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --test diagnosis_contract -- --test-threads=1",
+      "result": "10 passed; one newly added test assertion failed: expected 12 raw near-tangent curves, observed 17. Production unchanged. Corrected and rerun below.",
+      "logSha256": "bcad48f97bce8af113e9003e5488e6befc5b64ffb84b5515eea813d0a11e3973"
+    },
+    {
+      "log": "native-focused.log",
+      "command": "same cargo flags, --test diagnosis_contract bridge_lens_has_an_independent_production_outcome -- --test-threads=1",
+      "result": "1 passed; final raw17/trim12 and explicit absent sphere/sphere pair assertions passed. Together with the unchanged ten passing tests above, covers all eleven current diagnostic cases.",
+      "logSha256": "501cb10abe8aa6a467bcbb24cc092397af92b3618a04fdf1ad6dbb78d419ae66"
+    },
+    {
+      "log": "discovery.log",
+      "command": "env CARGO_BUILD_JOBS=1 cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --test discovery_contract -- --test-threads=1",
+      "result": "6 passed; final core unchanged afterward.",
+      "logSha256": "a307449f57a0dd98b2535f2ebd39654436265e43ce9b7b32da2ccdbaa612a51d"
+    },
+    {
+      "log": "default-check.log",
+      "command": "env CARGO_BUILD_JOBS=1 cargo check --offline --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --all-targets --no-default-features",
+      "result": "passed",
+      "logSha256": "0ddbf07ae8c5cf14caa637c9bf93c548fd151fef72d783a129c4e130fe0d0152"
+    },
+    {
+      "log": "profile-check.log",
+      "command": "same check, --features sfcc-profile (without serde)",
+      "result": "passed",
+      "logSha256": "23c5ece1177bc1b324e38ba5536e43c5ef8d9c07bbb9aac128fc8ceda4a65a62"
+    },
+    {
+      "log": "observer-unit.log",
+      "command": "env CARGO_BUILD_JOBS=1 cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --no-default-features --features sfcc-profile --lib sfcc::diagnosis::tests -- --test-threads=1",
+      "result": "1 passed; failed/degenerate overlap and separate attempts",
+      "logSha256": "c51c4f4722b8aa8a8e39945f66f4da71f9d1b35d2df2183c7b3e1b41b48de0b0"
+    },
+    {
+      "log": "wasm-build.log",
+      "command": "env PATH=/Users/matt/.cargo/bin:$PATH CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 RUSTFLAGS='-C target-feature=+simd128' wasm-pack build gcad-wasm/wasm --target web --release",
+      "result": "passed; 31.90 seconds; matching normal-release package",
+      "logSha256": "a3d04cba7eb6aca30dc451250f5a050729559d7af6ccb89df886225f6154c306"
+    },
+    {
+      "log": "wasm-tests.log",
+      "command": "node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/sfcc-discovery_test.mts",
+      "result": "7 passed, zero failed/skipped/cancelled, 27.658512 seconds",
+      "logSha256": "7516bb42efdb5994ade6a5e39bc9a5066cb1ddff14dafb320cde836b5a326917"
+    },
+    {
+      "log": "/tmp/sfcc-step1-cache-check.log",
+      "command": "Coordinator-run profile-only/no-serde unit test: sfcc::pipeline::recovery_cache_tests::cached_feature_rejections_keep_diagnostic_reason",
+      "result": "1 passed; actual feature-classification cache hit and two feature_two_corners records. Test-only addition after the focused WASM build; production code unchanged.",
+      "logSha256": "045ace363302e8ad7c52ab25ac53fe77010234846236561f197d57db513d8cf6"
+    }
+  ],
+  "coordinatorValidation": {
+    "date": "2026-10-16",
+    "status": "passed",
+    "runs": [
+      {
+        "command": "PATH=\"/Users/matt/.cargo/bin:$PATH\" CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 make build -o setup TSX='node --import tsx'",
+        "result": "passed; WASM build, TypeScript validation and app bundle",
+        "exitCode": 0,
+        "log": "/tmp/sfcc-step1-final-build.log",
+        "logSha256": "f9c0911e6a4a4e7070412d39fc69ed52c0f83b7e4c89ae6eae6988800a518298"
+      },
+      {
+        "command": "CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --workspace --jobs 1 --no-fail-fast",
+        "result": "324 passed, zero failed; default workspace suite",
+        "exitCode": 0,
+        "log": "/tmp/sfcc-step1-final-native.log",
+        "logSha256": "a36308da956251d056cae9fb35bc41c43b362febb3cb89cc5cf292004bd26de5"
+      },
+      {
+        "command": "node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/*_test.mts",
+        "result": "26 passed, zero failed/skipped/cancelled; 99.264173292 seconds",
+        "exitCode": 0,
+        "log": "/tmp/sfcc-step1-final-wasm.log",
+        "logSha256": "28b886ae632f67e5443438e7eee60382049f41be2fb0b37740d43f18e4da799d"
+      },
+      {
+        "command": "SFCC_DIAG_DIR=/tmp/sfcc-step1-final-diagnostics CARGO_TARGET_DIR=/tmp/sfcc-step1-final-profile-target CARGO_BUILD_JOBS=1 cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --jobs 1 -p gcad-kernel --features serde,sfcc-profile --lib --test diagnosis_contract -- --test-threads=1",
+        "result": "176 library and 11 diagnosis tests passed, zero failed; diagnosis 21.10 seconds",
+        "exitCode": 0,
+        "log": "/tmp/sfcc-step1-final-profile.log",
+        "logSha256": "9c6c0b3c344eaeff26050711ef43ad118a561056e98b4145d3a3a513cd6de713"
+      }
+    ],
+    "notes": [
+      "Profile uses a separate Cargo target; native/profile/WASM correctness checks partly overlap, so no timing performance claim.",
+      "Native fixture suites that lack their external TS binary oracle do not establish those missing comparisons.",
+      "The initial cache-filter command matched zero tests; only the corrected one-test run is validation evidence."
+    ]
+  }
+}

@@ -53,3 +53,6 @@ pub(crate) mod branch_surfaces;
 pub(crate) mod surface_refine;
 
 pub mod perf;
+
+#[cfg(feature = "sfcc-profile")]
+pub mod diagnosis;

@@ -557,6 +557,8 @@ impl<'a> PipelineContext<'a> {
         sample: &S,
         forced: &[ForcedMarker],
     ) -> CellDecision {
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::start_decision();
         let lat = &self.lat;
         let features = &self.features;
         let key = (cell.level, crate::math::grid::cell_key(lat, cell.level, cell.ix, cell.iy, cell.iz));
@@ -572,12 +574,16 @@ impl<'a> PipelineContext<'a> {
             cls
         });
         if cls.split {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::decision(cell, cls.reason, true, cls.curve, cls.corner);
             // Only a cell containing the corner may fan from it. Claiming a
             // nearby external corner at the depth ceiling creates overlapping
             // fans and four-way edges when neighboring cells make the same claim.
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         if forced_split(forced, cell, lat, self.total_size) {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::decision(cell, "forced_prior_mesh_failure_or_fallback", true, -1, -1);
             // Forced split discards the cell (tags unused below max_depth; a
             // degenerate forced cell at max_depth carried no cls tags in the serial
             // path either, so keep them unset).
@@ -610,16 +616,24 @@ impl<'a> PipelineContext<'a> {
         let probe =
             make_probe(lat, q, |gx, gy, gz| sample(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
         if discovery_guard(self.tree, &probe).needs_split() {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::decision(cell, "discovery", true, cls.curve, cls.corner);
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         if cls.corner >= 0 {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::decision(cell, "corner_exemption", false, cls.curve, cls.corner);
             // Corner features exempt sampled smoothness, but never discovery.
             return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         if cls.curve >= 0 && !has_corner_sign_change(&probe) {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::decision(cell, "feature_without_root_corner_sign_change", true, cls.curve, cls.corner);
             return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
         }
         let split = needs_split_smooth_after_discovery(q, &probe, &self.smooth_opts, self.grad_bound, self.has_blend);
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::decision(cell, if split { "smooth_rejection" } else { "smooth_pass" }, split, cls.curve, cls.corner);
         CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
     }
 
@@ -1169,6 +1183,8 @@ fn run_sfcc_pipeline_impl(
     progress: Option<&dyn Fn(u32, &str, f64)>,
 ) -> SfccPipelineResult {
     let _numerical_guard = NumericalGuard::new();
+    #[cfg(feature = "sfcc-profile")]
+    let _diagnostic_export = super::diagnosis::ExportScope::begin();
     // Phase wall-clock accumulators (populated only when `now` is Some).
     let mut ph_feature = 0.0f64;
     let mut ph_octree = 0.0f64;
@@ -1215,6 +1231,8 @@ fn run_sfcc_pipeline_impl(
     let mut round = 0u32;
     let mut retained_samples = HashMap::new();
     loop {
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::round(round);
         validation::restore_numerical_failures(feature_failures);
         let forced_snapshot = forced.clone();
         let opts = OctreeBuildOptions {
@@ -1348,6 +1366,9 @@ fn run_sfcc_pipeline_impl(
                 }
             }
         }
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::snapshot(lat, &oct.leaves, &cell_result.failed_cells,
+            cell_result.fallback_cells.len(), round >= tuning.re_refine_max_rounds || suspects.is_empty());
         if round >= tuning.re_refine_max_rounds || suspects.is_empty() {
             break;
         }
@@ -1516,6 +1537,39 @@ mod recovery_cache_tests {
         let leaf = oct.leaves.iter().find(|c| c.ix == 0 && c.iy == 0 && c.iz == 0).unwrap();
         assert!(leaf.degenerate);
         assert_eq!(leaf.feature_corner, decision.feature_corner);
+    }
+
+    #[cfg(feature = "sfcc-profile")]
+    #[test]
+    fn cached_feature_rejections_keep_diagnostic_reason() {
+        use crate::scene_bridge::{build_csg_tree, BridgeNode};
+        use crate::sfcc::{diagnosis, perf};
+        let tree = build_csg_tree(&BridgeNode::Box {
+            node_id: 0, pos: [0.; 3], half: [1.; 3],
+        }).unwrap();
+        let cube = SfccWorldCube { min_x: -2., min_y: -2., min_z: -2., size: 4. };
+        let ctx = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
+        let cell = SfccCell {
+            level: 0, ix: 0, iy: 0, iz: 0, key: 0,
+            degenerate: false, feature_curve: -1, feature_corner: -1,
+        };
+        let sample = |x, y, z| tree.f(point_to_world(&ctx.lat, x, y, z));
+        let hits_before = perf::snapshot()[10];
+        let (_, trace) = diagnosis::capture("cached feature rejection", 8, || {
+            let first = ctx.decide_cell(&cell, &sample, &[]);
+            assert!(first.split);
+            assert_eq!(ctx.classifications.borrow().len(), 1);
+            let cached = ctx.decide_cell(&cell, &sample, &[]);
+            assert_eq!((first.split, first.feature_curve, first.feature_corner),
+                (cached.split, cached.feature_curve, cached.feature_corner));
+        });
+        assert_eq!(perf::snapshot()[10], hits_before + 1, "exercise an actual cache hit");
+        assert_eq!(trace.dropped, 0);
+        let reasons: Vec<_> = trace.records.iter().filter_map(|r| match &r.event {
+            diagnosis::Event::Decision { reason, .. } => Some(*reason),
+            _ => None,
+        }).collect();
+        assert_eq!(reasons, ["feature_two_corners", "feature_two_corners"]);
     }
 
     #[test]

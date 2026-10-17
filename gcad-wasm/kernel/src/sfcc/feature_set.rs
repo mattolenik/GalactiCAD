@@ -1935,7 +1935,11 @@ pub fn compile_feature_set(
     for curve in &mut raw {
         curve.adjacent_strata = curve.adjacent_strata.map(|id| aliases[id]);
     }
+    #[cfg(feature = "sfcc-profile")]
+    super::diagnosis::features("raw_before_trim", tree.strata.len(), &raw);
     let trimmed = trim_and_wire(&tree, &raw, &native.corners, tol);
+    #[cfg(feature = "sfcc-profile")]
+    super::diagnosis::features("after_trim", tree.strata.len(), &trimmed.curves);
     diagnostics.unresolved_trims += trimmed.unresolved_trims;
 
     let mut index = SfccSpatialIndex::new(index_cell_size(&tree));

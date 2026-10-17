@@ -1,0 +1,1808 @@
+{
+  "sourceRevision": "0f32ceb",
+  "cases": [
+    {
+      "finalCells": [
+        [
+          8,
+          128,
+          129,
+          129
+        ],
+        [
+          8,
+          128,
+          129,
+          130
+        ],
+        [
+          8,
+          128,
+          130,
+          129
+        ],
+        [
+          8,
+          128,
+          130,
+          130
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_primitive_no_corner_sign_change": 1,
+        "stratum_normal_variation": 3
+      },
+      "interpretation": "Whole-pipeline control; changed earlier leaf selection means counts are not predicted by fixed-cell replay.",
+      "name": "default",
+      "stats": {
+        "components": 1,
+        "degenerate": 4,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 324,
+        "featureFallbacks": 0,
+        "leaves": 3974,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 9876,
+        "unresolved": 4,
+        "validation": "SfccValidation { quality: None, feature_chains: Some(FeatureChainReport { issues: [], missing_edges: 0, missing_curves: 0, disconnected_curves: 0, interval_gaps: 0, off_curve_edges: 0, invalid_memberships: 0, unidentified_edges: 0 }), unresolved_branch_paths: [], feature_trace: SeamTraceDiagnostics { pairs_considered: 1, seeds_found: 0, curves_traced: 0, tangency_bails: 0, step_cap_hits: 0, correction_bails: 0, tangent_reversals: 0, unresolved_discovery: 0, unresolved_trims: 0 }, edge_incidence: Passed, vertex_links: Passed, face_segments: Passed, vertex_residuals: Passed, triangle_non_degeneracy: Passed, unresolved_cells: 4, feature_fallback_cells: 0, numerical: NumericalFailures { curve_projection: 0, face_projection: 0, chord_budget: 0 }, off_surface_vertices: 0, max_vertex_residual: 0.0, invalid_triangles: 0 }"
+      }
+    },
+    {
+      "finalCells": [
+        [
+          12,
+          2048,
+          2077,
+          2077
+        ],
+        [
+          12,
+          2048,
+          2077,
+          2078
+        ],
+        [
+          12,
+          2048,
+          2077,
+          2079
+        ],
+        [
+          12,
+          2048,
+          2078,
+          2077
+        ],
+        [
+          12,
+          2048,
+          2078,
+          2078
+        ],
+        [
+          12,
+          2048,
+          2078,
+          2079
+        ],
+        [
+          12,
+          2048,
+          2078,
+          2080
+        ],
+        [
+          12,
+          2048,
+          2079,
+          2077
+        ],
+        [
+          12,
+          2048,
+          2079,
+          2078
+        ],
+        [
+          12,
+          2048,
+          2079,
+          2079
+        ],
+        [
+          12,
+          2048,
+          2079,
+          2080
+        ],
+        [
+          12,
+          2048,
+          2080,
+          2078
+        ],
+        [
+          12,
+          2048,
+          2080,
+          2079
+        ],
+        [
+          12,
+          2049,
+          2078,
+          2078
+        ],
+        [
+          12,
+          2049,
+          2078,
+          2079
+        ],
+        [
+          12,
+          2049,
+          2079,
+          2078
+        ],
+        [
+          12,
+          2049,
+          2079,
+          2079
+        ]
+      ],
+      "firstReasonCounts": {
+        "stratum_normal_variation": 17
+      },
+      "interpretation": "Whole-pipeline control; changed earlier leaf selection means counts are not predicted by fixed-cell replay.",
+      "name": "depth12-fine",
+      "stats": {
+        "components": 1,
+        "degenerate": 17,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 324,
+        "featureFallbacks": 0,
+        "leaves": 4101,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 10292,
+        "unresolved": 17
+      }
+    },
+    {
+      "finalCells": [
+        [
+          14,
+          8194,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8194,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8316,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8195,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8316,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8196,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8316,
+          8315
+        ]
+      ],
+      "firstReasonCounts": {
+        "stratum_normal_variation": 36
+      },
+      "interpretation": "Whole-pipeline control; changed earlier leaf selection means counts are not predicted by fixed-cell replay.",
+      "name": "depth14-default-tolerance",
+      "stats": {
+        "components": 2,
+        "degenerate": 36,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 324,
+        "featureFallbacks": 0,
+        "leaves": 4199,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 10568,
+        "unresolved": 36
+      }
+    },
+    {
+      "finalCells": [
+        [
+          14,
+          8194,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8194,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8316,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8195,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8316,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8196,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8316,
+          8315
+        ]
+      ],
+      "firstReasonCounts": {
+        "stratum_normal_variation": 36
+      },
+      "interpretation": "Whole-pipeline control; changed earlier leaf selection means counts are not predicted by fixed-cell replay.",
+      "name": "depth14-fine",
+      "stats": {
+        "components": 2,
+        "degenerate": 36,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 324,
+        "featureFallbacks": 0,
+        "leaves": 4199,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 10568,
+        "unresolved": 36,
+        "validation": "SfccValidation { quality: None, feature_chains: Some(FeatureChainReport { issues: [], missing_edges: 0, missing_curves: 0, disconnected_curves: 0, interval_gaps: 0, off_curve_edges: 0, invalid_memberships: 0, unidentified_edges: 0 }), unresolved_branch_paths: [], feature_trace: SeamTraceDiagnostics { pairs_considered: 0, seeds_found: 0, curves_traced: 0, tangency_bails: 0, step_cap_hits: 0, correction_bails: 0, tangent_reversals: 0, unresolved_discovery: 0, unresolved_trims: 0 }, edge_incidence: Passed, vertex_links: Passed, face_segments: Passed, vertex_residuals: Passed, triangle_non_degeneracy: Passed, unresolved_cells: 36, feature_fallback_cells: 0, numerical: NumericalFailures { curve_projection: 0, face_projection: 0, chord_budget: 0 }, off_surface_vertices: 0, max_vertex_residual: 1.75735696821e-7, invalid_triangles: 0 }"
+      }
+    },
+    {
+      "finalCells": [
+        [
+          14,
+          8194,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8194,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8195,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8196,
+          8316,
+          8314
+        ]
+      ],
+      "firstReasonCounts": {
+        "stratum_edge_crossings": 21
+      },
+      "interpretation": "Whole-pipeline control; changed earlier leaf selection means counts are not predicted by fixed-cell replay.",
+      "name": "depth14-no-normal",
+      "stats": {
+        "components": 2,
+        "degenerate": 21,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 324,
+        "featureFallbacks": 0,
+        "leaves": 4157,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 10440,
+        "unresolved": 21
+      }
+    },
+    {
+      "finalCells": [
+        [
+          14,
+          8194,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8194,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8194,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8194,
+          8316,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8195,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8195,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8195,
+          8316,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8313,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8313,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8313
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8314,
+          8316
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8313
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8315
+        ],
+        [
+          14,
+          8196,
+          8315,
+          8316
+        ],
+        [
+          14,
+          8196,
+          8316,
+          8314
+        ],
+        [
+          14,
+          8196,
+          8316,
+          8315
+        ]
+      ],
+      "firstReasonCounts": {
+        "stratum_normal_variation": 36
+      },
+      "interpretation": "Whole-pipeline control; changed earlier leaf selection means counts are not predicted by fixed-cell replay.",
+      "name": "depth14-quality",
+      "stats": {
+        "components": 2,
+        "degenerate": 36,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 324,
+        "featureFallbacks": 0,
+        "leaves": 4199,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 9134,
+        "unresolved": 36
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          -0.5,
+          3.0,
+          3.0
+        ],
+        [
+          -0.009995942004024982,
+          -0.44731682538986206,
+          -0.4472431242465973,
+          0.009995942004024982,
+          0.44731682538986206,
+          0.4472431242465973
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 267
+      },
+      "lensAabb": [
+        -0.009999999999999787,
+        -0.44732538492689183,
+        -0.44732538492689183,
+        0.009999999999999787,
+        0.44732538492689183,
+        0.44732538492689183
+      ],
+      "lensComponents": 1,
+      "localUnresolved": 180,
+      "name": "lens",
+      "stats": {
+        "components": 2,
+        "degenerate": 267,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 261,
+        "featureFallbacks": 0,
+        "leaves": 1245,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 3894,
+        "unresolved": 267,
+        "validation": "SfccValidation { quality: None, feature_chains: Some(FeatureChainReport { issues: [], missing_edges: 0, missing_curves: 0, disconnected_curves: 0, interval_gaps: 0, off_curve_edges: 0, invalid_memberships: 0, unidentified_edges: 0 }), unresolved_branch_paths: [], feature_trace: SeamTraceDiagnostics { pairs_considered: 2, seeds_found: 108, curves_traced: 7, tangency_bails: 0, step_cap_hits: 0, correction_bails: 0, tangent_reversals: 0, unresolved_discovery: 0, unresolved_trims: 0 }, edge_incidence: Passed, vertex_links: Passed, face_segments: Passed, vertex_residuals: Passed, triangle_non_degeneracy: Passed, unresolved_cells: 267, feature_fallback_cells: 0, numerical: NumericalFailures { curve_projection: 0, face_projection: 0, chord_budget: 0 }, off_surface_vertices: 0, max_vertex_residual: 0.0007073861935644743, invalid_triangles: 0 }"
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          -0.5,
+          3.0,
+          3.0
+        ],
+        [
+          -0.009986328892409801,
+          -0.44718849658966064,
+          -0.4472017288208008,
+          0.009972167201340199,
+          0.44718849658966064,
+          0.4471675455570221
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 70
+      },
+      "lensAabb": [
+        -0.009999999999999787,
+        -0.44732538492689183,
+        -0.44732538492689183,
+        0.009999999999999787,
+        0.44732538492689183,
+        0.44732538492689183
+      ],
+      "lensComponents": 1,
+      "localUnresolved": 36,
+      "name": "lens-depth6",
+      "stats": {
+        "components": 2,
+        "degenerate": 70,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 205,
+        "featureFallbacks": 0,
+        "leaves": 968,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 2910,
+        "unresolved": 70
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          -0.5,
+          3.0,
+          3.0
+        ],
+        [
+          -0.009999746456742287,
+          -0.44732484221458435,
+          -0.44732025265693665,
+          0.009999746456742287,
+          0.44732484221458435,
+          0.44732025265693665
+        ],
+        [
+          -1.7608703274163418e-05,
+          -0.4474571943283081,
+          -0.012410355731844902,
+          1.6723572116461582e-05,
+          -0.44745713472366333,
+          0.011027144268155098
+        ],
+        [
+          -6.1646114772884175e-06,
+          -0.03730092942714691,
+          -0.44600409269332886,
+          5.2794803195865825e-06,
+          -0.03435606509447098,
+          -0.44600409269332886
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 1013,
+        "feature_endpoint_or_multi_entry": 4
+      },
+      "lensAabb": [
+        -0.009999999999999787,
+        -0.44732538492689183,
+        -0.44732538492689183,
+        0.009999999999999787,
+        0.44732538492689183,
+        0.44732538492689183
+      ],
+      "lensComponents": 3,
+      "localUnresolved": 849,
+      "name": "lens-depth10",
+      "stats": {
+        "components": 4,
+        "degenerate": 1017,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 485,
+        "featureFallbacks": 6,
+        "leaves": 2560,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 8478,
+        "unresolved": 1017,
+        "validation": "SfccValidation { quality: None, feature_chains: Some(FeatureChainReport { issues: [FeatureChainIssue { curve_id: 12, kind: \"disconnected\", range: [0.0, 21.0] }, FeatureChainIssue { curve_id: 12, kind: \"parameterGap\", range: [10.041327868212868, 10.119245366494498] }, FeatureChainIssue { curve_id: 12, kind: \"parameterGap\", range: [10.880951906798527, 10.958906541553555] }, FeatureChainIssue { curve_id: 12, kind: \"parameterGap\", range: [15.236915822779007, 15.313085090969253] }], missing_edges: 0, missing_curves: 0, disconnected_curves: 1, interval_gaps: 3, off_curve_edges: 0, invalid_memberships: 0, unidentified_edges: 0 }), unresolved_branch_paths: [], feature_trace: SeamTraceDiagnostics { pairs_considered: 2, seeds_found: 108, curves_traced: 7, tangency_bails: 0, step_cap_hits: 0, correction_bails: 0, tangent_reversals: 0, unresolved_discovery: 0, unresolved_trims: 0 }, edge_incidence: Passed, vertex_links: Passed, face_segments: Passed, vertex_residuals: Passed, triangle_non_degeneracy: Failed, unresolved_cells: 1017, feature_fallback_cells: 6, numerical: NumericalFailures { curve_projection: 0, face_projection: 0, chord_budget: 0 }, off_surface_vertices: 0, max_vertex_residual: 0.0002533250856160407, invalid_triangles: 12 }"
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          -0.5,
+          3.0,
+          3.0
+        ],
+        [
+          -0.009987426921725273,
+          -0.44726690649986267,
+          -0.4472017288208008,
+          0.009971069172024727,
+          0.44726690649986267,
+          0.4471675455570221
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 977
+      },
+      "lensAabb": [
+        -0.009999999999999787,
+        -0.44732538492689183,
+        -0.44732538492689183,
+        0.009999999999999787,
+        0.44732538492689183,
+        0.44732538492689183
+      ],
+      "lensComponents": 1,
+      "localUnresolved": 400,
+      "name": "lens-phase",
+      "stats": {
+        "components": 2,
+        "degenerate": 977,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 265,
+        "featureFallbacks": 0,
+        "leaves": 1939,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 4466,
+        "unresolved": 977
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          4.0,
+          -12.0,
+          8.0,
+          6.5,
+          -6.0,
+          14.0
+        ],
+        [
+          6.990004062652588,
+          -9.447317123413086,
+          10.552757263183594,
+          7.009995937347412,
+          -8.552682876586914,
+          11.447242736816406
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 267
+      },
+      "lensAabb": [
+        6.99,
+        -9.447325384926891,
+        10.552674615073109,
+        7.01,
+        -8.552674615073109,
+        11.447325384926891
+      ],
+      "lensComponents": 1,
+      "localUnresolved": 180,
+      "name": "lens-translated",
+      "stats": {
+        "components": 2,
+        "degenerate": 267,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 261,
+        "featureFallbacks": 0,
+        "leaves": 1245,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 3894,
+        "unresolved": 267
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          -30.0,
+          -30.0,
+          -30.0,
+          -5.0,
+          30.0,
+          30.0
+        ],
+        [
+          -0.09995941817760468,
+          -4.47316837310791,
+          -4.472431182861328,
+          0.09995941817760468,
+          4.47316837310791,
+          4.472431182861328
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 267
+      },
+      "lensAabb": [
+        -0.09999999999999787,
+        -4.473253849268918,
+        -4.473253849268918,
+        0.09999999999999787,
+        4.473253849268918,
+        4.473253849268918
+      ],
+      "lensComponents": 1,
+      "localUnresolved": 180,
+      "name": "lens-scaled",
+      "stats": {
+        "components": 2,
+        "degenerate": 267,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 261,
+        "featureFallbacks": 0,
+        "leaves": 1245,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 3894,
+        "unresolved": 267
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          -0.5,
+          3.0,
+          3.0
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 168
+      },
+      "lensAabb": [
+        -9.999999999976694e-05,
+        -0.04472147135313261,
+        -0.04472147135313261,
+        9.999999999976694e-05,
+        0.04472147135313261,
+        0.04472147135313261
+      ],
+      "lensComponents": 0,
+      "localUnresolved": 9,
+      "name": "lens-near-tangent",
+      "stats": {
+        "components": 1,
+        "degenerate": 168,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 164,
+        "featureFallbacks": 0,
+        "leaves": 1066,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 2668,
+        "unresolved": 168,
+        "validation": "SfccValidation { quality: None, feature_chains: Some(FeatureChainReport { issues: [], missing_edges: 0, missing_curves: 0, disconnected_curves: 0, interval_gaps: 0, off_curve_edges: 0, invalid_memberships: 0, unidentified_edges: 0 }), unresolved_branch_paths: [], feature_trace: SeamTraceDiagnostics { pairs_considered: 2, seeds_found: 92, curves_traced: 5, tangency_bails: 0, step_cap_hits: 0, correction_bails: 0, tangent_reversals: 0, unresolved_discovery: 1, unresolved_trims: 0 }, edge_incidence: Passed, vertex_links: Passed, face_segments: Passed, vertex_residuals: Passed, triangle_non_degeneracy: Passed, unresolved_cells: 168, feature_fallback_cells: 0, numerical: NumericalFailures { curve_projection: 0, face_projection: 0, chord_budget: 0 }, off_surface_vertices: 0, max_vertex_residual: 0.0, invalid_triangles: 0 }"
+      }
+    },
+    {
+      "componentBounds": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          3.0,
+          3.0,
+          3.0
+        ],
+        [
+          -0.009995942004024982,
+          -0.44731682538986206,
+          -0.4472431242465973,
+          0.009995942004024982,
+          0.44731682538986206,
+          0.4472431242465973
+        ]
+      ],
+      "firstReasonCounts": {
+        "discovery_root_no_corner_sign_change": 267
+      },
+      "lensAabb": [
+        -0.009999999999999787,
+        -0.44732538492689183,
+        -0.44732538492689183,
+        0.009999999999999787,
+        0.44732538492689183,
+        0.44732538492689183
+      ],
+      "lensComponents": 1,
+      "localUnresolved": 180,
+      "name": "lens-cavity",
+      "stats": {
+        "components": 2,
+        "degenerate": 267,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 301,
+        "featureFallbacks": 0,
+        "leaves": 1885,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 5414,
+        "unresolved": 267
+      }
+    },
+    {
+      "components": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          -0.5,
+          3.0,
+          3.0
+        ],
+        [
+          0.9899808168411255,
+          -0.14104023575782776,
+          -0.14080627262592316,
+          0.9999600648880005,
+          0.14104023575782776,
+          0.1408226490020752
+        ]
+      ],
+      "name": "clipped-cap",
+      "stats": {
+        "components": 2,
+        "degenerate": 78,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 212,
+        "featureFallbacks": 0,
+        "leaves": 976,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 2972,
+        "unresolved": 78
+      }
+    },
+    {
+      "components": [
+        [
+          -0.9999593496322632,
+          -0.9999843835830688,
+          -0.9999514222145081,
+          0.9999593496322632,
+          0.9999843835830688,
+          0.9999514222145081
+        ]
+      ],
+      "name": "sphere",
+      "stats": {
+        "components": 1,
+        "degenerate": 8,
+        "failed": 0,
+        "featureCurves": 0,
+        "featureEdges": 0,
+        "featureFallbacks": 0,
+        "leaves": 1591,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 4892,
+        "unresolved": 8
+      }
+    },
+    {
+      "components": [
+        [
+          -1.0,
+          -1.0,
+          -1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "name": "box",
+      "stats": {
+        "components": 1,
+        "degenerate": 0,
+        "failed": 0,
+        "featureCurves": 12,
+        "featureEdges": 72,
+        "featureFallbacks": 0,
+        "leaves": 152,
+        "ok": true,
+        "rounds": 0,
+        "triangles": 624,
+        "unresolved": 0
+      }
+    },
+    {
+      "bounds": [
+        -0.10517141232128324,
+        -0.1858722753592872,
+        -0.05993913491204239,
+        0.9104535876787168,
+        0.8297527246407128,
+        0.9556858650879576
+      ],
+      "cell": [
+        8,
+        128,
+        128,
+        128
+      ],
+      "componentBounds": [
+        [
+          -2.5973589420318604,
+          -2.6780598163604736,
+          -2.55212664604187,
+          -0.09735891222953796,
+          3.3219401836395264,
+          3.44787335395813
+        ]
+      ],
+      "firstExecutedReason": "feature_contained_loop_or_segment",
+      "lensCenter": [
+        0.40264108767871676,
+        0.3219402246407128,
+        0.4478733650879576
+      ],
+      "replayedGuardPasses": true,
+      "stats": {
+        "components": 1,
+        "degenerate": 1,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 48,
+        "featureFallbacks": 1,
+        "leaves": 51,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 304,
+        "unresolved": 1,
+        "validation": "SfccValidation { quality: None, feature_chains: Some(FeatureChainReport { issues: [FeatureChainIssue { curve_id: 12, kind: \"missingCurve\", range: [0.0, 21.0] }], missing_edges: 0, missing_curves: 1, disconnected_curves: 0, interval_gaps: 0, off_curve_edges: 0, invalid_memberships: 0, unidentified_edges: 0 }), unresolved_branch_paths: [], feature_trace: SeamTraceDiagnostics { pairs_considered: 2, seeds_found: 108, curves_traced: 7, tangency_bails: 0, step_cap_hits: 0, correction_bails: 0, tangent_reversals: 0, unresolved_discovery: 0, unresolved_trims: 0 }, edge_incidence: Passed, vertex_links: Passed, face_segments: Passed, vertex_residuals: Passed, triangle_non_degeneracy: Passed, unresolved_cells: 1, feature_fallback_cells: 1, numerical: NumericalFailures { curve_projection: 0, face_projection: 0, chord_budget: 0 }, off_surface_vertices: 0, max_vertex_residual: 5.184292379276117e-8, invalid_triangles: 0 }"
+      },
+      "name": "aligned-lens"
+    },
+    {
+      "rawCollapsed": 68,
+      "stats": {
+        "components": 3,
+        "degenerate": 1017,
+        "failed": 0,
+        "featureCurves": 1,
+        "featureEdges": 321,
+        "featureFallbacks": 6,
+        "leaves": 1662,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 5810,
+        "unresolved": 1017,
+        "validation": "SfccValidation { quality: None, feature_chains: Some(FeatureChainReport { issues: [FeatureChainIssue { curve_id: 0, kind: \"disconnected\", range: [0.0, 21.0] }, FeatureChainIssue { curve_id: 0, kind: \"parameterGap\", range: [10.041327868212868, 10.119245366494498] }, FeatureChainIssue { curve_id: 0, kind: \"parameterGap\", range: [10.880951906798527, 10.958906541553555] }, FeatureChainIssue { curve_id: 0, kind: \"parameterGap\", range: [15.236915822779007, 15.313085090969253] }], missing_edges: 0, missing_curves: 0, disconnected_curves: 1, interval_gaps: 3, off_curve_edges: 0, invalid_memberships: 0, unidentified_edges: 0 }), unresolved_branch_paths: [], feature_trace: SeamTraceDiagnostics { pairs_considered: 1, seeds_found: 16, curves_traced: 2, tangency_bails: 0, step_cap_hits: 0, correction_bails: 0, tangent_reversals: 0, unresolved_discovery: 0, unresolved_trims: 0 }, edge_incidence: Passed, vertex_links: Passed, face_segments: Passed, vertex_residuals: Passed, triangle_non_degeneracy: Failed, unresolved_cells: 1017, feature_fallback_cells: 6, numerical: NumericalFailures { curve_projection: 0, face_projection: 0, chord_budget: 0 }, off_surface_vertices: 0, max_vertex_residual: 0.0002533250856160407, invalid_triangles: 12 }"
+      },
+      "name": "lens-only-depth10"
+    },
+    {
+      "componentBounds": [
+        [
+          -3.0,
+          -3.0,
+          -3.0,
+          3.0,
+          -0.5,
+          3.0
+        ],
+        [
+          -0.44731682538986206,
+          -0.009998440742492676,
+          -0.4472990334033966,
+          0.44731682538986206,
+          0.009998440742492676,
+          0.447299063205719
+        ]
+      ],
+      "stats": {
+        "components": 2,
+        "degenerate": 519,
+        "failed": 0,
+        "featureCurves": 13,
+        "featureEdges": 261,
+        "featureFallbacks": 0,
+        "leaves": 1449,
+        "ok": false,
+        "rounds": 0,
+        "triangles": 4242,
+        "unresolved": 519
+      },
+      "name": "lens-rotate"
+    }
+  ],
+  "recoveryRounds": [
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": false,
+      "round": 0,
+      "workers": 1
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": false,
+      "round": 1,
+      "workers": 1
+    },
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": true,
+      "round": 0,
+      "workers": 1
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": true,
+      "round": 1,
+      "workers": 1
+    },
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": false,
+      "round": 0,
+      "workers": 2
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": false,
+      "round": 1,
+      "workers": 2
+    },
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": true,
+      "round": 0,
+      "workers": 2
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": true,
+      "round": 1,
+      "workers": 2
+    },
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": false,
+      "round": 0,
+      "workers": 4
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": false,
+      "round": 1,
+      "workers": 4
+    },
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": true,
+      "round": 0,
+      "workers": 4
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": true,
+      "round": 1,
+      "workers": 4
+    },
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": false,
+      "round": 0,
+      "workers": 8
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": false,
+      "round": 1,
+      "workers": 8
+    },
+    {
+      "degenerate": 5824,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 389,
+      "final": false,
+      "leaves": 12540,
+      "reversed": true,
+      "round": 0,
+      "workers": 8
+    },
+    {
+      "degenerate": 6162,
+      "export": 3,
+      "failed": 0,
+      "failedDegenerate": 0,
+      "fallbacks": 707,
+      "final": true,
+      "leaves": 14125,
+      "reversed": true,
+      "round": 1,
+      "workers": 8
+    }
+  ]
+}

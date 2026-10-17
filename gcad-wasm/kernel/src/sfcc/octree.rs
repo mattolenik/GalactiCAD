@@ -374,6 +374,8 @@ impl<'a> Builder<'a> {
             self.worklist.push((cell.level, cell.key));
             return;
         }
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::push(super::diagnosis::Event::Octree { cell: super::diagnosis::CellId(level, ix, iy, iz), kind: "initial_descent" });
         self.internal_by_level[level as usize].insert(cell_key(self.lat, level, ix, iy, iz));
         for c in 0..8 {
             self.descend(
@@ -423,6 +425,8 @@ impl<'a> Builder<'a> {
                 }
                 let coarse_key = cell_key(this.lat, parent_level, nx >> 1, ny >> 1, nz >> 1);
                 if let Some(&coarse) = this.cells_by_level[parent_level as usize].get(&coarse_key) {
+                    #[cfg(feature = "sfcc-profile")]
+                    super::diagnosis::push(super::diagnosis::Event::Split { cell: (&coarse).into(), balance: true });
                     this.split(coarse);
                 }
             }
@@ -443,6 +447,8 @@ impl<'a> Builder<'a> {
         let key = cell.key;
         // Skip cells a ripple already split out from under us this round.
         if !self.cells_by_level[level as usize].contains_key(&key) {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::push(super::diagnosis::Event::Octree { cell: cell.into(), kind: "decision_superseded_by_balance" });
             return;
         }
         if let Some(c) = self.cells_by_level[level as usize].get_mut(&key) {
@@ -453,6 +459,8 @@ impl<'a> Builder<'a> {
             return;
         }
         if cell.level >= depth_max {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::push(super::diagnosis::Event::Octree { cell: cell.into(), kind: "depth_ceiling_unresolved" });
             if let Some(c) = self.cells_by_level[level as usize].get_mut(&key) {
                 c.degenerate = true;
             }
@@ -460,6 +468,8 @@ impl<'a> Builder<'a> {
         }
         // Re-read the (tag-stamped) live cell so split carries the tags.
         let live = self.cells_by_level[level as usize][&key];
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::push(super::diagnosis::Event::Split { cell: (&live).into(), balance: false });
         self.split(live);
     }
 

@@ -139,7 +139,7 @@ pub fn discovery_guard(root: &CsgNode, probe: &RefineProbe) -> DiscoveryCheck {
     crate::sfcc::perf::add(18, 1);
     let result = match check_discovery(root, probe) {
         Ok(result) => result,
-        Err(Indeterminate) => DiscoveryCheck::Indeterminate,
+        Err(Indeterminate) => { #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_indeterminate", None); DiscoveryCheck::Indeterminate },
     };
     match result {
         DiscoveryCheck::NeedsSplit => crate::sfcc::perf::add(25, 1),
@@ -190,10 +190,12 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
             if b < 0.0 {
                 negative |= 1 << i;
             } else if a <= 0.0 {
+                #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_corner_zero_or_uncertain", Some(leaf.index));
                 return Ok(DiscoveryCheck::NeedsSplit);
             }
         }
         if negative == 0 || negative == u8::MAX {
+            #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_primitive_no_corner_sign_change", Some(leaf.index));
             return Ok(DiscoveryCheck::NeedsSplit);
         }
         for &[a, b] in &CELL_EDGES {
@@ -202,6 +204,7 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
                 crate::sfcc::perf::add(23, 1);
                 let (l, h) = leaf.discovery_interval_over_box(ec, eh)?;
                 if l <= 0.0 && h >= 0.0 {
+                    #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_same_sign_edge", Some(leaf.index));
                     return Ok(DiscoveryCheck::NeedsSplit);
                 }
             }
@@ -216,6 +219,7 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
                     crate::sfcc::perf::add(24, 1);
                     let (l, h) = leaf.discovery_interval_over_box(fc, fh)?;
                     if l <= 0.0 && h >= 0.0 {
+                        #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_same_sign_face", Some(leaf.index));
                         return Ok(DiscoveryCheck::NeedsSplit);
                     }
                 }
@@ -233,6 +237,7 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
             return Err(Indeterminate);
         }
         if signs == 0 || signs == u8::MAX {
+            #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("discovery_root_no_corner_sign_change", None);
             return Ok(DiscoveryCheck::NeedsSplit);
         }
     }
@@ -490,7 +495,9 @@ pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
         // the octree records an unresolved leaf there instead of silently losing it.
         let c = [probe.pts[24], probe.pts[25], probe.pts[26]];
         let (lo, hi) = tree.interval_over_box(c, [probe.cell_size * 0.5; 3]);
-        return !(lo > 0.0 || hi < 0.0);
+        let split = !(lo > 0.0 || hi < 0.0);
+        if split { #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("same_sign_root_interval", None); }
+        return split;
     }
     let strata = active_strata(tree, probe, grad_bound);
     if strata.is_empty() {
@@ -498,7 +505,9 @@ pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
         if opts.blend_normal_variation_cos >= 1.0 {
             return false; // (iii-d) disabled
         }
-        return !tree_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound);
+        let split = !tree_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound);
+        if split { #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("no_owner_tree_normal_variation", None); }
+        return split;
     }
     let nv_theta = opts.normal_variation_cos.clamp(-1.0, 1.0).acos();
     for st in &strata {
@@ -513,9 +522,11 @@ pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
             stratum_normal_variation_ok(st, probe, opts.normal_variation_cos)
         };
         if !var_ok {
+            #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("stratum_normal_variation", Some(st.leaf_index));
             return true;
         }
         if !stratum_edge_crossings_ok(st, probe) {
+            #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("stratum_edge_crossings", Some(st.leaf_index));
             return true;
         }
     }
@@ -530,12 +541,14 @@ pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
         && strata.iter().any(|st| matches!(st.kind, CarrierKind::LoftSide))
         && !tree_normal_variation_ok(tree, probe, opts.normal_variation_cos, grad_bound)
     {
+        #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("loft_tree_normal_variation", None);
         return true;
     }
     // A cell with primitive strata may also contain a blend band.
     if has_blend && opts.blend_normal_variation_cos < 1.0
         && !tree_blend_band_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound)
     {
+        #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("blend_band_normal_variation", None);
         return true;
     }
     false
@@ -557,6 +570,8 @@ pub struct FeatureCriteriaOptions {
 /// Result of classifying a cell against the feature set. Port of `FeatureCellClass`.
 #[derive(Clone, Copy, Debug)]
 pub struct FeatureCellClass {
+    #[cfg(feature = "sfcc-profile")]
+    pub reason: &'static str,
     pub split: bool,
     /// Curve passing through the cell (−1 = none). Valid when `!split`.
     pub curve: i64,
@@ -604,7 +619,7 @@ pub fn classify_cell_features(
             && c.z <= box_[5]
         {
             if corner_in_cell >= 0 {
-                return FeatureCellClass { split: true, curve: -1, corner: cid as i64 }; // two corners
+                return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_two_corners", split: true, curve: -1, corner: cid as i64 }; // two corners
             }
             corner_in_cell = cid as i64;
         }
@@ -645,11 +660,11 @@ pub fn classify_cell_features(
                     }
                     per_face += 1;
                     if cr.tangential_dot < opts.tangential_epsilon {
-                        return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // tangential
+                        return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_tangential_face_crossing", split: true, curve: curve_id as i64, corner: -1 }; // tangential
                     }
                 }
                 if per_face > 1 {
-                    return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // (ii)
+                    return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_multiple_face_crossings", split: true, curve: curve_id as i64, corner: -1 }; // (ii)
                 }
                 if per_face == 1 {
                     crossing_faces[crossing_face_count] = (axis, coord);
@@ -697,7 +712,7 @@ pub fn classify_cell_features(
                 }
             }
             if pin_split {
-                return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 };
+                return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_pin_visibility", split: true, curve: curve_id as i64, corner: -1 };
             }
         }
         if total == 0 {
@@ -714,7 +729,7 @@ pub fn classify_cell_features(
                 && q[2] >= box_[2]
                 && q[2] <= box_[5];
             if inside_cell {
-                return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // contained loop/segment
+                return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_contained_loop_or_segment", split: true, curve: curve_id as i64, corner: -1 }; // contained loop/segment
             }
             continue; // index false positive — curve does not touch the cell
         }
@@ -725,22 +740,22 @@ pub fn classify_cell_features(
             let incident =
                 features.corners[corner_in_cell as usize].curve_ends.iter().any(|e| e.0 == curve_id);
             if !incident || total != 1 {
-                return FeatureCellClass { split: true, curve: curve_id as i64, corner: corner_in_cell };
+                return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_corner_incidence", split: true, curve: curve_id as i64, corner: corner_in_cell };
             }
             continue;
         }
         if total != 2 {
-            return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // endpoint inside / multi-entry
+            return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_endpoint_or_multi_entry", split: true, curve: curve_id as i64, corner: -1 }; // endpoint inside / multi-entry
         }
         if through_curve >= 0 {
-            return FeatureCellClass { split: true, curve: curve_id as i64, corner: -1 }; // (i): two curves
+            return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_multiple_curves", split: true, curve: curve_id as i64, corner: -1 }; // (i): two curves
         }
         through_curve = curve_id as i64;
     }
     if corner_in_cell >= 0 {
-        return FeatureCellClass { split: false, curve: -1, corner: corner_in_cell };
+        return FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_pass", split: false, curve: -1, corner: corner_in_cell };
     }
-    FeatureCellClass { split: false, curve: through_curve, corner: -1 }
+    FeatureCellClass { #[cfg(feature = "sfcc-profile")] reason: "feature_pass", split: false, curve: through_curve, corner: -1 }
 }
 
 #[cfg(test)]

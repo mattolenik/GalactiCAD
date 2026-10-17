@@ -239,6 +239,8 @@ pub fn mesh_cells_subset(
         else { crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES) };
 
     for cell in leaves {
+        #[cfg(feature = "sfcc-profile")]
+        let diagnostic_start = tris.len();
         segs.clear();
         pins.clear();
         gather_segments(faces, &lat, cell, &mut segs, &mut pins);
@@ -356,6 +358,8 @@ pub fn mesh_cells_subset(
             if let Some((mesh, owner)) = candidate {
                 for t in mesh.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], owner); }
                 tris.extend(mesh);
+                #[cfg(feature = "sfcc-profile")]
+                super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "planar-domains", false);
                 continue;
             }
         }
@@ -393,6 +397,8 @@ pub fn mesh_cells_subset(
                     } else {
                         corner_cells += 1;
                     }
+                    #[cfg(feature = "sfcc-profile")]
+                    super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "feature-graph", false);
                     continue;
                 }
                 feature_graph_failed = true;
@@ -502,6 +508,8 @@ pub fn mesh_cells_subset(
             }
             triangulate_loop(loop_pts, q, points, &cbox, opts, &mut tris);
         }
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "cell-loops", fallback_cells.last().is_some_and(|c| c.level == cell.level && c.key == cell.key));
     }
 
     CellMeshResult {

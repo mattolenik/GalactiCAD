@@ -1,0 +1,905 @@
+{
+  "sourceRevision": "0f32ceb",
+  "implementationRevisions": [
+    "234f3cb",
+    "e36db4a"
+  ],
+  "defaultTuning": {
+    "depth_min": 5,
+    "depth_max": 8,
+    "bounds_padding_mm": 2.0,
+    "enforce_edge_balance": true,
+    "normal_variation_deg": 18.0,
+    "blend_curvature_refine": true,
+    "blend_curvature_deg": 18.0,
+    "blend_curvature_analytic": false,
+    "normal_variation_analytic": false,
+    "surface_tol_mm": 0.01,
+    "edge_root_tol_fraction": 0.001,
+    "interior_vertex_mode": "Project",
+    "quality_triangulation": false,
+    "quality_audit": false,
+    "quality_refinement": false,
+    "quality_remeshing": false,
+    "quality_max_edit_trials": 10000,
+    "project_max_iters": 8,
+    "re_refine_max_rounds": 2,
+    "check_vertex_links": true,
+    "tangential_epsilon": 0.05,
+    "feature_query_inflate": 0.25,
+    "curve_chord_tol_mm": 0.02,
+    "max_polyline_points_per_cell": 16,
+    "recovery_cull": true,
+    "probe_delta_factor": 10.0,
+    "min_dihedral_deg": 15.0,
+    "min_tangency_angle_deg": 2.0,
+    "corner_merge_tol_diag_fraction": 1e-06,
+    "seed_cell_size_mm": 0.0,
+    "max_trace_steps": 20000
+  },
+  "nativeToolchain": "Homebrew rustc/cargo 1.99.0; arm64",
+  "wasmToolchain": "Rustup rustc/cargo 1.96.0; wasm32-unknown-unknown; simd128",
+  "node": "26.11.1",
+  "hiddenScene": {
+    "kind": "union",
+    "children": [
+      {
+        "kind": "box",
+        "pos": [
+          -50,
+          0,
+          0
+        ],
+        "half": [
+          50,
+          100,
+          100
+        ]
+      },
+      {
+        "kind": "sphere",
+        "pos": [
+          0.04125955406450752,
+          1.53,
+          1.53
+        ],
+        "r": 0.01650382162580301
+      }
+    ]
+  },
+  "hiddenWorldCube": [
+    -100,
+    -100,
+    -100,
+    200
+  ],
+  "hiddenNativeConstructor": "kernel/tests/support/discovery.rs::hidden (same primitives and original occurrence order as Bridge JSON)",
+  "hiddenControls": [
+    {
+      "name": "default",
+      "lattice": {
+        "max_depth": 8,
+        "res": 256,
+        "span": 257,
+        "origin_x": -102.08251910812902,
+        "origin_y": -102.14583824682036,
+        "origin_z": -102.04702916739254,
+        "world_size": 204.0,
+        "step": 0.796875
+      },
+      "tuningOverrides": {}
+    },
+    {
+      "name": "depth12-fine",
+      "lattice": {
+        "max_depth": 12,
+        "res": 4096,
+        "span": 4097,
+        "origin_x": -102.00515744425806,
+        "origin_y": -102.00911489042628,
+        "origin_z": -102.00293932296204,
+        "world_size": 204.0,
+        "step": 0.0498046875
+      },
+      "tuningOverrides": {
+        "depth_max": 12,
+        "surface_tol_mm": 1e-05
+      }
+    },
+    {
+      "name": "depth14-default-tolerance",
+      "lattice": {
+        "max_depth": 14,
+        "res": 16384,
+        "span": 16385,
+        "origin_x": -102.00128936106452,
+        "origin_y": -102.00227872260656,
+        "origin_z": -102.00073483074051,
+        "world_size": 204.0,
+        "step": 0.012451171875
+      },
+      "tuningOverrides": {
+        "depth_max": 14
+      }
+    },
+    {
+      "name": "depth14-fine",
+      "lattice": {
+        "max_depth": 14,
+        "res": 16384,
+        "span": 16385,
+        "origin_x": -102.00128936106452,
+        "origin_y": -102.00227872260656,
+        "origin_z": -102.00073483074051,
+        "world_size": 204.0,
+        "step": 0.012451171875
+      },
+      "tuningOverrides": {
+        "depth_max": 14,
+        "surface_tol_mm": 1e-05
+      }
+    },
+    {
+      "name": "depth14-no-normal",
+      "lattice": {
+        "max_depth": 14,
+        "res": 16384,
+        "span": 16385,
+        "origin_x": -102.00128936106452,
+        "origin_y": -102.00227872260656,
+        "origin_z": -102.00073483074051,
+        "world_size": 204.0,
+        "step": 0.012451171875
+      },
+      "tuningOverrides": {
+        "depth_max": 14,
+        "normal_variation_deg": 180.0,
+        "surface_tol_mm": 1e-05
+      }
+    },
+    {
+      "name": "depth14-quality",
+      "lattice": {
+        "max_depth": 14,
+        "res": 16384,
+        "span": 16385,
+        "origin_x": -102.00128936106452,
+        "origin_y": -102.00227872260656,
+        "origin_z": -102.00073483074051,
+        "world_size": 204.0,
+        "step": 0.012451171875
+      },
+      "tuningOverrides": {
+        "depth_max": 14,
+        "surface_tol_mm": 1e-05,
+        "quality_triangulation": true
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "lens",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              -1.75,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": -4.0,
+        "min_y": -4.0,
+        "min_z": -4.0,
+        "size": 8.0
+      },
+      "tuningOverrides": {}
+    },
+    {
+      "name": "lens-depth6",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              -1.75,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": -4.0,
+        "min_y": -4.0,
+        "min_z": -4.0,
+        "size": 8.0
+      },
+      "tuningOverrides": {
+        "depth_max": 6
+      }
+    },
+    {
+      "name": "lens-depth10",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              -1.75,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": -4.0,
+        "min_y": -4.0,
+        "min_z": -4.0,
+        "size": 8.0
+      },
+      "tuningOverrides": {
+        "depth_max": 10
+      }
+    },
+    {
+      "name": "lens-phase",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              -1.75,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.01
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": -3.97,
+        "min_y": -4.02,
+        "min_z": -3.99,
+        "size": 8.0
+      },
+      "tuningOverrides": {}
+    },
+    {
+      "name": "lens-translated",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              5.25,
+              -9.0,
+              11.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                17.0,
+                -9.0,
+                11.0
+              ],
+              "r": 10.01
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -3.0,
+                -9.0,
+                11.0
+              ],
+              "r": 10.01
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": 3.0,
+        "min_y": -13.0,
+        "min_z": 7.0,
+        "size": 8.0
+      },
+      "tuningOverrides": {}
+    },
+    {
+      "name": "lens-scaled",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              12.5,
+              30.0,
+              30.0
+            ],
+            "kind": "box",
+            "pos": [
+              -17.5,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                100.0,
+                0.0,
+                0.0
+              ],
+              "r": 100.1
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -100.0,
+                0.0,
+                0.0
+              ],
+              "r": 100.1
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": -40.0,
+        "min_y": -40.0,
+        "min_z": -40.0,
+        "size": 80.0
+      },
+      "tuningOverrides": {
+        "bounds_padding_mm": 20.0,
+        "surface_tol_mm": 0.1,
+        "curve_chord_tol_mm": 0.2
+      }
+    },
+    {
+      "name": "lens-near-tangent",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              -1.75,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.0001
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -10.0,
+                0.0,
+                0.0
+              ],
+              "r": 10.0001
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": -4.0,
+        "min_y": -4.0,
+        "min_z": -4.0,
+        "size": 8.0
+      },
+      "tuningOverrides": {}
+    },
+    {
+      "name": "lens-cavity",
+      "scene": {
+        "kind": "subtract",
+        "lh": {
+          "half": [
+            3.0,
+            3.0,
+            3.0
+          ],
+          "kind": "box",
+          "pos": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "rh": {
+          "kind": "intersect",
+          "lh": {
+            "kind": "sphere",
+            "pos": [
+              10.0,
+              0.0,
+              0.0
+            ],
+            "r": 10.01
+          },
+          "rh": {
+            "kind": "sphere",
+            "pos": [
+              -10.0,
+              0.0,
+              0.0
+            ],
+            "r": 10.01
+          }
+        }
+      },
+      "worldCube": {
+        "min_x": -4.0,
+        "min_y": -4.0,
+        "min_z": -4.0,
+        "size": 8.0
+      },
+      "tuningOverrides": {}
+    },
+    {
+      "name": "clipped-cap",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              -1.75,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "r": 1.0
+            },
+            "rh": {
+              "half": [
+                0.51,
+                2.0,
+                2.0
+              ],
+              "kind": "box",
+              "pos": [
+                1.5,
+                0.0,
+                0.0
+              ]
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": [
+        -4,
+        -4,
+        -4,
+        8
+      ],
+      "tuningOverrides": {}
+    },
+    {
+      "name": "sphere",
+      "scene": {
+        "kind": "sphere",
+        "pos": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "r": 1.0
+      },
+      "worldCube": [
+        -4,
+        -4,
+        -4,
+        8
+      ],
+      "tuningOverrides": {}
+    },
+    {
+      "name": "box",
+      "scene": {
+        "half": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "kind": "box",
+        "pos": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "worldCube": [
+        -4,
+        -4,
+        -4,
+        8
+      ],
+      "tuningOverrides": {}
+    },
+    {
+      "name": "aligned-lens",
+      "scene": {
+        "children": [
+          {
+            "half": [
+              1.25,
+              3.0,
+              3.0
+            ],
+            "kind": "box",
+            "pos": [
+              -1.3473589123212832,
+              0.3219402246407128,
+              0.4478733650879576
+            ]
+          },
+          {
+            "kind": "intersect",
+            "lh": {
+              "kind": "sphere",
+              "pos": [
+                10.402641087678717,
+                0.3219402246407128,
+                0.4478733650879576
+              ],
+              "r": 10.01
+            },
+            "rh": {
+              "kind": "sphere",
+              "pos": [
+                -9.597358912321283,
+                0.3219402246407128,
+                0.4478733650879576
+              ],
+              "r": 10.01
+            }
+          }
+        ],
+        "kind": "union"
+      },
+      "worldCube": {
+        "min_x": -128.0,
+        "min_y": -128.0,
+        "min_z": -128.0,
+        "size": 256.0
+      },
+      "lattice": {
+        "max_depth": 8,
+        "res": 256,
+        "span": 257,
+        "origin_x": -130.10517141232128,
+        "origin_y": -130.1858722753593,
+        "origin_z": -130.05993913491204,
+        "world_size": 260.0,
+        "step": 1.015625
+      },
+      "actualFinestCell": [
+        8,
+        128,
+        128,
+        128
+      ],
+      "lensCenter": [
+        0.40264108767871676,
+        0.3219402246407128,
+        0.4478733650879576
+      ],
+      "tuningOverrides": {}
+    },
+    {
+      "name": "lens-only-depth10",
+      "scene": {
+        "kind": "intersect",
+        "lh": {
+          "kind": "sphere",
+          "pos": [
+            10.0,
+            0.0,
+            0.0
+          ],
+          "r": 10.01
+        },
+        "rh": {
+          "kind": "sphere",
+          "pos": [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          "r": 10.01
+        }
+      },
+      "worldCube": [
+        -4.0,
+        -4.0,
+        -4.0,
+        8.0
+      ],
+      "tuningOverrides": {
+        "depth_max": 10
+      }
+    },
+    {
+      "name": "lens-rotate",
+      "scene": {
+        "arg": {
+          "children": [
+            {
+              "half": [
+                1.25,
+                3.0,
+                3.0
+              ],
+              "kind": "box",
+              "pos": [
+                -1.75,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "kind": "intersect",
+              "lh": {
+                "kind": "sphere",
+                "pos": [
+                  10.0,
+                  0.0,
+                  0.0
+                ],
+                "r": 10.01
+              },
+              "rh": {
+                "kind": "sphere",
+                "pos": [
+                  -10.0,
+                  0.0,
+                  0.0
+                ],
+                "r": 10.01
+              }
+            }
+          ],
+          "kind": "union"
+        },
+        "fwd": [
+          0.0,
+          1.0,
+          0.0,
+          -1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "kind": "rotate"
+      },
+      "worldCube": [
+        -4.0,
+        -4.0,
+        -4.0,
+        8.0
+      ],
+      "tuningOverrides": {}
+    }
+  ],
+  "recovery": {
+    "scene": {
+      "kind": "union",
+      "children": [
+        {
+          "kind": "extrude",
+          "pos": [
+            0,
+            0,
+            0
+          ],
+          "verts": [
+            [
+              -3,
+              -3
+            ],
+            [
+              3,
+              -3
+            ],
+            [
+              3,
+              0
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              3
+            ],
+            [
+              -3,
+              3
+            ]
+          ],
+          "h": 5,
+          "twist_degrees": 90
+        },
+        {
+          "kind": "sphere",
+          "pos": [
+            4.8,
+            0.3,
+            0.3
+          ],
+          "r": 0.01
+        }
+      ]
+    },
+    "worldCube": [
+      -6,
+      -6,
+      -6,
+      12
+    ],
+    "overrides": {
+      "depthMin": 4,
+      "depthMax": 7,
+      "maxPolylinePointsPerCell": 1,
+      "curveChordTolMm": 1e-08
+    }
+  },
+  "settingsRule": "Effective tuning = defaultTuning overlaid with tuningOverrides; no unstated options."
+}

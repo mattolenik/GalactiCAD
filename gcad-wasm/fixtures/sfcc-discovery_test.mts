@@ -75,8 +75,9 @@ function combineDecisions(parts: Uint8Array[]) {
 // Cyclic rotation preserves winding; all eight vertex fields remain in the comparison.
 function canonicalTriangles(verts: Float32Array, tris: Uint32Array) {
     const output: string[] = []
+    const bits = new Uint32Array(verts.buffer, verts.byteOffset, verts.length)
     for (let i = 0; i < tris.length; i += 3) {
-        const p = [0, 1, 2].map(j => Array.from(verts.subarray(tris[i + j] * 8, tris[i + j] * 8 + 8)).join(","))
+        const p = [0, 1, 2].map(j => Array.from(bits.subarray(tris[i + j] * 8, tris[i + j] * 8 + 8)).join(","))
         output.push([p.join("|"), [p[1], p[2], p[0]].join("|"), [p[2], p[0], p[1]].join("|")].sort()[0])
     }
     return output.sort()
@@ -224,3 +225,159 @@ test("serial recovery preserves hidden-cell diagnostics through real workers and
         }
     } finally { serial.free() }
 })
+
+test("fine hidden raw workers preserve the 36 final cells and oriented geometry", { timeout: 180_000 }, async () => {
+    await verifyProductionWorkers({ name: "hidden-fine", scene: hidden, domain: cube, tuning: JSON.stringify({ depthMax: 14, surfaceTolMm: 1e-5 }), unresolved: 36, components: 2 }, false)
+})
+
+function componentBounds(verts: Float32Array, tris: Uint32Array) {
+    const parent = Array.from({ length: verts.length / 8 }, (_, i) => i)
+    const root = (v: number): number => parent[v] === v ? v : (parent[v] = root(parent[v]))
+    for (let i = 0; i < tris.length; i += 3) {
+        const a = root(tris[i])
+        parent[root(tris[i + 1])] = a
+        parent[root(tris[i + 2])] = a
+    }
+    const groups = new Map<number, number[]>()
+    for (const v of tris) {
+        const k = root(v), b = groups.get(k) ?? [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]
+        for (let a = 0; a < 3; a++) {
+            b[a] = Math.min(b[a], verts[v * 8 + a])
+            b[a + 3] = Math.max(b[a + 3], verts[v * 8 + a])
+        }
+        groups.set(k, b)
+    }
+    return [...groups.values()]
+}
+
+function lensScene(r = 10.01, p = [0, 0, 0], cavity = false) {
+    const lens = { kind: "intersect", lh: { kind: "sphere", pos: [p[0] + 10, p[1], p[2]], r },
+        rh: { kind: "sphere", pos: [p[0] - 10, p[1], p[2]], r } }
+    return JSON.stringify(cavity
+        ? { kind: "subtract", lh: { kind: "box", pos: p, half: [3, 3, 3] }, rh: lens }
+        : { kind: "union", children: [{ kind: "box", pos: [p[0] - 1.75, p[1], p[2]], half: [1.25, 3, 3] }, lens] })
+}
+
+test("Bridge lens raw workers and aligned fallback recovery have distinct outcomes", { timeout: 180_000 }, async () => {
+    const domain = [-4, -4, -4, 8] as const
+    for (const cavity of [false, true]) {
+        const result = export_sfcc(lensScene(10.01, [0, 0, 0], cavity), "{}", ...domain)
+        try {
+            const stats = JSON.parse(result.stats_json)
+            const bounds = componentBounds(result.verts, result.tris)
+            assert.equal(bounds.length, 2)
+            assert.equal(bounds.filter(b => b[0] > -0.011 && b[3] < 0.011).length, 1)
+            assert.equal(stats.featureCurves, 13)
+            assert.equal(stats.failedCells, 0)
+            assert.equal(stats.validation.unresolvedCells, 267)
+            assert.equal(result.ok, false)
+            console.log(JSON.stringify({ fixture: cavity ? "lens-cavity" : "lens", bounds, stats }))
+        } finally { result.free() }
+    }
+    await verifyProductionWorkers({ name: "lens-default", scene: lensScene(), domain, tuning: "{}", unresolved: 267, components: 2 }, false)
+    const wide = [-128, -128, -128, 256] as const
+    const seed = sfcc_worker_prepare(lensScene(), "{}", ...wide)
+    const view = new DataView(seed.buffer, seed.byteOffset, seed.byteLength)
+    const side = view.getFloat64(40, true) / 256
+    const center = [16, 24, 32].map(o => view.getFloat64(o, true) + 128.5 * side)
+    const scene = lensScene(10.01, center)
+    const leaves = sfcc_worker_prepare(scene, "{}", ...wide)
+    const actual = new DataView(leaves.buffer, leaves.byteOffset, leaves.byteLength)
+    let found = false
+    for (let i = 0; i < countLeaves(leaves); i++) {
+        const o = 56 + i * 48
+        if (actual.getUint32(o, true) === 8 && [8, 16, 24].every(k => actual.getBigInt64(o + k, true) === 128n)) {
+            assert.equal(actual.getUint32(o + 4, true), 1)
+            found = true
+        }
+    }
+    assert.ok(found, "the actual lens-containing finest cell must remain unresolved")
+    const result = export_sfcc(scene, "{}", ...wide)
+    try {
+        assert.equal(result.ok, false)
+        const stats = JSON.parse(result.stats_json)
+        assert.ok(stats.validation.unresolvedCells > 0)
+        console.log(JSON.stringify({ fixture: "aligned-lens", center, bounds: componentBounds(result.verts, result.tris), stats }))
+    } finally { result.free() }
+    await verifyProductionWorkers({ name: "lens-contained-finest", scene, domain: wide, tuning: "{}", unresolved: 1, components: 1 }, true)
+})
+
+test("WASM retains the depth-10 lens warning and near-tangent uncertainty", () => {
+    const domain = [-4, -4, -4, 8] as const
+    for (const [r, tuning, components, unresolved] of [
+        [10.01, { depthMax: 10 }, 4, 1017],
+        [10.0001, {}, 1, 168],
+    ] as const) {
+        const result = export_sfcc(lensScene(r), JSON.stringify(tuning), ...domain)
+        try {
+            const stats = JSON.parse(result.stats_json)
+            assert.equal(componentBounds(result.verts, result.tris).length, components)
+            assert.equal(stats.validation.unresolvedCells, unresolved)
+            assert.equal(result.ok, false)
+            if (r === 10.01) assert.equal(stats.validation.invalidTriangles, 12)
+            else assert.equal(stats.validation.featureTrace.unresolvedDiscovery, 1)
+            console.log(JSON.stringify({ fixture: r === 10.01 ? "lens-depth10" : "lens-near-tangent", stats }))
+        } finally { result.free() }
+    }
+})
+
+function canonicalFeatureEdges(verts: Float32Array, edges: Float64Array) {
+    const out: string[] = []
+    for (let i = 0; i < edges.length; i += 5) {
+        let a = Array.from(verts.subarray(edges[i] * 8, edges[i] * 8 + 3)).join(",")
+        let b = Array.from(verts.subarray(edges[i + 1] * 8, edges[i + 1] * 8 + 3)).join(",")
+        let start = edges[i + 3], end = edges[i + 4]
+        if (a > b) { [a, b] = [b, a]; [start, end] = [end, start] }
+        out.push(`${a}|${b}|${edges[i + 2]}|${start}|${end}`)
+    }
+    return out.sort()
+}
+
+type ProductionFixture = { name: string; scene: string; domain: readonly [number, number, number, number]; tuning: string; unresolved: number; components: number }
+async function verifyProductionWorkers(fixture: ProductionFixture, expectRecovery: boolean) {
+    const { scene, tuning, name } = fixture
+    const domain = fixture.domain
+    const leaves = sfcc_worker_prepare(scene, tuning, ...domain)
+    const result = export_sfcc(scene, tuning, ...domain)
+    try {
+        const stats = JSON.parse(result.stats_json)
+        assert.equal(stats.validation.unresolvedCells, fixture.unresolved, name)
+        assert.equal(stats.components, fixture.components, name)
+        assert.equal(stats.failedCells, 0, name)
+        assert.equal(degenerateLeaves(leaves), fixture.unresolved, name)
+        if (expectRecovery) assert.equal(stats.featureCellFallbacks, 1, "the contained-loop fallback must be the recovery trigger")
+        const expected = canonicalTriangles(result.verts, result.tris)
+        const expectedEdges = canonicalFeatureEdges(result.verts, result.feature_edges)
+        if (name === "lens-default") {
+            const vertices = result.verts
+            assert.ok(Array.from({ length: vertices.length / 8 }, (_, i) => i).some(i => Math.abs(vertices[i * 8]) < 0.02 && Math.hypot(vertices[i * 8 + 1], vertices[i * 8 + 2]) < 0.46))
+            assert.ok(Array.from({ length: vertices.length / 8 }, (_, i) => i).every(i => vertices[i * 8] <= -0.49 || Math.abs(vertices[i * 8]) < 0.02), "no mesh vertex may bridge the analytic gap")
+        }
+        const leafCount = countLeaves(leaves)
+        const expectedDecisions = sfcc_decide_partition(scene, tuning, ...domain, leaves, 0, leafCount)
+        for (const count of [1, 2, 4, 8]) {
+            const decisions = await Promise.all(Array.from({ length: count }, (_, index) =>
+                runWorker({ task: "decide", scene, tuning, cube: domain, leaves,
+                    start: Math.floor(index * leafCount / count), end: Math.floor((index + 1) * leafCount / count) })))
+            for (const order of [decisions.map((bytes, index) => ({ bytes, index })), decisions.map((bytes, index) => ({ bytes, index })).reverse()]) {
+                order.sort((a, b) => a.index - b.index)
+                assert.deepEqual(combineDecisions(order.map(p => p.bytes)), expectedDecisions)
+            }
+            const parts = await Promise.all(Array.from({ length: count }, (_, index) =>
+                runWorker({ task: "mesh", scene, tuning, cube: domain, leaves, index, count })))
+            for (const order of [parts, [...parts].reverse()]) {
+                const merged = sfcc_worker_merge(scene, tuning, ...domain, order)
+                try {
+                    const actual = JSON.parse(merged.stats_json)
+                    assert.equal(actual.serialRecovery, expectRecovery, `${name} count=${count}`)
+                    assert.equal(actual.failedCells, 0)
+                    assert.equal(actual.components, fixture.components)
+                    assert.deepEqual(actual.validation, stats.validation)
+                    assert.deepEqual(canonicalTriangles(merged.verts, merged.tris), expected)
+                    assert.deepEqual(canonicalFeatureEdges(merged.verts, merged.feature_edges), expectedEdges)
+                } finally { merged.free() }
+            }
+        }
+        console.log(`STEP1 WASM ${name}: unresolved=${fixture.unresolved}; 1/2/4/8 and reversed canonical geometry/validation equal; serialRecovery=${expectRecovery}`)
+    } finally { result.free() }
+}

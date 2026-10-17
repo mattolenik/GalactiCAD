@@ -1,0 +1,37 @@
+{
+  "sourceRevision": "0f32ceb",
+  "files": {
+    "gcad-wasm/kernel/src/sfcc/diagnosis.rs": "d5502d5d16cb3eea9b50ff600ab4c4daccb95bc70bc1d488b80fbd5924101ccf",
+    "gcad-wasm/kernel/src/sfcc/cell_mesh.rs": "00e219d1fd31ec3dadd68b4a06d14cfc08e6efabeacd3eb8aa1212dc16e98685",
+    "gcad-wasm/kernel/src/sfcc/worker.rs": "2db4ff071ff9c599c815c928adaeb04251160f6cafdcf3a7812b011784c010f8",
+    "gcad-wasm/kernel/src/sfcc/mod.rs": "e4318d94521928c1be53b189c39f52512e6ce8cd77dc9cdae221561b70d8aa4a",
+    "gcad-wasm/kernel/src/sfcc/refine_criteria.rs": "5de9f73397e2c031589173e0b7922825ce09cd55e51c5382715c04547d2772d8",
+    "gcad-wasm/kernel/src/sfcc/feature_set.rs": "35d0876e65a463f022ebc1e15ef0f5b3b49473d99a32c2d7573f6a0b3af51251",
+    "gcad-wasm/kernel/src/sfcc/pipeline.rs": "c94c20af3f034ce004476ef460d81b07f2aa358a00194ccbef8a75472bf14662",
+    "gcad-wasm/kernel/src/sfcc/octree.rs": "e447b24f8c042522a9d864fd221a76bb691f6fd9f858587938c95065957d27d5",
+    "gcad-wasm/kernel/tests/diagnosis_contract.rs": "9ab496ba3b6fb3cd62c52a978ec015ef2916d396e6a2c9a2c5827eee25995a33",
+    "gcad-wasm/fixtures/sfcc-discovery_test.mts": "e13186888f484d2cb9ca03e0b047ab93aa7895df5781c2d4643a90a3e909c83e"
+  },
+  "artifacts": {
+    "docs/research/sfcc-step1/fine-hidden-ledger.json": "c792ce7224472c5de829d9afd627b6086e593f40d4daa55f75a1265df382255f",
+    "docs/research/sfcc-step1/frozen-inputs.json": "124ab9ec44c1ac16436c227c7fc6cdf6e10d88a0e534333aab5d3a2c5dc43644",
+    "docs/research/sfcc-step1/depth10-provenance.json": "ab1454a46dcc01111f5dfe1a62793b5e60b6fff78ab99e67b0f08d857badc0fd",
+    "docs/research/sfcc-step1/matrix.json": "61014dfd6ec42fe72a0579ad2c5743084d81dea9926cab1cc6d964628b8ba676",
+    "docs/research/sfcc-step1/validation.json": "66cec69da434779214064615bf164b5e51ada1b1db58d2196f22e13d48eac520"
+  },
+  "buildArtifacts": {
+    "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm": "2d94827974058e113e91dacebbcb726cf065465a513399cdbe35f8775225fa6a",
+    "gcad-wasm/wasm/pkg/gcad_wasm.js": "826656725ee07e766340d83702c8061c7c1b17e2e400f8729a310917fedfe03e"
+  },
+  "validationToolchains": {
+    "native": "rustc 1.99.0 (b940084d7 2026-09-28), cargo 1.99.0 (5f94df478 2026-08-27), Homebrew arm64",
+    "wasm": "rustc 1.96.0 (ac68faa20 2026-05-25), cargo 1.96.0 (30a34c682 2026-05-25), Rustup wasm32-unknown-unknown +simd128",
+    "node": "v26.11.1"
+  },
+  "sourceHashNotes": "Final pipeline.rs hash includes the coordinator-added cfg(test) cached-feature regression. Focused WASM artifact predates only this test addition; production source is identical. Coordinator broad-build artifact is recorded separately.",
+  "coordinatorBuildArtifacts": {
+    "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm": "a6f8d829b5a85cfc307bfb86946cfbb915b12483f5c4fcbb3550c53d6dcb0cc5",
+    "gcad-wasm/wasm/pkg/gcad_wasm.js": "826656725ee07e766340d83702c8061c7c1b17e2e400f8729a310917fedfe03e"
+  },
+  "coordinatorBuildVersion": "0.0.0-0f32ceb-dirty"
+}

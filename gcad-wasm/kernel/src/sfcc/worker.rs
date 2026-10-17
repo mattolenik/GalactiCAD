@@ -206,6 +206,8 @@ fn verify_feature_fingerprint(buf: &[u8], features: &SfccFeatureSet) {
 /// the serial driver; for slice 5 the forced-split markers are empty, as in the TS
 /// round-0 needsSplit). Returns the encoded buffer.
 pub fn prepare(tree: &CsgNode, cube: &SfccWorldCube, tuning: &PipelineTuning) -> Vec<u8> {
+    #[cfg(feature = "sfcc-profile")]
+    let _diagnostic_export = super::diagnosis::ExportScope::begin();
     let ctx = build_pipeline_context(tree, cube, tuning);
     let oct = ctx.build_tagged_octree(tuning);
     encode_tagged_leaves(&oct.lat, &oct.leaves, ctx.features.fingerprint())
@@ -225,6 +227,8 @@ pub fn build_octree_resumable_inprocess(
     cube: &SfccWorldCube,
     tuning: &PipelineTuning,
 ) -> Vec<u8> {
+    #[cfg(feature = "sfcc-profile")]
+    let _diagnostic_export = super::diagnosis::ExportScope::begin();
     let ctx = build_pipeline_context(tree, cube, tuning);
     let oct = ctx.build_tagged_octree_resumable(tuning);
     encode_tagged_leaves(&oct.lat, &oct.leaves, ctx.features.fingerprint())
@@ -287,6 +291,8 @@ pub fn decide_partition_bytes(
     start: usize,
     end: usize,
 ) -> Vec<u8> {
+    #[cfg(feature = "sfcc-profile")]
+    let _diagnostic_export = super::diagnosis::ExportScope::begin();
     let ctx = build_pipeline_context(tree, cube, tuning);
     verify_feature_fingerprint(frontier_bytes, &ctx.features);
     let (_lat, frontier) = decode_tagged_leaves(frontier_bytes);
@@ -551,6 +557,8 @@ pub fn mesh_partition(
     group_index: usize,
     group_count: usize,
 ) -> Vec<u8> {
+    #[cfg(feature = "sfcc-profile")]
+    let _diagnostic_export = super::diagnosis::ExportScope::begin();
     let _numerical_guard = NumericalGuard::new();
     assert!(
         group_index < group_count.max(1),
@@ -632,6 +640,8 @@ pub fn merge(
     tuning: &PipelineTuning,
     partials: &[Vec<u8>],
 ) -> MergedMesh {
+    #[cfg(feature = "sfcc-profile")]
+    let _diagnostic_export = super::diagnosis::ExportScope::begin();
     let _numerical_guard = NumericalGuard::new();
     let ctx = build_pipeline_context(tree, cube, tuning);
     let result = merge_partials(tree, &ctx.features, &ctx.lat, tuning, partials);
@@ -686,6 +696,8 @@ pub fn merge_partials(
     tuning: &PipelineTuning,
     partials: &[Vec<u8>],
 ) -> MergedMesh {
+    #[cfg(feature = "sfcc-profile")]
+    let _diagnostic_export = super::diagnosis::ExportScope::begin();
     let mut merged = PointTable::new();
     let mut tris: Vec<usize> = Vec::new();
     let mut failed_cells = 0usize;

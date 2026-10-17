@@ -231,6 +231,8 @@ pub fn mesh_cells_subset(
 
     let mut segs: Vec<Seg> = Vec::new();
     let mut pins: Vec<FacePin> = Vec::new();
+    let coverage_scope=super::local_coverage::Scope::new(tree);
+    let atomic_box_guard=super::local_coverage::AtomicBoxGuard::new(tree);
 
     // Quality triangulation performs enough queries to amortize a pruned view
     // on larger trees. Its box includes the entire candidate projection budget.
@@ -239,12 +241,17 @@ pub fn mesh_cells_subset(
         else { crate::sdf::lever1_should_prune(tree, LEVER1_MIN_LEAVES) };
 
     for cell in leaves {
+        if let Some(kind)=atomic_box_guard.as_ref().and_then(|g|g.inspect(oct,cell)) {
+            points.coverage_edge_failures.push(super::local_coverage::EdgeFailure {cell:*cell,kind});
+        }
+        let coverage_start=tris.len();
         #[cfg(feature = "sfcc-profile")]
         let diagnostic_start = tris.len();
         segs.clear();
         pins.clear();
         gather_segments(faces, &lat, cell, &mut segs, &mut pins);
         if segs.is_empty() {
+            if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&[],opts.features) {failed_cells.push(*cell);}
             continue;
         }
 
@@ -260,6 +267,7 @@ pub fn mesh_cells_subset(
         }
         if degenerate {
             failed_cells.push(*cell);
+            super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features);
             continue;
         }
 
@@ -305,6 +313,7 @@ pub fn mesh_cells_subset(
         }
         if broken || loops.is_empty() {
             failed_cells.push(*cell);
+            super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features);
             continue;
         }
         if loops.len() > 1 {
@@ -358,6 +367,7 @@ pub fn mesh_cells_subset(
             if let Some((mesh, owner)) = candidate {
                 for t in mesh.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], owner); }
                 tris.extend(mesh);
+                if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
                 #[cfg(feature = "sfcc-profile")]
                 super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "planar-domains", false);
                 continue;
@@ -392,6 +402,7 @@ pub fn mesh_cells_subset(
             });
             if corners.len() > 1 || (cell.degenerate && distinct_curves.len() > 1) || curved_corner {
                 if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris) {
+                    if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
                     if corners.is_empty() {
                         edge_cells += 1;
                     } else {
@@ -510,8 +521,14 @@ pub fn mesh_cells_subset(
         }
         #[cfg(feature = "sfcc-profile")]
         super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "cell-loops", fallback_cells.last().is_some_and(|c| c.level == cell.level && c.key == cell.key));
+        if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
     }
 
+    for failure in &points.coverage_edge_failures {
+        let c=failure.cell;
+        if !c.degenerate&&leaves.iter().any(|v|v.level==c.level&&v.key==c.key)
+            && !failed_cells.iter().any(|v|v.level==c.level&&v.key==c.key) {failed_cells.push(c);}
+    }
     CellMeshResult {
         tris,
         failed_cells,
@@ -1141,6 +1158,9 @@ fn sample_in_cell_arc(
     } else {
         delta = t_b - t_a;
     }
+    // Reused endpoint vertices already carry the canonical pin/corner parameter.
+    // An open arc must not replace t_b with the rounded cancellation t_a+(t_b-t_a).
+    let end = if curve.closed && curve.param_wrap.is_some() {t_a+delta}else{t_b};
     let arc_len = {
         let pd = curve.param_distance(t_a, t_a + delta);
         if pd != 0.0 {
@@ -1178,7 +1198,6 @@ fn sample_in_cell_arc(
     let params: Vec<f64> = if curve.kind() == CurveKind::Traced {
         // Integer parameters are the original adaptive trace knots. Uniform
         // resampling can straddle and erase a localized turn or inflection.
-        let end = t_a + delta;
         let mut params = vec![t_a];
         params
             .extend(((t_a.min(end).floor() as i64 + 1)..=(t_a.max(end).ceil() as i64 - 1)).map(|k| k as f64));
@@ -1186,7 +1205,7 @@ fn sample_in_cell_arc(
         params.sort_by(|a, b| if delta >= 0. { a.total_cmp(b) } else { b.total_cmp(a) });
         params
     } else {
-        (0..=n).map(|k| t_a + delta * k as f64 / n as f64).collect()
+        (0..=n).map(|k| if k==0 {t_a}else if k==n {end}else{t_a + delta * k as f64 / n as f64}).collect()
     };
     if params.len() - 1 > opts.max_polyline_points_per_cell {
         crate::sfcc::validation::chord_budget_exhausted();
@@ -1365,6 +1384,19 @@ mod reliability_tests {
                 assert!(q::dot(q::normal(p), normal) > 0., "inward cap: {p:?}");
             }
         }
+    }
+    #[test]
+    fn open_arc_retains_the_canonical_endpoint_parameter() {
+        let a=Stratum::plane(ident(0),0.,1.,0.,0.);
+        let b=Stratum::plane(ident(1),0.,0.,1.,0.);
+        let features=SfccFeatureSet {unresolved_branch_paths:Vec::new(),trace_diagnostics:Default::default(),
+            strata:vec![a,b],curves:Vec::new(),corners:Vec::new(),index:SfccSpatialIndex::new(1.),run_id:0};
+        let opts=CellMeshOptions {surface_tol:0.01,interior_vertex_mode:InteriorVertexMode::Project,quality_triangulation:false,
+            project_max_iters:8,curve_chord_tol:0.02,max_polyline_points_per_cell:16,features:Some(&features)};
+        let curve=super::super::feature_curves::make_segment_curve(0,-1,[0,1],0.,0.,0.,1.,0.,0.);
+        let end=2_f64.powi(-54);assert_ne!(1.+(end-1.),end);
+        let arc=sample_in_cell_arc(&curve,1.,end,&[-2.,-2.,-2.,2.,2.,2.],&mut PointTable::new(),&features,&opts).unwrap();
+        assert_eq!(arc.parameters.last().unwrap().to_bits(),end.to_bits());
     }
     #[test]
     fn circle_cap_and_traced_midpoint_error_are_enforced() {

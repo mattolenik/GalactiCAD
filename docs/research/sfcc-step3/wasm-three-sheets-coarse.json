@@ -1,0 +1,1503 @@
+{
+  "name": "three-sheets-coarse",
+  "scene": {
+    "kind": "union",
+    "children": [
+      {
+        "kind": "box",
+        "pos": [
+          -1.875,
+          0,
+          0
+        ],
+        "half": [
+          2.125,
+          4,
+          4
+        ]
+      },
+      {
+        "kind": "intersect",
+        "lh": {
+          "kind": "box",
+          "pos": [
+            2.25,
+            0,
+            0
+          ],
+          "half": [
+            1.75,
+            4,
+            4
+          ]
+        },
+        "rh": {
+          "kind": "box",
+          "pos": [
+            -1.625,
+            0,
+            0
+          ],
+          "half": [
+            2.375,
+            4,
+            4
+          ]
+        }
+      }
+    ]
+  },
+  "cube": [
+    -128,
+    -128,
+    -128,
+    256
+  ],
+  "leaves": 106,
+  "triangles": 700,
+  "components": 1,
+  "unresolved": 72,
+  "stats": {
+    "leaves": 106,
+    "faces": 436,
+    "crossPoints": 356,
+    "tris": 700,
+    "failedCells": 0,
+    "degenerateCells": 72,
+    "featureCurves": 28,
+    "edgeCells": 36,
+    "cornerCells": 12,
+    "featureCellFallbacks": 9,
+    "reRefineRounds": 0,
+    "faceAuditFailures": 0,
+    "boundaryViolations": 0,
+    "manifoldOk": true,
+    "components": 1,
+    "openEdges": 0,
+    "nonManifoldEdges": 0,
+    "misorientedEdges": 0,
+    "euler": [
+      2
+    ],
+    "phaseFeatureMs": 9,
+    "phaseOctreeMs": 4,
+    "phaseContourMs": 6,
+    "phaseCellmeshMs": 2,
+    "phaseAssembleMs": 2,
+    "phaseOctreeDecideMs": 4,
+    "phaseOctreeApplyMs": 0,
+    "octreeRounds": [
+      [
+        8,
+        0,
+        0
+      ],
+      [
+        12,
+        1,
+        0
+      ],
+      [
+        42,
+        2,
+        0
+      ],
+      [
+        84,
+        1,
+        0
+      ]
+    ],
+    "validation": {
+      "localCoverage": {
+        "scope": "outsideScope",
+        "certifiedCells": 0,
+        "transportedCells": 0,
+        "excludedCells": 0,
+        "outsideCells": 0,
+        "unresolved": [
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              124,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              125,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              126,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              127,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              128,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              129,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              130,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              131,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              124
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              125
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              126
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              127
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              128
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              129
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              130
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          },
+          {
+            "cell": [
+              8,
+              128,
+              132,
+              131
+            ],
+            "reason": "box_subedge_zero_set_not_single"
+          }
+        ],
+        "claim": "representedCellsOnly"
+      },
+      "quality": null,
+      "unresolvedBranchPaths": [],
+      "featureChains": {
+        "issues": [
+          {
+            "curveId": 4,
+            "kind": "parameterGap",
+            "range": [
+              0.9845784655800891,
+              1
+            ]
+          },
+          {
+            "curveId": 7,
+            "kind": "parameterGap",
+            "range": [
+              0.7853897300712506,
+              1
+            ]
+          },
+          {
+            "curveId": 9,
+            "kind": "missingCurve",
+            "range": [
+              0,
+              1
+            ]
+          },
+          {
+            "curveId": 13,
+            "kind": "parameterGap",
+            "range": [
+              0.8576253405800891,
+              1
+            ]
+          },
+          {
+            "curveId": 15,
+            "kind": "parameterGap",
+            "range": [
+              0.7853897300712506,
+              1
+            ]
+          },
+          {
+            "curveId": 19,
+            "kind": "missingCurve",
+            "range": [
+              0,
+              1
+            ]
+          },
+          {
+            "curveId": 23,
+            "kind": "missingCurve",
+            "range": [
+              0,
+              1
+            ]
+          },
+          {
+            "curveId": 24,
+            "kind": "parameterGap",
+            "range": [
+              0.9845784655800891,
+              1
+            ]
+          },
+          {
+            "curveId": 26,
+            "kind": "missingCurve",
+            "range": [
+              0,
+              1
+            ]
+          },
+          {
+            "curveId": 27,
+            "kind": "parameterGap",
+            "range": [
+              0.8576253405800891,
+              1
+            ]
+          }
+        ],
+        "status": "failed",
+        "scope": "compiledCurves",
+        "missingEdges": 0,
+        "missingCurves": 4,
+        "disconnectedCurves": 0,
+        "intervalGaps": 6,
+        "offCurveEdges": 0,
+        "invalidMemberships": 0,
+        "unidentifiedEdges": 0
+      },
+      "status": "incomplete",
+      "edgeIncidence": "passed",
+      "vertexLinks": "passed",
+      "faceSegments": "passed",
+      "vertexResiduals": "passed",
+      "triangleNondegeneracy": "passed",
+      "invalidTriangles": 0,
+      "unresolvedCells": 72,
+      "featureFallbackCells": 9,
+      "curveProjectionFailures": 0,
+      "faceProjectionFailures": 0,
+      "chordBudgetFailures": 0,
+      "offSurfaceVertices": 0,
+      "maxVertexResidual": 0,
+      "featureTrace": {
+        "pairsConsidered": 3,
+        "seedsFound": 304,
+        "curvesTraced": 56,
+        "tangencyBails": 0,
+        "tangentReversals": 0,
+        "correctionBails": 0,
+        "stepCapHits": 0,
+        "unresolvedDiscovery": 0,
+        "unresolvedTrims": 0
+      }
+    },
+    "nonManifoldVertices": 0
+  },
+  "ok": false,
+  "lattice": {
+    "depth": 8,
+    "origin": [
+      -130.10517141232128,
+      -130.1858722753593,
+      -130.05993913491204
+    ],
+    "size": 260,
+    "bits": [
+      "c060435d90700c9c",
+      "c06045f2aa69fcd7",
+      "c06041eb057a0654",
+      "4070400000000000"
+    ]
+  },
+  "primitiveInputs": [
+    [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      -1.875,
+      0,
+      0,
+      1,
+      1,
+      2.125,
+      4,
+      4
+    ],
+    [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      2.25,
+      0,
+      0,
+      1,
+      1,
+      1.75,
+      4,
+      4
+    ],
+    [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      -1.625,
+      0,
+      0,
+      1,
+      1,
+      2.375,
+      4,
+      4
+    ]
+  ],
+  "primitiveInputBits": [
+    [
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "bffe000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "4001000000000000",
+      "4010000000000000",
+      "4010000000000000"
+    ],
+    [
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "4002000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "3ffc000000000000",
+      "4010000000000000",
+      "4010000000000000"
+    ],
+    [
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "bffa000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "4003000000000000",
+      "4010000000000000",
+      "4010000000000000"
+    ]
+  ],
+  "targetedCells": [
+    {
+      "cell": [
+        8,
+        128,
+        126,
+        126
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -2.217122275359287,
+        -2.0911891349120424,
+        0.9104535876787168,
+        -1.2014972753592872,
+        -1.0755641349120424
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        126,
+        127
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -2.217122275359287,
+        -1.0755641349120424,
+        0.9104535876787168,
+        -1.2014972753592872,
+        -0.05993913491204239
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        126,
+        128
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -2.217122275359287,
+        -0.05993913491204239,
+        0.9104535876787168,
+        -1.2014972753592872,
+        0.9556858650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        126,
+        129
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -2.217122275359287,
+        0.9556858650879576,
+        0.9104535876787168,
+        -1.2014972753592872,
+        1.9713108650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        126,
+        130
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -2.217122275359287,
+        1.9713108650879576,
+        0.9104535876787168,
+        -1.2014972753592872,
+        2.9869358650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        127,
+        126
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -1.2014972753592872,
+        -2.0911891349120424,
+        0.9104535876787168,
+        -0.1858722753592872,
+        -1.0755641349120424
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        127,
+        127
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -1.2014972753592872,
+        -1.0755641349120424,
+        0.9104535876787168,
+        -0.1858722753592872,
+        -0.05993913491204239
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        127,
+        128
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -1.2014972753592872,
+        -0.05993913491204239,
+        0.9104535876787168,
+        -0.1858722753592872,
+        0.9556858650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        127,
+        129
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -1.2014972753592872,
+        0.9556858650879576,
+        0.9104535876787168,
+        -0.1858722753592872,
+        1.9713108650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        127,
+        130
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -1.2014972753592872,
+        1.9713108650879576,
+        0.9104535876787168,
+        -0.1858722753592872,
+        2.9869358650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        128,
+        126
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -0.1858722753592872,
+        -2.0911891349120424,
+        0.9104535876787168,
+        0.8297527246407128,
+        -1.0755641349120424
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        128,
+        127
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -0.1858722753592872,
+        -1.0755641349120424,
+        0.9104535876787168,
+        0.8297527246407128,
+        -0.05993913491204239
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        128,
+        128
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -0.1858722753592872,
+        -0.05993913491204239,
+        0.9104535876787168,
+        0.8297527246407128,
+        0.9556858650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        128,
+        129
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -0.1858722753592872,
+        0.9556858650879576,
+        0.9104535876787168,
+        0.8297527246407128,
+        1.9713108650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        128,
+        130
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        -0.1858722753592872,
+        1.9713108650879576,
+        0.9104535876787168,
+        0.8297527246407128,
+        2.9869358650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        129,
+        126
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        0.8297527246407128,
+        -2.0911891349120424,
+        0.9104535876787168,
+        1.8453777246407128,
+        -1.0755641349120424
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        129,
+        127
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        0.8297527246407128,
+        -1.0755641349120424,
+        0.9104535876787168,
+        1.8453777246407128,
+        -0.05993913491204239
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        129,
+        128
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        0.8297527246407128,
+        -0.05993913491204239,
+        0.9104535876787168,
+        1.8453777246407128,
+        0.9556858650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        129,
+        129
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        0.8297527246407128,
+        0.9556858650879576,
+        0.9104535876787168,
+        1.8453777246407128,
+        1.9713108650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        129,
+        130
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        0.8297527246407128,
+        1.9713108650879576,
+        0.9104535876787168,
+        1.8453777246407128,
+        2.9869358650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        130,
+        126
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        1.8453777246407128,
+        -2.0911891349120424,
+        0.9104535876787168,
+        2.861002724640713,
+        -1.0755641349120424
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        130,
+        127
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        1.8453777246407128,
+        -1.0755641349120424,
+        0.9104535876787168,
+        2.861002724640713,
+        -0.05993913491204239
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        130,
+        128
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        1.8453777246407128,
+        -0.05993913491204239,
+        0.9104535876787168,
+        2.861002724640713,
+        0.9556858650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        130,
+        129
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        1.8453777246407128,
+        0.9556858650879576,
+        0.9104535876787168,
+        2.861002724640713,
+        1.9713108650879576
+      ],
+      "degenerate": true,
+      "split": true
+    },
+    {
+      "cell": [
+        8,
+        128,
+        130,
+        130
+      ],
+      "bounds": [
+        -0.10517141232128324,
+        1.8453777246407128,
+        1.9713108650879576,
+        0.9104535876787168,
+        2.861002724640713,
+        2.9869358650879576
+      ],
+      "degenerate": true,
+      "split": true
+    }
+  ]
+}

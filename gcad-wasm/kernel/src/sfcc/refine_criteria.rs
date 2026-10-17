@@ -162,6 +162,15 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
         return Err(Indeterminate);
     }
     let (c, half) = probe.whole_cell_box().ok_or(Indeterminate)?;
+    match super::local_coverage::box_edges(root, &probe.pts) {
+        super::local_coverage::BoxEdgeCheck::NeedsSplit => {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::reason("coverage_multiple_box_edge_roots",None);
+            return Ok(DiscoveryCheck::NeedsSplit);
+        }
+        super::local_coverage::BoxEdgeCheck::Indeterminate => return Err(Indeterminate),
+        _ => {}
+    }
     for i in 0..8 {
         for a in 0..3 {
             if probe.pts[i * 3 + a] != if i & (1 << a) == 0 { lo[a] } else { hi[a] } {

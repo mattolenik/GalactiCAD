@@ -70,7 +70,29 @@ fn preserves_patch(points: [q::P3; 4]) -> bool {
 
 /// Flip sliver triangles' longest edges when the oriented patch is unchanged and
 /// its worst aspect ratio improves. Returns `(tris, flips)`.
-pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: usize) -> (Vec<usize>, usize) {
+pub fn flip_sliver_triangles(
+    points: &PointTable,
+    tris: &[usize],
+    max_sweeps: usize,
+) -> (Vec<usize>, usize) {
+    flip_impl(points, tris, max_sweeps, None)
+}
+
+pub(crate) fn flip_sliver_triangles_recorded(
+    points: &PointTable,
+    tris: &[usize],
+    max_sweeps: usize,
+    steps: &mut Vec<[usize; 4]>,
+) -> (Vec<usize>, usize) {
+    flip_impl(points, tris, max_sweeps, Some(steps))
+}
+
+fn flip_impl(
+    points: &PointTable,
+    tris: &[usize],
+    max_sweeps: usize,
+    mut steps: Option<&mut Vec<[usize; 4]>>,
+) -> (Vec<usize>, usize) {
     let mut cur = tris.to_vec();
     let tri_count = cur.len() / 3;
     let mut total_flips = 0usize;
@@ -135,6 +157,9 @@ pub fn flip_sliver_triangles(points: &PointTable, tris: &[usize], max_sweeps: us
             if !preserves_patch([p, q, r, d].map(|i| q::pos(points, i))) {
                 continue;
             }
+            if let Some(steps) = steps.as_deref_mut() {
+                steps.push([p, q, r, d]);
+            }
             new_edges.insert((r, d));
             new_edges.insert((d, r));
             cur[t * 3] = r;
@@ -171,7 +196,12 @@ mod tests {
         points
     }
 
-    const PATCH: [q::P3; 4] = [[-1., 0., 0.], [1., 0., 0.], [0., 1. / 1024., 0.], [0., -1., 0.]];
+    const PATCH: [q::P3; 4] = [
+        [-1., 0., 0.],
+        [1., 0., 0.],
+        [0., 1. / 1024., 0.],
+        [0., -1., 0.],
+    ];
     const TRIS: [usize; 6] = [0, 1, 2, 1, 0, 3];
 
     #[test]
@@ -185,7 +215,9 @@ mod tests {
             for tris in [TRIS, [1, 0, 2, 0, 1, 3]] {
                 let (out, flips) = flip_sliver_triangles(&points, &tris, 4);
                 assert_eq!(flips, 1);
-                assert!(out.chunks_exact(3).all(|t| t.contains(&2) && t.contains(&3)));
+                assert!(out
+                    .chunks_exact(3)
+                    .all(|t| t.contains(&2) && t.contains(&3)));
             }
         }
     }
@@ -206,7 +238,10 @@ mod tests {
         let positions = PATCH.map(|[x, y, _]| [x, y, 1048576. + x + y]);
         let [p, q, r, d] = positions;
         assert_eq!(orient3d(p, q, r, d), 0);
-        assert_ne!(orient3d(q::rounded(p), q::rounded(q), q::rounded(r), q::rounded(d)), 0);
+        assert_ne!(
+            orient3d(q::rounded(p), q::rounded(q), q::rounded(r), q::rounded(d)),
+            0
+        );
         let (out, flips) = flip_sliver_triangles(&table(positions), &TRIS, 4);
         assert_eq!((out, flips), (TRIS.to_vec(), 0));
 
@@ -241,13 +276,13 @@ mod tests {
     #[test]
     fn crease_lock_prevents_an_otherwise_beneficial_flip() {
         let mut p = PointTable::new();
-        let a = p.add(-1.,0.,0.,0.,0.,1.);
-        let b = p.add(1.,0.,0.,0.,0.,1.);
-        let c = p.add(0.,0.001,0.,0.,0.,1.);
-        let d = p.add(0.,-1.,0.,0.,0.,1.);
-        let tris = [a,b,c,b,a,d];
+        let a = p.add(-1., 0., 0., 0., 0., 1.);
+        let b = p.add(1., 0., 0., 0., 0., 1.);
+        let c = p.add(0., 0.001, 0., 0., 0., 1.);
+        let d = p.add(0., -1., 0., 0., 0., 1.);
+        let tris = [a, b, c, b, a, d];
         assert_eq!(flip_sliver_triangles(&p, &tris, 4).1, 1);
-        p.protect_edge(b,a);
+        p.protect_edge(b, a);
         let (out, flips) = flip_sliver_triangles(&p, &tris, 4);
         assert_eq!(flips, 0);
         assert_eq!(out, tris);

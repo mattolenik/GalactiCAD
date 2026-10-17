@@ -101,6 +101,7 @@ impl QualityAudit {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SfccValidation {
+    pub local_coverage: super::local_coverage::CoverageReport,
     pub quality: Option<QualityAudit>,
     /// Compiled-curve preservation only; independent representation coverage
     /// remains a separate question even when this report passes.
@@ -181,6 +182,7 @@ impl SfccValidation {
             "failed"
         } else if checks.contains(&AuditStatus::NotChecked)
             || self.unresolved_cells > 0
+            || !self.local_coverage.unresolved.is_empty()
             || self.feature_fallback_cells > 0
             || self.numerical.total() > 0
             || self.feature_trace.unresolved_discovery > 0
@@ -200,7 +202,7 @@ impl SfccValidation {
     pub fn to_json(&self) -> String {
         format!(
             concat!(
-                "{{\"quality\":{},\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
+                "{{\"localCoverage\":{},\"quality\":{},\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
                 "\"faceSegments\":\"{}\",\"vertexResiduals\":\"{}\",\"triangleNondegeneracy\":\"{}\",\"invalidTriangles\":{},\"unresolvedCells\":{},",
                 "\"featureFallbackCells\":{},\"curveProjectionFailures\":{},\"faceProjectionFailures\":{},",
                 "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{},",
@@ -208,6 +210,7 @@ impl SfccValidation {
                 "\"tangencyBails\":{},\"tangentReversals\":{},\"correctionBails\":{},\"stepCapHits\":{},",
                 "\"unresolvedDiscovery\":{},\"unresolvedTrims\":{}}}}}"
             ),
+            self.local_coverage.to_json(),
             self.quality.as_ref().map_or_else(|| "null".into(), QualityAudit::to_json),
             self.unresolved_branch_paths,
             self.feature_chains.as_ref().map_or_else(|| "{\"status\":\"notChecked\"}".into(), |r| r.to_json()),

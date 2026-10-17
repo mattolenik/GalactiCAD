@@ -109,6 +109,34 @@ pub struct FeatureCurve {
 }
 
 impl FeatureCurve {
+    /// Only a checked straight parameter chart; carrier ownership is checked by caller.
+    pub(crate) fn straight_parameter_direction(&self,axis:usize,planes:[([f64;3],f64);2])->Option<i8> {
+        if !self.t_min.is_finite()||!self.t_max.is_finite()||self.t_min>=self.t_max{return None;}
+        match &self.geom {
+            Geom::Segment {a,d,..} if a.iter().chain(d).all(|x|x.is_finite())&&d[axis]!=0.&&(0..3).all(|k|k==axis||d[k]==0.)=>{
+                for (n,offset) in planes {let k=(0..3).find(|&k|n[k]!=0.)?;if n[k].abs()!=1.||a[k]!=-offset/n[k]{return None;}}
+                Some(if d[axis]>0.{1}else{-1})
+            },
+            Geom::Traced(td)=>{
+                if td.n<2||td.samples.len()!=3*td.n||self.t_min<0.||self.t_max>(td.n-1) as f64{return None;}
+                let a=td.sa.certificate_plane()?;let b=td.sb.certificate_plane()?;
+                if !((a==planes[0]&&b==planes[1])||(a==planes[1]&&b==planes[0]))||td.samples.iter().any(|x|!x.is_finite()){return None;}
+                for (normal,offset) in planes {
+                    let fixed=(0..3).find(|&k|normal[k]!=0.)?;
+                    if fixed==axis||normal[fixed].abs()!=1.||td.samples.chunks_exact(3).any(|p|p[fixed]!=-offset/normal[fixed]) {return None;}
+                }
+                let mut direction=0;
+                for w in td.samples.chunks_exact(3).collect::<Vec<_>>().windows(2) {
+                    let d=w[1][axis]-w[0][axis];
+                    if !d.is_finite()||d==0. {return None;}
+                    let s=if d>0.{1}else{-1};
+                    if direction!=0&&direction!=s{return None;}direction=s;
+                }
+                (direction!=0).then_some(direction)
+            },
+            _=>None,
+        }
+    }
     /// Closest sampled projection restricted to one recorded, unwrapped arc.
     /// Trace parameters index adaptive knots, so their midpoint need not be
     /// near the geometric midpoint. Search only this interval's knot spans.

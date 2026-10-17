@@ -56,6 +56,16 @@ export interface MeshMdcDebugData {
 }
 
 export interface MeshSfccValidation {
+    /** Bounded abstract cell-relative coverage; no embedding or metric claim. */
+    localCoverage?: {
+        scope: "sphere" | "positiveBoxIntersection" | "outsideScope"
+        certifiedCells: number
+        transportedCells: number
+        excludedCells: number
+        outsideCells: number
+        unresolved: { cell: [number, number, number, number]; reason: string }[]
+        claim: "representedCellsOnly"
+    }
     /** Optional final-mesh audit for the experimental quality stages. */
     quality?: {
         beforeTriangles: number

@@ -751,9 +751,9 @@ pub(crate) fn build_pipeline_context<'a>(
     tuning: &PipelineTuning,
 ) -> PipelineContext<'a> {
     let pad = tuning.bounds_padding_mm;
-    // Lattice-degeneracy guard: offset the root cube by distinct irrational
-    // fractions of a max-depth cell so rational geometry never coincides with the
-    // dyadic lattice. Deterministic. (Same expression as the TS oracle.)
+    // Deterministic jitter avoids common grid alignments. Stored f64 offsets
+    // remain rational, so coverage checks must still detect exact contacts.
+    // Same expression as the TS oracle.
     let total_size = cube.size + 2.0 * pad;
     let step = total_size / ((1u64 << tuning.depth_max) as f64);
     let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
@@ -1019,6 +1019,7 @@ fn mesh_groups_separate(
                 PointKey::Unkeyed => merged.add(x, y, z, nx, ny, nz),
             };
             local_to_global[id] = gid;
+            assert_eq!(super::local_coverage::payload(&merged,gid),super::local_coverage::payload(&pt,id),"conflicting keyed point payload");
         }
         for rec in fr.faces.iter().flat_map(|m| m.values()) {
             for (i, seg) in rec.segments.iter().enumerate() {
@@ -1043,6 +1044,8 @@ fn mesh_groups_separate(
             if let Some(owner) = pt.patch(ids) { merged.set_patch(global, owner); }
             tris.extend(global);
         }
+        super::local_coverage::import_witnesses(&mut merged,std::mem::take(&mut pt.coverage),&local_to_global,&oct.lat,tree);
+        super::local_coverage::import_edge_failures(&mut merged,std::mem::take(&mut pt.coverage_edge_failures),&oct.lat,tree);
         failed_cells.extend(cm.failed_cells);
         fallback_cells.extend(cm.fallback_cells);
         multi_loop_cells += cm.multi_loop_cells;
@@ -1352,6 +1355,9 @@ fn run_sfcc_pipeline_impl(
                 };
             }
         }
+        for c in super::local_coverage::failed_cells(&points) {
+            if !cell_result.failed_cells.iter().any(|old|old.level==c.level&&old.key==c.key){cell_result.failed_cells.push(c);}
+        }
         // Failed cells re-refine every round; fallback cells get ONE forced round.
         let mut suspects: Vec<SfccCell> = Vec::new();
         for c in &cell_result.failed_cells {
@@ -1426,6 +1432,10 @@ fn run_sfcc_pipeline_impl(
         tree, features, &mut points, &cell_result.tris, lat.step, tuning, Some(&|label| emit(4, label)),
     );
     if crate::sfcc::cancel::is_cancelled() { return cancelled_pipeline_result(); }
+    // A completed quality edit can withdraw a local proof without making the
+    // earlier cell mesher fail. Re-running the same edit cannot restore it.
+    let withdrawn=super::local_coverage::failed_cells(&points).iter().filter(|c|
+        !c.degenerate&&!cell_result.failed_cells.iter().any(|old|old.level==c.level&&old.key==c.key)).count();
     let (verts, out_tris) = points.build_mesh(&refined);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
@@ -1447,6 +1457,7 @@ fn run_sfcc_pipeline_impl(
         re_refine_rounds,
     };
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.local_coverage=super::local_coverage::report(tree,&points);
     validation.quality = quality_audit;
     validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
         &points,
@@ -1462,7 +1473,7 @@ fn run_sfcc_pipeline_impl(
         AuditStatus::from_passed(face_audit_failures == 0 && face_result.boundary_violations == 0)
     };
     validation.unresolved_cells =
-        oct.degenerate_cells + cell_result.failed_cells.iter().filter(|c| !c.degenerate).count();
+        oct.degenerate_cells + cell_result.failed_cells.iter().filter(|c| !c.degenerate).count()+withdrawn;
     validation.feature_fallback_cells = cell_result.feature_cell_fallbacks;
     validation.numerical = validation::numerical_failures();
     validation.numerical.chord_budget += unresolved_triangles;

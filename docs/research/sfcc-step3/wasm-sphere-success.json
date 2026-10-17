@@ -1,0 +1,191 @@
+{
+  "name": "sphere-success",
+  "scene": {
+    "kind": "sphere",
+    "pos": [
+      0,
+      0,
+      0
+    ],
+    "r": 9
+  },
+  "cube": [
+    -10,
+    -10,
+    -10,
+    20
+  ],
+  "leaves": 2763,
+  "triangles": 6776,
+  "components": 1,
+  "unresolved": 0,
+  "stats": {
+    "leaves": 2763,
+    "faces": 11086,
+    "crossPoints": 3390,
+    "tris": 6776,
+    "failedCells": 0,
+    "degenerateCells": 0,
+    "featureCurves": 0,
+    "edgeCells": 0,
+    "cornerCells": 0,
+    "featureCellFallbacks": 0,
+    "reRefineRounds": 0,
+    "faceAuditFailures": 0,
+    "boundaryViolations": 0,
+    "manifoldOk": true,
+    "components": 1,
+    "openEdges": 0,
+    "nonManifoldEdges": 0,
+    "misorientedEdges": 0,
+    "euler": [
+      2
+    ],
+    "phaseFeatureMs": 0,
+    "phaseOctreeMs": 26,
+    "phaseContourMs": 26,
+    "phaseCellmeshMs": 130,
+    "phaseAssembleMs": 25,
+    "phaseOctreeDecideMs": 20,
+    "phaseOctreeApplyMs": 0,
+    "octreeRounds": [
+      [
+        2636,
+        18,
+        0
+      ],
+      [
+        57,
+        1,
+        0
+      ],
+      [
+        105,
+        1,
+        0
+      ],
+      [
+        23,
+        0,
+        0
+      ]
+    ],
+    "validation": {
+      "localCoverage": {
+        "scope": "sphere",
+        "certifiedCells": 2763,
+        "transportedCells": 0,
+        "excludedCells": 0,
+        "outsideCells": 0,
+        "unresolved": [],
+        "claim": "representedCellsOnly"
+      },
+      "quality": null,
+      "unresolvedBranchPaths": [],
+      "featureChains": {
+        "issues": [],
+        "status": "passed",
+        "scope": "compiledCurves",
+        "missingEdges": 0,
+        "missingCurves": 0,
+        "disconnectedCurves": 0,
+        "intervalGaps": 0,
+        "offCurveEdges": 0,
+        "invalidMemberships": 0,
+        "unidentifiedEdges": 0
+      },
+      "status": "passed",
+      "edgeIncidence": "passed",
+      "vertexLinks": "passed",
+      "faceSegments": "passed",
+      "vertexResiduals": "passed",
+      "triangleNondegeneracy": "passed",
+      "invalidTriangles": 0,
+      "unresolvedCells": 0,
+      "featureFallbackCells": 0,
+      "curveProjectionFailures": 0,
+      "faceProjectionFailures": 0,
+      "chordBudgetFailures": 0,
+      "offSurfaceVertices": 0,
+      "maxVertexResidual": 0.0017419004043048858,
+      "featureTrace": {
+        "pairsConsidered": 0,
+        "seedsFound": 0,
+        "curvesTraced": 0,
+        "tangencyBails": 0,
+        "tangentReversals": 0,
+        "correctionBails": 0,
+        "stepCapHits": 0,
+        "unresolvedDiscovery": 0,
+        "unresolvedTrims": 0
+      }
+    },
+    "nonManifoldVertices": 0
+  },
+  "ok": true,
+  "lattice": {
+    "depth": 8,
+    "origin": [
+      -12.00970813036812,
+      -12.017157440802395,
+      -12.005532843222651
+    ],
+    "size": 24,
+    "bits": [
+      "c02804f876ccdf6d",
+      "c02808c8dc2e4239",
+      "c02802d5336963ef",
+      "4038000000000000"
+    ]
+  },
+  "primitiveInputs": [
+    [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      9,
+      0,
+      0
+    ]
+  ],
+  "primitiveInputBits": [
+    [
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "4022000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ]
+  ]
+}

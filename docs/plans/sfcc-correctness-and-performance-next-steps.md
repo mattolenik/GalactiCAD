@@ -1,6 +1,6 @@
 # SFCC correctness and performance plan
 
-Status: execution in progress. Step 1 consensus diagnostics and broad acceptance gate are complete (324 default native tests, 176 profiling library tests plus 11 diagnosis tests, 26 WASM fixtures, and application build). Step 2 consensus and broad gate are complete from the Step 1 milestone (`5b9f190`): application build, 341 native tests, 34 WASM fixtures, and 180 profiling library plus 11 diagnosis tests passed. Step 3 starts from the Step 2 milestone; Step 4 remains pending. Starting implementation revision: `234f3cb`, including discovery implementation `e36db4a`.
+Status: execution in progress. Step 1 consensus diagnostics and broad acceptance gate are complete (324 default native tests, 176 profiling library tests plus 11 diagnosis tests, 26 WASM fixtures, and application build). Step 2 consensus and broad gate are complete from the Step 1 milestone (`5b9f190`): application build, 341 native tests, 34 WASM fixtures, and 180 profiling library plus 11 diagnosis tests passed. Step 3 consensus has selected and integrated bounded runtime coverage from the Step 2 milestone (`e028834`); its focused gate and coordinator acceptance gate passed (362 native tests, 36 WASM fixtures, 197 profiling library plus 23 integration tests, application build and independent exact replays). Step 4 begins from this accepted coverage milestone. Starting implementation revision: `234f3cb`, including discovery implementation `e36db4a`.
 
 The next work proceeds through four steps: identify the remaining failure mechanisms, establish sound numerical exclusion, strengthen discovery of Boolean-clipped components, and optimize repeated work. Each step has three independent competing agents followed by a distinct fourth consensus agent. The next step begins only after the preceding consensus has passed its acceptance gate.
 
@@ -216,6 +216,8 @@ Primary code: `sfcc/feature_set.rs`, `feature_curves.rs`, `seam_trace.rs`, `trim
 
 Expected artifacts: a bounded local coverage/acceptance contract, proof or exact counterexample for each proposed condition, independent geometric fixtures, an integrated implementation, and a revised failure ledger. General curved-CSG termination and unsupported blend/periodic families remain separate until their premises are addressed.
 
+Consensus deliverable: [Step 3 bounded local coverage](../research/sfcc-step3-coverage.md). The first research-only proposals were rejected; the selected rework independently certifies useful identity-sphere and positive aligned-box intersection cells, including complete atomic interfaces and internal creases, while a separate original signed-box guard marks responsible multisheet regions unresolved. Exact checked planar flips transport local correspondence; unproved quality edits withdraw it. Focused native and actual WASM checks passed, including both fixture extensions and raw worker gates. Coordinator broad validation and independent review also passed. Step 4 begins from the committed coverage result.
+
 ## Step 4 — Reduce repeated work without changing the accepted contract
 
 ### Question and deliverable
@@ -270,7 +272,7 @@ PATH="/Users/matt/.cargo/bin:$PATH" CARGO_NET_OFFLINE=true \
   make build -o setup TSX='node --import tsx'
 cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml \
   --workspace --no-fail-fast
-node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/*_test.mts
+node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/*_test.mts gcad-wasm/fixtures/*_test.mjs
 ```
 
 Verify installed toolchains at execution time. The previous native measurements used Homebrew Rust 1.99, while the installed Rustup 1.96 toolchain supplied the WASM target. Record the actual choices rather than assuming the default PATH has the required target. Rebuild a candidate's WASM artifact after kernel changes before running its fixtures.

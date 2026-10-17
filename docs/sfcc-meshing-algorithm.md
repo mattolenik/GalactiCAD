@@ -6,7 +6,9 @@ This document describes the implementation reviewed on September 7, 2026, includ
 
 The October 14, 2026 discovery update (`e36db4a`) adds necessary sphere/box visibility checks before cell acceptance. Its [proof and evaluation](research/sfcc-discovery-rule.tex) records the conditional guarantees, a remaining hidden-lens counterexample to guard sufficiency, and controlled performance measurements.
 
-The October 16 numerical-exclusion consensus adds checked enclosures for the real sphere/box hard-CSG field induced by the actual parsed and baked binary64 coefficients. Its [contract, caller audit and evidence](research/sfcc-step2-exclusion.md) separate that field from rounded evaluation, analytic carriers and legacy opaque operators. The coordinator broad gate is pending.
+The October 16 numerical-exclusion consensus adds checked enclosures for the real sphere/box hard-CSG field induced by the actual parsed and baked binary64 coefficients. Its [contract, caller audit and evidence](research/sfcc-step2-exclusion.md) separate that field from rounded evaluation, analytic carriers and legacy opaque operators. That numerical-exclusion milestone passed its coordinator broad gate (`e028834`).
+
+The October 17 [local-coverage consensus](research/sfcc-step3-coverage.md) adds bounded cell-relative certificates for actual identity spheres and positive aligned-box intersections, plus a necessary signed-box multiple-root guard. Its focused native/WASM gate passed; the coordinator broad gate remains in progress. These certificates preserve abstract indexed topology and canonical interfaces, not f32 embedding or Hausdorff distance.
 
 Audience: developers familiar with isosurface extraction (marching cubes, dual contouring) but new to this codebase.
 
@@ -20,7 +22,7 @@ SFCC is a **primal, face-sharing contouring method in the CMS (cubical marching 
 
 2. **Stratified octree refinement with bounded budgets.** An adaptive octree attempts to make each leaf *simple*: at most one routable feature curve through it (or exactly one claimed corner), and per-stratum smoothness checks (sampled normal-variation cones and edge derivatives) pass. Original-tree sphere/box discovery checks also run before acceptance, including corner cells (§5.3.1). At the depth ceiling, unresolved leaves remain explicitly tagged degenerate. Smoothness is checked **per stratum** against each patch's own analytic carrier — this is what lets refinement terminate at a crease instead of chasing the globally-kinked field forever. Blend bands are checked against the tree's own gradient cone; supported chamfer patches additionally provide carriers for feature tracing and meshing.
 
-3. **Deterministic shared identity.** Shared crossings are interned under integer/string *provenance keys* (cell-local interior points are unkeyed); edge roots are computed after canonicalizing endpoint order; leaves are sorted; the lattice origin is jittered by irrational offsets. These choices stabilize repeat runs and partition merging. Regression fixtures check repeatability and serial/partition agreement; they do not prove arbitrary traversal, platform, or partition independence. Worker exports may recover by rerunning serially (§7.2).
+3. **Deterministic shared identity.** Shared crossings are interned under integer/string *provenance keys* (cell-local interior points are unkeyed); edge roots are computed after canonicalizing endpoint order; leaves are sorted; the lattice origin is jittered by deterministic binary64 offsets. These choices stabilize repeat runs and partition merging. Regression fixtures check repeatability and serial/partition agreement; they do not prove arbitrary traversal, platform, or partition independence. Worker exports may recover by rerunning serially (§7.2).
 
 The final mesh ships with **explicit validation status**: topology, face consumption, final vertex residuals, emitted-triangle nondegeneracy, and unresolved numerical/refinement work. Bounded re-refinement and heuristic cleanup precede final validation. A returned mesh may be incomplete or fail its audits.
 
@@ -37,15 +39,15 @@ not assumed identical for every operation.
 ```mermaid
 flowchart TD
     A["Scene JSON (TS scene-bridge.mts)"] --> B["Scene bridge: build_csg_tree_from_json<br/>(scene_bridge.rs) — pure Min/Max/Blend over<br/>similarity-baked signed leaves"]
-    B --> C["S0: build_pipeline_context (pipeline.rs)<br/>padded + irrationally-jittered lattice,<br/>resolved tolerances, coarse-prune cache"]
+    B --> C["S0: build_pipeline_context (pipeline.rs)<br/>padded + deterministically jittered lattice,<br/>resolved tolerances, coarse-prune cache"]
     C --> D["S1: compile_feature_set (feature_set.rs)<br/>S1a native strata/curves/corners<br/>S1b native/generated carrier-pair tracing<br/>lifted operand branches (branch_surfaces.rs)<br/>S1c ancestor-domain trim + corner wiring"]
     D --> E["S2: build_octree (octree.rs)<br/>interval empty-cull, round-batched<br/>decide/apply, 2:1 balance,<br/>feature classification + primitive discovery<br/>+ sampled smoothness checks"]
     E --> F["S3a: contour_all_faces (face_contour.rs)<br/>once per canonical face: crossings,<br/>feature pins, directed segments"]
-    F --> G["S3b: mesh_all_cells (cell_mesh.rs)<br/>loop assembly, disk triangulation,<br/>crease polylines, corner fans, local feature graphs"]
+    F --> G["S3b: mesh_all_cells (cell_mesh.rs)<br/>loop assembly, disk triangulation,<br/>crease polylines, corner fans, local feature graphs<br/>+ bounded local coverage verification"]
     G --> H{"failed / fallback cells<br/>below depth_max?"}
     H -- "yes, round < re_refine_max_rounds (2)" --> I["ForcedMarkers → rebuild octree<br/>from scratch (accumulated markers)"]
     I --> E
-    H -- no --> J["S4: audits + assembly (pipeline.rs)<br/>face-segment audit → coincident-pair drop<br/>→ debris drop → coincident-pair drop<br/>→ sliver flip → sampled blend triangle refinement<br/>→ f32 mesh → topology + residual checks"]
+    H -- no --> J["S4: audits + assembly (pipeline.rs)<br/>face-segment audit → coincident-pair drop<br/>→ debris drop → coincident-pair drop<br/>→ checked planar-flip proof transport<br/>→ sampled blend refinement + proof withdrawal<br/>→ f32 mesh → topology + residual checks"]
     J --> K["SfccPipelineResult<br/>stride-8 verts + u32 tris + ok/stats"]
 ```
 
@@ -90,7 +92,7 @@ Production projection uses analytical derivatives. Tests use converging scalar f
 
 `build_pipeline_context` (`pipeline.rs`) runs once per export:
 
-- **Padding + irrational jitter.** The world cube is padded by `bounds_padding_mm` (default 2 mm). The lattice origin is then offset per axis by *distinct irrational fractions of one max-depth cell step*: with `step = total_size / 2^depth_max`, the offsets are `(√2−1)·0.25·step`, `(√3−1)·0.25·step`, `(√5−2)·0.25·step` (`pipeline.rs`). Deterministic (no RNG), this is the lattice-degeneracy guard: it reduces common grid alignments but floating-point rounding and user-selected coordinates can still produce coincidences.
+- **Padding + deterministic jitter.** The world cube is padded by `bounds_padding_mm` (default 2 mm). The lattice origin is then offset per axis by *distinct rounded fractions of one max-depth cell step*: with `step = total_size / 2^depth_max`, the offsets are `(√2−1)·0.25·step`, `(√3−1)·0.25·step`, `(√5−2)·0.25·step` (`pipeline.rs`). The stored offsets are rational binary64 values. Deterministic (no RNG), this is the lattice-degeneracy guard: it reduces common grid alignments but floating-point rounding and user-selected coordinates can still produce coincidences.
 - **Feature compilation** (§4 below) is invoked from here (`compile_feature_set`, `pipeline.rs`).
 - **Resolved tolerances** (`tolerances.rs`): the mm/degree/factor knobs are resolved once into absolute world-space values (§8.1).
 - **Precomputation**: global `grad_bound`, `has_blend`, certificate thresholds stored as cosines, and a coarse-prune gate (enabled only when the tree has > 12 leaves).
@@ -267,6 +269,8 @@ This is deliberately the **single code path** shared by the serial driver and th
 
 #### 5.3.1 Necessary primitive discovery
 
+For exact identity-box hard trees, a separate necessary guard first enumerates at most 128 distinct edge-plane events and folds inside/zero/outside signs through every original signed occurrence. It detects multiple roots on opposite-sign edges as well as tangencies and zero intervals. Event deduplication does not merge occurrences; 256 duplicate boxes retain linear primitive work. Exhausted budgets remain indeterminate. The common cell mesher also checks actual minimal atomic-face edges, including 2:1 face-interior edges absent from the twelve outer cell edges. A necessary pass does not certify general hard CSG.
+
 `CsgNode::zero_owners_over_box` traverses original signed sphere/cuboid occurrences, retaining a candidate only when its own interval and every ancestor interval include zero. Exclusion is strict; an interval touching zero remains possible. Hard min/max bounds compose through the actual ancestry, including normalized subtraction. Occurrences retain their identity even when indices or geometry coincide.
 
 Each retained primitive must have reliable mixed corner signs. Every edge with equal endpoint signs and every face with homogeneous corner signs must have a primitive interval strictly excluding zero. Otherwise the cell requests subdivision. Fully supported hard trees also require reliable mixed root corner signs when the root interval includes zero. Invalid supported arithmetic is `Indeterminate` and requests a split. Blend subtrees and unsupported leaves are opaque scopes: they do not force subdivision alone, but cannot suppress checks on retained supported siblings. Normal and curvature settings cannot disable discovery.
@@ -343,6 +347,16 @@ Baseline cell queries may use the existing gated `prune_to_box` experiment (half
 
 **Fallback.** Feature cells whose special path cannot run (pins don't route, loops don't line up) fall back to smooth meshing, subject to loop and topology checks, and are counted as `feature_cell_fallbacks` for exactly one forced re-refinement round.
 
+### 6.2.1 Bounded local coverage (`local_coverage.rs`)
+
+The common `mesh_cells_subset` verifies every supported cell, including empty-output branches. Full scope is one positive sphere or a nonempty positive intersection of aligned boxes, with actual `R=I`, `s=1`, `t=0`, finite positive dimensions, exact box endpoints and exact nominal/actual lattice maps. Outside-family and outside-grid cases retain legacy behavior and an explicit scope limit. Supported failed obligations use existing local failed-cell/refinement paths.
+
+Independent exact predicates enumerate all roots and complete atomic face traces. A sphere needs strict endpoint signs, whole same-sign-edge exclusion, whole empty-face exclusion, one complete boundary loop and no internal whole sphere. Box obligations come from independently clipped target rectangles, retaining every original extremizer occurrence/path and the complete internal crease/corner graph. Every actual rectangle subpatch must fill its full boundary with correctly owned, continuous curve parameters. Open-arc sampling preserves canonical endpoint parameters exactly.
+
+The actual indexed filling must be a connected orientable disk with one boundary cycle, consistent edge use, connected vertex links and Euler characteristic one. Its boundary matches the independently generated, oriented canonical face chains. Shared face identity includes axis, key and length, and 2:1 quarter faces use the actual minimal subedges. These disk maps extend and agree on shared interfaces; box maps additionally preserve all internal subpatch/crease boundaries. This is an abstract cell-relative correspondence, not a claim that every straight triangle lies on the exact zero set.
+
+`validation.localCoverage` reports certified/excluded/outside cells and local unresolved reasons. The mandatory radius-9 sphere and clipped two-input box retain 2,763 and 132 certificates with zero unresolved cells. The coarse three-sheet adversary has 72 explicitly unresolved cells; a successful root guard or manifold output is never substituted for a full certificate. The [consensus proof and evidence](research/sfcc-step3-coverage.md) states the exact scope and arithmetic premises.
+
 ### 6.3 The re-refinement loop (`pipeline.rs`)
 
 After each contour + mesh pass:
@@ -378,6 +392,8 @@ Run once, after the loop:
 Root-boundary faces must have zero crossings (the bounds-padding contract); violations are counted as `boundary_violations`.
 
 Nonzero `featureTrace.unresolvedDiscovery` or `featureTrace.unresolvedTrims` also prevents `ok`; serial and worker validation use the compilation counters once, rather than summing repeated worker feature builds.
+
+Local certificates snapshot owned indexed triangles, point keys/payloads and all edge memberships. Cleanup preserves them only for unchanged data or through the actual verified planar 2–2 flip sequence: a common refinement retains original cell and face cuts as virtual boundaries. Other quality edits withdraw affected proofs without disabling the edits or inventing mesher failures that trigger redundant serial recovery. `build_mesh` only injectively renumbers indices and rounds payload, with a checked u32 vertex count.
 
 ### 7.2 Work partitioning
 
@@ -480,9 +496,9 @@ The old nearest-child fallback for non-Round blends has been removed. Scalar/pai
 | `Sampler` / `SampleView` | `octree.rs` | The single corner-sample map (raw `tree.f` values only); read view with direct-eval miss fallback. |
 | `ResumableOctreeBuild` | `octree.rs` | Borrow-free per-round build state held across JS round-trips. |
 | `FaceRecord` / `FaceSegment` / `FacePin` | `face_contour.rs` | Per canonical face: directed segments (point-id pairs), curve pins with projection tolerances, consumption counters. Stored per axis keyed by min-corner lattice key (keys collide across levels; consumers validate `len`). |
-| `PointTable` / `PointKey` (Num/Str/Unkeyed) | `point_table.rs` | Global vertex pool. Num = `latticeKey·8+axis` edge crossings; Str = pins/corners/repair midpoints; Unkeyed = cell-local (interior fans, in-cell polylines — never deduped). First-writer-wins; the cross-partition merge identity. |
+| `PointTable` / `PointKey` (Num/Str/Unkeyed) | `point_table.rs` | Global vertex pool. Num = `latticeKey·8+axis` edge crossings; Str = pins/corners/repair midpoints; Unkeyed = cell-local (interior fans, in-cell polylines — never deduped). Provenance identity is shared across partitions; merging now requires equal keyed payloads. |
 | `ForcedMarker` | `pipeline.rs` | Failed/fallback cell center + level; forces splits on octree rebuild. |
-| Wire formats | `worker.rs` | "SFL3" tagged leaves + feature-graph fingerprint + lattice; "SFDC" frontier decisions; "SFP4" partial mesh (f64 stride-8 verts + keys + tris + analytical patch IDs + crease locks + curve intervals + fingerprint + face uses + counters). |
+| Wire formats | `worker.rs` | "SFL3" tagged leaves + feature-graph fingerprint + lattice; "SFDC" frontier decisions; "SFP5" partial mesh: existing f64 geometry/feature data plus lattice, full-scope signature, per-cell ownership, local proof records and negative edge-guard evidence. The master reconstructs obligations and complete lifecycle snapshots; no intended prepared-leaf manifest is claimed. |
 | `ManifoldReport` / `SfccStats` / `SfccPipelineResult` | `manifold_check.rs`, `pipeline.rs` | Audit verdict; counters; output bundle (stride-8 f32 verts, u32 tris, ok, cancelled, phase timings). |
 
 ---
@@ -497,6 +513,7 @@ The `featureTrace` report retains deterministic compilation counters once per ex
 - Shared face records and the consumption audit check opposite traversal of neighboring boundaries. Final edge incidence and vertex links check combinatorial topology.
 - Closed-form feature curves and numerical carrier-pair projections guide crease vertices. Projection failures are counted. Circles use their sagitta formula; traced curves use projected quarter-point and midpoint chord checks with an explicit budget. These sampled checks do not prove continuous feature completeness.
 - Closed small components survive debris cleanup. Protected crease edges survive sliver flips. Cleanup remains heuristic for other components and does not prove geometric embedding.
+- `localCoverage` separately certifies the bounded identity-sphere/positive-box classes and preserves responsible unresolved reasons. Master worker verification reconstructs obligations and snapshots from actual merged data; serialized success flags and incomplete snapshots are insufficient. Intended full partition coverage remains outside this per-represented-cell claim.
 - `ok` requires the audits and numerical/refinement budgets described in §7.1. It does not certify triangle-interior error, absence of geometric self-intersection, or a Hausdorff bound.
 
 ---
@@ -511,8 +528,8 @@ The recent fixes address several related layers: using the correct operand field
 | Columns | The current modulo formula has a finite sign-changing jump in the audited `r=1, n=3` example. Smooth zero-set tracing and Lipschitz reasoning do not cover a discontinuity. Operator semantics and periodic-count validation need resolution. |
 | Nested branch choices | Ancestor partners and paired loft edges are explicit, including tested simultaneous profile changes. Supporting sibling fields and some activation/endpoint families remain internally piecewise. A complete spatially adaptive adjacency graph across arbitrary nested regions is not implemented; bounded expansions report exhausted source paths. |
 | Discovery and trimming | Finite seeds, sampled domain/flank tests, tangency cutoffs and bounded tracing can miss components or junctions. Small-loop and nearby-component tests constrain particular failures, not every possible feature. |
-| Represented transforms | Numerical bounds honor the stored matrix transpose, but existing sphere/box analytic carriers are not thereby proved identical under approximate rotations. Step 3 must state the carrier/field relation. |
-| Primitive discovery | The original-tree sphere/box guard rejects an exposed supported primitive wholly contained in a cell, and the tested invisible edge/face contours, subject to sound bounds. It does not certify components formed by Boolean clipping; the lens example passes. Opaque scopes and Boolean-clipped component completeness remain outside the result; numerical exclusion is separately proved for the declared represented hard field. |
+| Represented transforms | Numerical bounds honor the stored matrix transpose, but existing sphere/box analytic carriers are not thereby proved identical under approximate rotations. The local-coverage theorem checks actual identity transforms and exact endpoints; other coherent transforms retain the broader numerical bound and their explicit coverage limitation. |
+| Primitive discovery | The original-tree sphere/box guard rejects an exposed supported primitive wholly contained in a cell, and the tested invisible edge/face contours, subject to sound bounds. It does not certify components formed by Boolean clipping; the lens example passes. A separate bounded sphere/positive-box-intersection certificate and signed-box edge guard now address their declared classes (§6.2.1). General Boolean-clipped completeness remains outside that theorem; numerical exclusion is separately proved for the declared represented hard field. |
 | Mesh preservation | Curve IDs and oriented intervals survive creation, refinement, cleanup accounting, compaction and tested real worker merges. The new chain audit reveals remaining gaps in housing/bracket, particularly around feature-cell fallbacks. Independent expected-arc-to-connected-output-chain tests cover reduced controls, not all accepted scenes. Local graph meshing still requires one boundary loop and does not solve every high-valence arrangement. |
 | Shader normals | Native/WASM and GPU full/Mid queries compose raw derivatives. The former nested-soft discrepancy is fixed. GPU cylinder/blob/loft/thread derivatives remain numerical, branch boundaries need one-sided interpretation, and not every GPU/native scalar expression is identical. See §2.2 and the GPU composition results. |
 | Periodic complements | Compound subtraction is corrected for supported complements. A columns-containing RHS is rejected at the bridge boundary; direct periodic operators retain their existing behavior and limitations. |
@@ -550,11 +567,12 @@ The completed implementation audit recorded 206 native tests and 357 application
 | `output_geometry.rs`, `sfcc-validation_test.mts` | Output collapse after f32 conversion fails serial and partitioned validation while nondegenerate controls pass. |
 | `primitive_scale.rs`, GPU primitive-scale regression | Ordinary/tiny polygon and lathe fields, analytic segment-interior normals, endpoint regions, duplicate edges, and genuine axis handling agree across native and generated full/Mid/Fast queries. |
 | `feature_trimming.rs`, `loft_feature_identity.rs`, `curve_index.rs` | Carrier-length/phase-independent box clipping, shallow exposure and explicit rank limits, unique equivalent loft/box/cylinder features, source-domain preservation, and conservative represented-curve lookup. |
+| `coverage_obstruction.rs`, local-coverage unit tests, `sfcc-coverage-obstruction_test.mjs` | Independent local sphere/cuboid obligations, all four cut creases, responsible multisheet uncertainty, atomic 2:1 edges, worker snapshot/identity mutations, checked planar-flip transport and explicit quality withdrawal. Include `*_test.mjs` alongside `*_test.mts` in test discovery. |
 | `discovery_contract.rs`, `diagnosis_contract.rs` (profile + serde), discovery library tests, `sfcc-discovery_test.mts` | Signed ancestor ownership, strict exclusion, hidden primitives, independent edge/face controls, transforms, actual coarse pruning, depth ceilings, and real 1/2/4/8 WASM worker decisions/merges with separate no-recovery and recovery cases. |
 
 The original adversarial controls run normally, including the concave sliver-flip counterexample, oblique-blend curvature-bound rejection, and hidden sphere beside an already sampled box. The hidden-sphere regression now checks that its actual finest cell remains unresolved at default depth; with depth 14 and a tighter surface tolerance, two components reconstruct but 36 cells remain unresolved. Sliver tests additionally cover valid planar flips, nonplanar rejection, float32 rounding, protected edges and ambiguous incidence. General curved trimming, incomplete branch families, conservative loft refinement limits, and the other limitations in §11 remain separate. The [refinement-obstruction review](research/sfcc-refinement-obstruction-review.tex) and `scripts/check-sfcc-refinement-obstruction.py` concern an exact fixed-grid mathematical rule, not certification of the current exporter.
 
-Step 1 now attributes all 36 fine hidden-sphere cells to the first executed sampled stratum-normal test (21 also fail a later, explicitly counterfactual edge replay). The ordinary full-domain Bridge lens reconstructs two components while reporting 267 unresolved cells. An aligned finest-cell lens instead reaches the contained-curve feature rejection and remains one localized unresolved cell; worker recovery is reported separately. At depth 10, lens debris and 12 invalid triangles originate in already-unresolved cell meshes, without demonstrating an accepted-cell discovery defect. The profile-only observer records branch, subdivision and recovery provenance without evaluating geometry; exact triangle audits run after capture. See the [Step 1 consensus and frozen ledgers](research/sfcc-step1-diagnosis.md) for scope, inputs and reproduction. Numerical exclusion and general clipped-component coverage remain open.
+Step 1 now attributes all 36 fine hidden-sphere cells to the first executed sampled stratum-normal test (21 also fail a later, explicitly counterfactual edge replay). The ordinary full-domain Bridge lens reconstructs two components while reporting 267 unresolved cells. An aligned finest-cell lens instead reaches the contained-curve feature rejection and remains one localized unresolved cell; worker recovery is reported separately. At depth 10, lens debris and 12 invalid triangles originate in already-unresolved cell meshes, without demonstrating an accepted-cell discovery defect. The profile-only observer records branch, subdivision and recovery provenance without evaluating geometry; exact triangle audits run after capture. See the [Step 1 consensus and frozen ledgers](research/sfcc-step1-diagnosis.md) for scope, inputs and reproduction. Numerical exclusion is now established for its Step 2 field/region contract. Step 3 supplies bounded local coverage for the declared identity classes; general clipped-component coverage remains open.
 
 The discovery checkpoint passed the application/WASM build, 324 native tests with no failures or ignored tests, and all 23 WASM fixture tests. Separate profiling checks and the standalone proof-note compilation also passed. No visual QA or absent external TS binary-oracle comparison is claimed. The [discovery evaluation](research/sfcc-discovery-rule.tex) and [raw measurements](research/sfcc-discovery-costs.jsonl) record the native performance cost and remaining proof obligations.
 

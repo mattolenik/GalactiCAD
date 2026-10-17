@@ -118,6 +118,12 @@ impl Dyadic {
         self.add_signed(b, b.negative)
     }
     fn add_signed(&self, b: &Self, b_negative: bool) -> Self {
+        if b.limbs.is_empty() { return self.clone(); }
+        if self.limbs.is_empty() {
+            let mut out = b.clone();
+            out.negative = b_negative;
+            return out;
+        }
         let exponent = self.exponent.min(b.exponent);
         let mut a = self.shifted(exponent);
         let mut b_limbs = b.shifted(exponent);
@@ -186,6 +192,22 @@ fn trim(x: &mut Limbs) {
 }
 fn difference(a: f64, b: f64) -> Dyadic {
     Dyadic::from(a).sub(&Dyadic::from(b))
+}
+
+/// Exact certificate predicates on the represented finite inputs.
+pub(crate) fn exact_affine_eq(a: f64, b: f64, t: f64, value: f64) -> bool {
+    [a,b,t,value].iter().all(|x| x.is_finite()) &&
+        Dyadic::from(a).add(&Dyadic::from(b).mul(&Dyadic::from(t))).sub(&Dyadic::from(value)).sign()==0
+}
+pub(crate) fn exact_sum_sign(a: f64,b: f64,c: f64) -> Option<i8> {
+    [a,b,c].iter().all(|x|x.is_finite()).then(||
+        Dyadic::from(a).add(&Dyadic::from(b)).sub(&Dyadic::from(c)).sign())
+}
+pub(crate) fn sphere_sign(p: [f64;3], c: [f64;3], r:f64) -> Option<i8> {
+    if !p.iter().chain(&c).chain(std::iter::once(&r)).all(|x|x.is_finite()) || r<=0. {return None;}
+    let d:[Dyadic;3]=std::array::from_fn(|a|difference(p[a],c[a]));
+    Some(d[0].mul(&d[0]).add(&d[1].mul(&d[1])).add(&d[2].mul(&d[2]))
+        .sub(&Dyadic::from(r).mul(&Dyadic::from(r))).sign())
 }
 fn cross(a: &[Dyadic; 2], b: &[Dyadic; 2]) -> Dyadic {
     a[0].mul(&b[1]).sub(&a[1].mul(&b[0]))

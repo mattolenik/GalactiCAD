@@ -1,0 +1,9 @@
+{
+  "triangles": 656,
+  "completeOrientedPlanarFaces": 6,
+  "completeRectangularEdges": 12,
+  "cutFaceOwner": "second box",
+  "exposedCrossOperandCreases": 4,
+  "claim": "positive planar triangle chains fill all six exact rectangles once",
+  "notClaimed": "per-cell nominal-domain certificates or analytical feature-parameter correspondence"
+}

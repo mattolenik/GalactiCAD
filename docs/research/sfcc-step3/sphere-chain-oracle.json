@@ -1,0 +1,29 @@
+{
+  "triangles": 6776,
+  "positiveRadialJacobians": 6776,
+  "genericRayDegree": 1,
+  "claim": "radial projection covers every direction once away from projected mesh edges",
+  "facePreservationCounterexample": {
+    "faceX": 3,
+    "endpoints": [
+      [
+        3,
+        6,
+        6
+      ],
+      [
+        3,
+        -6,
+        6
+      ]
+    ],
+    "chordMidpoint": [
+      3,
+      0,
+      6
+    ],
+    "projectedMidpointXSquared": "81/5",
+    "faceXSquared": 9
+  },
+  "notClaimed": "the radial projection preserves the octree face traces or local cell responsibility"
+}

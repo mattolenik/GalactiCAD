@@ -32,7 +32,7 @@ pub(crate) fn finish(
         && !tuning.quality_remeshing
         && !tuning.quality_audit
     {
-        let (flipped, _) = super::sliver_flip::flip_sliver_triangles(points, &tris, 4);
+        let (flipped, _, transport) = super::local_coverage::flip_with_transport(points, &tris, 4);
         let (tris, unresolved) = super::surface_refine::refine_surface(
             tree,
             features,
@@ -40,9 +40,11 @@ pub(crate) fn finish(
             &flipped,
             tuning.curve_chord_tol_mm,
         );
+        super::local_coverage::finish_with_transport(points, &ordered, &tris, transport.as_ref());
         return (tris, unresolved, None);
     }
     let mut audit = QualityAudit::default();
+    let mut flip_transport = None;
     let before = q::measure(points, &tris);
     audit.before_triangles = before.triangles;
     audit.before_slivers = before.slivers;
@@ -67,7 +69,8 @@ pub(crate) fn finish(
         && !tuning.quality_refinement
         && !tuning.quality_remeshing
     {
-        let (out, n) = super::sliver_flip::flip_sliver_triangles(points, &tris, 4);
+        let (out, n, transport) = super::local_coverage::flip_with_transport(points, &tris, 4);
+        flip_transport = transport;
         tris = out;
         audit.flips = n;
     }
@@ -146,9 +149,7 @@ pub(crate) fn finish(
             audit.geometry_failures += 1;
         }
         for j in index.query(p) {
-            if j < i
-                && super::mesh_edit::intersects_both(p, geo[j], ids[i], ids[j])
-            {
+            if j < i && super::mesh_edit::intersects_both(p, geo[j], ids[i], ids[j]) {
                 audit.intersections += 1;
             }
         }
@@ -159,5 +160,6 @@ pub(crate) fn finish(
         } else {
             unresolved
         };
+    super::local_coverage::finish_with_transport(points, &ordered, &tris, flip_transport.as_ref());
     (tris, unresolved, Some(audit))
 }

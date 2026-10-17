@@ -70,6 +70,10 @@ pub fn interior_key(lattice_key: i64) -> i64 {
 /// Positions and normals are stored flat (xyz triples), indexed by point id.
 #[derive(Default)]
 pub struct PointTable {
+    pub(crate) coverage: Vec<super::local_coverage::Witness>,
+    pub(crate) coverage_edge_failures: Vec<super::local_coverage::EdgeFailure>,
+    pub(crate) coverage_cells: HashSet<super::local_coverage::CellId>,
+    pub(crate) coverage_faces: HashMap<(usize,i64,i64),(usize,usize)>,
     pos: Vec<f64>,
     normal: Vec<f64>,
     by_num_key: HashMap<i64, usize>,
@@ -301,7 +305,8 @@ impl PointTable {
                 slot
             });
         }
-        let mut verts = vec![0f32; order.len() * 8];
+        assert!(order.len()<=u32::MAX as usize,"mesh vertex index exceeds u32");
+        let mut verts = vec![0f32; order.len().checked_mul(8).expect("mesh vertex payload length overflow")];
         for (slot, &id) in order.iter().enumerate() {
             let o = slot * 8;
             verts[o] = self.pos[id * 3] as f32;

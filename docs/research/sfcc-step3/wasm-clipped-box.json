@@ -1,0 +1,242 @@
+{
+  "name": "clipped-box",
+  "scene": {
+    "kind": "intersect",
+    "lh": {
+      "kind": "box",
+      "pos": [
+        0,
+        0,
+        0
+      ],
+      "half": [
+        1,
+        1,
+        1
+      ]
+    },
+    "rh": {
+      "kind": "box",
+      "pos": [
+        -1.75,
+        0,
+        0
+      ],
+      "half": [
+        2.25,
+        4,
+        4
+      ]
+    }
+  },
+  "cube": [
+    -4,
+    -4,
+    -4,
+    8
+  ],
+  "leaves": 132,
+  "triangles": 656,
+  "components": 1,
+  "unresolved": 0,
+  "stats": {
+    "leaves": 132,
+    "faces": 532,
+    "crossPoints": 330,
+    "tris": 656,
+    "failedCells": 0,
+    "degenerateCells": 0,
+    "featureCurves": 12,
+    "edgeCells": 44,
+    "cornerCells": 8,
+    "featureCellFallbacks": 0,
+    "reRefineRounds": 0,
+    "faceAuditFailures": 0,
+    "boundaryViolations": 0,
+    "manifoldOk": true,
+    "components": 1,
+    "openEdges": 0,
+    "nonManifoldEdges": 0,
+    "misorientedEdges": 0,
+    "euler": [
+      2
+    ],
+    "phaseFeatureMs": 8,
+    "phaseOctreeMs": 9,
+    "phaseContourMs": 6,
+    "phaseCellmeshMs": 21,
+    "phaseAssembleMs": 15,
+    "phaseOctreeDecideMs": 6,
+    "phaseOctreeApplyMs": 0,
+    "octreeRounds": [
+      [
+        132,
+        6,
+        0
+      ]
+    ],
+    "validation": {
+      "localCoverage": {
+        "scope": "positiveBoxIntersection",
+        "certifiedCells": 132,
+        "transportedCells": 0,
+        "excludedCells": 0,
+        "outsideCells": 0,
+        "unresolved": [],
+        "claim": "representedCellsOnly"
+      },
+      "quality": null,
+      "unresolvedBranchPaths": [],
+      "featureChains": {
+        "issues": [],
+        "status": "passed",
+        "scope": "compiledCurves",
+        "missingEdges": 0,
+        "missingCurves": 0,
+        "disconnectedCurves": 0,
+        "intervalGaps": 0,
+        "offCurveEdges": 0,
+        "invalidMemberships": 0,
+        "unidentifiedEdges": 0
+      },
+      "status": "passed",
+      "edgeIncidence": "passed",
+      "vertexLinks": "passed",
+      "faceSegments": "passed",
+      "vertexResiduals": "passed",
+      "triangleNondegeneracy": "passed",
+      "invalidTriangles": 0,
+      "unresolvedCells": 0,
+      "featureFallbackCells": 0,
+      "curveProjectionFailures": 0,
+      "faceProjectionFailures": 0,
+      "chordBudgetFailures": 0,
+      "offSurfaceVertices": 0,
+      "maxVertexResidual": 0,
+      "featureTrace": {
+        "pairsConsidered": 1,
+        "seedsFound": 24,
+        "curvesTraced": 4,
+        "tangencyBails": 0,
+        "tangentReversals": 0,
+        "correctionBails": 0,
+        "stepCapHits": 0,
+        "unresolvedDiscovery": 0,
+        "unresolvedTrims": 0
+      }
+    },
+    "nonManifoldVertices": 0
+  },
+  "ok": true,
+  "lattice": {
+    "depth": 8,
+    "origin": [
+      -6.00485406518406,
+      -6.008578720401197,
+      -6.002766421611326
+    ],
+    "size": 12,
+    "bits": [
+      "c01804f876ccdf6d",
+      "c01808c8dc2e4239",
+      "c01802d5336963ef",
+      "4028000000000000"
+    ]
+  },
+  "primitiveInputs": [
+    [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      -1.75,
+      0,
+      0,
+      1,
+      1,
+      2.25,
+      4,
+      4
+    ]
+  ],
+  "primitiveInputBits": [
+    [
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000"
+    ],
+    [
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "bffc000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "3ff0000000000000",
+      "3ff0000000000000",
+      "4002000000000000",
+      "4010000000000000",
+      "4010000000000000"
+    ]
+  ]
+}

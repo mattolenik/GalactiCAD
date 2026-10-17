@@ -106,7 +106,7 @@ impl<'a> Reader<'a> {
 }
 
 const LEAVES_MAGIC: u32 = 0x5346_4C33; // "SFL3": semantic field/domain fingerprint
-const PARTIAL_MAGIC: u32 = 0x5346_5034; // "SFP4": per-triangle analytical patch ownership
+const PARTIAL_MAGIC: u32 = 0x5346_5035; // "SFP5": lattice and owned local coverage witnesses
 
 // ---------------------------------------------------------------------------
 // Phase 1 — prepare: tagged octree → byte buffer.
@@ -325,6 +325,7 @@ struct PartialCounters {
     degenerate_cells: u64,
     numerical: NumericalFailures,
     failed_cells: u64,
+    failed_degenerate: u64,
     multi_loop_cells: u64,
     edge_cells: u64,
     corner_cells: u64,
@@ -365,6 +366,62 @@ fn get_key(r: &mut Reader) -> PointKey {
     }
 }
 
+fn put_coverage(out:&mut Vec<u8>,witnesses:&[super::local_coverage::Witness]) {
+    put_u64(out,witnesses.len() as u64);
+    for w in witnesses {
+        assert!(!w.transported,"post-assembly virtual cells cannot be sent as raw worker cells");
+        put_leaf(out,&w.cell);
+        let reason=w.reason.as_deref().unwrap_or("");
+        put_u64(out,reason.len() as u64);out.extend(reason.as_bytes());
+        put_u64(out,w.triangles.len() as u64);
+        for t in &w.triangles {for &i in t {put_u64(out,i as u64);}}
+        put_u64(out,w.vertices.len() as u64);
+        for (i,key,payload) in &w.vertices {put_u64(out,*i as u64);put_key(out,key);for &v in payload {put_u64(out,v);}}
+        put_u64(out,w.faces.len() as u64);
+        for f in &w.faces {
+            put_u64(out,f.axis as u64);put_i64(out,f.key);put_i64(out,f.len);
+            put_u64(out,f.chain.len() as u64);for &i in &f.chain {put_u64(out,i as u64);}
+            put_u64(out,f.mapped.len() as u64);for p in &f.mapped {for &v in p {put_u64(out,v);}}
+            put_u64(out,f.pins.len() as u64);for &(i,c,t) in &f.pins {put_u64(out,i as u64);put_u64(out,c as u64);put_u64(out,t);}
+            put_u64(out,f.roots.len() as u64);for r in &f.roots {put_u64(out,r.point as u64);put_u64(out,r.axis as u64);for x in r.start {put_i64(out,x);}put_i64(out,r.len);}
+        }
+        put_u64(out,w.curves.len() as u64);
+        for (a,b,c) in &w.curves {put_u64(out,*a as u64);put_u64(out,*b as u64);put_u64(out,c.curve_id as u64);put_f64(out,c.start);put_f64(out,c.end);}
+    }
+}
+fn get_coverage(r:&mut Reader,lat:&SfccLattice,vertices:usize)->Vec<super::local_coverage::Witness> {
+    fn count(r:&mut Reader)->usize {let n=usize::try_from(r.u64()).expect("coverage count overflow");assert!(n<=r.buf.len(),"coverage count exceeds payload");n}
+    fn point(r:&mut Reader,n:usize)->usize {let i=count(r);assert!(i<n,"coverage point out of range");i}
+    let n=count(r);let mut out=Vec::with_capacity(n);
+    for _ in 0..n {
+        let cell=get_leaf(r,lat);let n=count(r);assert!(n<128,"coverage reason too long");
+        let reason=std::str::from_utf8(r.bytes(n)).expect("coverage reason UTF8").to_owned();
+        assert!(reason.bytes().all(|b|b.is_ascii_lowercase()||b==b'_'),"coverage reason");
+        let reason=(!reason.is_empty()).then_some(reason);
+        let n=count(r);let mut triangles=Vec::with_capacity(n);
+        for _ in 0..n {triangles.push([point(r,vertices),point(r,vertices),point(r,vertices)]);}
+        let n=count(r);let mut payloads=Vec::with_capacity(n);
+        for _ in 0..n {let i=point(r,vertices);let key=get_key(r);let p=std::array::from_fn(|_|r.u64());payloads.push((i,key,p));}
+        let n=count(r);assert!(n<=24,"too many atomic cell faces");let mut faces=Vec::with_capacity(n);
+        for _ in 0..n {
+            let axis=count(r);assert!(axis<3,"coverage axis");let key=r.i64();let len=r.i64();assert!(len>0,"coverage face length");
+            let n=count(r);let chain=(0..n).map(|_|point(r,vertices)).collect::<Vec<_>>();
+            let n=count(r);assert!(n==0||n==chain.len(),"coverage map size");
+            let mapped=(0..n).map(|_|std::array::from_fn(|_|r.u64())).collect();
+            let n=count(r);let mut pins=Vec::with_capacity(n);
+            for _ in 0..n {pins.push((point(r,vertices),count(r),r.u64()));}
+            let n=count(r);assert!(n<=2,"coverage face root count");let mut roots=Vec::new();
+            for _ in 0..n {let point=point(r,vertices);let axis=count(r);assert!(axis<3,"coverage root axis");let start=std::array::from_fn(|_|r.i64());let len=r.i64();assert!(len>0,"coverage root length");roots.push(super::local_coverage::RootProof {point,axis,start,len});}
+            faces.push(super::local_coverage::FaceProof {axis,key,len,chain,mapped,pins,roots});
+        }
+        let n=count(r);let mut curves=Vec::with_capacity(n);
+        for _ in 0..n {let a=point(r,vertices);let b=point(r,vertices);let curve_id=count(r);let start=r.f64();let end=r.f64();
+            assert!(start.is_finite()&&end.is_finite(),"coverage curve parameter");curves.push((a,b,CurveInterval {curve_id,start,end}));}
+        out.push(super::local_coverage::Witness {transported:false,cell,reason,triangles,vertices:payloads,faces,curves});
+    }
+    out
+}
+
 /// Serialize a worker partial: the point table (positions+normals+keys), the local
 /// tri list, and the meshing counters.
 fn encode_partial(
@@ -373,11 +430,15 @@ fn encode_partial(
     tris: &[usize],
     counters: &PartialCounters,
     faces: &[HashMap<i64, crate::sfcc::face_contour::FaceRecord>; 3],
+    lat: &SfccLattice,
+    scope_signature:&[u64],
 ) -> Vec<u8> {
     let n = pt.count();
     let mut out = Vec::with_capacity(16 + n * (64 + 9) + tris.len() * 4 + 64);
     put_u32(&mut out, PARTIAL_MAGIC);
     put_u64(&mut out, fingerprint);
+    put_lattice(&mut out,lat);
+    put_u64(&mut out,scope_signature.len() as u64);for &v in scope_signature {put_u64(&mut out,v);}
     put_u64(&mut out, n as u64);
     // Stride-8 f64 vertices (pos, pad, normal, pad) — the MeshData vertex layout.
     for id in 0..n {
@@ -438,18 +499,26 @@ fn encode_partial(
     put_u64(&mut out, counters.numerical.face_projection as u64);
     put_u64(&mut out, counters.numerical.chord_budget as u64);
     put_u64(&mut out, counters.failed_cells);
+    put_u64(&mut out, counters.failed_degenerate);
     put_u64(&mut out, counters.multi_loop_cells);
     put_u64(&mut out, counters.edge_cells);
     put_u64(&mut out, counters.corner_cells);
     put_u64(&mut out, counters.feature_cell_fallbacks);
     put_u64(&mut out, counters.multi_run_faces);
     put_u64(&mut out, counters.boundary_violations);
+    put_coverage(&mut out,&pt.coverage);
+    put_u64(&mut out,pt.coverage_edge_failures.len() as u64);
+    for f in &pt.coverage_edge_failures {put_leaf(&mut out,&f.cell);out.push(f.kind as u8);}
     out
 }
 
 /// A decoded partial: stride-8 f64 verts, parallel keys, local tris, counters.
 struct DecodedPartial {
     fingerprint: u64,
+    lattice:SfccLattice,
+    scope_signature:Vec<u64>,
+    coverage:Vec<super::local_coverage::Witness>,
+    edge_failures:Vec<super::local_coverage::EdgeFailure>,
     intervals: Vec<(usize, usize, CurveInterval)>,
     verts: Vec<f64>, // stride-8, rounded only after global cleanup
     protected: Vec<(usize, usize)>,
@@ -465,6 +534,8 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
     let magic = r.u32();
     assert_eq!(magic, PARTIAL_MAGIC, "worker: bad partial buffer magic");
     let fingerprint = r.u64();
+    let lattice=get_lattice(&mut r);
+    let n=r.u64() as usize;assert!(n<=buf.len()/8,"worker scope signature size");let scope_signature=(0..n).map(|_|r.u64()).collect();
     let n = usize::try_from(r.u64()).expect("worker: vertex count overflow");
     assert!(n <= buf.len() / 64, "worker: invalid vertex count");
     let mut verts = Vec::with_capacity(n * 8);
@@ -511,6 +582,7 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
             chord_budget: r.u64() as usize,
         },
         failed_cells: r.u64(),
+        failed_degenerate:r.u64(),
         multi_loop_cells: r.u64(),
         edge_cells: r.u64(),
         corner_cells: r.u64(),
@@ -518,7 +590,15 @@ fn decode_partial(buf: &[u8]) -> DecodedPartial {
         multi_run_faces: r.u64(),
         boundary_violations: r.u64(),
     };
-    DecodedPartial { fingerprint, intervals, verts, keys, tris, patches, counters, protected, face_uses }
+    let coverage=get_coverage(&mut r,&lattice,n);
+    let count=r.u64() as usize;assert!(count<=buf.len()/49,"worker edge failure count");let mut edge_failures=Vec::with_capacity(count);
+    for _ in 0..count {
+        let cell=get_leaf(&mut r,&lattice);
+        let kind=match r.bytes(1)[0] {1=>super::local_coverage::EdgeFailureKind::Arithmetic,2=>super::local_coverage::EdgeFailureKind::Budget,3=>super::local_coverage::EdgeFailureKind::NotSingle,_=>panic!("worker edge failure kind")};
+        edge_failures.push(super::local_coverage::EdgeFailure {cell,kind});
+    }
+    assert_eq!(r.pos,buf.len(),"worker: trailing partial payload");
+    DecodedPartial { fingerprint, lattice, scope_signature, coverage, edge_failures, intervals, verts, keys, tris, patches, counters, protected, face_uses }
 }
 
 /// Build the face-contour + cell-mesh options exactly as the serial driver's S2/S3
@@ -592,6 +672,7 @@ pub fn mesh_partition(
         degenerate_cells: group.iter().filter(|c| c.degenerate).count() as u64,
         numerical: validation::numerical_failures(),
         failed_cells: cm.failed_cells.len() as u64,
+        failed_degenerate:cm.failed_cells.iter().filter(|c|c.degenerate).count() as u64,
         multi_loop_cells: cm.multi_loop_cells as u64,
         edge_cells: cm.edge_cells as u64,
         corner_cells: cm.corner_cells as u64,
@@ -599,7 +680,7 @@ pub fn mesh_partition(
         multi_run_faces: fr.multi_run_faces as u64,
         boundary_violations: fr.boundary_violations as u64,
     };
-    encode_partial(&pt, features.fingerprint(), &cm.tris, &counters, &fr.faces)
+    encode_partial(&pt, features.fingerprint(), &cm.tris, &counters, &fr.faces,&lat,&super::local_coverage::signature(tree))
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +782,7 @@ pub fn merge_partials(
     let mut merged = PointTable::new();
     let mut tris: Vec<usize> = Vec::new();
     let mut failed_cells = 0usize;
+    let mut failed_degenerate=0usize;
     let mut multi_loop_cells = 0usize;
     let mut edge_cells = 0usize;
     let mut corner_cells = 0usize;
@@ -714,6 +796,9 @@ pub fn merge_partials(
     let fingerprint = features.fingerprint();
     for buf in partials {
         let p = decode_partial(buf);
+        assert_eq!(p.scope_signature,super::local_coverage::signature(tree),"worker coverage field scope mismatch");
+        assert_eq!((p.lattice.max_depth,p.lattice.origin_x.to_bits(),p.lattice.origin_y.to_bits(),p.lattice.origin_z.to_bits(),p.lattice.world_size.to_bits()),
+            (lat.max_depth,lat.origin_x.to_bits(),lat.origin_y.to_bits(),lat.origin_z.to_bits(),lat.world_size.to_bits()),"worker lattice mismatch");
         assert_eq!(p.fingerprint, fingerprint, "worker: partial feature graph mismatch");
         let n = p.keys.len();
         let mut local_to_global = vec![0usize; n];
@@ -731,6 +816,7 @@ pub fn merge_partials(
                 PointKey::Unkeyed => merged.add(x, y, z, nx, ny, nz),
             };
             local_to_global[id] = gid;
+            assert_eq!(super::local_coverage::payload(&merged,gid),[x,y,z,nx,ny,nz].map(f64::to_bits),"worker conflicting keyed point payload");
         }
         for (a, b) in p.protected {
             merged.protect_edge(local_to_global[a], local_to_global[b]);
@@ -781,14 +867,24 @@ pub fn merge_partials(
             tris.extend(t);
         }
         failed_cells += p.counters.failed_cells as usize;
+        failed_degenerate+=p.counters.failed_degenerate as usize;
         multi_loop_cells += p.counters.multi_loop_cells as usize;
         edge_cells += p.counters.edge_cells as usize;
         corner_cells += p.counters.corner_cells as usize;
         feature_cell_fallbacks += p.counters.feature_cell_fallbacks as usize;
         multi_run_faces += p.counters.multi_run_faces as usize;
         boundary_violations += p.counters.boundary_violations as usize;
+        super::local_coverage::import_witnesses(&mut merged,p.coverage,&local_to_global,lat,tree);
+        super::local_coverage::import_edge_failures(&mut merged,p.edge_failures,lat,tree);
     }
 
+    let failed_before:std::collections::BTreeSet<_>=super::local_coverage::failed_cells(&merged).iter().map(|c|(c.level,c.ix,c.iy,c.iz)).collect();
+    super::local_coverage::reverify_transport(&mut merged,tree,features,lat,&tris,&face_uses);
+    let failed_before_cleanup=super::local_coverage::failed_cells(&merged);
+    for c in &failed_before_cleanup {
+        if !failed_before.contains(&(c.level,c.ix,c.iy,c.iz)){failed_cells+=1;failed_degenerate+=usize::from(c.degenerate);}
+    }
+    let failed_before_cleanup:std::collections::BTreeSet<_>=failed_before_cleanup.iter().map(|c|(c.level,c.ix,c.iy,c.iz)).collect();
     let (refined, unresolved_triangles, quality_audit) = super::assembly::finish(
         tree, features, &mut merged, &tris, lat.step, tuning, None,
     );
@@ -797,6 +893,9 @@ pub fn merge_partials(
 
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+    validation.local_coverage=super::local_coverage::report(tree,&merged);
+    let withdrawn=super::local_coverage::failed_cells(&merged).iter().filter(|c|
+        !c.degenerate&&!failed_before_cleanup.contains(&(c.level,c.ix,c.iy,c.iz))).count();
     validation.quality = quality_audit;
     validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
         &merged,
@@ -811,7 +910,7 @@ pub fn merge_partials(
     } else {
         AuditStatus::from_passed(face_audit_failures == 0 && boundary_violations == 0)
     };
-    validation.unresolved_cells = degenerate_cells + failed_cells;
+    validation.unresolved_cells = degenerate_cells + failed_cells - failed_degenerate+withdrawn;
     validation.feature_fallback_cells = feature_cell_fallbacks;
     validation.numerical = numerical;
     validation.numerical.chord_budget += unresolved_triangles;
@@ -941,7 +1040,7 @@ mod reliability_tests {
             ..Default::default()
         };
         let faces = std::array::from_fn(|_| HashMap::new());
-        let decoded = decode_partial(&encode_partial(&p, 123, &[a, b, a], &counters, &faces));
+        let decoded = decode_partial(&encode_partial(&p, 123, &[a, b, a], &counters, &faces,&make_lattice(8,-1.,-1.,-1.,2.),&[]));
         assert_eq!(decoded.verts[0].to_bits(), x.to_bits());
         assert_ne!(decoded.verts[0], (x as f32) as f64);
         assert_eq!(decoded.protected, vec![(a, b)]);

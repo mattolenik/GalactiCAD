@@ -1,0 +1,54 @@
+{
+  "baselineWasm": "5d7f45f536bd69a3123038c28d4972604ce850848406245482b57cb8aa09ddb4",
+  "selectedWasm": "64c7839cf14ce38f7e48a2274f198fed203701db22f16bd354888b8facd95c8d",
+  "rows": [
+    {
+      "scene": "sphere",
+      "workers": 1,
+      "baselineBytes": 689314,
+      "selectedBytes": 4036022,
+      "addedBytes": 3346708,
+      "preparedBytes": 132680
+    },
+    {
+      "scene": "sphere",
+      "workers": 8,
+      "baselineBytes": 746438,
+      "selectedBytes": 4094014,
+      "addedBytes": 3347576,
+      "preparedBytes": 132680
+    },
+    {
+      "scene": "clipped-box",
+      "workers": 1,
+      "baselineBytes": 61368,
+      "selectedBytes": 279400,
+      "addedBytes": 218032,
+      "preparedBytes": 6392
+    },
+    {
+      "scene": "clipped-box",
+      "workers": 8,
+      "baselineBytes": 74939,
+      "selectedBytes": 294567,
+      "addedBytes": 219628,
+      "preparedBytes": 6392
+    },
+    {
+      "scene": "round-plus-box",
+      "workers": 1,
+      "baselineBytes": 812704,
+      "selectedBytes": 812772,
+      "addedBytes": 68,
+      "preparedBytes": 174344
+    },
+    {
+      "scene": "round-plus-box",
+      "workers": 8,
+      "baselineBytes": 872375,
+      "selectedBytes": 872919,
+      "addedBytes": 544,
+      "preparedBytes": 174344
+    }
+  ]
+}

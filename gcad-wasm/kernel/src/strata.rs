@@ -213,6 +213,11 @@ struct CompoundCarrier {
 }
 
 impl Stratum {
+    pub(crate) fn certificate_plane(&self)->Option<([f64;3],f64)> {
+        // This returns the carrier equation only. Signed occurrence domains are
+        // established independently by the coverage certificate.
+        match self.carrier {Carrier::Plane {n,offset} if self.compound.is_none()&&self.field.is_none()=>Some((n,offset)),_=>None}
+    }
     pub(crate) fn semantic_identity(&self, context: &mut crate::sfcc::provenance::IdentityContext) -> u64 {
         use crate::sfcc::provenance::IdentityHash;
         let mut hash = IdentityHash::default();

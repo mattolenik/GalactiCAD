@@ -1,0 +1,635 @@
+   Compiling gcad-kernel v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/kernel)
+   Compiling gcad-wasm v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/wasm)
+    Finished `release` profile [optimized] target(s) in 4m 08s
+     Running unittests src/lib.rs (/tmp/sfcc-step3-final-native-target/release/deps/gcad_kernel-17454dd9cd1870d0)
+
+running 194 tests
+test math::grid::tests::cell_aabb_matches_sizing ... ok
+test math::grid::tests::cell_edges_one_differing_bit ... ok
+test math::grid::tests::collect_interior_empty_cases ... ok
+test math::grid::tests::cell_stride_and_key ... ok
+test math::grid::tests::collect_interior_skips_quarter_without_midpoint ... ok
+test math::grid::tests::collect_interior_finds_hanging_midpoints ... ok
+test math::grid::tests::corner_order_convention ... ok
+test math::grid::tests::pack_unpack_roundtrip_at_max_depth ... ok
+test math::grid::tests::face_axes_cross_product ... ok
+test math::grid::tests::pack_is_injective_across_neighbors ... ok
+test math::grid::tests::enclosure_contains_descendant_sampling_centers_and_feature_boxes ... ok
+test math::grid::tests::point_to_world_maps_extremes ... ok
+test math::similarity::tests::apply_inv_apply_roundtrip ... ok
+test math::similarity::tests::composition_child_first ... ok
+test math::similarity::tests::from_rotation_wgsl_fwd_transposes ... ok
+test math::similarity::tests::rotation_preserves_length_and_inverts ... ok
+test math::grid::tests::subnormal_nominal_cells_keep_exact_zero_witnesses_despite_rounded_steps ... ok
+test parity::tests::count_mismatch_reported ... ok
+test parity::tests::order_insensitive_under_vertex_and_triangle_permutation ... ok
+test parity::tests::loads_ts_fixture_and_compares ... ok
+test parity::tests::geometric_match_absorbs_subtolerance_drift ... ok
+test primitives::polygon2d::tests::gradient_is_unit_length ... ok
+test primitives::polygon2d::tests::concave_profile_gradients_cover_both_sides_and_endpoint_regions ... ok
+test parity::tests::winding_sensitive ... ok
+test primitives::polygon2d::tests::inside_is_negative_outside_is_positive ... ok
+test primitives::polygon2d::tests::tiny_segments_and_duplicate_vertices_keep_distance_and_derivative ... ok
+test primitives::polygon2d::tests::winding_sign_flips_with_orientation ... ok
+test primitives::shapes::tests::box_exact ... ok
+test primitives::shapes::tests::cone_sanity ... ok
+test primitives::shapes::tests::cylinder_exact ... ok
+test primitives::shapes::tests::extrude_untwisted_sanity ... ok
+test primitives::shapes::tests::lathe_revolves_profile ... ok
+test primitives::shapes::tests::loft_between_two_squares ... ok
+test primitives::shapes::tests::normals_match_finite_difference ... ok
+test primitives::shapes::tests::sphere_exact ... ok
+test primitives::smin::tests::columns_interval_encloses_samples ... ok
+test primitives::smin::tests::columns_n1_zero_displacement ... ok
+test primitives::smin::tests::glsl_mod_takes_sign_of_y ... ok
+test primitives::smin::tests::round_grad_weights ... ok
+test primitives::smin::tests::round_seam_displacement ... ok
+test primitives::smin::tests::smin_is_below_hard_min ... ok
+test primitives::smin::tests::soft_seam_displacement ... ok
+test scene_bridge::tests::box_builds_a_single_leaf ... ok
+test scene_bridge::tests::non_uniform_scale_is_rejected ... ok
+test scene_bridge::tests::rotate_uses_wgsl_fwd_transpose ... ok
+test scene_bridge::tests::smooth_subtract_columns_maps_to_columns_i ... ok
+test scene_bridge::tests::json_box_roundtrips ... ok
+test scene_bridge::tests::json_subtract_with_children ... ok
+test scene_bridge::tests::subtract_folds_to_max_with_negated_rhs ... ok
+test scene_bridge::tests::smooth_union_columns_maps_to_columns_mode ... ok
+test scene_bridge::tests::translate_bakes_into_leaf_position ... ok
+test sdf::tests::blend_curvature_bound_does_not_certify_unproved_modes_or_nesting ... ok
+test sdf::tests::complex_shape_leaves_dispatch ... ok
+test sdf::tests::hard_union_is_min ... ok
+test sdf::tests::grad_matches_finite_difference ... ok
+test sdf::tests::interval_encloses_sampled_field ... ok
+test sdf::tests::leaf_honors_translate_and_scale ... ok
+test sdf::tests::smooth_columns_interval_encloses ... ok
+test sdf::tests::smooth_union_matches_smin ... ok
+test sdf::tests::subtract_carves ... ok
+test sdf::tests::untransformed_leaf_matches_shape ... ok
+test sfcc::branch_surfaces::lathe_scale_tests::tiny_lathe_branch_retains_the_endpoint_distance_derivative ... ok
+test sfcc::adaptive_refine::tests::cancellation_does_not_mutate ... ok
+test sfcc::branch_surfaces::region_tests::fixed_partner_keeps_its_formula_outside_its_guard ... ok
+test sfcc::cell_mesh::reliability_tests::circle_cap_and_traced_midpoint_error_are_enforced ... ok
+test sfcc::blend_surfaces::tests::hard_combiners_add_no_blend_surfaces ... ok
+test sfcc::cell_mesh::reliability_tests::open_arc_retains_the_canonical_endpoint_parameter ... ok
+test sfcc::cell_mesh::reliability_tests::quad_prefers_a_valid_diagonal_without_requiring_every_patch_to_be_a_chart ... ok
+test sfcc::blend_surfaces::tests::nested_chamfers_preserve_affine_field_magnitude ... ok
+test sfcc::face_contour::projection_tests::midpoint_projection_respects_displacement_budget ... ok
+test sfcc::blend_surfaces::tests::plane_aliases_keep_alternative_domains_but_not_opposite_orientation ... ok
+test sfcc::feature_curves::tests::circle_basics_and_plane_crossings ... ok
+test sfcc::feature_curves::tests::segment_axis_plane_crossing ... ok
+test sfcc::feature_curves::tests::failed_traced_queries_cannot_be_hidden_by_the_crossing_cache ... ok
+test sfcc::feature_set::tests::worker_fingerprint_includes_junction_incidence ... ok
+test sfcc::feature_set::tests::equivalent_polygon_loft_does_not_exhaust_the_cartesian_branch_budget ... ok
+test sfcc::feature_set::tests::sphere_has_no_features_one_stratum ... ok
+test sfcc::feature_set::tests::unit_box_has_12_segments_8_corners ... ok
+test sfcc::field_branches::selection_equivalence::evaluates_once_preserving_total_order_and_ties ... ok
+test sfcc::field_branches::query_tests::separate_roots_and_capacity_limit_cannot_alias ... ok
+test sfcc::branch_surfaces::region_tests::partner_expansion_budget_reports_the_affected_source_path ... ok
+test sfcc::field_branches::selection_equivalence::raw_full_and_pruned_samples_match_reference ... ok
+test sfcc::field_branches::tests::equation_scaling_preserves_residual_and_direction ... ok
+test sfcc::field_branches::tests::singular_and_nonfinite_equations_are_explicit ... ok
+test sfcc::field_branches::workspace_tests::nested_queries_keep_independent_storage_and_unwind_clears_it ... ok
+test sfcc::field_branches::workspace_tests::storage_reuse_never_reuses_point_or_node_values ... ok
+test sfcc::feature_set::tests::cone_has_base_circle_and_apex_corner ... ok
+test sfcc::local_coverage::tests::atomic_face_interior_edges_are_checked_when_outer_cell_edges_are_empty ... ok
+test sfcc::local_coverage::tests::cleanup_addition_using_only_boundary_vertices_withdraws_certificate ... ok
+test sfcc::local_coverage::tests::cuboid_belt_cannot_use_a_disk_certificate ... ok
+test sfcc::local_coverage::tests::direct_cell_and_even_zero_free_face_records_require_canonical_identity ... ok
+test sfcc::local_coverage::tests::disk_plus_disconnected_torus_is_rejected ... ok
+test sfcc::adaptive_refine::tests::hard_primitive_refines_conformingly_with_explicit_budget ... ok
+test sfcc::field_branches::query_tests::cached_ancestors_keep_raw_and_scalar_contracts ... ok
+test sfcc::field_branches::tests::blend_derivatives_match_scalar_field_for_every_mode_and_sign ... ok
+test sfcc::local_coverage::tests::exact_arithmetic_and_grid_do_not_equate_rounded_formulas ... ok
+test sfcc::local_coverage::tests::more_than_twelve_original_box_occurrences_keep_multiple_edge_events ... ok
+test sfcc::local_coverage::tests::event_budget_counts_unique_filtered_events_not_occurrences ... ok
+test sfcc::local_coverage::tests::original_signed_zero_sheets_and_duplicate_events_are_preserved ... ok
+test sfcc::local_coverage::tests::traced_parameter_chart_rejects_declared_clamped_tails ... ok
+test sfcc::manifold_check::tests::single_triangle_is_open ... ok
+test sfcc::manifold_check::tests::tetrahedron_is_closed_chi_2 ... ok
+test sfcc::mesh_edit::predicate_reuse_tests::pair_results_match_original_with_shared_vertices_and_rounding ... ok
+test sfcc::mesh_edit::tests::contacts_overlap_and_adjacent_sheets ... ok
+test sfcc::mesh_edit::tests::disjoint_segments_in_the_other_face_plane_do_not_intersect ... ok
+test sfcc::newton::tests::backtracking_recovers_overshoot_and_obeys_displacement ... ok
+test sfcc::newton::tests::parallel_planes_fail ... ok
+test sfcc::newton::tests::projects_onto_two_planes ... ok
+test sfcc::newton::tests::redundant_zero_constraints_do_not_define_a_corner ... ok
+test sfcc::newton::tests::tangent_of_axis_planes_is_axis ... ok
+test sfcc::feature_set::tests::box_minus_sphere_traces_three_seam_circles ... ok
+test sfcc::local_coverage::tests::sphere_hidden_face_loop_double_root_contact_and_internal_component_are_unresolved ... ok
+test sfcc::local_coverage::tests::worker_recheck_cannot_promote_an_inexact_grid_to_excluded ... ok
+test sfcc::newton::tests::triple_point_of_three_planes ... ok
+test sfcc::octree::retained_value_tests::old_values_do_not_create_current_round_hanging_nodes ... ok
+test sfcc::feature_set::tests::cylinder_has_2_rim_circles_3_strata ... ok
+test sfcc::patch_triangulate::tests::annulus_keeps_hole_and_boundary_segments ... ok
+test sfcc::patch_triangulate::tests::concavity_collinear_vertices_and_loop_permutations ... ok
+test sfcc::patch_triangulate::tests::narrow_neck_keeps_its_domain_under_scale_and_translation ... ok
+test sfcc::adaptive_refine::tests::curve_splits_preserve_multiple_unwrapped_memberships ... ok
+test sfcc::patch_triangulate::tests::rejects_crossings_and_touching_holes ... ok
+test sfcc::patch_triangulate::tests::work_budget_rejects_without_returning_a_partial_mesh ... ok
+test sfcc::pipeline::recovery_cache_tests::cached_classification_does_not_cache_forced_decision ... ok
+test sfcc::pipeline::recovery_failure_tests::failed_classification_queries_are_repeated_after_diagnostic_reset ... ok
+test sfcc::point_table::tests::build_mesh_compacts_and_remaps ... ok
+test sfcc::octree::tests::refinement_splits_until_criteria_pass ... ok
+test sfcc::point_table::tests::get_or_create_is_keyed_and_idempotent ... ok
+test sfcc::point_table::tests::oriented_closed_intervals_split_without_losing_memberships ... ok
+test sfcc::point_table::tests::str_keys_are_independent_of_num_keys ... ok
+test sfcc::point_table::tests::provenance_keys_are_distinct ... ok
+test sfcc::predicates::equivalence::inline_spill_and_resize_preserve_limbs ... ok
+test sfcc::predicates::tests::cancellation_and_exact_zero ... ok
+test sfcc::predicates::tests::exponent_extremes_and_subnormal ... ok
+test sfcc::quality_remesh::tests::improves_sliver_without_changing_boundary ... ok
+test sfcc::pipeline::recovery_cache_tests::discovery_precedes_both_corner_exemptions ... ok
+test sfcc::quality_remesh::tests::new_diagonal_cannot_cross_an_unrelated_sheet ... ok
+test sfcc::octree::tests::uniform_octree_culls_empty_and_keeps_surface_cells ... ok
+test sfcc::quality_remesh::tests::protected_or_unknown_patch_never_flips ... ok
+test sfcc::quality_remesh::tests::zero_remeshing_budget_is_explicit_and_does_not_move_points ... ok
+test sfcc::refine_criteria::discovery_tests::center_winner_negative_cavity_nested_subtraction_and_double_negation_keep_zero_owners ... ok
+test sfcc::quality_remesh::tests::planar_grid_relaxes_without_moving_boundary ... ok
+test sfcc::refine_criteria::discovery_tests::duplicates_order_opposite_signs_and_thin_shell_never_merge_occurrences ... ok
+test sfcc::refine_criteria::discovery_tests::entity_boxes_enclose_actual_translated_and_subnormal_endpoints ... ok
+test sfcc::refine_criteria::discovery_tests::every_ancestor_can_exclude_a_nonowning_hidden_occurrence ... ok
+test sfcc::refine_criteria::discovery_tests::hidden_unindexed_primitives_split_even_with_quality_disabled ... ok
+test sfcc::refine_criteria::discovery_tests::invalid_or_collapsed_supported_geometry_is_indeterminate ... ok
+test sfcc::refine_criteria::discovery_tests::invisible_edge_roots_and_face_loop_request_splits ... ok
+test sfcc::quality_remesh::tests::shape_improvement_cannot_trade_away_cylindrical_fidelity ... ok
+test sfcc::refine_criteria::discovery_tests::make_probe_region_includes_the_feature_box_rounding_strip ... ok
+test sfcc::refine_criteria::discovery_tests::path_burial_rejects_false_ownership_even_when_leaf_and_root_are_both_zero ... ok
+test sfcc::refine_criteria::discovery_tests::opaque_scope_preserves_supported_sibling_guard ... ok
+test sfcc::refine_criteria::discovery_tests::ordinary_sphere_and_box_patches_pass ... ok
+test sfcc::refine_criteria::discovery_tests::removed_hard_subtree_is_neutral_in_root_sign_fold ... ok
+test sfcc::refine_criteria::discovery_tests::strict_ancestor_exclusion_and_malformed_siblings_are_distinct ... ok
+test sfcc::refine_criteria::discovery_tests::rotated_flat_boxes_and_local_world_factorizations_keep_decisions ... ok
+test sfcc::refine_criteria::discovery_tests::tiny_features_and_collapsed_translations_stay_uncertain_instead_of_empty ... ok
+test sfcc::refine_criteria::discovery_tests::touching_zero_and_collapsed_cells_are_not_exclusions ... ok
+test sfcc::refine_criteria::discovery_tests::whole_cell_exclusion_covers_more_than_the_corner_hull ... ok
+test sfcc::refine_criteria::discovery_tests::whole_root_sign_rule_rejects_visible_primitives_but_not_the_hidden_lens_scope_limit ... ok
+test sfcc::sliver_flip::tests::ambiguous_edge_incidence_is_not_a_flip_neighbor ... ok
+test sfcc::sliver_flip::tests::crease_lock_prevents_an_otherwise_beneficial_flip ... ok
+test sfcc::sliver_flip::tests::nonplanar_and_nonfinite_patches_are_unchanged ... ok
+test sfcc::sliver_flip::tests::rounding_must_preserve_the_retriangulated_patch ... ok
+test sfcc::sliver_flip::tests::slanted_plane_flip_accepts_both_orientations ... ok
+test sfcc::spatial_index::tests::coincident_curve_candidates_have_stable_order ... ok
+test sfcc::spatial_index::tests::finds_inserted_geometry_and_rejects_far_queries ... ok
+test sfcc::surface_patch::tests::concave_quad_uses_the_only_interior_diagonal ... ok
+test sfcc::surface_patch::preparation_tests::coarse_retry_matches_separate_attempts ... ok
+test sfcc::surface_patch::tests::planar_annulus_lifts_to_the_exposed_cut_surface ... ok
+test sfcc::triangle_quality::scaled_equation_tests::projection_acceptance_uses_geometric_units_under_equation_rescaling ... ok
+test sfcc::triangle_quality::tests::curved_triangle_vertices_are_not_a_fidelity_test ... ok
+test sfcc::surface_refine::identity_tests::refinement_stays_on_the_identified_curve_when_a_nearer_curve_also_fits ... ok
+test sfcc::triangle_quality::tests::reject_f32_collapse ... ok
+test sfcc::validation::tests::failures_are_isolated_across_nested_exports ... ok
+test sfcc::validation::tests::residual_audit_checks_final_float32_positions_and_nonfinite_values ... ok
+test sfcc::surface_patch::tests::cylindrical_quad_rejects_the_shorter_but_inaccurate_diagonal ... ok
+test sfcc::validation::tests::skipped_checks_and_exhausted_budgets_are_not_success ... ok
+test sfcc::validation::tests::triangle_audit_rejects_invalid_geometry_without_an_area_threshold ... ok
+test sfcc::worker::reliability_tests::partial_roundtrip_retains_f64_and_crease_locks ... ok
+test strata::tests::curved_chamfer_carrier_has_analytic_normal_and_projection ... ok
+test strata::tests::cylinder_carrier_radial ... ok
+test strata::tests::negated_stratum_flips_sign ... ok
+test strata::tests::plane_carrier_signed_distance ... ok
+test strata::tests::ruled_chamfer_retains_raw_derivative_under_transform_and_nesting ... ok
+test strata::tests::sphere_carrier_signed_distance ... ok
+test tests::version_is_reported ... ok
+test tolerances::tests::curve_eps_has_a_floor ... ok
+test tolerances::tests::resolves_relative_and_passthrough_fields ... ok
+test sfcc::octree::tests::refinement_maintains_2to1_face_balance ... ok
+test sfcc::local_coverage::tests::duplicate_worker_ownership_is_rejected - should panic ... ok
+test sfcc::predicates::equivalence::finite_bit_patterns_and_degeneracies_match_exact_reference ... ok
+test sfcc::local_coverage::tests::default_box_cleanup_preserves_cells_through_checked_flips ... ok
+test sfcc::local_coverage::tests::mandatory_clipped_box_actual_atomic_faces_patches_and_creases ... ok
+test sfcc::local_coverage::tests::mandatory_sphere_actual_atomic_faces_and_fillings ... ok
+
+test result: ok. 194 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+     Running tests/analytical_completeness.rs (/tmp/sfcc-step3-final-native-target/release/deps/analytical_completeness-a3caa1f5eb6c47de)
+
+running 7 tests
+test nested_soft_normal_converges_to_scalar_derivative ... ok
+test represented_small_loop_survives_seed_spacing_and_phase ... ok
+test singular_blend_does_not_invent_a_normal ... ok
+test inward_displaced_polygon_preserves_medial_branch_creases ... ok
+test inward_primitive_branches_have_analytical_rims ... ok
+test outward_polygon_segment_endpoint_join_is_smooth ... ok
+test lifted_profile_edges_survive_twist_loft_and_winding ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+
+     Running tests/blend_curvature_analytic.rs (/tmp/sfcc-step3-final-native-target/release/deps/blend_curvature_analytic-1dda21c0236a452d)
+
+running 2 tests
+test oblique_plane_blend_exceeds_the_old_inverse_radius_estimate ... ok
+test analytic_blend_request_uses_the_same_sampled_refinement ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+
+     Running tests/blend_field_coverage.rs (/tmp/sfcc-step3-final-native-target/release/deps/blend_field_coverage-d018d6fb83618f52)
+
+running 1 test
+test cuts_through_blends_cover_primitive_field_regions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.89s
+
+     Running tests/branch_seams.rs (/tmp/sfcc-step3-final-native-target/release/deps/branch_seams-d46e8ef85a88eca8)
+
+running 6 tests
+test nearby_components_of_one_carrier_pair_are_not_consumed ... ok
+test nearest_pair_switch_on_soft_union_is_a_feature ... ok
+test displaced_extrusion_has_cap_side_rims ... ok
+test displaced_rims_preserve_signed_blends_and_similarity_transforms ... ok
+test bracket_transition_arcs_survive_ancestors_and_seed_spacing ... ok
+test bracket_preserves_displaced_edges_and_rib_junctions ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.87s
+
+     Running tests/cancel.rs (/tmp/sfcc-step3-final-native-target/release/deps/cancel-f3ba82166fa58ce6)
+
+running 2 tests
+test cancel_hook_bails_with_empty_result ... ok
+test no_hook_runs_to_completion ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/chamfer_seams.rs (/tmp/sfcc-step3-final-native-target/release/deps/chamfer_seams-9c1c99c5e74bbb00)
+
+running 3 tests
+test crossed_cylinder_chamfer_has_both_transition_seams ... ok
+test holes_through_chamfer_union_follow_cylinder_rim_distance ... ok
+test holes_through_loft_chamfer_preserve_both_flange_faces ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.71s
+
+     Running tests/composite_subtract.rs (/tmp/sfcc-step3-final-native-target/release/deps/composite_subtract-b2171a94f6954f0f)
+
+running 3 tests
+test unsupported_columns_complement_is_a_bridge_error ... ok
+test smooth_compound_cutters_are_complemented_once ... ok
+test compound_cutters_obey_independent_boolean_algebra ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contour_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/contour_parity-393ede756059e242)
+
+running 3 tests
+test contour_sphere_matches_ts ... ok
+test contour_box_matches_ts ... ok
+test contour_sphere_drift_is_sub_ulp_scale ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/coverage_obstruction.rs (/tmp/sfcc-step3-final-native-target/release/deps/coverage_obstruction-edf18ca007643802)
+
+running 4 tests
+test represented_matrix_carrier_is_not_the_declared_field ... ok
+test opposite_endpoint_signs_and_individual_charts_do_not_prove_one_root ... ok
+test ordinary_two_surface_crease_and_sphere_are_still_successful_controls ... ok
+test raw_native_workers_preserve_positive_seam_and_coarse_obstruction ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests/curve_index.rs (/tmp/sfcc-step3-final-native-target/release/deps/curve_index-97d4c1bd7c13f29e)
+
+running 2 tests
+test traced_curve_queries_cover_newton_displacement_and_large_envelopes ... ok
+test circle_and_wrapped_arc_queries_include_between_knot_extrema ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/diagnosis_contract.rs (/tmp/sfcc-step3-final-native-target/release/deps/diagnosis_contract-29b29bfc93cce3b8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/discovery_contract.rs (/tmp/sfcc-step3-final-native-target/release/deps/discovery_contract-155d827abe193dea)
+
+running 6 tests
+test sufficient_depth_reconstructs_both_supplied_components_at_their_locations ... ok
+test comfortably_buried_and_far_controls_preserve_a_useful_flat_box_mesh ... ok
+test co_scaled_scene_cube_padding_and_geometric_tolerances_keep_the_hidden_cell_unresolved ... ok
+test separate_worker_recovery_keeps_hidden_cell_diagnosis ... ok
+test actual_hidden_worker_mesh_preserves_raw_degeneracy_without_serial_recovery ... ok
+test hidden_and_many_leaf_decisions_roundtrip_through_resumable_and_reversed_partitions ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.53s
+
+     Running tests/feature_preservation.rs (/tmp/sfcc-step3-final-native-target/release/deps/feature_preservation-6785892fd9fe5c41)
+
+running 6 tests
+test chain_audit_detects_a_removed_or_misassigned_interval_without_changing_triangles ... ok
+test native_box_compiled_features_survive_as_complete_chains ... ok
+test removing_a_label_fails_coverage_while_the_closed_mesh_is_unchanged ... ok
+test lifted_box_crease_survives_a_three_operand_partner_switch ... ok
+test loft_height_knot_remains_an_exposed_feature_after_displacement ... ok
+test simultaneous_loft_profile_switches_have_complete_inset_arcs ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.81s
+
+     Running tests/feature_trimming.rs (/tmp/sfcc-step3-final-native-target/release/deps/feature_trimming-24fd3fcfa90f6d9a)
+
+running 6 tests
+test nonfinite_trim_queries_are_explicit ... ok
+test output_rounding_does_not_disguise_real_features_as_absent ... ok
+test box_exposure_handles_complements_and_hidden_edges ... ok
+test hidden_and_tangent_carriers_do_not_report_unresolved_discovery ... ok
+test hard_box_exposure_is_independent_of_carrier_length_phase_and_similarity ... ok
+test shallow_regular_seams_survive_and_rank_limited_seams_are_reported ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/features_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/features_parity-d560224de0c0ba47)
+
+running 1 test
+test box_native_features_match_ts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/field_bounds.rs (/tmp/sfcc-step3-final-native-target/release/deps/field_bounds-900d74103f568319)
+
+running 6 tests
+test identical_loft_profiles_retain_unit_lipschitz_bound ... ok
+test tiny_lathe_inner_radius_preserves_world_distance_and_bounds_under_scale ... ok
+test tiny_profile_edges_preserve_world_distance_and_bounds_under_scale ... ok
+test loft_bounds_enclose_surface_after_cyclic_profile_reindexing ... ok
+test pruning_preserves_complemented_blends_inside_the_query_region ... ok
+test buried_primitives_do_not_remove_a_cavity_when_pruning_activates ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/known_reconstruction_failures.rs (/tmp/sfcc-step3-final-native-target/release/deps/known_reconstruction_failures-7499a7b5ec207b47)
+
+running 8 tests
+test round_blend_curvature_bound_covers_oblique_planar_carriers ... ok
+test spatial_index_encloses_the_curve_between_its_index_samples ... ok
+test sliver_flip_preserves_the_oriented_planar_patch ... ok
+test shallow_spherical_cut_retains_its_boundary_circle ... ok
+test long_carrier_trimming_preserves_all_twelve_edges_of_a_four_mm_cube ... ok
+test identical_profile_loft_has_no_duplicate_feature_length ... ok
+test separate_sphere_is_reconstructed_or_reported_as_unresolved ... ok
+test hard_intersection_cube_triangles_follow_the_exact_cuboid_boundary ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/lever1_prune_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/lever1_prune_parity-ae6eeaa0df74f0da)
+
+running 3 tests
+test roi_blended_union_of_many_parts ... ok
+test pruned_is_bit_exact_over_random_scenes ... ok
+test pruned_grad_and_owners_bit_exact ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/loft_feature_identity.rs (/tmp/sfcc-step3-final-native-target/release/deps/loft_feature_identity-fe085be07368733e)
+
+running 7 tests
+test nearby_disjoint_collinear_edges_retain_their_gap ... ok
+test identical_cylinders_have_two_unique_closed_rims ... ok
+test hard_box_duplicates_and_overlaps_cover_the_exposed_creases_once ... ok
+test equivalent_profile_branches_preserve_a_displaced_chamfer_crease ... ok
+test cyclic_and_reversed_constant_lofts_have_exactly_the_twelve_cube_edges ... ok
+test nonidentical_and_differing_topology_profiles_keep_their_own_fields ... ok
+test constant_loft_mesh_and_worker_metadata_preserve_unique_edge_coverage ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.10s
+
+     Running tests/mesh_extrude_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/mesh_extrude_parity-28dd19f57f0b301e)
+
+running 2 tests
+test mesh_extrude_hex_matches_ts ... ok
+test mesh_extrude_twist_matches_ts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running tests/mesh_feat_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/mesh_feat_parity-6d05343a52f61d6e)
+
+running 2 tests
+test mesh_feat_box_matches_ts ... ok
+test mesh_feat_box_minus_sphere_matches_ts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/mesh_lathe_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/mesh_lathe_parity-c2ceeafed6af0f68)
+
+running 1 test
+test mesh_lathe_matches_ts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/mesh_loft_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/mesh_loft_parity-c2ac1c61cd2788d8)
+
+running 2 tests
+test mesh_loft_matches_ts ... ok
+test mesh_loft_differing_topology ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.73s
+
+     Running tests/mesh_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/mesh_parity-f649307833e154e8)
+
+running 2 tests
+test mesh_smooth_union_is_closed_and_deterministic ... ok
+test mesh_sphere_matches_ts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/numerical_exclusion.rs (/tmp/sfcc-step3-final-native-target/release/deps/numerical_exclusion-cded2156821d093a)
+
+running 13 tests
+test direct_probe_mutation_cannot_reuse_a_smaller_checked_region ... ok
+test exact_rational_oracle_records ... ok
+test initial_child_and_balance_culls_keep_known_zero_at_insufficient_depth ... ok
+test opaque_legacy_bounds_reject_finite_input_transform_overflow_before_box_minmax ... ok
+test representable_tiny_gap_and_large_translation_cancellation_keep_signs ... ok
+test ancestor_composition_and_pruned_views_preserve_original_signed_trees ... ok
+test represented_affine_matrix_and_large_pythagorean_ball_keep_exact_zeros ... ok
+test scaling_subnormal_overflow_and_invalid_arithmetic_are_explicit ... ok
+test transformed_box_and_sphere_keep_contact_and_useful_signed_controls ... ok
+test subnormal_step_rounding_cannot_remove_the_requested_root_domain ... ok
+test approximate_matrix_zero_survives_the_actual_initial_and_child_culls ... ok
+test mixed_opaque_controls_preserve_legacy_refinement_without_widening_blend_operands ... ok
+test ordinary_serialized_rotations_remain_useful_in_the_actual_exporter ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/octree_decide_partition.rs (/tmp/sfcc-step3-final-native-target/release/deps/octree_decide_partition-cf44b5a9c021aadd)
+
+running 4 tests
+test box_decide_partition_matches_serial ... ok
+test box_minus_sphere_decide_partition_matches_serial ... ok
+test rounded_union_decide_partition_matches_serial ... ok
+test twisted_l_decide_partition_matches_serial ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.93s
+
+     Running tests/octree_feat_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/octree_feat_parity-b5dad4664c8853d6)
+
+running 2 tests
+test octree_feat_box_matches_ts ... ok
+test octree_feat_box_minus_sphere_matches_ts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/octree_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/octree_parity-58ca98bd6137d4f9)
+
+running 2 tests
+test octree_box_matches_ts ... ok
+test octree_sphere_matches_ts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/octree_resumable.rs (/tmp/sfcc-step3-final-native-target/release/deps/octree_resumable-b139da04075b5633)
+
+running 4 tests
+test box_resumable_matches_serial ... ok
+test box_minus_sphere_resumable_matches_serial ... ok
+test rounded_union_resumable_matches_serial ... ok
+test twisted_l_resumable_matches_serial ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+     Running tests/octree_session.rs (/tmp/sfcc-step3-final-native-target/release/deps/octree_session-b31c816e3ca40620)
+
+running 4 tests
+test box_session_matches_serial ... ok
+test box_minus_sphere_session_matches_serial ... ok
+test rounded_union_session_matches_serial ... ok
+test twisted_l_session_matches_serial ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+     Running tests/output_geometry.rs (/tmp/sfcc-step3-final-native-target/release/deps/output_geometry-547075ef902e9433)
+
+running 1 test
+test output_rounding_cannot_turn_degenerate_triangles_into_a_successful_export ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.62s
+
+     Running tests/primitive_scale.rs (/tmp/sfcc-step3-final-native-target/release/deps/primitive_scale-6fcf304fe2f7c6ba)
+
+running 2 tests
+test lathe_distance_and_raw_derivatives_match_scaled_cylinders_and_annuli ... ok
+test negative_lathe_radii_are_not_treated_as_axis_roundoff ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/reliability.rs (/tmp/sfcc-step3-final-native-target/release/deps/reliability-2b4e5d0c5b29903b)
+
+running 9 tests
+test refinement_ceiling_is_not_a_successful_export ... ok
+test transformed_box_bounds_enclose_dense_samples ... ok
+test normal_exports_check_vertex_links ... ok
+test bounded_empty_intersection_is_a_valid_empty_export ... ok
+test unresolved_surface_cannot_report_success ... ok
+test sufficient_depth_discovers_a_surface_between_coarse_samples ... ok
+test small_enclosed_cavity_is_preserved ... ok
+test small_sphere_discovery_scales_with_the_domain ... ok
+test small_real_component_survives_discovery_and_cleanup ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/scene_bridge_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/scene_bridge_parity-7448eb1e877c3539)
+
+running 5 tests
+test bridge_box_matches_ts ... ok
+test bridge_box_minus_sphere_matches_ts ... ok
+test bridge_extrude_twist_matches_ts ... ok
+test bridge_lathe_matches_ts ... ok
+test bridge_loft_matches_ts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/scene_transforms.rs (/tmp/sfcc-step3-final-native-target/release/deps/scene_transforms-776722d778180fd4)
+
+running 3 tests
+test primitive_rotation_wrappers_preserve_the_position_pivot ... ok
+test nested_scales_preserve_signed_composite_cutters ... ok
+test uniform_scale_preserves_every_boolean_blend_mode ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sdf_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/sdf_parity-d296438d4c05c2d7)
+
+running 8 tests
+test box_minus_sphere_f_matches_ts ... ok
+test extrude_matches_ts ... ok
+test extrude_twist_matches_ts ... ok
+test lathe_matches_ts ... ok
+test loft_matches_ts ... ok
+test smooth_union_columns_matches_ts ... ok
+test smooth_union_round_matches_ts ... ok
+test sphere_f_matches_ts ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/seams_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/seams_parity-ce606e7f4faf270d)
+
+running 1 test
+test box_minus_sphere_seams_match_ts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/smoothcrit_analytic.rs (/tmp/sfcc-step3-final-native-target/release/deps/smoothcrit_analytic-692a14abb76dad92)
+
+running 2 tests
+test cylinder_and_cone_analytic_are_closed ... ok
+test sphere_analytic_manifold_and_deterministic ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.52s
+
+     Running tests/spatial_partition.rs (/tmp/sfcc-step3-final-native-target/release/deps/spatial_partition-8986c16c9ace13cb)
+
+running 12 tests
+test box_partition_equiv_serial ... ok
+test box_separate_partition_equiv_serial ... ok
+test box_morton_partition_equiv_serial ... ok
+test box_minus_sphere_separate_partition_equiv_serial ... ok
+test box_minus_sphere_partition_equiv_serial ... ok
+test box_minus_sphere_morton_partition_equiv_serial ... ok
+test rounded_union_partition_equiv_serial ... ok
+test rounded_union_separate_partition_equiv_serial ... ok
+test twisted_l_partition_equiv_serial ... ok
+test twisted_l_separate_partition_equiv_serial ... ok
+test rounded_union_morton_partition_equiv_serial ... ok
+test twisted_l_morton_partition_equiv_serial ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.60s
+
+     Running tests/strata_parity.rs (/tmp/sfcc-step3-final-native-target/release/deps/strata_parity-db7157ed4e689ae1)
+
+running 1 test
+test carrier_and_curved_feature_parity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/worker_partition.rs (/tmp/sfcc-step3-final-native-target/release/deps/worker_partition-ce6d88176c4fa403)
+
+running 9 tests
+test worker_rejects_mismatched_feature_fingerprint - should panic ... ok
+test curved_feature_intervals_survive_real_merges_and_reversed_completion ... ok
+test box_worker_partition_equiv_serial ... ok
+test quality_stages_preserve_box_topology_and_worker_ownership ... ok
+test box_minus_sphere_worker_partition_equiv_serial ... ok
+test quality_projection_tube_pruning_matches_the_same_unpruned_surface ... ok
+test worker_recovery_and_reversed_completion_order_match_serial ... ok
+test rounded_union_worker_partition_equiv_serial ... ok
+test twisted_l_worker_partition_equiv_serial ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.42s
+
+     Running unittests src/lib.rs (/tmp/sfcc-step3-final-native-target/release/deps/gcad_wasm-c26a6a85561a419d)
+
+running 1 test
+test validation_tests::boundary_defaults_enable_links_and_serialize_unchecked_honestly ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gcad_kernel
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gcad_wasm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

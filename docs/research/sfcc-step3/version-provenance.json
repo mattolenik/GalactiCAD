@@ -1,0 +1,21 @@
+{
+  "controlledInput": "VERSION unset versus VERSION=v0.0.0-e028834-dirty",
+  "sameVersionBuildByteIdentical": true,
+  "artifacts": [
+    {
+      "path": "/tmp/sfcc-step3-focused/pkg/gcad_wasm_bg.wasm",
+      "sha256": "64c7839cf14ce38f7e48a2274f198fed203701db22f16bd354888b8facd95c8d",
+      "bytes": 1486223
+    },
+    {
+      "path": "/tmp/sfcc-step3-focused/version-matched-pkg/gcad_wasm_bg.wasm",
+      "sha256": "4c93e38f925d91cc303c18b05eba8822e4f65526283504054df8928d6415cf2e",
+      "bytes": 1486232
+    },
+    {
+      "path": "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm",
+      "sha256": "4c93e38f925d91cc303c18b05eba8822e4f65526283504054df8928d6415cf2e",
+      "bytes": 1486232
+    }
+  ]
+}

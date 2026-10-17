@@ -1,0 +1,265 @@
+{
+  "baseline": "e0288346de2dddd2edd1fc90e331a9054b04e3e8",
+  "selected": "B rework plus consensus identity/recheck/snapshot/all-membership fixes",
+  "sourceLogicalSha256": "c29db04aa3a0c6e49d05ff54dd3d27b20951cc9d6389135ca708cd2ea63dbad9",
+  "sourceManifestSha256": "7ea8b2e899a41c6597c9eb869886e0540cb51fecbb675914d8d77f53a97c870c",
+  "artifacts": {
+    "focusedWasm": {
+      "path": "/tmp/sfcc-step3-focused/pkg/gcad_wasm_bg.wasm",
+      "bytes": 1486223,
+      "sha256": "64c7839cf14ce38f7e48a2274f198fed203701db22f16bd354888b8facd95c8d"
+    },
+    "focusedGlue": {
+      "path": "/tmp/sfcc-step3-focused/pkg/gcad_wasm.js",
+      "bytes": 25872,
+      "sha256": "5eecaaaf6f76ed3203e4cb1f5eb62ab6cceb6960e1c0233328e218a58659266f"
+    },
+    "native": [
+      {
+        "path": "/tmp/sfcc-step3-focused/native/coverage_obstruction-7753f66001813285",
+        "bytes": 2602176,
+        "sha256": "2ffa584910a4b5b7272de41c8022998058f09ba3645bad33756ccb5568de7bc2"
+      },
+      {
+        "path": "/tmp/sfcc-step3-focused/native/discovery_contract-4de0b66c164563df",
+        "bytes": 2330288,
+        "sha256": "d936beffaf745d8d2221594ece0d81666232dbfc50a24c4f641172ff9502c749"
+      },
+      {
+        "path": "/tmp/sfcc-step3-focused/native/gcad_kernel-3f740d09571cf632",
+        "bytes": 2216416,
+        "sha256": "93e00ca4d99532a61e5dbe284992c7fcb26d18fd74d8f84d3274bd7ef3e95217"
+      },
+      {
+        "path": "/tmp/sfcc-step3-focused/native/gcad_kernel-f0486a86ed8387a5",
+        "bytes": 3129504,
+        "sha256": "67be8ef1d90c5df2c281eb26b818dbbde51e62d0bf1bb22450feab4dff6bab91"
+      }
+    ],
+    "appWasm": {
+      "path": "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm",
+      "bytes": 1486232,
+      "sha256": "4c93e38f925d91cc303c18b05eba8822e4f65526283504054df8928d6415cf2e"
+    },
+    "kernelBuildScript": {
+      "path": "gcad-wasm/kernel/build.rs",
+      "bytes": 987,
+      "sha256": "502f8cdfbf16e2c651b894196915f4233d41a55551ad66b9fc886a0cc42e75f3"
+    },
+    "makefile": {
+      "path": "Makefile",
+      "bytes": 12018,
+      "sha256": "f84840531fd0e20eac492484660597037b18033624be752caf890075fa712986"
+    },
+    "versionMatchedWasm": {
+      "path": "/tmp/sfcc-step3-focused/version-matched-pkg/gcad_wasm_bg.wasm",
+      "bytes": 1486232,
+      "sha256": "4c93e38f925d91cc303c18b05eba8822e4f65526283504054df8928d6415cf2e"
+    }
+  },
+  "toolchains": {
+    "native": "Homebrew Rust/Cargo 1.99",
+    "wasm": "Rustup Rust1.96; wasm-pack0.15; wasm-opt",
+    "node": "26.11.1",
+    "jobs": 1,
+    "network": "offline",
+    "rustflags": "-C target-feature=+simd128",
+    "profile": "release opt3/LTO/codegen1"
+  },
+  "versionInputs": {
+    "focused": "VERSION unset; exported version()=0.1.0",
+    "application": "VERSION=v0.0.0-e028834-dirty; exported version()=v0.0.0-e028834-dirty; package.json version has leading v removed",
+    "controlledReplay": "VERSION-matched isolated rebuild is byte-identical to app-built package; see version-provenance.json"
+  },
+  "checks": [
+    {
+      "name": "final-profile",
+      "log": "/tmp/sfcc-step3-consensus-final-native3.log",
+      "sha256": "966d6bba1745d89e310978f9a9369461286ee9ae3e936ff96fb77f7d9cf78657",
+      "finalRuntime": true,
+      "durableLog": "validation/final-profile.log",
+      "results": [
+        "test result: ok. 197 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.67s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.02s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.76s"
+      ]
+    },
+    {
+      "name": "final-default",
+      "log": "/tmp/sfcc-step3-consensus-default-native2.log",
+      "sha256": "4377f1e415003ddf11efa7e51a733c21543038c1579ad44a3104d39587b26934",
+      "finalRuntime": true,
+      "durableLog": "validation/final-default.log",
+      "results": [
+        "test result: ok. 176 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+      ]
+    },
+    {
+      "name": "final-wasm",
+      "log": "/tmp/sfcc-step3-consensus-wasm-tests3.log",
+      "sha256": "ca82ba352c7c4980940241bfe2a4dd67aafd339404f59c63551f866608e34cab",
+      "finalRuntime": true,
+      "durableLog": "validation/final-wasm.log",
+      "results": [
+        "\u2139 tests 23",
+        "\u2139 pass 23",
+        "\u2139 fail 0",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0"
+      ]
+    },
+    {
+      "name": "final-wasm-build",
+      "log": "/tmp/sfcc-step3-consensus-wasm-build3.log",
+      "sha256": "f12250f7c341ca1569e8d8cb690ccbfa7b5b338ce1b718cbf35d4a425f0dcb23",
+      "finalRuntime": true,
+      "durableLog": "validation/final-wasm-build.log",
+      "results": []
+    },
+    {
+      "name": "first-integrated-native",
+      "log": "/tmp/sfcc-step3-consensus-native.log",
+      "sha256": "6fde032b7bd4d37107b803fe60641d722af80feb4b658faf992805ff9db6f9b6",
+      "finalRuntime": false,
+      "results": [
+        "test result: ok. 197 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.16s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.38s",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.51s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.82s"
+      ]
+    },
+    {
+      "name": "snapshot-ordering-intermediate",
+      "log": "/tmp/sfcc-step3-consensus-final-native.log",
+      "sha256": "fd347399d6fbcb205ffda40f6a9698a314d037d1f93523b5417d1058520532ce",
+      "finalRuntime": false,
+      "results": [
+        "test result: FAILED. 196 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.24s"
+      ]
+    },
+    {
+      "name": "second-membership-counterexample",
+      "log": "/tmp/sfcc-step3-consensus-second-interval-before.log",
+      "sha256": "91559a8b37a271543ad17621d50e9b2f592a51b20bf16bcd7ac5c0088fa92d71",
+      "finalRuntime": false,
+      "durableLog": "validation/second-membership-counterexample.log",
+      "results": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 196 filtered out; finished in 0.07s"
+      ]
+    },
+    {
+      "name": "wasm-outdir-command-error",
+      "log": "/tmp/sfcc-step3-consensus-wasm-build2.log",
+      "sha256": "1f648624ea77e7806ff499b110c5eb373690910955f7daaedb2214a539d455dc",
+      "finalRuntime": false,
+      "results": []
+    },
+    {
+      "name": "isolated-fixture-input-omission",
+      "log": "/tmp/sfcc-step3-consensus-wasm-tests2.log",
+      "sha256": "ba58ff73aadc61ce20cf598038aefbe971cdd69543da18d4d6024489df154d85",
+      "finalRuntime": true,
+      "results": [
+        "\u2139 tests 23",
+        "\u2139 pass 20",
+        "\u2139 fail 3",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0"
+      ]
+    },
+    {
+      "name": "coordinator-final-build",
+      "log": "/tmp/sfcc-step3-final-build.log",
+      "sha256": "42502e0b703b405f0dfc13c4c068f03d4d403f8c2e9ba267ebd82f9ed7887f36",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "durableLog": "validation/coordinator-build.log"
+    },
+    {
+      "name": "coordinator-final-native",
+      "log": "/tmp/sfcc-step3-final-native.log",
+      "sha256": "1283c7e9d92ba23c0b77ddd881be18a90350ec01f417494ac4635a6101a26031",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "passed": 362,
+      "failed": 0,
+      "ignored": 0,
+      "durableLog": "validation/coordinator-native.log"
+    },
+    {
+      "name": "coordinator-final-wasm",
+      "log": "/tmp/sfcc-step3-final-wasm.log",
+      "sha256": "0367583a0fe59677e0343d9b0032a37a38e4a06080311f5d0e7471e0c00a9c69",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "durableLog": "validation/coordinator-wasm.log"
+    },
+    {
+      "name": "coordinator-final-profile",
+      "log": "/tmp/sfcc-step3-final-profile.log",
+      "sha256": "88c81e45b998a16eb69f6bcee186c5888eb140f16ba28012dc2b74359f9dcd4e",
+      "finalRuntime": true,
+      "exitCode": 0,
+      "passed": 220,
+      "failed": 0,
+      "ignored": 0,
+      "durableLog": "validation/coordinator-profile.log"
+    }
+  ],
+  "limitations": [
+    "per represented certified cell, no prepared partition completeness theorem",
+    "abstract indexed correspondence, no new f32 embedding/Hausdorff/general termination",
+    "full scope identity sphere or positive aligned-box intersection; exact represented endpoints/grid",
+    "unproved quality edits withdraw certificates without forcing serial recovery",
+    "substantial wire/memory overhead; no timing claim"
+  ],
+  "coordinatorGate": "passed: final application build, full native workspace, all36WASM fixtures, profile and independent exact replays",
+  "commands": [
+    {
+      "cwd": "/Users/matt/gcad/galacticad",
+      "command": "CARGO_TARGET_DIR=/tmp/sfcc-step3-consensus-native CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --lib --test coverage_obstruction --test discovery_contract -- --test-threads=1",
+      "log": "/tmp/sfcc-step3-consensus-final-native3.log"
+    },
+    {
+      "cwd": "/Users/matt/gcad/galacticad",
+      "command": "CARGO_TARGET_DIR=/tmp/sfcc-step3-consensus-native CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --lib -- --test-threads=1",
+      "log": "/tmp/sfcc-step3-consensus-default-native2.log"
+    },
+    {
+      "cwd": "/Users/matt/gcad/galacticad",
+      "command": "PATH=/Users/matt/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin CARGO_TARGET_DIR=/tmp/sfcc-step3-consensus-wasm CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true RUSTFLAGS='-C target-feature=+simd128' /Users/matt/.cargo/bin/wasm-pack build gcad-wasm/wasm --target web --release --out-dir /tmp/sfcc-step3-final-checkout/gcad-wasm/wasm/pkg --offline",
+      "log": "/tmp/sfcc-step3-consensus-wasm-build3.log"
+    },
+    {
+      "cwd": "/tmp/sfcc-step3-final-checkout",
+      "command": "SFCC_COVERAGE_B_DIR=/tmp/sfcc-step3-consensus-final-evidence /opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/sfcc-coverage-obstruction_test.mjs gcad-wasm/fixtures/sfcc-discovery_test.mts gcad-wasm/fixtures/sfcc-numerical-exclusion_test.mts gcad-wasm/fixtures/sfcc-scene-transforms_test.mts gcad-wasm/fixtures/sfcc-quality_test.mts",
+      "log": "/tmp/sfcc-step3-consensus-wasm-tests3.log"
+    },
+    {
+      "cwd": "/Users/matt/gcad/galacticad",
+      "command": "PATH=/Users/matt/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin VERSION=v0.0.0-e028834-dirty CARGO_TARGET_DIR=/tmp/sfcc-step3-consensus-wasm CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true RUSTFLAGS='-C target-feature=+simd128' /Users/matt/.cargo/bin/wasm-pack build gcad-wasm/wasm --target web --release --out-dir /tmp/sfcc-step3-focused/version-matched-pkg --offline",
+      "log": "/tmp/sfcc-step3-consensus-version-build.log"
+    }
+  ],
+  "isolatedFixtureInputs": [
+    "docs/research/sfcc-step2/rotated-baseline.jsonl",
+    "docs/research/sfcc-step2/mixed-baseline.jsonl",
+    "docs/research/sfcc-step2/inputs.json"
+  ],
+  "ownedProcesses": "All consensus-owned build/test/Node/oracle processes completed.",
+  "coordinatorNotes": [
+    "Native full workspace Cargo jobs2; profile jobs1; independent exact flip/historical obstruction/carrier scripts exit0",
+    "All62frozen source-manifest file hashes verified equal c29db logical source",
+    "Native tests without external TS oracle fixtures do not establish those missing comparisons",
+    "Earlier pre-membership-fix broad logs remain precursor evidence, not this final gate"
+  ]
+}

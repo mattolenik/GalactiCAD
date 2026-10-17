@@ -1,4 +1,4 @@
-/** Exercise all quality stages and SFP4 through independent WASM workers. */
+/** Exercise all quality stages and SFP5 through independent WASM workers. */
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { Worker } from "node:worker_threads"

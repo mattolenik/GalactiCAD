@@ -16,6 +16,7 @@
 
 pub mod cancel;
 pub mod cell_mesh;
+pub(crate) mod local_coverage;
 pub mod face_contour;
 pub mod feature_curves;
 pub mod feature_chain;

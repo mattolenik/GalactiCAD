@@ -1,0 +1,23 @@
+   Compiling gcad-kernel v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/kernel)
+    Finished `release` profile [optimized] target(s) in 29.35s
+     Running unittests src/lib.rs (/tmp/sfcc-step3-consensus-native/release/deps/gcad_kernel-f0486a86ed8387a5)
+
+running 1 test
+test sfcc::local_coverage::tests::mandatory_clipped_box_actual_atomic_faces_patches_and_creases ... FAILED
+
+failures:
+
+---- sfcc::local_coverage::tests::mandatory_clipped_box_actual_atomic_faces_patches_and_creases stdout ----
+certificate reasons {}
+
+thread 'sfcc::local_coverage::tests::mandatory_clipped_box_actual_atomic_faces_patches_and_creases' (28073300) panicked at kernel/src/sfcc/local_coverage.rs:2636:13:
+a valid first interval cannot hide an incorrect second membership
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sfcc::local_coverage::tests::mandatory_clipped_box_actual_atomic_faces_patches_and_creases
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 196 filtered out; finished in 0.07s
+
+error: test failed, to rerun pass `-p gcad-kernel --lib`

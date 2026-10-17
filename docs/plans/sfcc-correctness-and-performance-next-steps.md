@@ -1,6 +1,6 @@
 # SFCC correctness and performance plan
 
-Status: execution in progress. Step 1 consensus diagnostics and broad acceptance gate are complete (324 default native tests, 176 profiling library tests plus 11 diagnosis tests, 26 WASM fixtures, and application build). Step 2 starts from the Step 1 milestone; Steps 3–4 remain pending. Starting implementation revision: `234f3cb`, including discovery implementation `e36db4a`.
+Status: execution in progress. Step 1 consensus diagnostics and broad acceptance gate are complete (324 default native tests, 176 profiling library tests plus 11 diagnosis tests, 26 WASM fixtures, and application build). Step 2 consensus and broad gate are complete from the Step 1 milestone (`5b9f190`): application build, 341 native tests, 34 WASM fixtures, and 180 profiling library plus 11 diagnosis tests passed. Step 3 starts from the Step 2 milestone; Step 4 remains pending. Starting implementation revision: `234f3cb`, including discovery implementation `e36db4a`.
 
 The next work proceeds through four steps: identify the remaining failure mechanisms, establish sound numerical exclusion, strengthen discovery of Boolean-clipped components, and optimize repeated work. Each step has three independent competing agents followed by a distinct fourth consensus agent. The next step begins only after the preceding consensus has passed its acceptance gate.
 
@@ -106,7 +106,7 @@ Primary code: `sfcc/pipeline.rs`, `refine_criteria.rs`, `octree.rs`, `validation
 
 Expected artifacts: a fixture/first-failure ledger, runnable diagnostic tests, a small instrumentation patch if needed, and a Step 1 consensus report. No meshing acceptance policy change belongs in this step.
 
-Consensus deliverable: [Step 1 diagnosis and evidence](../research/sfcc-step1-diagnosis.md). The integrated observer combines actual branch attribution, captured-cell replay and feature/triangle provenance. All 36 fine cells first reject at sampled normal variation; the ordinary lens reconstructs both components with explicit unresolved status. The contained-cell and depth-10 failures are retained as bounded witnesses. Focused checks and the coordinator’s final broad validation are recorded separately; The broad gate passed and Step 2 is authorized to begin.
+Consensus deliverable: [Step 1 diagnosis and evidence](../research/sfcc-step1-diagnosis.md). The integrated observer combines actual branch attribution, captured-cell replay and feature/triangle provenance. All 36 fine cells first reject at sampled normal variation; the ordinary lens reconstructs both components with explicit unresolved status. The contained-cell and depth-10 failures are retained as bounded witnesses. Focused checks and the coordinator’s final broad validation are recorded separately; the broad gate passed and Step 2 is authorized to begin.
 
 ## Step 2 — Establish sound numerical exclusion
 
@@ -159,6 +159,8 @@ For known points or sets satisfying the supported field's zero equation, neither
 Primary code: `sdf.rs`, `math/similarity.rs`, `math/grid.rs`, `sfcc/octree.rs`, `refine_criteria.rs`, and pruning consumers in `pipeline.rs`/`worker.rs`. Tests extend field bounds, scene transforms, discovery, and actual WASM boundary controls.
 
 Expected artifacts: an exclusion theorem with an explicit machine-arithmetic contract, a caller coverage table, adversarial oracle fixtures, the selected implementation, and measured work/cell changes. If proof covers only a restricted domain, state that restriction and keep all other cases outside the certified result.
+
+Consensus deliverable: [Step 2 numerical exclusion](../research/sfcc-step2-exclusion.md). The selected geometric enclosures use the actual baked coefficients; supported hard query views retain every occurrence, while checked cell regions cover nominal dyadic cells and existing rounded coordinate constructions. Independent native/WASM oracles capture their actual input bits. The coordinator broad gate passed; Step 3 is authorized to begin from the committed result.
 
 ## Step 3 — Discover Boolean-clipped components and justify local acceptance
 

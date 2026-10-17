@@ -1,0 +1,8 @@
+{"kind":"sphere","angle":0,"f32":false,"leaves":1591,"unresolved":8,"components":1,"failed":0,"primitiveBounds":42545,"discoveryQueries":38528}
+{"kind":"sphere","angle":0,"f32":true,"leaves":1591,"unresolved":8,"components":1,"failed":0,"primitiveBounds":42545,"discoveryQueries":38528}
+{"kind":"sphere","angle":0.713,"f32":false,"leaves":1768,"unresolved":53,"components":1,"failed":0,"primitiveBounds":88926,"discoveryQueries":42787}
+{"kind":"sphere","angle":0.713,"f32":true,"leaves":1768,"unresolved":53,"components":1,"failed":0,"primitiveBounds":88926,"discoveryQueries":42787}
+{"kind":"box","angle":0,"f32":false,"leaves":152,"unresolved":0,"components":1,"failed":0,"primitiveBounds":3553,"discoveryQueries":2904}
+{"kind":"box","angle":0,"f32":true,"leaves":152,"unresolved":0,"components":1,"failed":0,"primitiveBounds":3553,"discoveryQueries":2904}
+{"kind":"box","angle":0.713,"f32":false,"leaves":326,"unresolved":0,"components":1,"failed":0,"primitiveBounds":7863,"discoveryQueries":6702}
+{"kind":"box","angle":0.713,"f32":true,"leaves":326,"unresolved":0,"components":1,"failed":0,"primitiveBounds":7863,"discoveryQueries":6702}

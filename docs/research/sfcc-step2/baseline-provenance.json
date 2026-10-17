@@ -1,0 +1,16 @@
+{
+  "sourceRevision": "5b9f1902646ea2d4a3e6d0e9cf8a57c3b56da7a7",
+  "native": "Homebrew rustc1.99.0 arm64",
+  "nativeFlags": "-O -C lto=fat -C codegen-units=1 --cfg feature=sfcc-profile",
+  "baselineLibrary": "Step1 final profile-target serde,sfcc-profile library; production source unchanged by Step1 documentation commit",
+  "command": "/tmp/sfcc-step2-baseline-profile fast 1 0",
+  "scope": "One structural profile run for9fast scenes in fixed order. diagnostic_ms values are not timing evidence. No expensive48blob. Root run concurrent with candidate correctness work.",
+  "failedAttempt": "Initial direct rustc link without -Clto failed LLVM23bitcode vs AppleLLVM21 linker; rerun with matching Rust LTO succeeded. No failed binary was run.",
+  "hashes": {
+    "/tmp/sfcc-step2-baseline-profile.jsonl": "5da8a6e34a1307dce9b4db93e432655fcd9ff525d214dd4003ba5e156fefde3f",
+    "/tmp/sfcc-step1-final-profile-target/release/deps/libgcad_kernel-fbb7e445d52f9734.rlib": "483eb090372da18b6f25c6197dac879c15fe47c009da02e1ec00c6e2e71d02c8",
+    "gcad-wasm/kernel/examples/sfcc_discovery_bench.rs": "804bb18ff2aa9d21ac4d2f78ae55dab82748447e0ef2437bb0ccf953bacf7cbd",
+    "/tmp/sfcc-step2-baseline-profile": "9faea33001cb133b3028ee5224f3163db9a6b9e4c2296c6774199f6f592913e7",
+    "/tmp/sfcc-step2-rotated-baseline-expanded.jsonl": "2463fa7c26e55799bf6bc18fc4e1575bcf2db0b2c26bb812a326aeac110a3190"
+  }
+}

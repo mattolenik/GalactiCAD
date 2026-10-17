@@ -1,0 +1,13 @@
+{
+  "purpose": "Integrated focused WASM artifact before coordinator broad build",
+  "preserved_copy": "/tmp/sfcc-consensus-focused-pkg",
+  "sha256": {
+    ".stamp": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gcad_wasm.js": "5eecaaaf6f76ed3203e4cb1f5eb62ab6cceb6960e1c0233328e218a58659266f",
+    "gcad_wasm_bg.wasm.d.ts": "e6aa5d7fc6a61c97047e569a0e2fb892b01e21ed7d536ff4bcd9195d4b0aba4c",
+    "gcad_wasm.d.ts": "0e350446376054f75a51a8c59fb8093e2d26e7d5d315216a555d6269f4add842",
+    "gcad_wasm_bg.wasm": "5d7f45f536bd69a3123038c28d4972604ce850848406245482b57cb8aa09ddb4",
+    ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+    "package.json": "5af0090bd469a2df25f5e28ef427c50109f3bfaa9c82b38ceffc84cbc08e26bb"
+  }
+}

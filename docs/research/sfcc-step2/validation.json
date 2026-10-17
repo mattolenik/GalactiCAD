@@ -1,0 +1,191 @@
+{
+  "status": "Focused integrated and coordinator broad acceptance gates passed; Step 2 accepted",
+  "baseline": "5b9f1902646ea2d4a3e6d0e9cf8a57c3b56da7a7",
+  "cwd": "/Users/matt/gcad/galacticad",
+  "native": {
+    "cargo": "1.99.0 Homebrew",
+    "rustc": "1.99.0 Homebrew",
+    "target": "aarch64-apple-darwin",
+    "jobs": 1,
+    "offline": true,
+    "release": "opt-level=3; lto=true; codegen-units=1"
+  },
+  "wasm": {
+    "rustc": "1.96.0 Rustup",
+    "target": "wasm32-unknown-unknown",
+    "features": "+simd128 (not relaxed SIMD)",
+    "wasm_pack": "0.15.0",
+    "wasm_opt": "133",
+    "jobs": 1,
+    "offline": true,
+    "release": "opt-level=3; lto=true; codegen-units=1; normal release without sfcc-profile"
+  },
+  "node": "/opt/homebrew/bin/node v26.11.1",
+  "runs": [
+    {
+      "name": "profile_native_matrix",
+      "command": "/opt/homebrew/bin/cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --lib --test numerical_exclusion --test discovery_contract --test diagnosis_contract --test lever1_prune_parity --test scene_transforms -- --test-threads=1",
+      "log": "/tmp/sfcc-consensus-native.log",
+      "log_sha256": "973ee4a5ffcfd68d7ac8a37cd89d36404e96cf4ee940177ff7c19b296fa2d9a4",
+      "result": "180 library + 11 diagnosis + 6 discovery + 3 prune + 13 numerical + 3 transforms passed; precedes only recovery_cull doc-comment clarification",
+      "exit_code": 0
+    },
+    {
+      "name": "default_numerical",
+      "command": "SFCC_BOUND_RECORDS=/tmp/sfcc-consensus-primitive-records.jsonl /opt/homebrew/bin/cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --test numerical_exclusion -- --test-threads=1",
+      "log": "/tmp/sfcc-consensus-default-numerical.log",
+      "log_sha256": "c55ee66855e56e1a14f462c1912e046e3feaf4f936628dac5b68ee1ab8436bb1",
+      "result": "11 passed on final source",
+      "exit_code": 0
+    },
+    {
+      "name": "native_examples",
+      "command": "/opt/homebrew/bin/cargo build --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --example exclusion_probe --example sfcc_discovery_bench",
+      "log": "/tmp/sfcc-consensus-final-native-examples-build.log",
+      "log_sha256": "09d5ba560babc734dcf484f0fcbc0c836b323e9f5bc182abe70e227830171c62",
+      "result": "Final-source profiled native binaries built",
+      "exit_code": 0
+    },
+    {
+      "name": "native_bit_capture",
+      "command": "gcad-wasm/target/release/examples/exclusion_probe < docs/research/sfcc-step2/inputs.json > /tmp/sfcc-consensus-final-native-bounds.json",
+      "log": "/tmp/sfcc-consensus-final-native-bounds.json",
+      "log_sha256": "701eb5974358e2e75c34808dd3611aadd3802eb5477d9d9d755e7280900fa4b9",
+      "result": "132 actual parsed/baked/query/endpoint bit records",
+      "exit_code": 0
+    },
+    {
+      "name": "native_bit_oracle",
+      "command": "python3 docs/research/sfcc-step2/exact_oracle.py --check docs/research/sfcc-step2/inputs.json /tmp/sfcc-consensus-final-native-bounds.json",
+      "log": "/tmp/sfcc-consensus-final-native-oracle.log",
+      "log_sha256": "26032bfe8f49df360afe54dd49f9a0c75b40c0aed441a446e47643fe01e761e7",
+      "result": "132 queries / 1980 witnesses / 48 box extrema / 12 exact zeros / 131 finite",
+      "exit_code": 0
+    },
+    {
+      "name": "direct_leaf_oracle",
+      "command": "python3 docs/research/sfcc-step2/numerical-exclusion-oracle.py /tmp/sfcc-consensus-primitive-records.jsonl",
+      "log": "/tmp/sfcc-consensus-primitive-oracle.log",
+      "log_sha256": "d09194425cd098b74a42c362bce0ac9c85d79b9fac72125622125aa03fe1d8ee",
+      "result": "2304 exact algebraic checks and rational-root containment passed",
+      "exit_code": 0
+    },
+    {
+      "name": "structural_profile",
+      "command": "gcad-wasm/target/release/examples/sfcc_discovery_bench fast 1 0 > /tmp/sfcc-consensus-final-profile.jsonl",
+      "log": "/tmp/sfcc-consensus-final-profile.jsonl",
+      "log_sha256": "1d58e1ecdacc5c647333a5ccf91795d48958225d2d771d79e12dcebc87f7728a",
+      "result": "Same nine-scene order as baseline; structural counts only, not timing evidence",
+      "exit_code": 0
+    },
+    {
+      "name": "wasm_build",
+      "command": "PATH=\"/Users/matt/.cargo/bin:$PATH\" CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build gcad-wasm/wasm --target web --release",
+      "log": "/tmp/sfcc-consensus-wasm-build.log",
+      "log_sha256": "ed56a25d7c5963deccc603df4646750ccf6439b45abcb92441794ae15bbd1358",
+      "result": "Successful matching package; offline version-check warning is nonfatal",
+      "exit_code": 0
+    },
+    {
+      "name": "wasm_fixtures",
+      "command": "SFCC_BOUND_OUTPUT=/tmp/sfcc-consensus-wasm-bounds.json /opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/sfcc-numerical-exclusion_test.mts gcad-wasm/fixtures/sfcc-discovery_test.mts gcad-wasm/fixtures/sfcc-scene-transforms_test.mts",
+      "log": "/tmp/sfcc-consensus-wasm-fixtures.log",
+      "log_sha256": "135e6c5859d159241bbe7ad3ffd179f6c7ab6ba8cc99fce3d9143b0708acfbc2",
+      "result": "18 passed, 0 failures/skips/cancellations; workers 1/2/4/8 and reverse with no-recovery/recovery separated",
+      "exit_code": 0
+    },
+    {
+      "name": "wasm_bit_oracle",
+      "command": "python3 docs/research/sfcc-step2/exact_oracle.py --check docs/research/sfcc-step2/inputs.json /tmp/sfcc-consensus-wasm-bounds.json",
+      "log": "/tmp/sfcc-consensus-wasm-oracle.log",
+      "log_sha256": "26032bfe8f49df360afe54dd49f9a0c75b40c0aed441a446e47643fe01e761e7",
+      "result": "132 queries / 1980 witnesses / 48 box extrema / 12 exact zeros / 131 finite",
+      "exit_code": 0
+    },
+    {
+      "name": "transport_replay",
+      "command": "/opt/homebrew/bin/node docs/research/sfcc-step2/replay_transport.mjs",
+      "log": "/tmp/sfcc-consensus-transport-replay.log",
+      "log_sha256": "719e9d06edea0e2e0e89a725c740e96df6363b87629feccfabd68667296779a2",
+      "result": "132 baked bitsets match; 24 raw query rows / 13 endpoint rows differ; zero differences after native query-bit replay",
+      "exit_code": 0
+    },
+    {
+      "name": "proposal_a_exact_replay",
+      "command": "python3 docs/research/sfcc-step2/proposal-a-replay_rotated.py docs/research/sfcc-step2/proposal-a-rotated-regions-f64.json docs/research/sfcc-step2/proposal-a-rotated-regions-f32.json",
+      "log": "/tmp/sfcc-consensus-a-replay.jsonl",
+      "log_sha256": "1c7378bfcf745bcafb1df8c29e4cfdd08a908bc5d98ed9af951e29cc8c4ba374",
+      "result": "Historical A final variant: 18 wholly inside/outside query boxes and 35 containing zero in each coefficient representation; no edge/face necessity claim",
+      "exit_code": 0
+    },
+    {
+      "name": "baseline_old-bound",
+      "command": "/tmp/sfcc-step2-root-old-bound",
+      "log": "/tmp/sfcc-consensus-old-bound.log",
+      "log_sha256": "26be3d2d2a0bc3f3bf118ecc922fcba70d41b186962ca4348c895c1d18487862",
+      "result": "Coordinator-built frozen-baseline binary independently replayed; negative evidence only",
+      "exit_code": 0
+    },
+    {
+      "name": "baseline_old-ball",
+      "command": "/tmp/sfcc-step2-root-old-ball",
+      "log": "/tmp/sfcc-consensus-old-ball.log",
+      "log_sha256": "ad3aafc9f5b038aba6fc1723cbb309b9878e3ae46e59c20d839f3489b0c7312f",
+      "result": "Coordinator-built frozen-baseline binary independently replayed; negative evidence only",
+      "exit_code": 0
+    },
+    {
+      "name": "baseline_legacy-box",
+      "command": "/tmp/sfcc-step2-root-legacy-box",
+      "log": "/tmp/sfcc-consensus-legacy-box.log",
+      "log_sha256": "78045deb030f43d3f7b5ddcd340f2feb28c090f7c6a7e56fff100373f14ef31d",
+      "result": "Coordinator-built frozen-baseline binary independently replayed; negative evidence only",
+      "exit_code": 0
+    }
+  ],
+  "source_note": "The initial native matrix precedes only a recovery_cull documentation comment; default native, rebuilt native examples/profile and matching WASM use final source. No runtime source edit follows that matrix.",
+  "baseline_scope": "Coordinator-frozen baseline package/library only; no fresh baseline compile. Historical diagnostic durations not compared.",
+  "omitted": "No visual QA or formal timing/48-blob campaign. Broad coordinator validation is recorded separately below.",
+  "owned_processes": "All owned command sessions completed before handoff; coordinator broad validation is separate.",
+  "coordinator_validation": {
+    "date": "2026-10-16",
+    "status": "passed",
+    "runs": [
+      {
+        "command": "PATH=\"/Users/matt/.cargo/bin:$PATH\" CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/sfcc-step2-final-build-target make build -o setup TSX='node --import tsx'",
+        "result": "passed; fresh WASM, TypeScript validation and app bundle",
+        "exit_code": 0,
+        "log": "/tmp/sfcc-step2-final-build.log",
+        "log_sha256": "5720521961098b906bf648bfb31e929f166ef54ed6eb42245e56b3ecb51ecb35"
+      },
+      {
+        "command": "CARGO_BUILD_JOBS=2 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --workspace --jobs 2 --no-fail-fast",
+        "result": "341 passed, zero failed; default workspace suite",
+        "exit_code": 0,
+        "log": "/tmp/sfcc-step2-final-native.log",
+        "log_sha256": "d7690833cce4f3ef769daa136716e2c2cb736876c2ecd0d0ee5a189c67b4816f"
+      },
+      {
+        "command": "/opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/*_test.mts",
+        "result": "34 passed, zero failed/skipped/cancelled; 111.575879833 seconds",
+        "exit_code": 0,
+        "log": "/tmp/sfcc-step2-final-wasm.log",
+        "log_sha256": "561dd961e6b84dc5290f922eccd78b91c861afc4468caae85da7d814dd02c046"
+      },
+      {
+        "command": "SFCC_DIAG_DIR=/tmp/sfcc-step2-final-diagnostics CARGO_TARGET_DIR=/tmp/sfcc-step2-final-profile-target CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --jobs 1 -p gcad-kernel --features serde,sfcc-profile --lib --test diagnosis_contract -- --test-threads=1",
+        "result": "180 library and 11 diagnosis tests passed; zero failed",
+        "exit_code": 0,
+        "log": "/tmp/sfcc-step2-final-profile.log",
+        "log_sha256": "37a5787a6b9c65a66f2c4c53a92f0fc5962b2ea643f16fb424e75805b7a76c8c"
+      }
+    ],
+    "notes": [
+      "Broad native uses two compile jobs; app and profile builds use isolated Cargo targets. Checks overlap, so elapsed times are not performance evidence.",
+      "Suites overlap and are reported separately, not added as independent coverage.",
+      "Existing native tests without their external TS binary oracle do not establish that missing comparison.",
+      "No runtime/test source changed after the focused source freeze. Coordinator wording/status edits are documentation only.",
+      "Focused native example aliases were overwritten by the broad build; identical hashed Cargo artifacts were preserved separately before cleanup."
+    ]
+  }
+}

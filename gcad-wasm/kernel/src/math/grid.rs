@@ -196,10 +196,112 @@ pub fn cell_aabb(lat: &SfccLattice, level: u32, ix: i64, iy: i64, iz: i64) -> [f
     [x, y, z, x + size, y + size, z + size]
 }
 
+/// Enclose the cell and every represented coordinate construction used
+/// by its descendants. Sampling uses `step`; feature boxes use a separately
+/// rounded `world_size / 2^level`, so neither alone encloses the other.
+pub(crate) fn cell_enclosure(lat: &SfccLattice, level: u32, ix: i64, iy: i64, iz: i64)
+    -> Option<([f64;3], [f64;3])>
+{
+    use crate::sdf::enclosure::{Interval, enclosing_box};
+    if !lat.step.is_finite() || lat.step < 0. { return None; }
+    let origin = [lat.origin_x, lat.origin_y, lat.origin_z];
+    let index = [ix,iy,iz];
+    let mut lo = [f64::INFINITY;3];
+    let mut hi = [f64::NEG_INFINITY;3];
+    // These exact dyadic addresses tile the parent's real domain even when
+    // rounded per-level sizes or the finest step lose subnormal bits.
+    let denominator=(1i64<<level) as f64;
+    for a in 0..3 {
+        let begin=Interval::point(lat.world_size).mul(index[a] as f64/denominator)?
+            .add(Interval::point(origin[a]))?;
+        let end=Interval::point(lat.world_size).mul((index[a]+1) as f64/denominator)?
+            .add(Interval::point(origin[a]))?;
+        lo[a]=begin.lo;
+        hi[a]=end.hi;
+    }
+    // Monotonicity puts every intermediate child origin/center between these
+    // extrema, at every legal depth, even when the finest size is subnormal.
+    for depth in level..=lat.max_depth {
+        let factor = (1i64 << (depth-level)) as f64;
+        let size = cell_size_at_level(lat,depth);
+        if !size.is_finite() || size < 0. { return None; }
+        for a in 0..3 {
+            let j0 = index[a] as f64 * factor;
+            let j1 = (index[a]+1) as f64 * factor;
+            let start = Interval::point(j0).mul(size)?.add(Interval::point(origin[a]))?;
+            let end = Interval::point(j1-1.).mul(size)?.add(Interval::point(origin[a]))?
+                .add(Interval::point(size))?;
+            let direct = Interval::point(j1).mul(size)?.add(Interval::point(origin[a]))?;
+            // Contour rectangles use the separately rounded fine-step origin
+            // plus len*step; underflow can distinguish this from cell_aabb.
+            let stride = stride_at_level(lat,depth) as f64;
+            let fine_start = Interval::point(j0*stride).mul(lat.step)?.add(Interval::point(origin[a]))?;
+            let fine_last = Interval::point((j1-1.)*stride).mul(lat.step)?.add(Interval::point(origin[a]))?;
+            let face_end = fine_last.add(Interval::point(stride).mul(lat.step)?)?;
+            lo[a] = lo[a].min(start.lo).min(fine_start.lo);
+            hi[a] = hi[a].max(end.hi).max(direct.hi).max(face_end.hi);
+        }
+    }
+    let stride = stride_at_level(lat,level) as f64;
+    for a in 0..3 {
+        let start = Interval::point(index[a] as f64*stride).mul(lat.step)?.add(Interval::point(origin[a]))?;
+        let end = Interval::point((index[a]+1) as f64*stride).mul(lat.step)?.add(Interval::point(origin[a]))?;
+        lo[a] = lo[a].min(start.lo);
+        hi[a] = hi[a].max(end.hi);
+    }
+    enclosing_box(lo,hi)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn subnormal_nominal_cells_keep_exact_zero_witnesses_despite_rounded_steps() {
+        use crate::sdf::{leaf_at,Shape};
+        for (depth,units) in [(4,7u64),(14,24559u64)] {
+            let tiny=f64::from_bits(1);
+            let size=f64::from_bits(units);
+            let lat=make_lattice(depth,0.,0.,0.,size);
+            let tree=leaf_at(Shape::Sphere {r:tiny},[size-tiny,0.,0.]);
+            // All coordinates are exact integer multiples of the least positive
+            // subnormal: (size,0,0) is an exact real zero of this sphere.
+            for level in 0..=depth {
+                let index=(1i64<<level)-1;
+                let (c,h)=cell_enclosure(&lat,level,index,0,0).unwrap();
+                let to_units=|x:f64| {
+                    assert!(x.abs()<f64::MIN_POSITIVE);
+                    let n=(x.to_bits() & ((1u64<<63)-1)) as i128;
+                    if x.is_sign_negative() {-n} else {n}
+                };
+                assert!(to_units(c[0])+to_units(h[0])>=units as i128);
+                let (lo,hi)=tree.interval_over_box(c,h);
+                assert!(!(lo>0. || hi<0.),"exact zero lost at depth {level}, units {units}");
+            }
+        }
+    }
+
+    #[test]
+    fn enclosure_contains_descendant_sampling_centers_and_feature_boxes() {
+        for (origin,size) in [(1e15,0.4),(-1e12,0.01),(0.,f64::from_bits(128)),(0.,f64::from_bits(129))] {
+            let lat = make_lattice(4,origin,-origin,0.,size);
+            let Some((c,h)) = cell_enclosure(&lat,0,0,0,0) else { panic!("finite enclosure"); };
+            for level in 0..=4 {
+                for i in 0..(1i64<<level) {
+                    let b=cell_aabb(&lat,level,i,i,i);
+                    let p=cell_center_world(&lat,level,i,i,i);
+                    let stride=stride_at_level(&lat,level);
+                    let start=point_to_world(&lat,i*stride,i*stride,i*stride);
+                    let face_end=start.map(|v|v+stride as f64*lat.step);
+                    let face_center=start.map(|v|v+(stride as f64*0.5)*lat.step);
+                    for v in [p,start,face_end,face_center,[b[0],b[1],b[2]],[b[3],b[4],b[5]]] {
+                        assert!((0..3).all(|a| c[a]-h[a]<=v[a] && v[a]<=c[a]+h[a]));
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn pack_unpack_roundtrip_at_max_depth() {

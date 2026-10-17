@@ -9,6 +9,8 @@
 //! milestones: extrude/loft/lathe leaves, owner/strata queries, and ingestion of
 //! the serialized scene (`SerializedNode[]`) — trees are built directly for now.
 
+pub(crate) mod enclosure;
+use enclosure::{invalid_interval, valid_interval};
 use crate::math::similarity::Similarity;
 use crate::primitives::shapes;
 use crate::primitives::smin::{smin, smin_columns_interval, SminMode};
@@ -73,11 +75,13 @@ pub struct Leaf {
 
 impl Leaf {
     fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
-        if !matches!(self.shape, Shape::Sphere { .. } | Shape::Cuboid { .. } | Shape::Cylinder { .. }) {
+        if matches!(self.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) {
+            return enclosure::primitive(self, c, half).unwrap_or_else(invalid_interval);
+        }
+        if !self.valid_parameters() { return invalid_interval(); }
+        if !matches!(self.shape, Shape::Cylinder { .. }) {
             let radius = half[0].hypot(half[1]).hypot(half[2]);
-            let f = self.f(c);
-            let reach = self.local_lipschitz(c, radius).unwrap_or(1.0) * radius;
-            return (f - reach, f + reach);
+            return self.legacy_interval_over_ball(c, radius);
         }
         if c.iter().any(|v| !v.is_finite()) || half.iter().any(|v| !v.is_finite() || *v < 0.0) {
             return (f64::NAN, f64::NAN);
@@ -102,25 +106,6 @@ impl Leaf {
             }
         }
         let (lo, hi) = match self.shape {
-            Shape::Sphere { r } => {
-                // Rotation does not change a sphere: use its world center for
-                // tight ranges even when the parent similarity is rotated.
-                let center = self.sim.apply_point(self.pos[0], self.pos[1], self.pos[2]);
-                for a in 0..3 {
-                    let d = (c[a] - center[a]).abs() / self.sim.s;
-                    let h = half[a] / self.sim.s;
-                    if !d.is_finite() || !h.is_finite() || h < 0.0 || !(d + h).is_finite() {
-                        return (f64::NAN, f64::NAN);
-                    }
-                    near[a] = (d - h).max(0.0);
-                    far[a] = d + h;
-                }
-                (near[0].hypot(near[1]).hypot(near[2]) - r, far[0].hypot(far[1]).hypot(far[2]) - r)
-            }
-            Shape::Cuboid { half: h } => (
-                shapes::box_dist(near[0], near[1], near[2], h[0], h[1], h[2]),
-                shapes::box_dist(far[0], far[1], far[2], h[0], h[1], h[2]),
-            ),
             Shape::Cylinder { r, h } => (
                 shapes::cylinder_dist(near[0], near[1], near[2], r, h),
                 shapes::cylinder_dist(far[0], far[1], far[2], r, h),
@@ -131,15 +116,32 @@ impl Leaf {
             return (f64::NAN, f64::NAN);
         }
         let (lo, hi) = if self.sign < 0.0 { (-hi, -lo) } else { (lo, hi) };
-        // Engineering roundoff allowance, reused by discovery; this is not a
-        // universal enclosure proof for arbitrary transforms or f64 magnitudes.
+        // Legacy cylinder estimate, outside the sphere/box enclosure theorem.
         let slack = 32.0 * f64::EPSILON * (1.0 + c.iter().map(|v| v.abs()).sum::<f64>()
             + self.sim.t.iter().map(|v| v.abs()).sum::<f64>()
             + self.sim.s * (lo.abs() + hi.abs() + self.pos.iter().map(|v| v.abs()).sum::<f64>()));
         (lo * self.sim.s - slack, hi * self.sim.s + slack)
     }
 
-    /// Reuse the primitive enclosure after cell-level discovery validation.
+    // Legacy estimates still need to distinguish arithmetic failure from an
+    // intentional opaque scope. Box min/max can hide NaN local coordinates.
+    fn legacy_interval_over_ball(&self, c: [f64;3], radius: f64) -> (f64,f64) {
+        if !self.valid_parameters() || c.iter().any(|x|!x.is_finite())
+            || !radius.is_finite() || radius<0. { return invalid_interval(); }
+        let local=self.sim.inv_apply_point(c[0],c[1],c[2]);
+        if (0..3).any(|a| !local[a].is_finite() || !(local[a]-self.pos[a]).is_finite()) {
+            return invalid_interval();
+        }
+        let value=self.f(c);
+        let lip=self.local_lipschitz(c,radius).unwrap_or(1.);
+        let reach=lip*radius;
+        let interval=(value-reach,value+reach);
+        if !value.is_finite() || !lip.is_finite() || lip<0. || !reach.is_finite() || !valid_interval(interval) {
+            invalid_interval()
+        } else { interval }
+    }
+
+    /// Shared checked sphere/box enclosure after discovery eligibility checks.
     pub(crate) fn discovery_interval_over_box(
         &self,
         c: [f64; 3],
@@ -170,8 +172,8 @@ impl Leaf {
         if !extent.iter().all(|&v| valid_extent(v)) {
             return false;
         }
-        // This rejects grossly malformed matrices; genuine similarities remain a
-        // modeling premise, not a theorem established by a floating tolerance.
+        // This eligibility check rejects grossly malformed carrier geometry. The
+        // enclosure theorem below NEVER assumes exact orthogonality from it.
         let r = &self.sim.r;
         for a in 0..3 {
             for b in a..3 {
@@ -201,6 +203,25 @@ impl Leaf {
                 && local_lo.is_finite() && local_hi.is_finite()
                 && local_lo < self.pos[a] && self.pos[a] < local_hi
         })
+    }
+    fn valid_parameters(&self) -> bool {
+        let finite = |v: &f64| v.is_finite();
+        if !matches!(self.sign, -1.0 | 1.0) || !self.sim.s.is_finite() || self.sim.s <= 0.0
+            || !self.pos.iter().chain(&self.sim.t).chain(&self.sim.r).all(finite) {
+            return false;
+        }
+        let positive = |v: f64| v.is_finite() && v > 0.;
+        match &self.shape {
+            Shape::Sphere { r } => positive(*r),
+            Shape::Cuboid { half } => half.iter().all(|v| positive(*v)),
+            Shape::Cylinder { r, h } | Shape::Cone { r, h } => positive(*r) && positive(*h),
+            Shape::Extrude { verts, wind, h, twist_rad } => positive(*h) && wind.is_finite()
+                && twist_rad.is_finite() && verts.len() >= 6 && verts.len() % 2 == 0 && verts.iter().all(finite),
+            Shape::Loft { profs, winds, h } => positive(*h) && profs.len() >= 2 && winds.len() == profs.len()
+                && winds.iter().all(finite) && profs.iter().all(|p| p.len() >= 6 && p.len() % 2 == 0 && p.iter().all(finite)),
+            Shape::Lathe { edges } => !edges.is_empty() && edges.iter().all(|e|
+                [e.r0,e.y0,e.r1,e.y1,e.len,e.nr,e.ny].iter().all(finite)),
+        }
     }
     pub fn f(&self, p: [f64; 3]) -> f64 {
         let l = self.sim.inv_apply_point(p[0], p[1], p[2]);
@@ -350,6 +371,7 @@ impl CsgNode {
                 (lo, hi)
             }
             Self::Blend { .. } | Self::Leaf(_) => {
+                if !self.valid_parameters() { return Err(Indeterminate); }
                 entries.push(ZeroOwner::Opaque);
                 crate::sfcc::perf::maximum(27, entries.len());
                 (f64::NEG_INFINITY, f64::INFINITY)
@@ -472,6 +494,15 @@ impl ChildVals {
 }
 
 impl CsgNode {
+    fn valid_parameters(&self) -> bool {
+        match self {
+            Self::Leaf(l) => l.valid_parameters(),
+            Self::Min(ch) | Self::Max(ch) => !ch.is_empty() && ch.iter().all(Self::valid_parameters),
+            Self::Blend { r, n, children, .. } => r.is_finite() && *r > 0. && n.is_finite()
+                && children.len() >= 2 && children.iter().all(Self::valid_parameters),
+        }
+    }
+
     /// Signed field of the full tree (negative inside, f = 0 ⟺ surface).
     pub fn f(&self, p: [f64; 3]) -> f64 {
         self.f_with_children(p, |child| child.f(p))
@@ -504,30 +535,40 @@ impl CsgNode {
         (sample.value, normal)
     }
 
-    /// Certified enclosure of f over the ball (center, r). v1 shapes are exact
-    /// SDFs (L = 1), so leaves use the centered form [f(c) − r, f(c) + r].
+    /// Sphere/box hard trees enclose their represented real field over the ball.
+    /// Other families retain legacy estimates, without that numerical theorem.
     pub fn interval_over_ball(&self, c: [f64; 3], r: f64) -> (f64, f64) {
+        self.interval_over_ball_impl(c, r, true)
+    }
+
+    // Opaque blend composition must retain its legacy operand estimates. The
+    // checked hard-field theorem applies only outside that opaque ancestor.
+    fn interval_over_ball_impl(&self, c: [f64; 3], r: f64, checked_hard: bool) -> (f64, f64) {
+        if !r.is_finite() || r < 0. || c.iter().any(|x| !x.is_finite()) { return invalid_interval(); }
         match self {
             CsgNode::Leaf(l) => {
-                let fc = l.f(c);
-                // Non-unit-gradient leaves (twisted extrude / morphing loft) need
-                // their local Lipschitz bound; everything else is an exact SDF.
-                let lip = l.local_lipschitz(c, r).unwrap_or(1.0);
-                (fc - lip * r, fc + lip * r)
+                if checked_hard && matches!(l.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) {
+                    return l.interval_over_box(c, [r; 3]);
+                }
+                l.legacy_interval_over_ball(c, r)
             }
             CsgNode::Min(ch) => {
+                if ch.is_empty() { return invalid_interval(); }
                 let (mut lo, mut hi) = (f64::INFINITY, f64::INFINITY);
                 for x in ch {
-                    let (clo, chi) = x.interval_over_ball(c, r);
+                    let (clo, chi) = x.interval_over_ball_impl(c, r, checked_hard);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                     lo = lo.min(clo);
                     hi = hi.min(chi);
                 }
                 (lo, hi)
             }
             CsgNode::Max(ch) => {
+                if ch.is_empty() { return invalid_interval(); }
                 let (mut lo, mut hi) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
                 for x in ch {
-                    let (clo, chi) = x.interval_over_ball(c, r);
+                    let (clo, chi) = x.interval_over_ball_impl(c, r, checked_hard);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                     lo = lo.max(clo);
                     hi = hi.max(chi);
                 }
@@ -535,11 +576,13 @@ impl CsgNode {
             }
             CsgNode::Blend { kind, mode, r: br, n, children } => {
                 let m = children.len();
+                if m < 2 || !br.is_finite() || *br <= 0. || !n.is_finite() { return invalid_interval(); }
                 if m <= CHILD_VALS_INLINE {
                     let mut los = [0.0f64; CHILD_VALS_INLINE];
                     let mut his = [0.0f64; CHILD_VALS_INLINE];
                     for (i, x) in children.iter().enumerate() {
-                        let (clo, chi) = x.interval_over_ball(c, r);
+                        let (clo, chi) = x.interval_over_ball_impl(c, r, false);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                         los[i] = clo;
                         his[i] = chi;
                     }
@@ -548,7 +591,8 @@ impl CsgNode {
                     let mut los = Vec::with_capacity(m);
                     let mut his = Vec::with_capacity(m);
                     for x in children {
-                        let (clo, chi) = x.interval_over_ball(c, r);
+                        let (clo, chi) = x.interval_over_ball_impl(c, r, false);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                         los.push(clo);
                         his.push(chi);
                     }
@@ -562,15 +606,23 @@ impl CsgNode {
     /// than a circumscribed ball, avoiding false candidates near flat faces and
     /// small enclosed components. Other fields retain their Lipschitz enclosure.
     pub fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
+        if c.iter().any(|v| !v.is_finite()) || half.iter().any(|v| !v.is_finite() || *v < 0.) {
+            return invalid_interval();
+        }
         match self {
             Self::Leaf(l) => l.interval_over_box(c, half),
             Self::Min(ch) | Self::Max(ch) => {
                 let is_min = matches!(self, Self::Min(_));
                 let init = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
-                ch.iter().fold((init, init), |(lo, hi), child| {
-                    let (a, b) = child.interval_over_box(c, half);
-                    if is_min { (lo.min(a), hi.min(b)) } else { (lo.max(a), hi.max(b)) }
-                })
+                if ch.is_empty() { return invalid_interval(); }
+                let (mut lo, mut hi) = (init, init);
+                for child in ch {
+                    let iv = child.interval_over_box(c, half);
+                    if !valid_interval(iv) { return invalid_interval(); }
+                    if is_min { lo = lo.min(iv.0); hi = hi.min(iv.1); }
+                    else { lo = lo.max(iv.0); hi = hi.max(iv.1); }
+                }
+                (lo, hi)
             }
             _ => self.interval_over_ball(c, half[0].hypot(half[1]).hypot(half[2])),
         }
@@ -705,12 +757,9 @@ impl CsgNode {
         }
     }
 
-    /// Lever 1: a region-pruned [`Pruned`] view valid over the ball circumscribing
-    /// the box (center `c`, half-extents `half`) — structurally reduced to the
-    /// leaves/subtrees that can affect `f`/interval there, with EXACT `f` (for any
-    /// point in the ball) and EXACT interval (for that ball) vs the full tree.
-    /// Pure work-elimination, no precision change. Build once per region, reuse
-    /// across that region's many evals (root-finding, certificates).
+    /// Region query view. Supported sphere/box hard trees retain every operand:
+    /// real-field enclosures alone do not prove rounded-evaluator winner parity.
+    /// Mixed/opaque families keep the legacy pruning policy outside that theorem.
     pub fn prune_to_box(&self, c: [f64; 3], half: [f64; 3]) -> Pruned<'_> {
         Pruned::wrap(self).prune_to_box(c, half)
     }
@@ -751,17 +800,9 @@ pub fn lever1_should_prune(_tree: &CsgNode, _min_leaves: usize) -> bool {
     false
 }
 
-/// A borrowed, region-pruned view of a [`CsgNode`] (Lever 1). Reports `f` and
-/// interval BIT-EXACT to the full tree for points within the prune ball, so any
-/// computation it feeds is unchanged. Cull rules (each interval-/f-exact because
-/// `interval_over_ball` is a certified enclosure — `f_k(p) ≤ hi_k`, `f_j(p) ≥ lo_j`
-/// for all `p` in the ball):
-///  - Min: drop child j when some sibling k has `hi_k < lo_j` (strictly smaller
-///    over the whole ball → j is never the min; the argmin-lo/argmin-hi survive).
-///  - Max: symmetric (`lo_k > hi_j`).
-///  - Blend: drop j only when ≥2 siblings strictly dominate it (`hi_k < lo_j`) —
-///    a child outside the smallest two can never enter the nearest-pair fold.
-///    Binary blends (the common case) are therefore never pruned.
+/// A borrowed query view of a [`CsgNode`]. Sphere/box hard trees keep their full
+/// structure and floating evaluation order. Mixed/opaque trees retain the legacy
+/// strict interval-dominance policy; its numerical parity is not certified here.
 pub enum Pruned<'a> {
     Leaf(&'a Leaf),
     Min(Vec<Pruned<'a>>),
@@ -825,25 +866,37 @@ impl<'a> Pruned<'a> {
     /// Interval enclosure over the ball — same formula as
     /// [`CsgNode::interval_over_ball`], over the pruned children.
     pub fn interval_over_ball(&self, c: [f64; 3], r: f64) -> (f64, f64) {
+        self.interval_over_ball_impl(c, r, true)
+    }
+
+    // Opaque blend composition must retain its legacy operand estimates. The
+    // checked hard-field theorem applies only outside that opaque ancestor.
+    fn interval_over_ball_impl(&self, c: [f64; 3], r: f64, checked_hard: bool) -> (f64, f64) {
+        if !r.is_finite() || r < 0. || c.iter().any(|x| !x.is_finite()) { return invalid_interval(); }
         match self {
             Pruned::Leaf(l) => {
-                let fc = l.f(c);
-                let lip = l.local_lipschitz(c, r).unwrap_or(1.0);
-                (fc - lip * r, fc + lip * r)
+                if checked_hard && matches!(l.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }) {
+                    return l.interval_over_box(c, [r; 3]);
+                }
+                l.legacy_interval_over_ball(c, r)
             }
             Pruned::Min(ch) => {
+                if ch.is_empty() { return invalid_interval(); }
                 let (mut lo, mut hi) = (f64::INFINITY, f64::INFINITY);
                 for x in ch {
-                    let (clo, chi) = x.interval_over_ball(c, r);
+                    let (clo, chi) = x.interval_over_ball_impl(c, r, checked_hard);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                     lo = lo.min(clo);
                     hi = hi.min(chi);
                 }
                 (lo, hi)
             }
             Pruned::Max(ch) => {
+                if ch.is_empty() { return invalid_interval(); }
                 let (mut lo, mut hi) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
                 for x in ch {
-                    let (clo, chi) = x.interval_over_ball(c, r);
+                    let (clo, chi) = x.interval_over_ball_impl(c, r, checked_hard);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                     lo = lo.max(clo);
                     hi = hi.max(chi);
                 }
@@ -851,11 +904,13 @@ impl<'a> Pruned<'a> {
             }
             Pruned::Blend { kind, mode, r: br, n, children } => {
                 let m = children.len();
+                if m < 2 || !br.is_finite() || *br <= 0. || !n.is_finite() { return invalid_interval(); }
                 if m <= CHILD_VALS_INLINE {
                     let mut los = [0.0f64; CHILD_VALS_INLINE];
                     let mut his = [0.0f64; CHILD_VALS_INLINE];
                     for (i, x) in children.iter().enumerate() {
-                        let (clo, chi) = x.interval_over_ball(c, r);
+                        let (clo, chi) = x.interval_over_ball_impl(c, r, false);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                         los[i] = clo;
                         his[i] = chi;
                     }
@@ -864,7 +919,8 @@ impl<'a> Pruned<'a> {
                     let mut los = Vec::with_capacity(m);
                     let mut his = Vec::with_capacity(m);
                     for x in children {
-                        let (clo, chi) = x.interval_over_ball(c, r);
+                        let (clo, chi) = x.interval_over_ball_impl(c, r, false);
+                    if !valid_interval((clo, chi)) { return invalid_interval(); }
                         los.push(clo);
                         his.push(chi);
                     }
@@ -875,15 +931,23 @@ impl<'a> Pruned<'a> {
     }
 
     pub fn interval_over_box(&self, c: [f64; 3], half: [f64; 3]) -> (f64, f64) {
+        if c.iter().any(|v| !v.is_finite()) || half.iter().any(|v| !v.is_finite() || *v < 0.) {
+            return invalid_interval();
+        }
         match self {
             Self::Leaf(l) => l.interval_over_box(c, half),
             Self::Min(ch) | Self::Max(ch) => {
                 let is_min = matches!(self, Self::Min(_));
                 let init = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
-                ch.iter().fold((init, init), |(lo, hi), child| {
-                    let (a, b) = child.interval_over_box(c, half);
-                    if is_min { (lo.min(a), hi.min(b)) } else { (lo.max(a), hi.max(b)) }
-                })
+                if ch.is_empty() { return invalid_interval(); }
+                let (mut lo, mut hi) = (init, init);
+                for child in ch {
+                    let iv = child.interval_over_box(c, half);
+                    if !valid_interval(iv) { return invalid_interval(); }
+                    if is_min { lo = lo.min(iv.0); hi = hi.min(iv.1); }
+                    else { lo = lo.max(iv.0); hi = hi.max(iv.1); }
+                }
+                (lo, hi)
             }
             _ => self.interval_over_ball(c, half[0].hypot(half[1]).hypot(half[2])),
         }
@@ -957,39 +1021,63 @@ impl<'a> Pruned<'a> {
         }
     }
 
+    fn supported_hard(&self) -> bool {
+        match self {
+            Self::Leaf(l) => matches!(l.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }),
+            Self::Min(ch) | Self::Max(ch) => ch.iter().all(Self::supported_hard),
+            Self::Blend { .. } => false,
+        }
+    }
+
+    fn retained(&self) -> Self {
+        match self {
+            Self::Leaf(l) => Self::Leaf(l),
+            Self::Min(ch) => Self::Min(ch.iter().map(Self::retained).collect()),
+            Self::Max(ch) => Self::Max(ch.iter().map(Self::retained).collect()),
+            Self::Blend { kind, mode, r, n, children } => Self::Blend {
+                kind: *kind, mode: *mode, r: *r, n: *n, children: children.iter().map(Self::retained).collect(),
+            },
+        }
+    }
+
     /// Refine to a (sub-)box, dropping children that cannot affect `f`/interval
     /// over the box's circumscribing ball.
     pub fn prune_to_box(&self, c: [f64; 3], half: [f64; 3]) -> Pruned<'a> {
-        self.prune_to_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt())
+        self.prune_to_ball(c, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt(), true)
     }
 
-    fn prune_to_ball(&self, c: [f64; 3], r: f64) -> Pruned<'a> {
+    fn prune_to_ball(&self, c: [f64; 3], r: f64, checked_hard: bool) -> Pruned<'a> {
+        // Real-field separation does not prove rounded evaluator winner parity.
+        if checked_hard && self.supported_hard() { return self.retained(); }
         match self {
             Pruned::Leaf(l) => Pruned::Leaf(l),
             Pruned::Min(ch) => {
-                let iv: Vec<(f64, f64)> = ch.iter().map(|x| x.interval_over_ball(c, r)).collect();
+                let iv: Vec<(f64, f64)> = ch.iter().map(|x| x.interval_over_ball_impl(c, r, checked_hard)).collect();
+                if iv.iter().any(|&v| !valid_interval(v)) { return self.retained(); }
                 let kept: Vec<Pruned<'a>> = ch
                     .iter()
                     .enumerate()
                     .filter(|(j, _)| !iv.iter().enumerate().any(|(k, &(_, hk))| k != *j && hk < iv[*j].0))
-                    .map(|(_, x)| x.prune_to_ball(c, r))
+                    .map(|(_, x)| x.prune_to_ball(c, r, checked_hard))
                     .collect();
                 // The argmin can never be dropped (strict rule), so `kept` is
                 // non-empty; the fallback is pure defense against FP ties.
-                Pruned::Min(if kept.is_empty() { ch.iter().map(|x| x.prune_to_ball(c, r)).collect() } else { kept })
+                Pruned::Min(if kept.is_empty() { ch.iter().map(|x| x.prune_to_ball(c, r, checked_hard)).collect() } else { kept })
             }
             Pruned::Max(ch) => {
-                let iv: Vec<(f64, f64)> = ch.iter().map(|x| x.interval_over_ball(c, r)).collect();
+                let iv: Vec<(f64, f64)> = ch.iter().map(|x| x.interval_over_ball_impl(c, r, checked_hard)).collect();
+                if iv.iter().any(|&v| !valid_interval(v)) { return self.retained(); }
                 let kept: Vec<Pruned<'a>> = ch
                     .iter()
                     .enumerate()
                     .filter(|(j, _)| !iv.iter().enumerate().any(|(k, &(lk, _))| k != *j && lk > iv[*j].1))
-                    .map(|(_, x)| x.prune_to_ball(c, r))
+                    .map(|(_, x)| x.prune_to_ball(c, r, checked_hard))
                     .collect();
-                Pruned::Max(if kept.is_empty() { ch.iter().map(|x| x.prune_to_ball(c, r)).collect() } else { kept })
+                Pruned::Max(if kept.is_empty() { ch.iter().map(|x| x.prune_to_ball(c, r, checked_hard)).collect() } else { kept })
             }
             Pruned::Blend { kind, mode, r: br, n, children } => {
-                let iv: Vec<(f64, f64)> = children.iter().map(|x| x.interval_over_ball(c, r)).collect();
+                let iv: Vec<(f64, f64)> = children.iter().map(|x| x.interval_over_ball_impl(c, r, false)).collect();
+                if iv.iter().any(|&v| !valid_interval(v)) { return self.retained(); }
                 let kept: Vec<Pruned<'a>> = children
                     .iter()
                     .enumerate()
@@ -1003,7 +1091,7 @@ impl<'a> Pruned<'a> {
                             }
                         }).count() < 2
                     })
-                    .map(|(_, x)| x.prune_to_ball(c, r))
+                    .map(|(_, x)| x.prune_to_ball(c, r, false))
                     .collect();
                 // `blend_interval`/`blend_value_of` pick DIFFERENT (and, for
                 // columns/stairs, order-sensitive) formulas for exactly 2 children
@@ -1012,7 +1100,7 @@ impl<'a> Pruned<'a> {
                 // any back is still exact, and the >2 path stays the >2 path.
                 let min_keep = children.len().min(3);
                 let children =
-                    if kept.len() < min_keep { children.iter().map(|x| x.prune_to_ball(c, r)).collect() } else { kept };
+                    if kept.len() < min_keep { children.iter().map(|x| x.prune_to_ball(c, r, false)).collect() } else { kept };
                 Pruned::Blend { kind: *kind, mode: *mode, r: *br, n: *n, children }
             }
         }

@@ -1,0 +1,28 @@
+{
+  "baseline": "5b9f1902646ea2d4a3e6d0e9cf8a57c3b56da7a7",
+  "selected_runtime": "b v4",
+  "oracle_inputs_and_transport_evidence": "c",
+  "proposals": {
+    "a": {
+      "report": "/tmp/sfcc-next-bounds-a.txt",
+      "report_sha256": "77bed4d898bd109341871965fb8cb3f518f65d18999068fb3b85ef72349ac603",
+      "patch_sha256": "1db6055181a240bbaacc36a8e87b7132b9372ac0f53df7c801b2d7d28ca08b4d",
+      "sdf_sha256": "456c98d23fef9d9e81edb97dca1057b909ab117aaae0596d127a1f3936824c01",
+      "wasm_sha256": "5c0e8f87f1a8af4372a59710836e19c31c1d1eae68f73a268371e39f8fe1f076"
+    },
+    "b": {
+      "report": "/tmp/sfcc-next-bounds-b.txt",
+      "report_sha256": "e512202f132f7ab062a521536884b66a3279991bbe22e89d70d0e13152ee7d27",
+      "patch_sha256": "833fb625b00e80c5153c92e03ea7cc2543a2079f9aebcac8c4b0e1a2444e581a",
+      "sdf_sha256": "ce4eb45dc1bb6cd9cde4b8fc154f9e8191bc4fd8c57f77aa9adce47d62889c36",
+      "wasm_sha256": "ab24975d95c39f189bcb41bf69a72a66d72390d3f966599d6c4cdd983d39718f"
+    },
+    "c": {
+      "report": "/tmp/sfcc-next-bounds-c.txt",
+      "report_sha256": "e0d5cd974ab854ff631fe1e2ecfc2bacea83485a6f88b37574756881e88a2f74",
+      "patch_sha256": "6e547e05c062793c85e862d306d63a83992d615874d0baf030160c61dfe0b7f9",
+      "sdf_sha256": "e980e154a4b274f3cebbeb9e975e4cca3332ee7d1cd6878bece022150d2b4fb7",
+      "wasm_sha256": "8508b7fe95573d53985710f90603f1569a6f2cc2039bf9ad06fa909e4fbb7ee8"
+    }
+  }
+}

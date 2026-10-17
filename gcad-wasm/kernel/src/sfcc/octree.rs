@@ -333,9 +333,8 @@ struct Builder<'a> {
 impl<'a> Builder<'a> {
     /// True iff the cell's interval bound excludes 0 (no surface inside).
     fn certified_empty(&self, level: u32, ix: i64, iy: i64, iz: i64) -> bool {
-        let half = cell_size_at_level(self.lat, level) / 2.0;
-        let c = cell_center_world(self.lat, level, ix, iy, iz);
-        let (lo, hi) = self.sampler.tree.interval_over_box(c, [half, half, half]);
+        let Some((c, half)) = crate::math::grid::cell_enclosure(self.lat, level, ix, iy, iz) else { return false; };
+        let (lo, hi) = self.sampler.tree.interval_over_box(c, half);
         lo > 0.0 || hi < 0.0
     }
 
@@ -823,8 +822,9 @@ fn collect_coarse_prunes<'a>(
 ) {
     let half = cell_size_at_level(lat, level) / 2.0;
     let c = cell_center_world(lat, level, ix, iy, iz);
-    let (lo, hi) = tree.interval_over_box(c, [half, half, half]);
-    if lo > 0.0 || hi < 0.0 {
+    let interval = crate::math::grid::cell_enclosure(lat, level, ix, iy, iz)
+        .map(|(c,h)| tree.interval_over_box(c,h));
+    if interval.is_some_and(|(lo,hi)| lo > 0.0 || hi < 0.0) {
         return; // empty region — no surface, never decided
     }
     if level == OCTREE_PRUNE_LEVEL {

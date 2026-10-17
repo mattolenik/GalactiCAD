@@ -1,0 +1,6 @@
+{
+  "gcad-wasm/kernel/src/sdf.rs": "0816f835c6e816779db2c110df6ecb8100285d7d67186b29d660da0ef3302a45",
+  "gcad-wasm/kernel/src/math/bounds.rs": "342fe615d6e5ded65d29e0c9e944a14c88178cd54b590b1d541d24ffdfe4dea4",
+  "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm": "47025b417ca2cc6f0a958dcdf0ad0051eba380016b7a7f14fc82976c2cef66ac",
+  "gcad-wasm/wasm/pkg/gcad_wasm.js": "76485e9749651251bedad94ff54c793f09bed007b1138d30b2ae1bf9f673864c"
+}

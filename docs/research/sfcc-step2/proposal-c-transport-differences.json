@@ -1,0 +1,250 @@
+{
+  "comparison": "captured actual binary64 inputs and endpoints",
+  "rows": [
+    {
+      "case": 4,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        1
+      ]
+    },
+    {
+      "case": 15,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 20,
+      "bounds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        1
+      ]
+    },
+    {
+      "case": 25,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 30,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 34,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        1
+      ]
+    },
+    {
+      "case": 49,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 50,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 54,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        1
+      ]
+    },
+    {
+      "case": 55,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        0
+      ]
+    },
+    {
+      "case": 60,
+      "bounds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        0,
+        2
+      ]
+    },
+    {
+      "case": 74,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        1
+      ]
+    },
+    {
+      "case": 79,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        0
+      ]
+    },
+    {
+      "case": 80,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        0
+      ]
+    },
+    {
+      "case": 84,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 85,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 90,
+      "bounds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 94,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        0
+      ]
+    },
+    {
+      "case": 95,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    },
+    {
+      "case": 100,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        0
+      ]
+    },
+    {
+      "case": 105,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        1
+      ]
+    },
+    {
+      "case": 109,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        1
+      ]
+    },
+    {
+      "case": 110,
+      "bounds": [
+        1,
+        3
+      ],
+      "inputs": [],
+      "query": [
+        0
+      ]
+    },
+    {
+      "case": 114,
+      "bounds": [],
+      "inputs": [],
+      "query": [
+        2
+      ]
+    }
+  ],
+  "unexplained": []
+}

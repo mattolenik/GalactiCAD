@@ -37,7 +37,8 @@ fn hidden_leaf(bytes: &[u8], tree: &CsgNode, center: [f64; 3], radius: f64, dept
         let b = cell_aabb(&lat, level, l.ix >> shift, l.iy >> shift, l.iz >> shift);
         let coarse_center = std::array::from_fn(|a| (b[a] + b[a + 3]) * 0.5);
         let pruned = tree.prune_to_box(coarse_center, [(b[3] - b[0]) * 0.6; 3]);
-        assert!(pruned.leaf_count() < tree.leaf_count());
+        assert_eq!(pruned.leaf_count(), tree.leaf_count(),
+            "supported hard trees retain all floating evaluator operands until dominance is proved");
         let witness = [center[0] + radius, center[1], center[2]];
         assert!(tree.f(witness).abs() < 1e-10);
         assert_eq!(pruned.f(witness), tree.f(witness));

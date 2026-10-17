@@ -2,9 +2,9 @@
 //! Port of `src/export/sfcc/transform-bake.mts`.
 //!
 //! The v1 transform subset (Translate / Rotate / uniform positive Scale)
-//! composes into a similarity `world = s·(R·local) + t`, which keeps analytic
-//! carriers exact: planes stay planes, cylinders stay circular cylinders, cone
-//! half-angles are preserved. This is why SFCC v1 rejects non-uniform scale.
+//! composes nominally as `world = s·(R·local) + t`. Rounded rotation coefficients
+//! need not preserve exact analytic carriers; numerical bounds use the stored
+//! transpose without assuming orthogonality. SFCC v1 rejects non-uniform scale.
 //!
 //! Rotation convention (the repo's historical transpose-bug hotspot): the WGSL
 //! side packs flat arrays as *columns*, so `Rotate.getWgslMatrices().fwd` read
@@ -14,7 +14,9 @@
 /// A similarity transform `world = s·(R·local) + t`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Similarity {
-    /// 3×3 world-from-local rotation, row-major, proper (det +1).
+    /// 3×3 world-from-local rotation coefficients, row-major. Serialized and
+    /// composed values are rounded: exact orthogonality is not guaranteed.
+    /// The evaluator still uses the stored transpose; bounds honor that map.
     pub r: [f64; 9],
     /// World-space translation.
     pub t: [f64; 3],

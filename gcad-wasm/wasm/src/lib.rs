@@ -54,6 +54,51 @@ pub fn audit_field_samples(scene_json: &str, points: &[f64]) -> Result<Vec<f64>,
     Ok(out)
 }
 
+/// Diagnostic access to the existing exclusion path, not a rendering backend.
+/// Each seven-value region is
+/// center xyz, half xyz, and ball radius; output is box lo/hi, ball lo/hi, and
+/// regional-view box lo/hi. Nonfinite results explicitly mean uncertainty.
+#[wasm_bindgen]
+pub fn audit_field_intervals(scene_json: &str, regions: &[f64]) -> Result<Vec<f64>, JsError> {
+    if regions.len() % 7 != 0 {
+        return Err(JsError::new("audit regions must contain seven values"));
+    }
+    let tree = build_csg_tree_from_json(scene_json).map_err(|e| JsError::new(&format!("{e:?}")))?;
+    let mut out = Vec::with_capacity(regions.len() / 7 * 6);
+    for region in regions.chunks_exact(7) {
+        let c = [region[0],region[1],region[2]];
+        let h = [region[3],region[4],region[5]];
+        let a = tree.interval_over_box(c,h);
+        let b = tree.interval_over_ball(c,region[6]);
+        let p = tree.prune_to_box(c,h).interval_over_box(c,h);
+        out.extend([a.0,a.1,b.0,b.1,p.0,p.1]);
+    }
+    Ok(out)
+}
+
+/// Diagnostic capture of the actual baked primitive inputs, without evaluating
+/// the field: world-to-local matrix9, scale, translation3, position3, sign,
+/// shape tag (0 sphere / 1 box), then radius/zero/zero or half extents3.
+#[wasm_bindgen]
+pub fn audit_primitive_inputs(scene_json: &str) -> Result<Vec<f64>, JsError> {
+    use gcad_kernel::sdf::{CsgNode, Shape};
+    let tree = build_csg_tree_from_json(scene_json).map_err(|e| JsError::new(&e))?;
+    let CsgNode::Leaf(leaf) = tree else { return Err(JsError::new("primitive input audit needs one leaf")); };
+    let (tag, dimensions) = match leaf.shape {
+        Shape::Sphere { r } => (0., [r, 0., 0.]),
+        Shape::Cuboid { half } => (1., half),
+        _ => return Err(JsError::new("primitive input audit needs a sphere or box")),
+    };
+    let mut out = Vec::with_capacity(21);
+    for a in 0..3 { for b in 0..3 { out.push(leaf.sim.r[b * 3 + a]); } }
+    out.push(leaf.sim.s);
+    out.extend(leaf.sim.t);
+    out.extend(leaf.pos);
+    out.extend([leaf.sign, tag]);
+    out.extend(dimensions);
+    Ok(out)
+}
+
 /// The SFCC tuning subset the pipeline consumes, deserialized from the TS
 /// `SfccTuning` JSON. Field names are camelCase (the TS object), defaults mirror
 /// `DEFAULT_SFCC_TUNING`; unknown TS-only knobs (jitterRetries, failurePolicy,

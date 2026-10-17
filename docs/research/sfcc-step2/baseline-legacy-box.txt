@@ -1,0 +1,2 @@
+all finite input; inverse=[NaN, NaN, NaN]; masked leaf.f=0.0
+legacy opaque ball0=(-94.34335729389838, -94.34335729389838)

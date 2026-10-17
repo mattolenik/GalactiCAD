@@ -1,0 +1,104 @@
+{
+  "purpose": "Structural work only; diagnostic_ms is not performance evidence. Same nine-scene order, fast 1 0, sfcc-profile.",
+  "rows": [
+    {
+      "scene": "box",
+      "leaves": 4376,
+      "unresolved": 0,
+      "discovery_queries": 83160,
+      "changes": [
+        {
+          "counter": 12,
+          "before": 26996,
+          "after": 26324
+        }
+      ]
+    },
+    {
+      "scene": "sphere",
+      "leaves": 2763,
+      "unresolved": 0,
+      "discovery_queries": 53615,
+      "changes": []
+    },
+    {
+      "scene": "ordinary-seam",
+      "leaves": 7606,
+      "unresolved": 521,
+      "discovery_queries": 215280,
+      "changes": [
+        {
+          "counter": 12,
+          "before": 490419,
+          "after": 484347
+        }
+      ]
+    },
+    {
+      "scene": "hidden-box-sphere",
+      "leaves": 3974,
+      "unresolved": 4,
+      "discovery_queries": 79968,
+      "changes": [
+        {
+          "counter": 12,
+          "before": 692202,
+          "after": 690258
+        }
+      ]
+    },
+    {
+      "scene": "duplicates-4",
+      "leaves": 2763,
+      "unresolved": 0,
+      "discovery_queries": 214460,
+      "changes": []
+    },
+    {
+      "scene": "duplicates-16",
+      "leaves": 2763,
+      "unresolved": 0,
+      "discovery_queries": 857840,
+      "changes": []
+    },
+    {
+      "scene": "small-seam",
+      "leaves": 1193,
+      "unresolved": 27,
+      "discovery_queries": 37204,
+      "changes": [
+        {
+          "counter": 12,
+          "before": 113328,
+          "after": 112032
+        }
+      ]
+    },
+    {
+      "scene": "buried-15",
+      "leaves": 4376,
+      "unresolved": 0,
+      "discovery_queries": 144424,
+      "changes": [
+        {
+          "counter": 0,
+          "before": 312525,
+          "after": 401505
+        }
+      ]
+    },
+    {
+      "scene": "many-hard-hidden-16",
+      "leaves": 3974,
+      "unresolved": 4,
+      "discovery_queries": 135912,
+      "changes": [
+        {
+          "counter": 0,
+          "before": 2297930,
+          "after": 2389632
+        }
+      ]
+    }
+  ]
+}

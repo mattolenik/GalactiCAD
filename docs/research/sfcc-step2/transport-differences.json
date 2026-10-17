@@ -1,0 +1,227 @@
+{
+  "cases": 132,
+  "baked_inputs_identical": 132,
+  "query_difference_rows": 24,
+  "endpoint_difference_rows": 13,
+  "endpoint_differences_after_replaying_native_query_bits": 0,
+  "differences": [
+    {
+      "index": 4,
+      "query": [
+        1
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 15,
+      "query": [
+        2
+      ],
+      "endpoints": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "index": 20,
+      "query": [
+        1
+      ],
+      "endpoints": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "index": 25,
+      "query": [
+        2
+      ],
+      "endpoints": [
+        0,
+        2
+      ]
+    },
+    {
+      "index": 30,
+      "query": [
+        2
+      ],
+      "endpoints": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "index": 34,
+      "query": [
+        1
+      ],
+      "endpoints": [
+        1,
+        3
+      ]
+    },
+    {
+      "index": 49,
+      "query": [
+        2
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 50,
+      "query": [
+        2
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 54,
+      "query": [
+        1
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 55,
+      "query": [
+        0
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 60,
+      "query": [
+        0,
+        2
+      ],
+      "endpoints": [
+        0,
+        2
+      ]
+    },
+    {
+      "index": 74,
+      "query": [
+        1
+      ],
+      "endpoints": [
+        0,
+        2
+      ]
+    },
+    {
+      "index": 79,
+      "query": [
+        0
+      ],
+      "endpoints": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "index": 80,
+      "query": [
+        0
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 84,
+      "query": [
+        2
+      ],
+      "endpoints": [
+        0,
+        2
+      ]
+    },
+    {
+      "index": 85,
+      "query": [
+        2
+      ],
+      "endpoints": [
+        0,
+        2
+      ]
+    },
+    {
+      "index": 90,
+      "query": [
+        2
+      ],
+      "endpoints": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "index": 94,
+      "query": [
+        0
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 95,
+      "query": [
+        2
+      ],
+      "endpoints": [
+        1,
+        3
+      ]
+    },
+    {
+      "index": 100,
+      "query": [
+        0
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 105,
+      "query": [
+        1
+      ],
+      "endpoints": [
+        1,
+        3
+      ]
+    },
+    {
+      "index": 109,
+      "query": [
+        1
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 110,
+      "query": [
+        0
+      ],
+      "endpoints": []
+    },
+    {
+      "index": 114,
+      "query": [
+        2
+      ],
+      "endpoints": []
+    }
+  ]
+}

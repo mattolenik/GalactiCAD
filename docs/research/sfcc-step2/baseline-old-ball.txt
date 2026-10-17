@@ -1,0 +1,2 @@
+exact integer Pythagorean witness f=-0.03125 ball0=(-0.03125, -0.03125) box0=(-1.7006550720135682, 1.6381550720135682)
+invalid child folded root box=(-219464325271669.13, -219464325271661.16)

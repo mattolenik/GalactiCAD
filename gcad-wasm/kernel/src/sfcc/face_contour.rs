@@ -85,7 +85,8 @@ pub struct FaceContourOptions<'a> {
     pub root_tol: f64,
     /// Feature set for face pinning / recovery / tagging (None = smooth path).
     pub features: Option<&'a SfccFeatureSet>,
-    /// Lipschitz pre-cull in `recovered_crossings_for`.
+    /// Root-interval zero exclusion in `recovered_crossings_for`; supported hard
+    /// sphere/box fields use checked bounds, other families retain legacy estimates.
     pub recovery_cull: bool,
 }
 
@@ -253,7 +254,7 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
     a_world: [f64; 3], // canonical sub-edge min endpoint (world)
     b_world: [f64; 3], // canonical sub-edge max endpoint (world)
     tree: &T,
-    grad_bound: f64,
+    _grad_bound: f64,
     points: &mut PointTable,
     features: &SfccFeatureSet,
     root_tol: f64,
@@ -261,6 +262,30 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
 ) -> Vec<RecoveredCrossing> {
     if let Some(hit) = cache.get(&cache_key) {
         return hit.clone();
+    }
+
+    if recovery_cull {
+        // Bound the real edge and rounded interpolation coordinates through the
+        // same root interval path as octree/discovery; a midpoint is no proof.
+        use crate::sdf::enclosure::{Interval, enclosing_box};
+        let region = (|| {
+            let mut lo = [0.;3];
+            let mut hi = [0.;3];
+            for a in 0..3 {
+                let start = Interval::point(a_world[a]);
+                let delta = Interval::point(b_world[a]).sub(start)?;
+                let range = start.add(Interval {lo:delta.lo.min(0.),hi:delta.hi.max(0.)})?;
+                lo[a] = range.lo; hi[a] = range.hi;
+            }
+            enclosing_box(lo,hi)
+        })();
+        if region.is_some_and(|(c,h)| {
+            let (lo,hi)=tree.interval_over_box(c,h);
+            lo>0. || hi<0.
+        }) {
+            cache.insert(cache_key,Vec::new());
+            return Vec::new();
+        }
     }
 
     let edge_len =
@@ -306,12 +331,6 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
                 continue;
             }
             let st = &features.strata[sid];
-            if recovery_cull {
-                let q = at_t(0.5);
-                if st.f(q[0], q[1], q[2]).abs() > (edge_len / 2.0) * grad_bound {
-                    continue;
-                }
-            }
             let mut prev_t = 0.0;
             let q0 = at_t(0.0);
             let mut prev_f = st.f(q0[0], q0[1], q0[2]);

@@ -1,0 +1,2 @@
+{"name":"round-plus-box","scene":{"kind":"union","children":[{"kind":"union","radius":0.2,"mode":"round","children":[{"kind":"sphere","pos":[-0.5,0,0],"r":1},{"kind":"sphere","pos":[0.5,0,0],"r":1}]},{"kind":"box","pos":[2.5,0,0],"half":[0.5,0.5,0.5]}]},"leaves":3631,"components":2,"unresolved":543,"ok":false}
+{"name":"cylinder-plus-sphere","scene":{"kind":"union","children":[{"kind":"cylinder","pos":[-1.5,0,0],"r":1,"h":1},{"kind":"sphere","pos":[1.5,0,0],"r":1}]},"leaves":2279,"components":2,"unresolved":8,"ok":false}

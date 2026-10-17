@@ -1,0 +1,177 @@
+{
+  "baseline_revision": "5b9f1902646ea2d4a3e6d0e9cf8a57c3b56da7a7",
+  "toolchains": {
+    "native": "Homebrew rustc/cargo 1.99.0",
+    "wasm": "rustup 1.96.0",
+    "node": "/opt/homebrew/bin/node v26.11.1",
+    "release": "opt-level 3, LTO true, codegen-units 1",
+    "wasm_flags": "-C target-feature=+simd128"
+  },
+  "final_results": {
+    "profile_library": 180,
+    "profile_integration": {
+      "diagnosis": 11,
+      "discovery": 6,
+      "pruning": 3,
+      "numerical": 11
+    },
+    "default_numerical": 9,
+    "actual_wasm": 13,
+    "exact_rational_inputs": 256,
+    "exact_algebraic_corner_center_comparisons": 2304,
+    "profile_controls": 9,
+    "failures": 0,
+    "skipped": 0
+  },
+  "processes": "All compiler/test/worker processes completed before delivery.",
+  "commands": [
+    "/opt/homebrew/bin/cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --lib -- --test-threads=1",
+    "SFCC_BOUND_RECORDS=/tmp/sfcc-b-mixed-final-bound-records.jsonl SFCC_DIAG_DIR=/tmp/sfcc-b-mixed-final-diagnosis /opt/homebrew/bin/cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --test numerical_exclusion --test discovery_contract --test diagnosis_contract --test lever1_prune_parity -- --test-threads=1",
+    "/opt/homebrew/bin/cargo test --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --test numerical_exclusion -- --test-threads=1",
+    "/opt/homebrew/bin/cargo run --offline --release --jobs 1 --manifest-path gcad-wasm/Cargo.toml -p gcad-kernel --features serde,sfcc-profile --example sfcc_discovery_bench -- fast 1 0",
+    "PATH=\"/Users/matt/.cargo/bin:$PATH\" CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build gcad-wasm/wasm --target web --release",
+    "/opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/sfcc-numerical-exclusion_test.mts gcad-wasm/fixtures/sfcc-discovery_test.mts",
+    "python3 docs/research/sfcc-step2-b/numerical-exclusion-oracle.py /tmp/sfcc-b-mixed-final-bound-records.jsonl"
+  ],
+  "source_sha256": {
+    "gcad-wasm/Cargo.lock": "2fb8a8700e3c88f11323dede3f35c5a83ec8ff57ee5e20c8f998fd8892469025",
+    "gcad-wasm/Cargo.toml": "1291209c0af81ae668275cc3d3743f31913e0bb5ea26b4112edfcff18d439db6",
+    "gcad-wasm/kernel/Cargo.toml": "47d4892846a0af30794ef9b8f03fc4a3cdbc0ffde50670527be470ffe5339b1d",
+    "gcad-wasm/kernel/build.rs": "502f8cdfbf16e2c651b894196915f4233d41a55551ad66b9fc886a0cc42e75f3",
+    "gcad-wasm/kernel/src/codegen.rs": "a553da4919d9c763507a21dd61d6ce11254e90fb014a82e6b2320f764b312317",
+    "gcad-wasm/kernel/src/lib.rs": "13a61451f369d0281af653308b6621dc1f2dee75abcaf64a9f959d7172587551",
+    "gcad-wasm/kernel/src/math/grid.rs": "72b4409fc927ac9e7fb45fe677b12c87c89e1e223bbede8426fc91c3fe5c4526",
+    "gcad-wasm/kernel/src/math/mod.rs": "70a4552b25798e323f1fb15021820fe495a59a106c594ce85de962bdab31871f",
+    "gcad-wasm/kernel/src/math/similarity.rs": "654e164d4774bbcf5ed582063d16db77c6b81f8d170d0daf3d79768793203ecb",
+    "gcad-wasm/kernel/src/parity.rs": "5be7d4d5a79b01b5d4db50d50fa7eb893381480d60174d9fda49927786466c33",
+    "gcad-wasm/kernel/src/primitives/mod.rs": "048139cce02913f4d4f2a29ce15f14654078a8db43e1c3a10f95d62fb0c6adc8",
+    "gcad-wasm/kernel/src/primitives/polygon2d.rs": "a442f1e3ba065987212c04b632d658bc8a18d4eba5cb9a6b734055fbbeb9cc30",
+    "gcad-wasm/kernel/src/primitives/shapes.rs": "17fedcce617102370b7d0df7c68bbd44b66abca09ce9583de1e58b8a07461ebc",
+    "gcad-wasm/kernel/src/primitives/smin.rs": "3f4e4329ec2f25534d3d5d10ea9030a692edd1fcd1e9c15fe9449cd9ba7c2711",
+    "gcad-wasm/kernel/src/scene.rs": "cd2490a6c6fce95b09d316bef0a8f248e5378c0386045b3c8660770270b0a00b",
+    "gcad-wasm/kernel/src/scene_bridge.rs": "d639a7b3db05510ae6987e3fe2deb59c1cdd7fbbcbe5a4d505149d2b1fd1c4b6",
+    "gcad-wasm/kernel/src/sdf/enclosure.rs": "158e52d2001fc7db70c0de1b77f9edd1f1f06073d47d98410648b9250b596d56",
+    "gcad-wasm/kernel/src/sdf.rs": "ce4eb45dc1bb6cd9cde4b8fc154f9e8191bc4fd8c57f77aa9adce47d62889c36",
+    "gcad-wasm/kernel/src/sfcc/adaptive_refine.rs": "50ab45093cf73d66071688780b31e80a00f55e9731b2184664a88523091f5bdb",
+    "gcad-wasm/kernel/src/sfcc/assembly.rs": "b16b4073ea143eb2e2128bc5d3089f1486570e2418992a98856eab37adc543c0",
+    "gcad-wasm/kernel/src/sfcc/blend_surfaces.rs": "731f64c1fd34673aa4083c9e207796d8a3a713878bd762cbccc36d676363681f",
+    "gcad-wasm/kernel/src/sfcc/branch_surfaces.rs": "d44f8d17829d487d6877f77b9656c4472ce80dc80fe7ec9135e4fe572477c986",
+    "gcad-wasm/kernel/src/sfcc/cancel.rs": "3e69b037a8110db35b692dd5edafabb37837a44d9ff5f40761aaa42940416440",
+    "gcad-wasm/kernel/src/sfcc/cell_mesh.rs": "00e219d1fd31ec3dadd68b4a06d14cfc08e6efabeacd3eb8aa1212dc16e98685",
+    "gcad-wasm/kernel/src/sfcc/diagnosis.rs": "d5502d5d16cb3eea9b50ff600ab4c4daccb95bc70bc1d488b80fbd5924101ccf",
+    "gcad-wasm/kernel/src/sfcc/face_contour.rs": "64a0253772a33a7d304e1fab822c1a33e30f4da5ee927aea2a7a174bb61df308",
+    "gcad-wasm/kernel/src/sfcc/feature_chain.rs": "b6d14bb094aa8928e225ec1c0a6b1aa880cf13fd31e7b905acda9da385dfda7c",
+    "gcad-wasm/kernel/src/sfcc/feature_curves.rs": "ece76e77de3c7895dca3f981edeabe64a35b0d53f6089eff4b4f9b3943bd6622",
+    "gcad-wasm/kernel/src/sfcc/feature_set.rs": "35d0876e65a463f022ebc1e15ef0f5b3b49473d99a32c2d7573f6a0b3af51251",
+    "gcad-wasm/kernel/src/sfcc/field_branches.rs": "685c152afffac664a9141f02c8b56514122d9ecfbe121ecd8aa66a767bb43a61",
+    "gcad-wasm/kernel/src/sfcc/manifold_check.rs": "98d532c37eaed880114e7cda3eaa2766150587c2bd5461f6f415d052c5552ab3",
+    "gcad-wasm/kernel/src/sfcc/mesh_edit.rs": "9a2ef5237187b1680f3582bba86a3ab89eb0ccd860307bc3971cbcd0b9cdc2fc",
+    "gcad-wasm/kernel/src/sfcc/mod.rs": "e4318d94521928c1be53b189c39f52512e6ce8cd77dc9cdae221561b70d8aa4a",
+    "gcad-wasm/kernel/src/sfcc/newton.rs": "3d0326d2bc18c1f1e880875fbcd4e54bc08a613a329d076ffb8abf1b3ccd4d2f",
+    "gcad-wasm/kernel/src/sfcc/octree.rs": "90b382d65284bd416fcb8636a88ca2e7a3fee3625b00716a65f8c84737105d8b",
+    "gcad-wasm/kernel/src/sfcc/patch_triangulate.rs": "02caf4c6403c336aca8566072584da73d5d95cfe108590d29fc6e7a09710cf94",
+    "gcad-wasm/kernel/src/sfcc/perf.rs": "e7b9c5289fc1dcc4b76ab67d9239f02ea9e3d4ef5e66ac4d1fd024cd65dfb6d2",
+    "gcad-wasm/kernel/src/sfcc/pipeline.rs": "c94c20af3f034ce004476ef460d81b07f2aa358a00194ccbef8a75472bf14662",
+    "gcad-wasm/kernel/src/sfcc/point_table.rs": "b7e4abe14ffb3e46b9fa673bfe83b3e3ea4ea5144ebc1cc4c76123465d62ba76",
+    "gcad-wasm/kernel/src/sfcc/predicates.rs": "8f4e9b8f58a697a05b5c529cefc2865e6fc38a1ffa01b0963ad7a2b5d63f1744",
+    "gcad-wasm/kernel/src/sfcc/predicates_reference.rs": "f78fbef729fe77f8ae9d9af45b435722bbf671ecabbce0772fdbb4c09626cb9f",
+    "gcad-wasm/kernel/src/sfcc/provenance.rs": "3373abfeaf3f9a734b01188db31053066ff33215d189b4561c1512496d0cb6b9",
+    "gcad-wasm/kernel/src/sfcc/quality_remesh.rs": "81c7acdc9e2460a0e2b39554a8b1e0374c8bbc21235883391f2156ff3bb6ffdd",
+    "gcad-wasm/kernel/src/sfcc/refine_criteria.rs": "d3ecdb328758ecf4a2235cdd3c75f97905087d0cd8001fb9311e66d405a3251a",
+    "gcad-wasm/kernel/src/sfcc/sdf_simd.rs": "5c5b3513250909fa3d4c675e5c59b8ea7acbd7bafd002818f8a086ba5d3d53ae",
+    "gcad-wasm/kernel/src/sfcc/seam_trace.rs": "de7b2a15e034e948e483dd244ec8cae41eecefa05cd1cc40e39d0dd30dd34778",
+    "gcad-wasm/kernel/src/sfcc/segment_exposure.rs": "a24bd1053d560b61a02e98a010e4a1c18d7e34e88d08b075e412eec01ed5bf5f",
+    "gcad-wasm/kernel/src/sfcc/sliver_flip.rs": "aec9114017091e5bae5606e85996241cef13649342dfd7fad602a31d6c495cf6",
+    "gcad-wasm/kernel/src/sfcc/spatial_index.rs": "38291743fe56e3064d348ae7889d035986bf1c1c1ae8050f274c3001d40f1b5f",
+    "gcad-wasm/kernel/src/sfcc/surface_patch.rs": "bfa8cb1bc0275c8c381ecefd652feddbccdf55344298d38f0cb75c3ba3541a17",
+    "gcad-wasm/kernel/src/sfcc/surface_refine.rs": "58f81701defa2b657a7390351b4052fa2b96a75113110ba48b0bcd3ef54e9807",
+    "gcad-wasm/kernel/src/sfcc/tree.rs": "490e51a541a5b25f923a58800ce74cc5c57565660bd14ec7225f3a44ac8a5590",
+    "gcad-wasm/kernel/src/sfcc/triangle_quality.rs": "5d0ac3025431b8b82abcead5de3e07fb6ebba1f21bff5de388942e7d1d7a8e00",
+    "gcad-wasm/kernel/src/sfcc/trim.rs": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa",
+    "gcad-wasm/kernel/src/sfcc/validation.rs": "3e06c2d4aed8b81cc782c00cb3bdd5e77d4cc5ce36c63afc7d1e4b7dba8bdefe",
+    "gcad-wasm/kernel/src/sfcc/worker.rs": "2db4ff071ff9c599c815c928adaeb04251160f6cafdcf3a7812b011784c010f8",
+    "gcad-wasm/kernel/src/strata.rs": "d3b111643f36593cfc32fe0fc294b2fbbdc6a3f0435480ac4f3c5a0ce63c5fcb",
+    "gcad-wasm/kernel/src/tolerances.rs": "fb75477635d5f3a9c884e494b3f356b17eb88eaee2893c55e42ee8c2de8ec119",
+    "gcad-wasm/kernel/src/tuning.rs": "c80cadbdcd9f8a56cafa924be5d3e2ccadbf8507b5eb87ca93ccd389368c9f46",
+    "gcad-wasm/wasm/Cargo.toml": "7531b68bf9b60491b5d0c75faad54be41127477a3c3b858d5617db84da0b82eb",
+    "gcad-wasm/wasm/src/lib.rs": "93b29cb3182eb96b5ec3f1734537887276845b62f58d0ae3937eb91f6915d601"
+  },
+  "test_and_oracle_sha256": {
+    "gcad-wasm/kernel/tests/numerical_exclusion.rs": "65fc8d787302966def47b53939052db53b2e78ff3ee2bb8f158f3ba00a24b79d",
+    "gcad-wasm/kernel/tests/discovery_contract.rs": "37bb3f5825a9cd2d7de0246c243ce7ba953e20f4546d149b4f8a56586048a703",
+    "gcad-wasm/kernel/tests/diagnosis_contract.rs": "9ab496ba3b6fb3cd62c52a978ec015ef2916d396e6a2c9a2c5827eee25995a33",
+    "gcad-wasm/kernel/tests/lever1_prune_parity.rs": "a4ac72a47d24b333eb67b4b9b3cf227c105fc50fde93d183e0bc19ce839b7724",
+    "gcad-wasm/kernel/tests/support/discovery.rs": "54f117daf8c3707343ee3efdf6b3fba0ae85d23ef7992744ed3ee20598c95dc6",
+    "gcad-wasm/fixtures/sfcc-discovery_test.mts": "e13186888f484d2cb9ca03e0b047ab93aa7895df5781c2d4643a90a3e909c83e",
+    "gcad-wasm/fixtures/sfcc-discovery-worker.mjs": "6240e1ca80b1e537df17ec3f6451606df0e577621830a43d0dee01ba1aeb2224",
+    "gcad-wasm/fixtures/sfcc-numerical-exclusion_test.mts": "248728ac4f9b3eae087a6259b06aee5f7a8e4c12f810a7ce7b8e7f914da7e426",
+    "docs/research/sfcc-step2-b/numerical-exclusion-oracle.py": "bd25461b0ceab4bc010c979459e9a1ceb25ac2c9a4db6815e301a079703ab930",
+    "docs/research/sfcc-step2-b/rotated-baseline.jsonl": "2463fa7c26e55799bf6bc18fc4e1575bcf2db0b2c26bb812a326aeac110a3190",
+    "docs/research/sfcc-step2-b/mixed-baseline.jsonl": "93626174de0610e6d05b7a2de3a4c79c0fc8555c321a4976e17532a26e2a8f48"
+  },
+  "logs_sha256": {
+    "/tmp/sfcc-b-mixed-final-library.log": "c21da259685dfbd448067255d6a670f22da438365dc3bfa73bf4af57443ab4f6",
+    "/tmp/sfcc-b-mixed-final-contracts.log": "b5215e3a37202c271d0532b2ffb4ef75ffaa60e4a42bd9da69550b4e52d5c74e",
+    "/tmp/sfcc-b-mixed-final-default.log": "88f84ad94d835bee6ba9f25537c46517404fe1546584b25c2dc2d9150aac4451",
+    "/tmp/sfcc-b-mixed-final-wasm-build.log": "ae64c4083b6dd64de72849c20080d32f441599b3a6f2d42b5a0d9d930677f864",
+    "/tmp/sfcc-b-mixed-final-wasm-fixtures.log": "28d96cc2b74ee62610244e08495d3b4565d8b15be583f01d02f227820d6501bb",
+    "/tmp/sfcc-b-mixed-final-profile-build.log": "f63dddae9c873fbdfee7163e6753ab8546757010bffc91ddbd2c3e8c3b3173d5",
+    "/tmp/sfcc-b-mixed-final-profile.jsonl": "b39952d32247d76546705257433e9391a0f98444b6d5ab8cca24fef82eac4f46",
+    "/tmp/sfcc-b-mixed-final-oracle.log": "d09194425cd098b74a42c362bce0ac9c85d79b9fac72125622125aa03fe1d8ee",
+    "/tmp/sfcc-b-mixed-final-bound-records.jsonl": "3aa93c42dadccaddf17638f1c169c4cca8d37d73a5d2815a03a21f9cb16fcb10"
+  },
+  "wasm_sha256": {
+    "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm": "ab24975d95c39f189bcb41bf69a72a66d72390d3f966599d6c4cdd983d39718f",
+    "gcad-wasm/wasm/pkg/gcad_wasm.js": "d1a02912d0552e6b8bcedcba46d21414caf3fb1a7db7c2bfecc820d0e5c963cd"
+  },
+  "baseline_profile_provenance": {
+    "sourceRevision": "5b9f1902646ea2d4a3e6d0e9cf8a57c3b56da7a7",
+    "native": "Homebrew rustc1.99.0 arm64",
+    "nativeFlags": "-O -C lto=fat -C codegen-units=1 --cfg feature=sfcc-profile",
+    "baselineLibrary": "Step1 final profile-target serde,sfcc-profile library; production source unchanged by Step1 documentation commit",
+    "command": "/tmp/sfcc-step2-baseline-profile fast 1 0",
+    "scope": "One structural profile run for9fast scenes in fixed order. diagnostic_ms values are not timing evidence. No expensive48blob. Root run concurrent with candidate correctness work.",
+    "failedAttempt": "Initial direct rustc link without -Clto failed LLVM23bitcode vs AppleLLVM21 linker; rerun with matching Rust LTO succeeded. No failed binary was run.",
+    "hashes": {
+      "/tmp/sfcc-step2-baseline-profile.jsonl": "5da8a6e34a1307dce9b4db93e432655fcd9ff525d214dd4003ba5e156fefde3f",
+      "/tmp/sfcc-step1-final-profile-target/release/deps/libgcad_kernel-fbb7e445d52f9734.rlib": "483eb090372da18b6f25c6197dac879c15fe47c009da02e1ec00c6e2e71d02c8",
+      "gcad-wasm/kernel/examples/sfcc_discovery_bench.rs": "804bb18ff2aa9d21ac4d2f78ae55dab82748447e0ef2437bb0ccf953bacf7cbd",
+      "/tmp/sfcc-step2-baseline-profile": "9faea33001cb133b3028ee5224f3163db9a6b9e4c2296c6774199f6f592913e7",
+      "/tmp/sfcc-step2-rotated-baseline-expanded.jsonl": "2463fa7c26e55799bf6bc18fc4e1575bcf2db0b2c26bb812a326aeac110a3190"
+    }
+  },
+  "historical": {
+    "first_variant": "Sound affine AABB-only sphere variant rejected for 8237 leaves / 5703 unresolved rotated sphere. Its passing tests do not establish final usefulness.",
+    "first_wasm_hashes": {
+      "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm": "62c708abc0b9a6e529092cd9203b4ef15ea94b40138a79baa948f0c5ec16afa9",
+      "gcad-wasm/wasm/pkg/gcad_wasm.js": "d1a02912d0552e6b8bcedcba46d21414caf3fb1a7db7c2bfecc820d0e5c963cd"
+    },
+    "first_rotated_log_sha256": "5e0cd614e1e6e8eea14f7631e17fa5a518b3322d58113cb51a2d092b215641ab",
+    "radial_only_wasm": "4aa9537f9344edad6c1a2df618814dce30f470d592a223e388705aa8adc565cf; superseded by final caller-complete artifact",
+    "superseded_v3": {
+      "reason": "Ordinary mixed round-plus-box regressed to 5860 leaves / 2621 unresolved; fixed by explicit legacy operand and pruning policy under opaque ancestors.",
+      "wasm_sha256": "8585123bcb09d93dedda87dd893b87c3c773589114ece0e5be2110f97b4d019b",
+      "archive": "/tmp/sfcc-b-v3-superseded",
+      "archive_sha256": {
+        "candidate.patch": "2c144273c7435a1d55ba28e5ce3286c493bf52ecf7dc7b4909914075a90ab702",
+        "proof.md": "3397017bc44d9ce629d56dcffb622dad6f042c7c2276c30d2263e9cdbe809d3f",
+        "report.txt": "928ed4b96ee107329ae1e9cf2b1be10d22142bc3422cac70d51358f3c11af1a4",
+        "validation.json": "83c85ebbe80fdd435c1b50c74be280f0281ff888e6d58548dda77416df1644f3"
+      }
+    }
+  },
+  "limits": [
+    "No full application build or visual QA in candidate work.",
+    "No timing campaign; diagnostic_ms is not performance evidence.",
+    "Unsupported operators retain explicitly legacy numerical behavior.",
+    "Intervals establish zero exclusion, not complete meshing, topology, floating sample parity or Hausdorff error.",
+    "Subnormal nominal-domain tests are bounded ancestor-query tests, not a full depth-14 export of an uncertain volume."
+  ],
+  "mixed_controls": {
+    "baseline_sha256": "93626174de0610e6d05b7a2de3a4c79c0fc8555c321a4976e17532a26e2a8f48",
+    "actual_wasm_sha256": "93626174de0610e6d05b7a2de3a4c79c0fc8555c321a4976e17532a26e2a8f48",
+    "byte_match": true,
+    "command": "/opt/homebrew/bin/node /tmp/sfcc-step2-mixed-control.mjs /tmp/sfcc-next-xv_s_w7u/stage2-b/gcad-wasm/wasm/pkg",
+    "script_sha256": "8f9a885b429d98c3d50efd08452e343bc49da2af90f568fba7f0e594c91d4f37"
+  }
+}

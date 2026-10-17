@@ -44,6 +44,24 @@ pub struct RefineProbe {
     pub f: [f64; 9],
     pub level: u32,
     pub cell_size: f64,
+    // Private: all production probes must use make_probe's actual cell region.
+    whole_cell_box: Option<([f64;3], [f64;3])>,
+}
+
+impl RefineProbe {
+    fn whole_cell_box(&self) -> Option<([f64;3], [f64;3])> {
+        let (c,h)=self.whole_cell_box?;
+        if c.iter().any(|x|!x.is_finite()) || h.iter().any(|x|!x.is_finite() || *x<0.) { return None; }
+        // Public sample coordinates can be edited after construction. Never
+        // certify a narrower region if those samples have moved outside it.
+        for point in self.pts.chunks_exact(3) {
+            for a in 0..3 {
+                if !point[a].is_finite() { return None; }
+                if point[a]!=c[a] && (point[a]-c[a]).abs().next_up()>h[a] { return None; }
+            }
+        }
+        Some((c,h))
+    }
 }
 
 /// Build the probe data for a cell. Corner f values come from the octree's
@@ -76,7 +94,8 @@ pub fn make_probe<F: Fn(i64, i64, i64) -> f64, T: SdfQuery + ?Sized>(
     pts[25] = cw[1];
     pts[26] = cw[2];
     f[8] = tree.f([cw[0], cw[1], cw[2]]);
-    RefineProbe { pts, f, level, cell_size: cell_size_at_level(lat, level) }
+    RefineProbe { pts, f, level, cell_size: cell_size_at_level(lat, level),
+        whole_cell_box: crate::math::grid::cell_enclosure(lat,level,ix,iy,iz) }
 }
 
 /// Any corner sign change ⇒ the cell touches the surface. Port of `hasCornerSignChange`.
@@ -110,31 +129,12 @@ impl DiscoveryCheck {
 /// Enclose the actual endpoint coordinates, including midpoint roundoff. Zero
 /// extents stay zero for point, edge and face interval queries.
 fn enclosing_box(lo: [f64; 3], hi: [f64; 3]) -> Result<([f64; 3], [f64; 3]), Indeterminate> {
-    let mut c = [0.0; 3];
-    let mut half = [0.0; 3];
-    for a in 0..3 {
-        if !lo[a].is_finite() || !hi[a].is_finite() || lo[a] > hi[a] {
-            return Err(Indeterminate);
-        }
-        if lo[a] == hi[a] {
-            c[a] = lo[a];
-        } else {
-            c[a] = (lo[a] * 0.5 + hi[a] * 0.5).clamp(lo[a], hi[a]);
-            half[a] = (c[a] - lo[a]).max(hi[a] - c[a]).next_up();
-        }
-        if !c[a].is_finite() || !half[a].is_finite()
-            || !(c[a] - half[a]).is_finite() || !(c[a] + half[a]).is_finite()
-            || c[a] - half[a] > lo[a] || c[a] + half[a] < hi[a]
-        {
-            return Err(Indeterminate);
-        }
-    }
-    Ok((c, half))
+    crate::sdf::enclosure::enclosing_box(lo, hi).ok_or(Indeterminate)
 }
 
 /// Check original signed sphere/box occurrences, never the sampled winners or
-/// a coarse pruned tree. The reused numeric enclosure is an engineering
-/// allowance; this is not an exact-f64 or general component certificate.
+/// a coarse pruned tree. Supported numeric signs enclose the represented real
+/// field; primitive visibility is still not a component-coverage certificate.
 pub fn discovery_guard(root: &CsgNode, probe: &RefineProbe) -> DiscoveryCheck {
     crate::sfcc::perf::add(18, 1);
     let result = match check_discovery(root, probe) {
@@ -161,7 +161,7 @@ fn check_discovery(root: &CsgNode, probe: &RefineProbe) -> Result<DiscoveryCheck
     {
         return Err(Indeterminate);
     }
-    let (c, half) = enclosing_box(lo, hi)?;
+    let (c, half) = probe.whole_cell_box().ok_or(Indeterminate)?;
     for i in 0..8 {
         for a in 0..3 {
             if probe.pts[i * 3 + a] != if i & (1 << a) == 0 { lo[a] } else { hi[a] } {
@@ -493,8 +493,8 @@ pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
         // Equal corner signs do not exclude an enclosed component, cavity, or
         // grazing sheet. Resolve every inconclusive box down to the depth ceiling;
         // the octree records an unresolved leaf there instead of silently losing it.
-        let c = [probe.pts[24], probe.pts[25], probe.pts[26]];
-        let (lo, hi) = tree.interval_over_box(c, [probe.cell_size * 0.5; 3]);
+        let Some((c,h)) = probe.whole_cell_box() else { return true; };
+        let (lo, hi) = tree.interval_over_box(c, h);
         let split = !(lo > 0.0 || hi < 0.0);
         if split { #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("same_sign_root_interval", None); }
         return split;
@@ -776,7 +776,8 @@ mod discovery_tests {
             pts[i * 3..i * 3 + 3].copy_from_slice(&p);
             f[i] = tree.f(p);
         }
-        RefineProbe { pts, f, level: 0, cell_size: hi[0] - lo[0] }
+        RefineProbe { pts, f, level: 0, cell_size: hi[0] - lo[0],
+            whole_cell_box: enclosing_box(lo,hi).ok() }
     }
 
     fn sphere(r: f64, pos: [f64; 3]) -> CsgNode {
@@ -788,6 +789,32 @@ mod discovery_tests {
         blend_normal_variation_cos: 1.0,
         normal_variation_analytic: false,
     };
+
+    #[test]
+    fn whole_cell_exclusion_covers_more_than_the_corner_hull() {
+        let tree=sphere(1.,[0.;3]);
+        let mut p=probe(&tree,[2.,-0.1,-0.1],[2.1,0.1,0.1]);
+        // A larger declared cell region contains the exact zero (1,0,0), while
+        // its sample corner hull is strictly outside the sphere.
+        p.whole_cell_box=enclosing_box([0.,-0.1,-0.1],[2.1,0.1,0.1]).ok();
+        assert_eq!(discovery_guard(&tree,&p),DiscoveryCheck::NeedsSplit);
+        assert!(needs_split_smooth_after_discovery(&tree,&p,&LOOSE,1.,false));
+        p.whole_cell_box=None;
+        assert_eq!(discovery_guard(&tree,&p),DiscoveryCheck::Indeterminate);
+    }
+
+    #[test]
+    fn make_probe_region_includes_the_feature_box_rounding_strip() {
+        let lat=crate::math::grid::make_lattice(4,1e15,0.,0.,0.4);
+        let tree=sphere(0.125,[1e15+0.625,0.1,0.1]);
+        let p=make_probe(&lat,&tree,|x,y,z|tree.f(point_to_world(&lat,x,y,z)),1,1,0,0);
+        let b=cell_aabb(&lat,1,1,0,0);
+        assert!(b[3]>p.pts[21],"fixture must expose different rounded maps");
+        let (c,h)=p.whole_cell_box().expect("factory enclosure");
+        assert!(c[0]+h[0]>=b[3]);
+        assert!(tree.f([1e15+0.5,0.1,0.1]).abs()==0.);
+        assert!(discovery_guard(&tree,&p).needs_split());
+    }
 
     #[test]
     fn hidden_unindexed_primitives_split_even_with_quality_disabled() {

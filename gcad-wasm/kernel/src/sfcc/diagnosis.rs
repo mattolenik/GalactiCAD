@@ -259,7 +259,7 @@ pub(crate) fn mesh(
     });
 }
 
-fn payload_available() -> bool {
+pub(crate) fn payload_available() -> bool {
     STATE.with(|s| match s.borrow_mut().as_mut() {
         Some(s) if s.trace.records.len() < s.budget => true,
         Some(s) => {

@@ -1,0 +1,23 @@
+✔ closed internal components, cavities, holes and thin walls reconstruct (463.624292ms)
+✔ zero-only signed sheet stays explicitly unresolved (9.514ms)
+✔ wasm32 rejects envelope integers that would truncate to valid values (296.544ms)
+✔ mandatory positive controls and full-object localized three-sheet obstruction (648.573416ms)
+✔ raw positive workers and complete coarse construction retain both completion orders (4510.504041ms)
+✔ quality stages retain topology and ownership across actual WASM workers: return box(10, 10, 10) (722.353125ms)
+✔ quality stages retain topology and ownership across actual WASM workers: return sphere.radius(8) (5135.609917ms)
+✔ quality stages retain topology and ownership across actual WASM workers: return union(sphere.radius(5), ...Array.from({length: 7}, (_, i) => sphere.radius(0.1).shift(i * 0.1, 0, 0))) (3894.297708ms)
+✔ SFCC WASM reports performed and skipped audits distinctly (177.085584ms)
+✔ SFCC WASM uses sampled refinement for the legacy analytic blend option (35.478666ms)
+✔ SFCC WASM reports a hidden surface as unresolved, then discovers it with sufficient depth (14.685958ms)
+✔ SFCC WASM workers retain serial diagnostics and support reversed completion order (42.213458ms)
+✔ SFCC WASM rejects float32-collapsed triangles in serial and worker output (413.150167ms)
+✔ SFCC WASM preserves a clipped cube whose edges fall between old trim samples (102.007ms)
+✔ SFCC WASM workers retain unresolved exposed-seam discovery (211.209667ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17191.220542

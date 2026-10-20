@@ -1,0 +1,111 @@
+{
+  "selfTest": {
+    "triangles": 24,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 12,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately",
+    "negativeControlsRejected": 3
+  },
+  "native": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "wasm": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-0-0": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-0-1": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-0-2": {
+    "triangles": 1008,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 60408,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-1-0": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-1-1": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-1-2": {
+    "triangles": 1008,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 60408,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-2-0": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-2-1": {
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "variant-2-2": {
+    "triangles": 1008,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 60408,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  }
+}

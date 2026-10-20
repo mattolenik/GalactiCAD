@@ -1,0 +1,92 @@
+{
+  "sfcc-arrangement-b-variant-0-2.json": {
+    "meshSha256": "3df51217e9d65f60f232d07488b3363a8918c5d3452672170a880d340cd277d6",
+    "triangles": 1008,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 60408,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-2-2.json": {
+    "meshSha256": "3df51217e9d65f60f232d07488b3363a8918c5d3452672170a880d340cd277d6",
+    "triangles": 1008,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 60408,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-1-0.json": {
+    "meshSha256": "e33232f9a715b2c5791de06a83e40a239a79e78184dd8baa31e410e06e85eb2f",
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-1-1.json": {
+    "meshSha256": "f638660c4b153a94f6d99a193f067a0f3bcd429c1b4999811f251a575e922a72",
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-1-2.json": {
+    "meshSha256": "3df51217e9d65f60f232d07488b3363a8918c5d3452672170a880d340cd277d6",
+    "triangles": 1008,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 60408,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-2-1.json": {
+    "meshSha256": "f638660c4b153a94f6d99a193f067a0f3bcd429c1b4999811f251a575e922a72",
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-0-0.json": {
+    "meshSha256": "e33232f9a715b2c5791de06a83e40a239a79e78184dd8baa31e410e06e85eb2f",
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-0-1.json": {
+    "meshSha256": "f638660c4b153a94f6d99a193f067a0f3bcd429c1b4999811f251a575e922a72",
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  },
+  "sfcc-arrangement-b-variant-2-0.json": {
+    "meshSha256": "e33232f9a715b2c5791de06a83e40a239a79e78184dd8baa31e410e06e85eb2f",
+    "triangles": 848,
+    "completeOrientedRectangles": 12,
+    "surfaceArea": "400",
+    "orientedVolume": "288",
+    "disjointTargetComponents": 2,
+    "trianglePairChecks": 46848,
+    "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+  }
+}

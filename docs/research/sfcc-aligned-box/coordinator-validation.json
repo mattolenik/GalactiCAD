@@ -1,0 +1,110 @@
+{
+  "checks": [
+    {
+      "name": "native",
+      "exitCode": 0,
+      "command": "CARGO_TARGET_DIR=/tmp/sfcc-step3-final-native-target CARGO_BUILD_JOBS=2 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --workspace --jobs 2 --no-fail-fast",
+      "originalLog": "/tmp/sfcc-arrangement-root-native.log",
+      "durableLog": "coordinator/native.log",
+      "sha256": "7e71f39d016e38144eb3a05096b7a83689c12b5ef6e36860ecb1a48ffa40a235",
+      "finalRuntime": true,
+      "passed": 381,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "profile",
+      "exitCode": 0,
+      "command": "SFCC_DIAG_DIR=/tmp/sfcc-arrangement-root-diagnostics CARGO_TARGET_DIR=/tmp/sfcc-arrangement-consensus-native CARGO_BUILD_JOBS=1 RUSTC=/opt/homebrew/bin/rustc /opt/homebrew/bin/cargo test --offline --release --manifest-path gcad-wasm/Cargo.toml --jobs 1 -p gcad-kernel --features serde,sfcc-profile --lib --test diagnosis_contract --test discovery_contract --test coverage_obstruction --test box_arrangement_contract -- --test-threads=1",
+      "originalLog": "/tmp/sfcc-arrangement-root-profile.log",
+      "durableLog": "coordinator/profile.log",
+      "sha256": "1ec53b5dcd3a5867ab26eb2091a078a49715bdbe2ed2452a9ece82c0620ef76d",
+      "finalRuntime": true,
+      "passed": 239,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "build",
+      "exitCode": 0,
+      "command": "PATH=\"/Users/matt/.cargo/bin:/opt/homebrew/bin:$PATH\" CARGO_NET_OFFLINE=true CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/sfcc-step3-final-build-target make build -o setup TSX=\"node --import tsx\"",
+      "originalLog": "/tmp/sfcc-arrangement-root-build.log",
+      "durableLog": "coordinator/build.log",
+      "sha256": "87567933e951fb9a09dcd8dd8d39e0d715444aa3ac6b2af0eb02a6ee62c0568d",
+      "finalRuntime": true
+    },
+    {
+      "name": "wasm",
+      "exitCode": 0,
+      "command": "SFCC_COVERAGE_B_DIR=/tmp/sfcc-arrangement-root-wasm-evidence /opt/homebrew/bin/node --import tsx --test --test-concurrency=1 gcad-wasm/fixtures/*_test.mts gcad-wasm/fixtures/*_test.mjs",
+      "originalLog": "/tmp/sfcc-arrangement-root-wasm.log",
+      "durableLog": "coordinator/wasm.log",
+      "sha256": "aeb77023e9aba3aea574f3e8ee9bb4e54f325ea23843a8678fb04ee313d05342",
+      "finalRuntime": true,
+      "tests": 39,
+      "pass": 39,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    }
+  ],
+  "runtimeSourceLogicalSha256": "c1b46cefea878af06f115311b5ca130564c35aa9e4b1c936575038a0c4adade3",
+  "runtimeFilesVerified": 63,
+  "interfaceAndFixtureFilesVerified": 6,
+  "appWasm": {
+    "path": "gcad-wasm/wasm/pkg/gcad_wasm_bg.wasm",
+    "sha256": "ca7ed3b99ef96812482ed814fdda652b98b4a69b5050f7c0ccb8dee4c5c759f5",
+    "bytes": 1586568,
+    "exportedVersionVerified": "v0.0.0-04d889f-dirty",
+    "archive": "/tmp/sfcc-arrangement-root-artifacts/pkg"
+  },
+  "independentOracles": {
+    "oracle-self-test": {
+      "triangles": 24,
+      "completeOrientedRectangles": 12,
+      "surfaceArea": "400",
+      "orientedVolume": "288",
+      "disjointTargetComponents": 2,
+      "trianglePairChecks": 12,
+      "scope": "exact geometric coverage of frozen target; indexed topology verified separately",
+      "negativeControlsRejected": 3
+    },
+    "native-oracle": {
+      "triangles": 848,
+      "completeOrientedRectangles": 12,
+      "surfaceArea": "400",
+      "orientedVolume": "288",
+      "disjointTargetComponents": 2,
+      "trianglePairChecks": 46848,
+      "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+    },
+    "focused-wasm-oracle": {
+      "triangles": 848,
+      "completeOrientedRectangles": 12,
+      "surfaceArea": "400",
+      "orientedVolume": "288",
+      "disjointTargetComponents": 2,
+      "trianglePairChecks": 46848,
+      "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+    },
+    "app-wasm-oracle": {
+      "triangles": 848,
+      "completeOrientedRectangles": 12,
+      "surfaceArea": "400",
+      "orientedVolume": "288",
+      "disjointTargetComponents": 2,
+      "trianglePairChecks": 46848,
+      "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+    }
+  },
+  "review": "coordinator/review.json",
+  "notes": [
+    "All gates completed after the final runtime freeze. The corrected inexact-plane WASM fixture is included in the final all-fixture run.",
+    "The application Git VERSION stamp differs from the VERSION-unset focused artifact; both packages are separately pinned.",
+    "make build -o setup skips dependency/browser installation because dependencies already exist; it still rebuilds WASM, checks TypeScript, and builds the app.",
+    "Native tests without optional external TypeScript oracle fixtures do not establish those missing comparisons.",
+    "No browser, visual QA, push, or generated dist inspection was performed.",
+    "Warm targets were reused; the independent coordinator profile rerun used the idle consensus target after all consensus compilers/tests ended.",
+    "Archived *.patch and *.log evidence retains original whitespace. Source/document whitespace checks exclude only those archive types; all new text uses LF."
+  ]
+}

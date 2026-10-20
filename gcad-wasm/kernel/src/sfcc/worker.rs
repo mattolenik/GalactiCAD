@@ -152,6 +152,12 @@ fn get_leaf(r: &mut Reader, lat: &SfccLattice) -> SfccCell {
     let iz = r.i64();
     let feature_curve = r.i64();
     let feature_corner = r.i64();
+    assert!(level <= lat.max_depth, "worker: leaf level outside lattice");
+    let cells = 1_i64 << level;
+    assert!(
+        [ix, iy, iz].iter().all(|&i| i >= 0 && i < cells),
+        "worker: leaf index outside lattice"
+    );
     let key = cell_key(lat, level, ix, iy, iz);
     SfccCell { level, ix, iy, iz, key, degenerate, feature_curve, feature_corner }
 }
@@ -178,7 +184,12 @@ pub fn decode_tagged_leaves(buf: &[u8]) -> (SfccLattice, Vec<SfccCell>) {
     assert_eq!(magic, LEAVES_MAGIC, "worker: bad tagged-leaves buffer magic");
     let _fingerprint = r.u64();
     let lat = get_lattice(&mut r);
-    let n = r.u64() as usize;
+    let n = usize::try_from(r.u64()).expect("worker: leaf count exceeds address width");
+    let payload_bytes = n.checked_mul(48).expect("worker: leaf payload size overflow");
+    assert_eq!(
+        payload_bytes, r.buf.len() - r.pos,
+        "worker: inconsistent tagged-leaf payload length"
+    );
     let mut leaves = Vec::with_capacity(n);
     for _ in 0..n {
         leaves.push(get_leaf(&mut r, &lat));
@@ -651,6 +662,14 @@ pub fn mesh_partition(
     verify_feature_fingerprint(leaves_bytes, features);
     let (lat, leaves) = decode_tagged_leaves(leaves_bytes);
 
+    let arrangement_attempt = super::box_arrangement::Plan::for_export(tree, &lat, &leaves);
+    let arrangement_rejected = matches!(arrangement_attempt, super::box_arrangement::Attempt::Reject(_));
+    if let super::box_arrangement::Attempt::Ready(plan) = arrangement_attempt {
+        if plan.needed {
+            return arrangement_partial(tree, &plan, &lat, leaves_bytes, group_index, group_count);
+        }
+    }
+
     // Reconstruct a usable octree from the tagged leaves (cheap — re-derives the
     // lookup maps + re-seeds the corner-sample cache, NO decision work).
     let oct: SfccOctree = rebuild_octree_from_leaves(tree, &lat, leaves);
@@ -680,7 +699,20 @@ pub fn mesh_partition(
         multi_run_faces: fr.multi_run_faces as u64,
         boundary_violations: fr.boundary_violations as u64,
     };
-    encode_partial(&pt, features.fingerprint(), &cm.tris, &counters, &fr.faces,&lat,&super::local_coverage::signature(tree))
+    let body = encode_partial(
+        &pt, features.fingerprint(), &cm.tris, &counters, &fr.faces, &lat,
+        &super::local_coverage::signature(tree),
+    );
+    if arrangement_rejected {
+        let mut out = Vec::new();
+        put_u32(&mut out, ARRANGEMENT_REJECT_MAGIC);
+        put_u64(&mut out, leaves_bytes.len() as u64);
+        out.extend(leaves_bytes);
+        out.extend(body);
+        out
+    } else {
+        body
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -777,9 +809,27 @@ pub fn merge_partials(
     tuning: &PipelineTuning,
     partials: &[Vec<u8>],
 ) -> MergedMesh {
+    if partials.first().is_some_and(|p| p.starts_with(&ARRANGEMENT_REJECT_MAGIC.to_le_bytes())) {
+        return merge_rejected_arrangement(tree, features, lat, tuning, partials);
+    }
+    if partials.first().is_some_and(|p| p.starts_with(&ARRANGEMENT_MAGIC.to_le_bytes())) {
+        return merge_arrangement(tree, features, lat, tuning, partials);
+    }
+    merge_partials_impl(tree, features, lat, tuning, partials, None)
+}
+
+fn merge_partials_impl(
+    tree: &CsgNode,
+    features: &SfccFeatureSet,
+    lat: &SfccLattice,
+    tuning: &PipelineTuning,
+    partials: &[Vec<u8>],
+    arrangement: Option<&[u64]>,
+) -> MergedMesh {
     #[cfg(feature = "sfcc-profile")]
     let _diagnostic_export = super::diagnosis::ExportScope::begin();
     let mut merged = PointTable::new();
+    merged.arrangement = arrangement.is_some();
     let mut tris: Vec<usize> = Vec::new();
     let mut failed_cells = 0usize;
     let mut failed_degenerate=0usize;
@@ -796,7 +846,11 @@ pub fn merge_partials(
     let fingerprint = features.fingerprint();
     for buf in partials {
         let p = decode_partial(buf);
-        assert_eq!(p.scope_signature,super::local_coverage::signature(tree),"worker coverage field scope mismatch");
+        assert_eq!(
+            p.scope_signature,
+            arrangement.map_or_else(|| super::local_coverage::signature(tree), |s| s.to_vec()),
+            "worker coverage field scope mismatch"
+        );
         assert_eq!((p.lattice.max_depth,p.lattice.origin_x.to_bits(),p.lattice.origin_y.to_bits(),p.lattice.origin_z.to_bits(),p.lattice.world_size.to_bits()),
             (lat.max_depth,lat.origin_x.to_bits(),lat.origin_y.to_bits(),lat.origin_z.to_bits(),lat.world_size.to_bits()),"worker lattice mismatch");
         assert_eq!(p.fingerprint, fingerprint, "worker: partial feature graph mismatch");
@@ -879,7 +933,9 @@ pub fn merge_partials(
     }
 
     let failed_before:std::collections::BTreeSet<_>=super::local_coverage::failed_cells(&merged).iter().map(|c|(c.level,c.ix,c.iy,c.iz)).collect();
-    super::local_coverage::reverify_transport(&mut merged,tree,features,lat,&tris,&face_uses);
+    if arrangement.is_none() {
+        super::local_coverage::reverify_transport(&mut merged, tree, features, lat, &tris, &face_uses);
+    }
     let failed_before_cleanup=super::local_coverage::failed_cells(&merged);
     for c in &failed_before_cleanup {
         if !failed_before.contains(&(c.level,c.ix,c.iy,c.iz)){failed_cells+=1;failed_degenerate+=usize::from(c.degenerate);}
@@ -894,6 +950,9 @@ pub fn merge_partials(
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
     validation.local_coverage=super::local_coverage::report(tree,&merged);
+    if arrangement.is_some() {
+        validation.local_coverage.scope = "signedBoxArrangement".into();
+    }
     let withdrawn=super::local_coverage::failed_cells(&merged).iter().filter(|c|
         !c.degenerate&&!failed_before_cleanup.contains(&(c.level,c.ix,c.iy,c.iz))).count();
     validation.quality = quality_audit;
@@ -939,6 +998,177 @@ pub fn merge_partials(
         cross_points: merged.count(),
         feature_curves: features.curves.len(),
     }
+}
+
+const ARRANGEMENT_MAGIC: u32 = 0x5346_4131;
+const ARRANGEMENT_REJECT_MAGIC: u32 = 0x5346_4132;
+fn merge_rejected_arrangement(
+    tree: &CsgNode,
+    features: &SfccFeatureSet,
+    lat: &SfccLattice,
+    tuning: &PipelineTuning,
+    partials: &[Vec<u8>],
+) -> MergedMesh {
+    let mut manifest = None;
+    let mut bodies = Vec::new();
+    for bytes in partials {
+        let mut r = Reader::new(bytes);
+        assert_eq!(
+            r.u32(),
+            ARRANGEMENT_REJECT_MAGIC,
+            "mixed rejected arrangement partial"
+        );
+        let n = usize::try_from(r.u64()).expect("arrangement manifest count exceeds address width");
+        assert!(n <= 56 + 32768 * 48, "arrangement manifest budget");
+        let prepared = r.bytes(n);
+        if let Some(p) = &manifest {
+            assert!(p == prepared, "arrangement rejected manifest mismatch");
+        } else {
+            manifest = Some(prepared.to_vec());
+        }
+        bodies.push(r.bytes(bytes.len() - r.pos).to_vec());
+    }
+    let prepared = manifest.expect("nonempty rejected partials");
+    verify_feature_fingerprint(&prepared, features);
+    let (stored, leaves) = decode_tagged_leaves(&prepared);
+    assert_eq!(&stored, lat, "rejected arrangement lattice mismatch");
+    let super::box_arrangement::Attempt::Reject(reason) =
+        super::box_arrangement::Plan::new(tree, lat, &leaves)
+    else {
+        panic!("unjustified rejected arrangement");
+    };
+    let mut result = merge_partials_impl(tree, features, lat, tuning, &bodies, None);
+    super::box_arrangement::mark_unresolved(&mut result.validation, reason, &leaves);
+    result.ok = result.validation.ok();
+    result
+}
+fn arrangement_body(
+    plan: &super::box_arrangement::Plan,
+    lat: &SfccLattice,
+    owned: &std::collections::BTreeSet<super::local_coverage::CellId>,
+) -> Vec<u8> {
+    let (pt, tris, features) = plan
+        .mesh(Some(owned))
+        .expect("checked arrangement construction");
+    encode_partial(
+        &pt,
+        features.fingerprint(),
+        &tris,
+        &PartialCounters::default(),
+        &std::array::from_fn(|_| HashMap::new()),
+        lat,
+        &plan.signature,
+    )
+}
+fn arrangement_partial(
+    tree: &CsgNode,
+    plan: &super::box_arrangement::Plan,
+    lat: &SfccLattice,
+    prepared: &[u8],
+    group: usize,
+    count: usize,
+) -> Vec<u8> {
+    let oct = rebuild_octree_from_leaves(tree, lat, plan.leaves.clone());
+    let groups = morton_partition_indices(&oct, count.max(1));
+    let owned = groups[group]
+        .iter()
+        .map(|&i| {
+            let c = &plan.leaves[i];
+            (c.level, c.ix, c.iy, c.iz)
+        })
+        .collect();
+    let body = arrangement_body(plan, lat, &owned);
+    let mut out = Vec::new();
+    put_u32(&mut out, ARRANGEMENT_MAGIC);
+    put_u64(&mut out, prepared.len() as u64);
+    out.extend(prepared);
+    put_u64(&mut out, group as u64);
+    put_u64(&mut out, count.max(1) as u64);
+    out.extend(body);
+    out
+}
+fn merge_arrangement(
+    tree: &CsgNode,
+    original_features: &SfccFeatureSet,
+    lat: &SfccLattice,
+    tuning: &PipelineTuning,
+    partials: &[Vec<u8>],
+) -> MergedMesh {
+    let mut manifest: Option<Vec<u8>> = None;
+    let mut bodies = Vec::new();
+    let mut ownership = std::collections::BTreeSet::new();
+    let mut plan = None;
+    for bytes in partials {
+        let mut r = Reader::new(bytes);
+        assert_eq!(
+            r.u32(),
+            ARRANGEMENT_MAGIC,
+            "mixed arrangement/legacy worker partials"
+        );
+        let n = usize::try_from(r.u64()).expect("arrangement manifest count exceeds address width");
+        assert!(n <= 56 + 32768 * 48, "arrangement manifest budget");
+        let prepared = r.bytes(n);
+        if let Some(expected) = &manifest {
+            assert_eq!(
+                expected, prepared,
+                "arrangement shared leaf manifest mismatch"
+            );
+        } else {
+            verify_feature_fingerprint(prepared, original_features);
+            let (stored, leaves) = decode_tagged_leaves(prepared);
+            assert_eq!(&stored, lat, "arrangement prepared lattice mismatch");
+            let super::box_arrangement::Attempt::Ready(p) =
+                super::box_arrangement::Plan::new(tree, lat, &leaves)
+            else {
+                panic!("arrangement receiver could not prove target");
+            };
+            assert!(p.needed, "unnecessary arrangement worker mode");
+            plan = Some(p);
+            manifest = Some(prepared.to_vec());
+        }
+        let group = usize::try_from(r.u64()).expect("arrangement group exceeds address width");
+        let count = usize::try_from(r.u64()).expect("arrangement count exceeds address width");
+        assert_eq!(count, partials.len(), "arrangement worker group count");
+        assert!(
+            group < count && ownership.insert(group),
+            "arrangement duplicate/invalid worker ownership"
+        );
+        let p = plan.as_ref().expect("first manifest initialized plan");
+        let oct = rebuild_octree_from_leaves(tree, lat, p.leaves.clone());
+        let groups = morton_partition_indices(&oct, count);
+        let owned = groups[group]
+            .iter()
+            .map(|&i| {
+                let c = &p.leaves[i];
+                (c.level, c.ix, c.iy, c.iz)
+            })
+            .collect();
+        let expected = arrangement_body(p, lat, &owned);
+        let body = r.bytes(bytes.len() - r.pos);
+        assert!(
+            body == expected,
+            "arrangement actual partial differs from complete per-cell construction"
+        );
+        bodies.push(body.to_vec());
+    }
+    let plan = plan.expect("nonempty arrangement partials");
+    let (_, _, features) = plan.mesh(None).expect("checked features");
+    merge_partials_impl(tree, &features, lat, tuning, &bodies, Some(&plan.signature))
+}
+
+pub(crate) fn arrangement_inprocess(
+    tree: &CsgNode,
+    features: &SfccFeatureSet,
+    lat: &SfccLattice,
+    tuning: &PipelineTuning,
+    plan: &super::box_arrangement::Plan,
+    count: usize,
+) -> MergedMesh {
+    let prepared = encode_tagged_leaves(lat, &plan.leaves, features.fingerprint());
+    let partials = (0..count.max(1))
+        .map(|i| arrangement_partial(tree, plan, lat, &prepared, i, count))
+        .collect::<Vec<_>>();
+    merge_arrangement(tree, features, lat, tuning, &partials)
 }
 
 // ---------------------------------------------------------------------------

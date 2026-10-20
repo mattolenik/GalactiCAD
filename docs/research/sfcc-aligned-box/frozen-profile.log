@@ -1,0 +1,271 @@
+   Compiling gcad-kernel v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/kernel)
+    Finished `release` profile [optimized] target(s) in 1m 49s
+     Running unittests src/lib.rs (/tmp/sfcc-arrangement-consensus-native/release/deps/gcad_kernel-f0486a86ed8387a5)
+
+running 209 tests
+test math::grid::tests::cell_aabb_matches_sizing ... ok
+test math::grid::tests::cell_edges_one_differing_bit ... ok
+test math::grid::tests::cell_stride_and_key ... ok
+test math::grid::tests::collect_interior_empty_cases ... ok
+test math::grid::tests::collect_interior_finds_hanging_midpoints ... ok
+test math::grid::tests::collect_interior_skips_quarter_without_midpoint ... ok
+test math::grid::tests::corner_order_convention ... ok
+test math::grid::tests::enclosure_contains_descendant_sampling_centers_and_feature_boxes ... ok
+test math::grid::tests::face_axes_cross_product ... ok
+test math::grid::tests::pack_is_injective_across_neighbors ... ok
+test math::grid::tests::pack_unpack_roundtrip_at_max_depth ... ok
+test math::grid::tests::point_to_world_maps_extremes ... ok
+test math::grid::tests::subnormal_nominal_cells_keep_exact_zero_witnesses_despite_rounded_steps ... ok
+test math::similarity::tests::apply_inv_apply_roundtrip ... ok
+test math::similarity::tests::composition_child_first ... ok
+test math::similarity::tests::from_rotation_wgsl_fwd_transposes ... ok
+test math::similarity::tests::rotation_preserves_length_and_inverts ... ok
+test parity::tests::count_mismatch_reported ... ok
+test parity::tests::geometric_match_absorbs_subtolerance_drift ... ok
+test parity::tests::loads_ts_fixture_and_compares ... ok
+test parity::tests::order_insensitive_under_vertex_and_triangle_permutation ... ok
+test parity::tests::winding_sensitive ... ok
+test primitives::polygon2d::tests::concave_profile_gradients_cover_both_sides_and_endpoint_regions ... ok
+test primitives::polygon2d::tests::gradient_is_unit_length ... ok
+test primitives::polygon2d::tests::inside_is_negative_outside_is_positive ... ok
+test primitives::polygon2d::tests::tiny_segments_and_duplicate_vertices_keep_distance_and_derivative ... ok
+test primitives::polygon2d::tests::winding_sign_flips_with_orientation ... ok
+test primitives::shapes::tests::box_exact ... ok
+test primitives::shapes::tests::cone_sanity ... ok
+test primitives::shapes::tests::cylinder_exact ... ok
+test primitives::shapes::tests::extrude_untwisted_sanity ... ok
+test primitives::shapes::tests::lathe_revolves_profile ... ok
+test primitives::shapes::tests::loft_between_two_squares ... ok
+test primitives::shapes::tests::normals_match_finite_difference ... ok
+test primitives::shapes::tests::sphere_exact ... ok
+test primitives::smin::tests::columns_interval_encloses_samples ... ok
+test primitives::smin::tests::columns_n1_zero_displacement ... ok
+test primitives::smin::tests::glsl_mod_takes_sign_of_y ... ok
+test primitives::smin::tests::round_grad_weights ... ok
+test primitives::smin::tests::round_seam_displacement ... ok
+test primitives::smin::tests::smin_is_below_hard_min ... ok
+test primitives::smin::tests::soft_seam_displacement ... ok
+test scene_bridge::tests::box_builds_a_single_leaf ... ok
+test scene_bridge::tests::json_box_roundtrips ... ok
+test scene_bridge::tests::json_subtract_with_children ... ok
+test scene_bridge::tests::non_uniform_scale_is_rejected ... ok
+test scene_bridge::tests::rotate_uses_wgsl_fwd_transpose ... ok
+test scene_bridge::tests::smooth_subtract_columns_maps_to_columns_i ... ok
+test scene_bridge::tests::smooth_union_columns_maps_to_columns_mode ... ok
+test scene_bridge::tests::subtract_folds_to_max_with_negated_rhs ... ok
+test scene_bridge::tests::translate_bakes_into_leaf_position ... ok
+test sdf::tests::blend_curvature_bound_does_not_certify_unproved_modes_or_nesting ... ok
+test sdf::tests::complex_shape_leaves_dispatch ... ok
+test sdf::tests::discovery_identity_uses_every_arithmetic_bit_but_not_ownership ... ok
+test sdf::tests::discovery_interval_reuse_retains_occurrences_domains_and_direct_validation ... ok
+test sdf::tests::grad_matches_finite_difference ... ok
+test sdf::tests::hard_union_is_min ... ok
+test sdf::tests::interval_encloses_sampled_field ... ok
+test sdf::tests::leaf_honors_translate_and_scale ... ok
+test sdf::tests::smooth_columns_interval_encloses ... ok
+test sdf::tests::smooth_union_matches_smin ... ok
+test sdf::tests::subtract_carves ... ok
+test sdf::tests::untransformed_leaf_matches_shape ... ok
+test sfcc::adaptive_refine::tests::cancellation_does_not_mutate ... ok
+test sfcc::adaptive_refine::tests::curve_splits_preserve_multiple_unwrapped_memberships ... ok
+test sfcc::adaptive_refine::tests::hard_primitive_refines_conformingly_with_explicit_budget ... ok
+test sfcc::blend_surfaces::tests::hard_combiners_add_no_blend_surfaces ... ok
+test sfcc::blend_surfaces::tests::nested_chamfers_preserve_affine_field_magnitude ... ok
+test sfcc::blend_surfaces::tests::plane_aliases_keep_alternative_domains_but_not_opposite_orientation ... ok
+test sfcc::box_arrangement::adversaries::cleanup_cannot_change_original_carriers_or_protected_memberships ... ok
+test sfcc::box_arrangement::adversaries::closed_internal_box_and_duplicate_occurrences_are_complete ... ok
+test sfcc::box_arrangement::adversaries::f32_sheet_collapse_rejects_but_separated_inexact_planes_remain_embedded ... ok
+test sfcc::box_arrangement::adversaries::nonmanifold_edge_and_point_contacts_are_rejected ... ok
+test sfcc::box_arrangement::adversaries::optional_decimal_scope_preserves_fast_path ... ok
+test sfcc::box_arrangement::adversaries::plane_budget_and_bad_lattice_never_certify ... ok
+test sfcc::box_arrangement::adversaries::rank_signs_cover_gaps_without_represented_midpoints ... ok
+test sfcc::box_arrangement::adversaries::scope_depth_budget_precedes_recursive_walk ... ok
+test sfcc::box_arrangement::adversaries::zero_only_faces_edges_and_points_are_not_regularized ... ok
+test sfcc::box_arrangement::tests::coarse_plan_constructs_two_cuboids ... ok
+test sfcc::branch_surfaces::lathe_scale_tests::tiny_lathe_branch_retains_the_endpoint_distance_derivative ... ok
+test sfcc::branch_surfaces::region_tests::fixed_partner_keeps_its_formula_outside_its_guard ... ok
+test sfcc::branch_surfaces::region_tests::partner_expansion_budget_reports_the_affected_source_path ... ok
+test sfcc::cell_mesh::reliability_tests::circle_cap_and_traced_midpoint_error_are_enforced ... ok
+test sfcc::cell_mesh::reliability_tests::open_arc_retains_the_canonical_endpoint_parameter ... ok
+test sfcc::cell_mesh::reliability_tests::quad_prefers_a_valid_diagonal_without_requiring_every_patch_to_be_a_chart ... ok
+test sfcc::diagnosis::tests::failed_degenerate_cells_count_once_and_attempts_stay_separate ... ok
+test sfcc::face_contour::projection_tests::midpoint_projection_respects_displacement_budget ... ok
+test sfcc::feature_curves::tests::circle_basics_and_plane_crossings ... ok
+test sfcc::feature_curves::tests::failed_traced_queries_cannot_be_hidden_by_the_crossing_cache ... ok
+test sfcc::feature_curves::tests::segment_axis_plane_crossing ... ok
+test sfcc::feature_set::tests::box_minus_sphere_traces_three_seam_circles ... ok
+test sfcc::feature_set::tests::cone_has_base_circle_and_apex_corner ... ok
+test sfcc::feature_set::tests::cylinder_has_2_rim_circles_3_strata ... ok
+test sfcc::feature_set::tests::equivalent_polygon_loft_does_not_exhaust_the_cartesian_branch_budget ... ok
+test sfcc::feature_set::tests::sphere_has_no_features_one_stratum ... ok
+test sfcc::feature_set::tests::unit_box_has_12_segments_8_corners ... ok
+test sfcc::feature_set::tests::worker_fingerprint_includes_junction_incidence ... ok
+test sfcc::field_branches::query_tests::cached_ancestors_keep_raw_and_scalar_contracts ... ok
+test sfcc::field_branches::query_tests::separate_roots_and_capacity_limit_cannot_alias ... ok
+test sfcc::field_branches::selection_equivalence::evaluates_once_preserving_total_order_and_ties ... ok
+test sfcc::field_branches::selection_equivalence::raw_full_and_pruned_samples_match_reference ... ok
+test sfcc::field_branches::tests::blend_derivatives_match_scalar_field_for_every_mode_and_sign ... ok
+test sfcc::field_branches::tests::equation_scaling_preserves_residual_and_direction ... ok
+test sfcc::field_branches::tests::singular_and_nonfinite_equations_are_explicit ... ok
+test sfcc::field_branches::workspace_tests::nested_queries_keep_independent_storage_and_unwind_clears_it ... ok
+test sfcc::field_branches::workspace_tests::storage_reuse_never_reuses_point_or_node_values ... ok
+test sfcc::local_coverage::tests::atomic_face_interior_edges_are_checked_when_outer_cell_edges_are_empty ... ok
+test sfcc::local_coverage::tests::cleanup_addition_using_only_boundary_vertices_withdraws_certificate ... ok
+test sfcc::local_coverage::tests::cuboid_belt_cannot_use_a_disk_certificate ... ok
+test sfcc::local_coverage::tests::default_box_cleanup_preserves_cells_through_checked_flips ... ok
+test sfcc::local_coverage::tests::direct_cell_and_even_zero_free_face_records_require_canonical_identity ... ok
+test sfcc::local_coverage::tests::disk_plus_disconnected_torus_is_rejected ... ok
+test sfcc::local_coverage::tests::duplicate_worker_ownership_is_rejected - should panic ... ok
+test sfcc::local_coverage::tests::event_budget_counts_unique_filtered_events_not_occurrences ... ok
+test sfcc::local_coverage::tests::exact_arithmetic_and_grid_do_not_equate_rounded_formulas ... ok
+test sfcc::local_coverage::tests::mandatory_clipped_box_actual_atomic_faces_patches_and_creases ... ok
+test sfcc::local_coverage::tests::mandatory_sphere_actual_atomic_faces_and_fillings ... ok
+test sfcc::local_coverage::tests::more_than_twelve_original_box_occurrences_keep_multiple_edge_events ... ok
+test sfcc::local_coverage::tests::original_signed_zero_sheets_and_duplicate_events_are_preserved ... ok
+test sfcc::local_coverage::tests::sphere_hidden_face_loop_double_root_contact_and_internal_component_are_unresolved ... ok
+test sfcc::local_coverage::tests::traced_parameter_chart_rejects_declared_clamped_tails ... ok
+test sfcc::local_coverage::tests::worker_recheck_cannot_promote_an_inexact_grid_to_excluded ... ok
+test sfcc::manifold_check::tests::single_triangle_is_open ... ok
+test sfcc::manifold_check::tests::tetrahedron_is_closed_chi_2 ... ok
+test sfcc::mesh_edit::predicate_reuse_tests::pair_results_match_original_with_shared_vertices_and_rounding ... ok
+test sfcc::mesh_edit::tests::contacts_overlap_and_adjacent_sheets ... ok
+test sfcc::mesh_edit::tests::disjoint_segments_in_the_other_face_plane_do_not_intersect ... ok
+test sfcc::newton::tests::backtracking_recovers_overshoot_and_obeys_displacement ... ok
+test sfcc::newton::tests::parallel_planes_fail ... ok
+test sfcc::newton::tests::projects_onto_two_planes ... ok
+test sfcc::newton::tests::redundant_zero_constraints_do_not_define_a_corner ... ok
+test sfcc::newton::tests::tangent_of_axis_planes_is_axis ... ok
+test sfcc::newton::tests::triple_point_of_three_planes ... ok
+test sfcc::octree::retained_value_tests::old_values_do_not_create_current_round_hanging_nodes ... ok
+test sfcc::octree::tests::refinement_maintains_2to1_face_balance ... ok
+test sfcc::octree::tests::refinement_splits_until_criteria_pass ... ok
+test sfcc::octree::tests::uniform_octree_culls_empty_and_keeps_surface_cells ... ok
+test sfcc::patch_triangulate::tests::annulus_keeps_hole_and_boundary_segments ... ok
+test sfcc::patch_triangulate::tests::concavity_collinear_vertices_and_loop_permutations ... ok
+test sfcc::patch_triangulate::tests::narrow_neck_keeps_its_domain_under_scale_and_translation ... ok
+test sfcc::patch_triangulate::tests::rejects_crossings_and_touching_holes ... ok
+test sfcc::patch_triangulate::tests::work_budget_rejects_without_returning_a_partial_mesh ... ok
+test sfcc::pipeline::recovery_cache_tests::cached_classification_does_not_cache_forced_decision ... ok
+test sfcc::pipeline::recovery_cache_tests::cached_feature_rejections_keep_diagnostic_reason ... ok
+test sfcc::pipeline::recovery_cache_tests::discovery_precedes_both_corner_exemptions ... ok
+test sfcc::pipeline::recovery_failure_tests::failed_classification_queries_are_repeated_after_diagnostic_reset ... ok
+test sfcc::point_table::tests::build_mesh_compacts_and_remaps ... ok
+test sfcc::point_table::tests::get_or_create_is_keyed_and_idempotent ... ok
+test sfcc::point_table::tests::oriented_closed_intervals_split_without_losing_memberships ... ok
+test sfcc::point_table::tests::provenance_keys_are_distinct ... ok
+test sfcc::point_table::tests::str_keys_are_independent_of_num_keys ... ok
+test sfcc::predicates::equivalence::finite_bit_patterns_and_degeneracies_match_exact_reference ... ok
+test sfcc::predicates::equivalence::inline_spill_and_resize_preserve_limbs ... ok
+test sfcc::predicates::tests::cancellation_and_exact_zero ... ok
+test sfcc::predicates::tests::exponent_extremes_and_subnormal ... ok
+test sfcc::quality_remesh::tests::improves_sliver_without_changing_boundary ... ok
+test sfcc::quality_remesh::tests::new_diagonal_cannot_cross_an_unrelated_sheet ... ok
+test sfcc::quality_remesh::tests::planar_grid_relaxes_without_moving_boundary ... ok
+test sfcc::quality_remesh::tests::protected_or_unknown_patch_never_flips ... ok
+test sfcc::quality_remesh::tests::shape_improvement_cannot_trade_away_cylindrical_fidelity ... ok
+test sfcc::quality_remesh::tests::zero_remeshing_budget_is_explicit_and_does_not_move_points ... ok
+test sfcc::refine_criteria::discovery_tests::center_winner_negative_cavity_nested_subtraction_and_double_negation_keep_zero_owners ... ok
+test sfcc::refine_criteria::discovery_tests::discovery_work_is_linear_and_scratch_tracks_peak_pending_candidates ... ok
+test sfcc::refine_criteria::discovery_tests::duplicates_order_opposite_signs_and_thin_shell_never_merge_occurrences ... ok
+test sfcc::refine_criteria::discovery_tests::entity_boxes_enclose_actual_translated_and_subnormal_endpoints ... ok
+test sfcc::refine_criteria::discovery_tests::every_ancestor_can_exclude_a_nonowning_hidden_occurrence ... ok
+test sfcc::refine_criteria::discovery_tests::hidden_unindexed_primitives_split_even_with_quality_disabled ... ok
+test sfcc::refine_criteria::discovery_tests::invalid_or_collapsed_supported_geometry_is_indeterminate ... ok
+test sfcc::refine_criteria::discovery_tests::invisible_edge_roots_and_face_loop_request_splits ... ok
+test sfcc::refine_criteria::discovery_tests::make_probe_region_includes_the_feature_box_rounding_strip ... ok
+test sfcc::refine_criteria::discovery_tests::opaque_scope_preserves_supported_sibling_guard ... ok
+test sfcc::refine_criteria::discovery_tests::ordinary_sphere_and_box_patches_pass ... ok
+test sfcc::refine_criteria::discovery_tests::path_burial_rejects_false_ownership_even_when_leaf_and_root_are_both_zero ... ok
+test sfcc::refine_criteria::discovery_tests::removed_hard_subtree_is_neutral_in_root_sign_fold ... ok
+test sfcc::refine_criteria::discovery_tests::rotated_flat_boxes_and_local_world_factorizations_keep_decisions ... ok
+test sfcc::refine_criteria::discovery_tests::strict_ancestor_exclusion_and_malformed_siblings_are_distinct ... ok
+test sfcc::refine_criteria::discovery_tests::tiny_features_and_collapsed_translations_stay_uncertain_instead_of_empty ... ok
+test sfcc::refine_criteria::discovery_tests::touching_zero_and_collapsed_cells_are_not_exclusions ... ok
+test sfcc::refine_criteria::discovery_tests::whole_cell_exclusion_covers_more_than_the_corner_hull ... ok
+test sfcc::refine_criteria::discovery_tests::whole_root_sign_rule_rejects_visible_primitives_but_not_the_hidden_lens_scope_limit ... ok
+test sfcc::sliver_flip::tests::ambiguous_edge_incidence_is_not_a_flip_neighbor ... ok
+test sfcc::sliver_flip::tests::crease_lock_prevents_an_otherwise_beneficial_flip ... ok
+test sfcc::sliver_flip::tests::nonplanar_and_nonfinite_patches_are_unchanged ... ok
+test sfcc::sliver_flip::tests::rounding_must_preserve_the_retriangulated_patch ... ok
+test sfcc::sliver_flip::tests::slanted_plane_flip_accepts_both_orientations ... ok
+test sfcc::spatial_index::tests::coincident_curve_candidates_have_stable_order ... ok
+test sfcc::spatial_index::tests::finds_inserted_geometry_and_rejects_far_queries ... ok
+test sfcc::surface_patch::preparation_tests::coarse_retry_matches_separate_attempts ... ok
+test sfcc::surface_patch::tests::concave_quad_uses_the_only_interior_diagonal ... ok
+test sfcc::surface_patch::tests::cylindrical_quad_rejects_the_shorter_but_inaccurate_diagonal ... ok
+test sfcc::surface_patch::tests::planar_annulus_lifts_to_the_exposed_cut_surface ... ok
+test sfcc::surface_refine::identity_tests::refinement_stays_on_the_identified_curve_when_a_nearer_curve_also_fits ... ok
+test sfcc::triangle_quality::scaled_equation_tests::projection_acceptance_uses_geometric_units_under_equation_rescaling ... ok
+test sfcc::triangle_quality::tests::curved_triangle_vertices_are_not_a_fidelity_test ... ok
+test sfcc::triangle_quality::tests::reject_f32_collapse ... ok
+test sfcc::validation::tests::failures_are_isolated_across_nested_exports ... ok
+test sfcc::validation::tests::residual_audit_checks_final_float32_positions_and_nonfinite_values ... ok
+test sfcc::validation::tests::skipped_checks_and_exhausted_budgets_are_not_success ... ok
+test sfcc::validation::tests::triangle_audit_rejects_invalid_geometry_without_an_area_threshold ... ok
+test sfcc::worker::reliability_tests::partial_roundtrip_retains_f64_and_crease_locks ... ok
+test strata::tests::curved_chamfer_carrier_has_analytic_normal_and_projection ... ok
+test strata::tests::cylinder_carrier_radial ... ok
+test strata::tests::negated_stratum_flips_sign ... ok
+test strata::tests::plane_carrier_signed_distance ... ok
+test strata::tests::ruled_chamfer_retains_raw_derivative_under_transform_and_nesting ... ok
+test strata::tests::sphere_carrier_signed_distance ... ok
+test tests::version_is_reported ... ok
+test tolerances::tests::curve_eps_has_a_floor ... ok
+test tolerances::tests::resolves_relative_and_passthrough_fields ... ok
+
+test result: ok. 209 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.30s
+
+     Running tests/box_arrangement_contract.rs (/tmp/sfcc-arrangement-consensus-native/release/deps/box_arrangement_contract-a520b842b784bd18)
+
+running 7 tests
+test coarse_three_sheets_are_complete_in_serial_resumable_and_raw_workers ... ok
+test complete_internal_components_cavities_and_thin_walls ... ok
+test ordering_duplicate_ids_and_grid_phase_preserve_complete_targets ... ok
+test quality_stages_still_execute_and_unproved_edits_withdraw ... ok
+test receiver_rejects_mutation_and_duplicate_partition ... ok
+test singular_zero_sets_are_explicit_in_serial_and_workers ... ok
+test whole_components_can_be_inside_one_actual_production_cell ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.82s
+
+     Running tests/coverage_obstruction.rs (/tmp/sfcc-arrangement-consensus-native/release/deps/coverage_obstruction-7753f66001813285)
+
+running 6 tests
+test every_three_sheet_cell_reconstructs_all_sheets_or_is_locally_unresolved ... ok
+test locate_every_reconstructed_three_sheet_cell_in_coarse_full_export ... ok
+test opposite_endpoint_signs_and_individual_charts_do_not_prove_one_root ... ok
+test ordinary_two_surface_crease_and_sphere_are_still_successful_controls ... ok
+test raw_native_workers_preserve_positive_seam_and_coarse_obstruction ... ok
+test represented_matrix_carrier_is_not_the_declared_field ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.01s
+
+     Running tests/diagnosis_contract.rs (/tmp/sfcc-arrangement-consensus-native/release/deps/diagnosis_contract-5f22f0f5fd3d254d)
+
+running 11 tests
+test bounded_trace_and_nested_capture_restore_state ... ok
+test bridge_lens_has_an_independent_production_outcome ... ok
+test clipped_cap_and_successful_primitive_controls ... ok
+test depth10_lens_fragments_have_cell_mesh_provenance ... ok
+test depth_tolerance_and_quality_controls_are_separate_outcomes ... ok
+test exact_rotation_keeps_the_lens_and_box_separate ... ok
+test fine_hidden_all_actual_cells_are_attributed_and_replayed ... ok
+test fine_workers_preserve_actual_first_decisions_raw_geometry_and_tags ... ok
+test finest_cell_aligned_lens_is_retained_by_real_features_despite_passing_guard ... ok
+test recovery_round_counts_do_not_leak_into_the_next_export ... ok
+test reduced_lens_only_preserves_the_unresolved_construction_failure ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.59s
+
+     Running tests/discovery_contract.rs (/tmp/sfcc-arrangement-consensus-native/release/deps/discovery_contract-4de0b66c164563df)
+
+running 6 tests
+test actual_hidden_worker_mesh_preserves_raw_degeneracy_without_serial_recovery ... ok
+test co_scaled_scene_cube_padding_and_geometric_tolerances_keep_the_hidden_cell_unresolved ... ok
+test comfortably_buried_and_far_controls_preserve_a_useful_flat_box_mesh ... ok
+test hidden_and_many_leaf_decisions_roundtrip_through_resumable_and_reversed_partitions ... ok
+test separate_worker_recovery_keeps_hidden_cell_diagnosis ... ok
+test sufficient_depth_reconstructs_both_supplied_components_at_their_locations ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.82s
+

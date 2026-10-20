@@ -24,6 +24,7 @@ pub(crate) fn finish(
         }
     };
     let ordered = points.ordered_triangles(tris);
+    let arrangement_metadata = super::box_arrangement::MetadataSnapshot::capture(points, &ordered);
     let deduped = drop_coincident_triangle_pairs(&ordered);
     let filtered = drop_debris_components(points, &deduped, step * 4., features, step * 2., 600);
     let mut tris = drop_coincident_triangle_pairs(&filtered);
@@ -41,6 +42,9 @@ pub(crate) fn finish(
             tuning.curve_chord_tol_mm,
         );
         super::local_coverage::finish_with_transport(points, &ordered, &tris, transport.as_ref());
+        if let Some(snapshot) = arrangement_metadata {
+            snapshot.verify(points, &tris);
+        }
         return (tris, unresolved, None);
     }
     let mut audit = QualityAudit::default();
@@ -161,5 +165,8 @@ pub(crate) fn finish(
             unresolved
         };
     super::local_coverage::finish_with_transport(points, &ordered, &tris, flip_transport.as_ref());
+    if let Some(snapshot) = arrangement_metadata {
+        snapshot.verify(points, &tris);
+    }
     (tris, unresolved, Some(audit))
 }

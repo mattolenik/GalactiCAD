@@ -194,7 +194,7 @@ fn raw_native_workers_preserve_positive_seam_and_coarse_obstruction() {
     use gcad_kernel::sfcc::worker::{merge, merge_partials, mesh_partition};
     for (name, scene, world, recovery) in [
         ("clipped-box", clipped_box(), cube(-4., 8.), false),
-        ("three-sheets-coarse", sheets(), cube(-128., 256.), true),
+        ("three-sheets-coarse", sheets(), cube(-128., 256.), false),
     ] {
         let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
         let tuning = PipelineTuning::default();
@@ -239,7 +239,7 @@ fn raw_native_workers_preserve_positive_seam_and_coarse_obstruction() {
 
 #[cfg(feature = "sfcc-profile")]
 #[test]
-fn locate_every_accepted_three_sheet_cell_in_coarse_full_export() {
+fn locate_every_reconstructed_three_sheet_cell_in_coarse_full_export() {
     use gcad_kernel::sfcc::diagnosis::{capture, CellId, Event};
     let scene = sheets();
     let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
@@ -258,7 +258,7 @@ fn locate_every_accepted_three_sheet_cell_in_coarse_full_export() {
         assert!(cells.iter().any(|c|{
             let b=cell_aabb(&lat,c.level,c.ix,c.iy,c.iz);
             c.degenerate&&b[0]<0.25&&0.75<b[3]&&b[1]<y&&y<b[4]&&b[2]<z&&z<b[5]
-        }),"original responsible cell or its descendants must remain unresolved");
+        }),"original responsible region remains represented at its existing depth");
     }
     let mut rows = Vec::new();
     for c in cells {
@@ -300,10 +300,12 @@ fn locate_every_accepted_three_sheet_cell_in_coarse_full_export() {
         r.validation.unresolved_cells,
         rows.len()
     );
-    assert!(rows.iter().all(|r|r["degenerate"]==true&&r["unresolved"]==true),
-        "every responsible final region must be explicitly unresolved");
-    assert!(r.validation.unresolved_cells>=rows.len());
-    assert!(!r.ok);
+    assert!(rows.iter().all(|r|r["degenerate"]==true&&r["unresolved"]==false),
+        "arrangement construction resolves the prior depth-limited discovery tags");
+    assert_eq!(r.validation.unresolved_cells,0);
+    assert_eq!(r.validation.local_coverage.scope,"signedBoxArrangement");
+    assert_eq!(r.validation.local_coverage.certified_cells,r.stats.leaves);
+    assert!(r.ok);
     assert!(
         !rows.is_empty(),
         "fixture must include actual production cells containing all three sheets"

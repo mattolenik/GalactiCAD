@@ -1,0 +1,45 @@
+Candidate A FINAL — aligned-box multi-sheet construction
+Baseline04d889f911ba6c89981752df02cc2ad7a67ddc0f
+Isolated source: /private/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-arrangement-7jkxizj8/a
+Patch: /tmp/sfcc-arrangement-a.patch
+Patch SHA256 b7e05fc38ba0b51b67b137a776108e3b8e23876bc6c1d14605f0d5593d6aa6e0 (655949bytes,34files)
+Final runtime logical SHA256 701a4b0aecb9fa739f62fe219717bd0172df24dca4de8ac0069427f2f8a51dbd
+Final WASM SHA256 74a47f6b940d192d9083708657531d004013d86c03711a75eea0ee4f8791a92c (1577588bytes)
+Matching artifacts and8native test executables: /tmp/sfcc-arrangement-a-artifacts/
+Durable complete report/proof/caller checklist/manifest/oracles/raw outputs/raw timing rows: docs/research/sfcc-arrangement-a/
+
+RESULT
+Original mandatory coarse scene at unchanged cube[-128,128]^3/default tuning:106leaves424rectangles848triangles2components Euler[2,2],0unresolved,oktrue. All three local planes x=.25,.5,.75 reconstructed. Independent Fraction rectangle tiling and coordinator triangle-overlap oracle pass actual native and finalWASM meshes:12complete facets,area400,volume288.
+Actual WASM workers1/2/4/8 forward/reverse preserve canonical oriented all8vertex fields, exact feature intervals and full validation, with serialRecovery=false. Actual resumable decision workers at those counts reproduce original prepared bytes; original coarse cells remain discovery-degenerate/split=true before the new construction supplies successful fillings.
+
+DESIGN
+Finite tensor product of all original exact represented box planes and actual leaf boundary cuts. Integer open-stratum ranks classify all3D/2D/1D/0D signs through original signed Min/Max expression; no sampled midpoint. Require all zero strata be regular exposed facet closure; reject zero-only strata and contact singularities. Assign each exposed rectangle to actual unique leaf; common global cuts close2:1 interfaces and independent worker pieces. Derive full nonempty crease graph with original active occurrence provenance and existing straight FeatureCurve records; existing feature audit/cleanup/quality operations run. Receiver independently rebuilds expected target geometry, ownership, keys, all6f64 fields and all memberships, then refreshes lifecycle snapshots. Existing exact planar flip transport and arbitrary-quality proof withdrawal remain.
+Activation is intentionally narrow: an unresolved/degenerate prepared cell must exist, and a complete arrangement must require multiple parallel exposed planes in some represented cell. Healthy octrees skip tensor preflight. This is NOT an all-legacy-failures activation theorem.
+No original primitive plane may coincide with any represented leaf boundary coordinate; this conservative restriction covers lower-dimensional tangencies to otherwise empty closed cells. Actual rounded grid maps are used, not claimed equal to ideal nominal affine coordinates. All output coordinate events must remain strictly ordered in float32; their coordinatewise PL map preserves embedding. Literal target coordinates are exact only when original planes are float32-representable.
+Budgets cap original tree nodes/depth, axis events, product strata, exposed rectangles, owner visits and repeated internal-node sign rescans before large allocation. Grid/arithmetic/budget/precision failures remain unresolved when fallback is required. Unsupported healthy decimal/rotated/blended cases retain inherited behavior.
+
+FINAL GATES (Rust1.99 native,Rust1.96 WASM,Node26.11.1; offline release/jobs1/isolate targets)
+180 default library passed.
+202 serde library +12arrangement +4coverage +6discovery passed.
+205 profile library +12arrangement +6coverage passed.
+12 final matching WASM coverage/quality/validation fixtures passed (17.57s); no skips/cancels.
+Final WASM high-word scope count mutation (+2^32, unchanged low word/rest of valid packet) rejected.
+Earlier broad36WASM run passed BEFORE final activation/generic-grid-contact/parser hardening; preserved as precursor only.
+No app makebuild/browser/visual QA; root owns broad application gate. No unrelated expensive48blob campaign.
+Native malformed leaf-level regression validates indices before shift/packing. Shared worker envelope casts use checked usize conversion, bounded protected/face counts and remaining-row bound for tagged leaves.
+
+COST (quiet window explicitly coordinated,5alternating pairs/version +matched warmup, same full-output check)
+WASM single half3 box58.220→58.990ms (+1.32%).
+4duplicate boxes66.191→65.464ms (-1.10%).
+16duplicate boxes2078.271→2085.873ms (+0.37%).
+Clipped-box intersection14.355→14.829ms (+3.30%); slower in ALL5pairs. Preserve this observed regression; no neutrality/speedup claim and no measured attribution to a single added operation.
+Raw rows docs/research/sfcc-arrangement-a/cost.jsonl and /tmp/sfcc-arrangement-a-cost.jsonl.
+Raw WASM grows90826bytes versus accepted focused Step4 artifact.
+
+PRESERVED FAILURES/LIMITS
+An initial annulus assertion incorrectly required fallback scope despite successful legacy reconstruction at that smaller cube. Coarser supplemental annulus now genuinely exercises fallback; original healthy controls remain. An initial JSON precision-negative parsed a nonexact endpoint and rejected Arithmetic before Float32Collapse; direct dyadic fixture reaches intended precision guard. Legacy carrier mapping probe exposed arbitrary split boundaries and geometrically reused carriers; exact fallback derives its own complete graph rather than pretending legacy carrier IDs certify all active occurrences.
+Legacy proof records remain immutable. Old obstruction expected assertions change only after actual exact coverage oracles pass. New protocolSFP6 is intentionally not wire-compatible with old worker binaries.
+Limits: identity boxes/exact endpoints/generic grid contacts/finite exterior/bounded events; pure curved CSG and guaranteed activation for every mesher failure remain outside scope. Worker planning duplicates complete bounded geometry work. Report local_coverage claim remains representedCellsOnly; accepted construction additionally checks all finite target facets have owners.
+
+OWNED PROCESSES
+All native/WASM compiler, test, oracle and timing jobs have ended. No queued jobs, no commits/push, no canonical edits, no competitor sources read. Ready for fourth-agent consensus.

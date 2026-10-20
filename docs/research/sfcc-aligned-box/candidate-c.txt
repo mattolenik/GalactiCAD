@@ -1,0 +1,69 @@
+CANDIDATE C FINAL — bounded exact rectilinear subdivision
+
+Base: 04d889f911ba6c89981752df02cc2ad7a67ddc0f
+Isolated copy: /var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-arrangement-7jkxizj8/c
+Patch: /tmp/sfcc-arrangement-c.patch
+Patch SHA256: e298e86a75985d95c1c371f4ab459d0b9e8944ef2135cd8182c6d1eb269c9a9f
+Patch: 414,356 bytes; 31 changed/new files. git apply --check passed against the untouched baseline.
+Frozen runtime/source logical SHA256: 926810ea420017340117eb1f74a842d2b4a09eb1a037d0cd966578985d5e5984
+Matching WASM SHA256: e94fe9ee3484a25128b230f4eb2a47982711079350eef8b07529647320449af5
+WASM size: 1,572,603 bytes.
+Matching artifacts: /tmp/sfcc-arrangement-c-final-artifacts
+
+RESULT
+The actual frozen coarse three-sheet production export now gives 106 leaves, 428 vertices, 424 rectangles, 848 triangles, 152 straight crease segments, two closed components, zero unresolved cells, zero failed cells, zero legacy feature fallbacks, 106 certified represented cells and ok=true. The input cube, default global depth and tolerances are unchanged.
+
+The original prepared criterion tags remain unchanged. The new construction resolves their geometry instead of claiming the earlier simple-cell criteria passed. First decisions remain in profile traces; per-cell exact-box-arrangement Mesh events and a terminal outcome snapshot are emitted.
+
+An independent exact rational oracle verifies final native and actual WASM meshes: all twelve target faces, correct orientation, area 400, signed volume 288 and no overlapping triangle interiors. Oracle negative controls reject missing triangles, equal-area duplicate overlap and reversed triangles.
+
+Native serial/resumable and actual raw WASM workers at 1/2/4/8, in forward/reverse completion order, preserve canonical oriented eight-field vertex geometry, feature intervals and complete validation. Every mandatory coarse merge has serialRecovery=false. Changed payloads, missing groups and duplicate groups reject.
+
+Workers reconstruct the bounded arrangement redundantly but transmit only their actual owned triangle payloads. The receiver independently checks the complete required facet set and consumes accepted wire payloads. It never substitutes the serial meshing driver.
+
+THEOREM AND SCOPE
+The domain is nonempty hard min/max trees of signed boxes with actual identity transforms, finite positive dimensions and exact represented endpoints. All original occurrences and ancestor paths survive, including coincidences. Primitive endpoints must lie strictly inside the root domain.
+
+Every open 0D/1D/2D/3D stratum is classified using exact rank/order rather than rounded midpoints. Zero-only strata reject explicitly. Every required exposed rectangle has an actual leaf owner; canonical global leaf cuts close 2:1 interfaces. A shared-face facet retains both closed-cell incidences with one emission owner. Per-cell zero-stratum counts include edge-only and vertex-only contacts, so those cells are never called zero-free.
+
+Cells use actual rounded cell_aabb domains whose endpoints agree with the canonical point map, not an unproved exact nominal affine map. Complete oriented incidence and connected vertex links reject nonmanifold contacts. Strictly increasing finite f32 coordinate cuts establish an ambient coordinate-map correspondence for unchanged rectilinear output.
+
+The cleanup snapshot covers IDs, keys, all six stored f64 payload fields, oriented triangles, patch owners, all mesh/protected/identified edges, and every membership including empty sets. Existing assembly and requested quality stages run. Any changed correspondence withdraws certificates without adding mesher failures or triggering recovery. The mandatory coarse quality control runs every stage with zero edits and a passing final audit. Rectangle-level carrier identities deliberately make quality eligibility conservative. Original owner paths remain on Plan facets and in the original-expression signature; generated carriers have synthetic identities.
+
+FINAL VALIDATION
+181 no-feature native library tests passed.
+268 profile/serde checks passed: 202 library, 10 arrangement, 6 coverage obstruction, 11 diagnosis, 6 discovery, 2 cancellation, 6 feature preservation, 13 numerical exclusion, 3 scene transform and 9 worker partition tests.
+38 of 38 WASM fixture tests passed, covering both *_test.mts and *_test.mjs, with no failures, skips or cancellations.
+
+Additional controls cover enclosed/disjoint components, hollow walls, annular patches, signed nesting, reordering, duplicates/shared planes, translation, actual 2:1 interfaces, face coincidence, corner-only contacts, f32 collapse, budgets, invalid lattices, overlap, cancellation and lifecycle corruption. Actual WASM zero-only shell/edge/point exports remain explicitly incomplete. Sphere, ordinary box, clipped box, fine-sheet, opaque/rotation, quality and recovery controls retain their inherited outcomes.
+
+Historical three-sheet desired assertions were updated only after the independent complete-facet oracle passed. Immutable historical reports are unchanged.
+
+Commands and frozen logs are in docs/research/sfcc-arrangement-c/results.md and the accompanying logs. Toolchains: Homebrew Rust 1.99.0 natively, Rustup 1.96.0 for WASM, Node 26.11.1. Builds use release opt-level 3, LTO, one codegen unit, WASM +simd128, offline dependencies and cargo jobs 1. Exact source/artifact manifests and matching test binaries are preserved.
+
+COST
+The mandatory arrangement has 15,225 open strata from 11 × 15 × 13 coordinate events. Total wire sizes are 131,228 / 136,952 / 148,400 / 171,296 bytes for 1/2/4/8 groups.
+
+The healthy-path trigger scans for an existing degenerate prepared leaf. It adds zero SDF or atomic-edge queries.
+
+Quiet short-case measurements used one warmup and three timed exports per version/scene. Median baseline→candidate times: ordinary box 48.440→48.568 ms; clipped intersection 11.910→11.419 ms; sixteen duplicate boxes 2020.884→1998.075 ms. Ranges overlap. No speed claim is made.
+
+The original 96-export campaign was deliberately stopped at the coordinator's cost limit. Last process inspection: campaign 5m55s; baseline 256-duplicate process alone 5m38s. Its candidate counterpart never launched. Previously completed short-case rows were buffered and could not be recovered cleanly; no process-memory inspection was attempted. Both owned processes were terminated and their absence confirmed. The short cases were then rerun with immediate disk recording and a 45-second overall limit. All abort records and rerun observations are preserved. No per-export 256-case time or speed comparison is inferred.
+
+CALLER CHECKLIST
+- Pipeline: bounded fallback after existing octree decisions; terminal progress and diagnostic outcome.
+- Prepare/resumable: unchanged tagged leaves. Worker mesh_partition uses actual Morton ownership. merge_partials checks BXC1 transport. Successful fallback does not invoke serial recovery.
+- Assembly/quality/compaction: existing operations with complete indexed certificate withdrawal.
+- Features: complete derived crease graph uses existing plane/segment types and a fresh feature-cache identity.
+- Validation/client: alignedBoxArrangement added to the optional MeshSfccValidation scope. Documentation states exact premises and limits.
+
+LIMITS AND HANDOFF
+No general curved-CSG theorem, universal termination claim, minimal crease graph, unbounded arrangement support, sub-f32 separation guarantee or arbitrary quality-edit proof transport is claimed. Activation uses exhausted prepared criteria; later mesher-only failures retain inherited recovery. A zero normal from the current derived normal convention is also conservatively rejected.
+
+The coordinator owns the final make build and full workspace gate after consensus. C did not perform browser/visual QA or claim absent external TS oracle comparisons. No dependency, depth or tolerance change, general CPU scene evaluator, canonical edit, commit or push was introduced.
+
+Root identified an orthogonal shared baseline SFL3 decoder issue: u64 leaf count conversion/allocation before checking remaining 48-byte rows. B is hardening that common decoder. C's new BXC1 receiver validates its own embedded manifest count and length first, but does not claim the shared decoder was fixed. The fourth reviewer can integrate B's boundary fix without changing this candidate's frozen evidence.
+
+Detailed proof, results, source/artifact manifests, cost records and independent oracle evidence are under docs/research/sfcc-arrangement-c/.
+
+ALL OWNED HEAVY AND TIMING PROCESSES HAVE ENDED. READY FOR FOURTH CONSENSUS.

@@ -1,0 +1,17 @@
+{
+  "baseline": "04d889f911ba6c89981752df02cc2ad7a67ddc0f",
+  "runtimeSourceLogicalSha256": "c1b46cefea878af06f115311b5ca130564c35aa9e4b1c936575038a0c4adade3",
+  "scope": "Independent coordinator mathematical and caller review; not a machine-checked proof",
+  "findings": [
+    "Sign folding on all original primitive plane/open-interval products determines the complete signed min/max zero set within the stated endpoint domain; no midpoint sampling assumption is required.",
+    "Zero-only faces and lower-dimensional strata are separately rejected. Indexed edge and vertex-link checks supplement, rather than replace, the completeness argument.",
+    "Rejecting all primitive/grid coordinate coincidences rules out cells whose target consists only of a lower-dimensional tangency. Every accepted microrectangle has one actual leaf owner and common rank-coordinate cuts establish matching interfaces.",
+    "The increasing coordinate-wise f32 map gives an ambient correspondence. Exact target equality requires fixed supporting planes; otherwise the mathematical Hausdorff bound is the norm of maximum event rounding errors. This bound is not a new runtime tolerance API.",
+    "Existing planar flip transport checks both f64 and f32 surface preservation. The new assembly guard adds old patch assignments, unexpected assignments on new triangles, all protected edges and all curve memberships; other edits withdraw proof.",
+    "The receiver verifies reconstructed expected bytes but merges received triangles. Checked manifest integer conversion, exact row length and level/index validation precede allocation or cell-key arithmetic.",
+    "The lattice constructor already validates maximum depth before the new decoded leaf-level shift. The private arrangement state bypasses the old scope rechecker only after complete target verification.",
+    "Production triggering remains limited to prepared degenerate leaves; healthy and unsupported legacy paths retain their existing behavior. General curved reconstruction, grid contacts, inexact binary64 endpoints and every nondegenerate mesher failure remain outside the new guarantee.",
+    "Candidate A's actual carrier implementation was inspected to confirm the comparison: it creates one carrier per rectangle with retained active original occurrence metadata. Candidate B reuses actual occurrence-plane identities in the derived graph."
+  ],
+  "evidenceIntegrity": "A reused mixed precursor/final profile log was detected and excluded. The fourth reran frozen gates into new log files; coordinator gates use separate fresh logs."
+}

@@ -1,0 +1,132 @@
+CANDIDATE B FINAL — complete bounded aligned-box arrangement implementation
+
+Isolated source:
+/private/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-arrangement-7jkxizj8/b
+Frozen baseline: 04d889f911ba6c89981752df02cc2ad7a67ddc0f
+Patch: /tmp/sfcc-arrangement-b.patch
+Patch SHA256: 15f240dd5e2f6ea7e1692ff4cd2c995f549fe20d5980c2b422b58e3c052c64d7
+Patch size: 272800 bytes; 30 text files; git apply --check against frozen baseline passed.
+No canonical-root edits, commits, pushes, browser or visual QA. All owned processes ended.
+
+FINAL PROVENANCE
+Logical source digest (63 Rust/Cargo files, path-NUL-filehash-newline aggregate):
+99eafaa6ae7767a19f9d8b6524a69f866edd4440ddcdfafe829ee1f62e0a3316
+Final matching WASM:
+/tmp/sfcc-arrangement-b-artifacts/pkg/gcad_wasm_bg.wasm
+SHA256 d50ff31b9ccef74a9ce2c406aca2f7de2dc94a8c558e289d5bc4c90d9582694c
+1575546 bytes; Rust1.96 release +simd128, opt3/LTO/codegen1; VERSION unset =>0.1.0.
+Final source/artifact manifest:
+docs/research/sfcc-arrangement-b/source-manifest.json
+Manifest SHA256 52781a376946d146a8d268d97dcd813a35b0bf21172d7a634a2006f6c23f64cb
+Six matching native binaries are archived under /tmp/sfcc-arrangement-b-artifacts/{profile,default}.
+The artifact directory also contains a matching manifest copy. Earlier pkg-final/pre-final/pre-decoder
+paths are superseded development artifacts; use the artifacts/pkg directory above for consensus.
+
+CONCRETE RESULT
+At unchanged cube[-128,128]^3, default depth/tolerances, the original three-sheet full object now has:
+106 prepared leaves,424 exact oriented rectangles,848 triangles,2 closed components,
+152 complete elementary straight crease intervals,106 certified cells,0 unresolved/failed/fallback cells.
+The original prepared manifest still contains72 degenerate flags from old one-piece criteria.
+Those first-decision tags are preserved; complete construction proves their final fillings.
+No serial recovery conceals the raw-worker result.
+
+The independent exact Fraction oracle proves every one of the12 target cuboid facets,
+nonoverlap, orientation, area400 and volume288. It rejects omission, equal-area duplicate overlap,
+and winding reversal. Nine operand-order/duplicate/grid-phase variants pass the same oracle.
+One and two whole components can be inside one actual production cell, yielding12 and24 triangles.
+Cavities, a through-hole/genus1 boundary, thin walls, actual2:1 interfaces and multiple edge roots pass.
+
+DESIGN / CLAIM
+- Production activation is deliberately narrow: an existing degenerate prepared leaf triggers
+  whole-eligible-export reconstruction. Healthy paths pay only an O(leaves) flag scan. The standalone
+  constructor also handles complete nondegenerate cell targets; nondegenerate legacy meshing failures
+  are not yet production fallback triggers.
+- Original signed Min/Max tree is evaluated symbolically on ALL plane/open product strata using exact
+  ranks, never rounded midpoint probes. Original occurrences and ancestor paths remain distinct.
+- Zero-only faces and unrepresented zero edges/points are explicitly rejected. Full edge/vertex-link
+  checks reject edge/point contacts. Ordinary coincident planes and duplicates preserve all ownership.
+- Every exposed primitive facet is subdivided by all actual leaf-boundary coordinates, then each
+  microrectangle must have exactly one actual owning leaf. Missing/overlapping ownership fails.
+  Common rank-coordinate identities enforce coarse/fine and cross-worker agreement without welding.
+- Exact derived crease graph, true original stratum ownership and complete intervals replace reliance
+  on potentially incomplete old traced features. Derived feature sets use the existing unique run-ID
+  allocator. Elementary segment endpoints are graph vertices; this may restrict quality remeshing
+  more than a future maximal-curve representation.
+- Existing assembly/quality passes remain active. Complete per-cell snapshots use existing checked
+  planar flip transport. Unproved edits withdraw proofs and do not spuriously trigger serial recovery.
+  No debris exemption remains: existing closed-component preservation already suffices.
+- Initial f32 embedding is proved only when every exposed carrier plane survives f32 exactly and
+  every canonical cut coordinate retains strict finite order. Otherwise the fallback is unresolved.
+- Worker wrapper carries full prepared manifest and group ownership plus actual partial geometry.
+  Receiver reconstructs the exact expected per-cell payload, verifies the received bytes, and merges
+  transmitted triangles. It does not substitute a serial reconstruction for worker output.
+- Fixed occurrence/depth/stratum/coordinate/rectangle/ownership work limits precede large arrangement
+  allocations. Work/memory remain intentionally conservative; workers and receiver repeat target work.
+
+Numerical domain: hard nonempty signed aligned-box trees, actual identity transforms, finite positive
+half widths, exact represented endpoints, coherent exact lattice maps and no primitive plane on an
+actual cell boundary. General rotations, curves and blends retain old paths. No universal CSG theorem.
+Primitive f32 plane error/collapse, zero-only strata, nonmanifold contacts and budget exhaustion stay
+explicit uncertainty. Ordinary unneeded unsupported optional preflight does not break healthy fast paths.
+
+DIAGNOSTICS
+Original prepared tags and first decision evidence remain unchanged. When bounded profile capture has
+payload room, the fallback early return emits per-cell preassembly Mesh records and a terminal resolved
+snapshot; later certificate withdrawals become failed cells in that snapshot. Raw worker entrypoints
+retain their existing separate export scopes. Evidence captures use ample budget with no drops.
+
+SHARED DECODER FIX TO CARRY EVEN IF ANOTHER GEOMETRY CANDIDATE WINS
+New outer envelope integers use checked u64-to-usize conversion. A final audit found the inherited
+embedded prepared leaf_count still cast unchecked before allocation. Prior matching WASM accepted
+leaf_count+2^32 and the regression failed specifically at manifestLeafCount (log preserved).
+decode_tagged_leaves now checks conversion, checked n*48, and exact remaining payload length before
+allocating. A native malformed-count rejection and isolated actual-WASM overflow cases cover it.
+This small shared baseline decoder fix is independent of the arrangement geometry implementation.
+
+FINAL VALIDATION AFTER ALL RUNTIME/DECODER EDITS
+Native Rust1.99 release offline jobs1, serde+sfcc-profile:
+208 library +7 new arrangement +6 coverage +11 diagnosis +6 discovery =238 passed, no ignores.
+Native no-feature library:178 passed, no ignores.
+Matching actual WASM all *_test.mts AND *_test.mjs:39 passed,0 failed/skipped/cancelled.
+Actual raw Node workers1/2/4/8, both completion orders, retain all8 vertex fields, feature intervals,
+complete validation and no recovery on the coarse construction; additional new fixtures use actual
+workers for enclosed components/cavities/holes/thin walls. Existing quality/recovery/opaque/rotation
+fixtures retain inherited outcomes. New wasm32 overflow case tests4 fields in isolated workers.
+An earlier broader precursor passed207 library +51 integration checks (feature, transform, spatial,
+worker and cancellation matrix included), explicitly labeled precursor rather than final exact source.
+Optional absent external native TypeScript-oracle files do not establish missing comparisons.
+Coordinator owns final application make build and final broad consensus gate.
+
+COST / LIMITS
+Prepared bytes5144; total partial bytes for1/2/4/8 workers:193922 /203204 /219788 /251736.
+A coordinator-held quiet WASM campaign used matched warmups and5 alternating samples/version:
+- single half3 box: baseline56.151ms ->candidate56.394ms (+0.43%)
+-16 identical boxes:2038.529ms ->2062.894ms (+1.20%)
+- clipped intersection:13.446ms ->13.879ms (+3.22%)
+Exact ordered vertex bits, triangles, feature-interval bits and validation match baseline5f421ff3… .
+25.73 seconds total, within45-second hard deadline. No speed gain/general performance claim.
+The planned256-duplicate timing was omitted BEFORE B samples because the coordinator measured
+unexpected control cost. Existing256 correctness/budget tests are unchanged. All raw samples saved.
+
+FILES FOR CONSENSUS
+- docs/research/sfcc-arrangement-b/proof.md — full mathematical and lifecycle argument
+- docs/research/sfcc-arrangement-b/validation.md — exact-vs-precursor validation, limits and failures
+- docs/research/sfcc-arrangement-b/facet_oracle.py — independent exact final-f32 geometry oracle
+- docs/research/sfcc-arrangement-b/coarse-wasm.json and coarse-oracle.json — durable full witness
+- docs/research/sfcc-arrangement-b/variant-oracles.json — nine final-source variant checks
+- docs/research/sfcc-arrangement-b/fast-path-cost.json and fast_path_cost.mjs — raw healthy timing
+- docs/research/sfcc-arrangement-b/wire_cost.mjs — deterministic partial-size and tag accounting
+- docs/research/sfcc-arrangement-b/source-manifest.json — exact source/artifact hashes
+- docs/research/sfcc-arrangement-b/final-*.log and leaf-count-before.log — matching gates/regression
+- gcad-wasm/kernel/src/sfcc/box_arrangement.rs — complete bounded constructor/proof snapshots
+- gcad-wasm/kernel/tests/box_arrangement_contract.rs — complete targets/parity/corruption/quality
+- gcad-wasm/fixtures/sfcc-box-arrangement_test.mjs and corrupt worker — actual WASM gates
+
+CALLER CHECKLIST
+Pipeline early fallback, all in-process partition strategies, worker prepare/resumable manifest
+compatibility, mesh_partition, raw merge_partials/public merge, assembly/quality, PointTable proof
+transport, unique feature cache identity, bounded diagnostics, optional TS validation scope union,
+old obstruction expectations and new native/WASM fixtures are covered. Existing simple sphere,
+ordinary single box, positive clipped box and fine three-sheet controls retain exact prior results.
+No new app tunables or general CPU scene evaluator were added. The original analytical SFCC field and
+symbolic restricted-box sign algebra are used. All owned tool sessions/processes are finished.

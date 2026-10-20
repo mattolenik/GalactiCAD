@@ -70,6 +70,7 @@ pub fn interior_key(lattice_key: i64) -> i64 {
 /// Positions and normals are stored flat (xyz triples), indexed by point id.
 #[derive(Default)]
 pub struct PointTable {
+    pub(crate) arrangement: bool,
     pub(crate) coverage: Vec<super::local_coverage::Witness>,
     pub(crate) coverage_edge_failures: Vec<super::local_coverage::EdgeFailure>,
     pub(crate) coverage_cells: HashSet<super::local_coverage::CellId>,

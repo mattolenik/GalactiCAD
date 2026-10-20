@@ -56,9 +56,10 @@ export interface MeshMdcDebugData {
 }
 
 export interface MeshSfccValidation {
-    /** Bounded abstract cell-relative coverage; no embedding or metric claim. */
+    /** Sphere/positiveBoxIntersection give abstract cell maps. signedBoxArrangement
+     * additionally checks initial f32 correspondence under its separate premises. */
     localCoverage?: {
-        scope: "sphere" | "positiveBoxIntersection" | "outsideScope"
+        scope: "sphere" | "positiveBoxIntersection" | "signedBoxArrangement" | "outsideScope"
         certifiedCells: number
         transportedCells: number
         excludedCells: number

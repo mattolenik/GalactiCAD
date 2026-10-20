@@ -20,7 +20,7 @@ const fixtures = [
     { name: "three-sheets-fine", scene: sheets,
         cube: [-5, -5, -5, 10], leaves: 4372, triangles: 11608, components: 2, unresolved: 0 },
     { name: "three-sheets-coarse", scene: sheets,
-        cube: [-128, -128, -128, 256], leaves: 106, triangles: 700, components: 1, unresolved: 72 },
+        cube: [-128, -128, -128, 256], leaves: 106, triangles: 848, components: 2, unresolved: 0 },
 ]
 
 function save(name, value) {
@@ -89,15 +89,19 @@ test("mandatory positive controls and full-object localized three-sheet obstruct
         const scene = JSON.stringify(f.scene), result = export_sfcc(scene, "{}", ...f.cube)
         try {
             const stats = JSON.parse(result.stats_json)
-            if (f.name !== "three-sheets-coarse") {
+            {
                 assert.equal(stats.leaves, f.leaves)
                 assert.equal(stats.tris, f.triangles)
                 assert.equal(stats.components, f.components)
                 assert.equal(stats.validation.unresolvedCells, f.unresolved)
-            } else assert.ok(stats.validation.unresolvedCells > 0)
+            }
             assert.equal(stats.failedCells, 0)
             assert.equal(result.ok, f.unresolved === 0)
             if (f.name === "clipped-box" || f.name === "sphere-success") {
+                assert.equal(stats.validation.localCoverage.certifiedCells, stats.leaves)
+                assert.deepEqual(stats.validation.localCoverage.unresolved, [])
+            } else if (f.name === "three-sheets-coarse") {
+                assert.equal(stats.validation.localCoverage.scope, "signedBoxArrangement")
                 assert.equal(stats.validation.localCoverage.certifiedCells, stats.leaves)
                 assert.deepEqual(stats.validation.localCoverage.unresolved, [])
             } else {
@@ -136,7 +140,7 @@ test("mandatory positive controls and full-object localized three-sheet obstruct
                     const y = origin[1] + (iy + 1/3) * side, z = origin[2] + (iz + 2/5) * side
                     assert.ok(record.targetedCells.some(c => c.bounds[1]<y && y<c.bounds[4] &&
                         c.bounds[2]<z && z<c.bounds[5] && c.degenerate && c.split),
-                    "each original responsible region or refined descendant is unresolved")
+                    "each original responsible region is represented at its existing depth")
                 }
                 record.primitiveInputs = [a, b, c].map(p => Array.from(audit_primitive_inputs(JSON.stringify(p))))
             }
@@ -145,7 +149,7 @@ test("mandatory positive controls and full-object localized three-sheet obstruct
     }
 })
 
-test("raw positive workers and explicit coarse recovery retain both completion orders", { timeout: 180_000 }, async () => {
+test("raw positive workers and complete coarse construction retain both completion orders", { timeout: 180_000 }, async () => {
     for (const f of fixtures) {
         const scene = JSON.stringify(f.scene), tuning = "{}", leaves = sfcc_worker_prepare(scene, tuning, ...f.cube)
         const serial = export_sfcc(scene, tuning, ...f.cube)
@@ -161,7 +165,7 @@ test("raw positive workers and explicit coarse recovery retain both completion o
                     const merged = sfcc_worker_merge(scene, tuning, ...f.cube, reversed ? [...parts].reverse() : parts)
                     try {
                         const actual = JSON.parse(merged.stats_json)
-                        const expectRecovery = f.name === "three-sheets-coarse"
+                        const expectRecovery = false
                         assert.equal(actual.serialRecovery, expectRecovery, `${f.name} N=${count}`)
                         if (expectRecovery) assert.ok(stats.featureCellFallbacks > 0, "coarse fallbacks trigger recovery")
                         assert.equal(actual.failedCells, 0)

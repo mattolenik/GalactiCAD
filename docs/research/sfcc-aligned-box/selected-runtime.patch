@@ -1,0 +1,2231 @@
+diff --git a/gcad-wasm/fixtures/sfcc-box-arrangement-corrupt-worker.mjs b/gcad-wasm/fixtures/sfcc-box-arrangement-corrupt-worker.mjs
+new file mode 100644
+--- /dev/null
++++ b/gcad-wasm/fixtures/sfcc-box-arrangement-corrupt-worker.mjs
+@@ -0,0 +1,23 @@
++import { parentPort, workerData } from "node:worker_threads"
++import { readFileSync } from "node:fs"
++import { initSync, sfcc_worker_prepare, sfcc_worker_mesh_partition, sfcc_worker_merge } from "../wasm/pkg/gcad_wasm.js"
++initSync({ module: readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.meta.url)) })
++const { scene, tuning, cube, field } = workerData
++const leaves = sfcc_worker_prepare(scene, tuning, ...cube)
++const partial = sfcc_worker_mesh_partition(scene, tuning, ...cube, leaves, 0, 1)
++const view = new DataView(partial.buffer, partial.byteOffset, partial.byteLength)
++if (view.getUint32(0, true) !== 0x53464131) throw new Error("fixture did not enter arrangement protocol")
++const size = Number(view.getBigUint64(4, true))
++if (field === "leafLevel") view.setUint32(68, 0xffffffff, true)
++else if (field === "leafIndex") view.setBigInt64(76, 0x7fffffffffffffffn, true)
++else {
++    const offset = field === "manifest" ? 4 : field === "manifestLeafCount" ? 60 : field === "group" ? 12 + size : 20 + size
++    view.setBigUint64(offset, view.getBigUint64(offset, true) + (1n << 32n), true)
++}
++try {
++    const r = sfcc_worker_merge(scene, tuning, ...cube, [partial])
++    r.free()
++    parentPort.postMessage({ rejected: false })
++} catch (error) {
++    parentPort.postMessage({ rejected: true, error: String(error) })
++}
+diff --git a/gcad-wasm/fixtures/sfcc-box-arrangement_test.mjs b/gcad-wasm/fixtures/sfcc-box-arrangement_test.mjs
+new file mode 100644
+--- /dev/null
++++ b/gcad-wasm/fixtures/sfcc-box-arrangement_test.mjs
+@@ -0,0 +1,74 @@
++/** Complete bounded rectilinear fallback; rendering remains manual QA. */
++import assert from "node:assert/strict"
++import { readFileSync, writeFileSync } from "node:fs"
++import { test } from "node:test"
++import { initSync, export_sfcc, sfcc_worker_prepare, sfcc_worker_merge } from "../wasm/pkg/gcad_wasm.js"
++import { Worker } from "node:worker_threads"
++initSync({ module: readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.meta.url)) })
++const box = (pos, half) => ({ kind: "box", nodeId: 7, pos, half })
++const cube = [-128, -128, -128, 256]
++const outer = box([0, 0, 0], [1, 1, 1])
++const examples = [
++    ["one enclosed", box([-0.5, -0.5, -0.5], [0.0625, 0.0625, 0.0625]), 1, 1],
++    ["two enclosed", { kind: "union", children: [box([-0.625, -0.5, -0.5], [0.0625, 0.0625, 0.0625]), box([-0.375, -0.5, -0.5], [0.0625, 0.0625, 0.0625])] }, 2, 1],
++    ["cavity", { kind: "subtract", lh: outer, rh: box([0, 0, 0], [0.75, 0.75, 0.75]) }, 2],
++    ["through hole", { kind: "subtract", lh: outer, rh: box([0, 0, 0], [0.25, 0.25, 2]) }, 1],
++    ["thin wall", box([0, 0, 0], [0.015625, 0.5, 0.5]), 1],
++    ["separated inexact f32 planes", box([-0.5, -0.5, -0.5], [0.0625 + 2 ** -30, 0.0625, 0.0625]), 1, 1],
++]
++function worker(data, file = "./sfcc-discovery-worker.mjs") {
++    return new Promise((resolve, reject) => {
++        const w = new Worker(new URL(file, import.meta.url), { workerData: data })
++        let result
++        w.once("message", r => { result = r })
++        w.once("error", reject)
++        w.once("exit", code => code === 0 && result !== undefined ? resolve(result) : reject(new Error(`worker exit ${code}`)))
++    })
++}
++function canonical(v, t) {
++    const bits = new Uint32Array(v.buffer, v.byteOffset, v.length)
++    const out = []
++    for (let i = 0; i < t.length; i += 3) {
++        const a = [0, 1, 2].map(j => Array.from(bits.subarray(t[i + j] * 8, t[i + j] * 8 + 8)).join(","))
++        out.push([a.join("|"), [a[1], a[2], a[0]].join("|"), [a[2], a[0], a[1]].join("|")].sort()[0])
++    }
++    return out.sort()
++}
++test("closed internal components, cavities, holes and thin walls reconstruct", async () => {
++    for (const [name, scene, components, expectedCells] of examples) {
++        const source = JSON.stringify(scene), result = export_sfcc(source, "{}", ...cube)
++        try {
++            const stats = JSON.parse(result.stats_json)
++            assert.equal(result.ok, true, `${name}: ${JSON.stringify(stats.validation)}`)
++            assert.equal(stats.components, components, name)
++            assert.equal(stats.validation.localCoverage.scope, "signedBoxArrangement")
++            if (expectedCells) assert.equal(stats.leaves, expectedCells)
++            const leaves = sfcc_worker_prepare(source, "{}", ...cube)
++            const parts = await Promise.all([0, 1, 2, 3].map(index => worker({ task: "mesh", scene: source, tuning: "{}", cube, leaves, index, count: 4 })))
++            const merged = sfcc_worker_merge(source, "{}", ...cube, parts.reverse())
++            try {
++                const mergedStats = JSON.parse(merged.stats_json)
++                assert.equal(mergedStats.serialRecovery, false)
++                assert.deepEqual(mergedStats.validation, stats.validation)
++                assert.deepEqual(canonical(merged.verts, merged.tris), canonical(result.verts, result.tris))
++            } finally { merged.free() }
++        } finally { result.free() }
++    }
++})
++test("zero-only signed sheet stays explicitly unresolved", () => {
++    const source = JSON.stringify({ kind: "subtract", lh: outer, rh: outer })
++    const result = export_sfcc(source, "{}", ...cube)
++    try {
++        assert.equal(result.ok, false)
++        const stats = JSON.parse(result.stats_json)
++        assert.ok(stats.validation.localCoverage.unresolved.some(r => r.reason === "arrangement_zero_only_face"))
++    } finally { result.free() }
++})
++
++test("wasm32 rejects envelope integers that would truncate to valid values", async () => {
++    const scene = JSON.stringify(box([-0.5, -0.5, -0.5], [0.0625, 0.0625, 0.0625]))
++    for (const field of ["manifest", "manifestLeafCount", "group", "count", "leafLevel", "leafIndex"]) {
++        const r = await worker({ scene, tuning: "{}", cube, field }, "./sfcc-box-arrangement-corrupt-worker.mjs")
++        assert.equal(r.rejected, true, field)
++    }
++})
+diff --git a/gcad-wasm/fixtures/sfcc-coverage-obstruction_test.mjs b/gcad-wasm/fixtures/sfcc-coverage-obstruction_test.mjs
+--- a/gcad-wasm/fixtures/sfcc-coverage-obstruction_test.mjs
++++ b/gcad-wasm/fixtures/sfcc-coverage-obstruction_test.mjs
+@@ -20,7 +20,7 @@
+     { name: "three-sheets-fine", scene: sheets,
+         cube: [-5, -5, -5, 10], leaves: 4372, triangles: 11608, components: 2, unresolved: 0 },
+     { name: "three-sheets-coarse", scene: sheets,
+-        cube: [-128, -128, -128, 256], leaves: 106, triangles: 700, components: 1, unresolved: 72 },
++        cube: [-128, -128, -128, 256], leaves: 106, triangles: 848, components: 2, unresolved: 0 },
+ ]
+ 
+ function save(name, value) {
+@@ -89,15 +89,19 @@
+         const scene = JSON.stringify(f.scene), result = export_sfcc(scene, "{}", ...f.cube)
+         try {
+             const stats = JSON.parse(result.stats_json)
+-            if (f.name !== "three-sheets-coarse") {
++            {
+                 assert.equal(stats.leaves, f.leaves)
+                 assert.equal(stats.tris, f.triangles)
+                 assert.equal(stats.components, f.components)
+                 assert.equal(stats.validation.unresolvedCells, f.unresolved)
+-            } else assert.ok(stats.validation.unresolvedCells > 0)
++            }
+             assert.equal(stats.failedCells, 0)
+             assert.equal(result.ok, f.unresolved === 0)
+             if (f.name === "clipped-box" || f.name === "sphere-success") {
++                assert.equal(stats.validation.localCoverage.certifiedCells, stats.leaves)
++                assert.deepEqual(stats.validation.localCoverage.unresolved, [])
++            } else if (f.name === "three-sheets-coarse") {
++                assert.equal(stats.validation.localCoverage.scope, "signedBoxArrangement")
+                 assert.equal(stats.validation.localCoverage.certifiedCells, stats.leaves)
+                 assert.deepEqual(stats.validation.localCoverage.unresolved, [])
+             } else {
+@@ -136,7 +140,7 @@
+                     const y = origin[1] + (iy + 1/3) * side, z = origin[2] + (iz + 2/5) * side
+                     assert.ok(record.targetedCells.some(c => c.bounds[1]<y && y<c.bounds[4] &&
+                         c.bounds[2]<z && z<c.bounds[5] && c.degenerate && c.split),
+-                    "each original responsible region or refined descendant is unresolved")
++                    "each original responsible region is represented at its existing depth")
+                 }
+                 record.primitiveInputs = [a, b, c].map(p => Array.from(audit_primitive_inputs(JSON.stringify(p))))
+             }
+@@ -145,7 +149,7 @@
+     }
+ })
+ 
+-test("raw positive workers and explicit coarse recovery retain both completion orders", { timeout: 180_000 }, async () => {
++test("raw positive workers and complete coarse construction retain both completion orders", { timeout: 180_000 }, async () => {
+     for (const f of fixtures) {
+         const scene = JSON.stringify(f.scene), tuning = "{}", leaves = sfcc_worker_prepare(scene, tuning, ...f.cube)
+         const serial = export_sfcc(scene, tuning, ...f.cube)
+@@ -161,7 +165,7 @@
+                     const merged = sfcc_worker_merge(scene, tuning, ...f.cube, reversed ? [...parts].reverse() : parts)
+                     try {
+                         const actual = JSON.parse(merged.stats_json)
+-                        const expectRecovery = f.name === "three-sheets-coarse"
++                        const expectRecovery = false
+                         assert.equal(actual.serialRecovery, expectRecovery, `${f.name} N=${count}`)
+                         if (expectRecovery) assert.ok(stats.featureCellFallbacks > 0, "coarse fallbacks trigger recovery")
+                         assert.equal(actual.failedCells, 0)
+diff --git a/gcad-wasm/kernel/src/sfcc/assembly.rs b/gcad-wasm/kernel/src/sfcc/assembly.rs
+--- a/gcad-wasm/kernel/src/sfcc/assembly.rs
++++ b/gcad-wasm/kernel/src/sfcc/assembly.rs
+@@ -24,6 +24,7 @@
+         }
+     };
+     let ordered = points.ordered_triangles(tris);
++    let arrangement_metadata = super::box_arrangement::MetadataSnapshot::capture(points, &ordered);
+     let deduped = drop_coincident_triangle_pairs(&ordered);
+     let filtered = drop_debris_components(points, &deduped, step * 4., features, step * 2., 600);
+     let mut tris = drop_coincident_triangle_pairs(&filtered);
+@@ -41,6 +42,9 @@
+             tuning.curve_chord_tol_mm,
+         );
+         super::local_coverage::finish_with_transport(points, &ordered, &tris, transport.as_ref());
++        if let Some(snapshot) = arrangement_metadata {
++            snapshot.verify(points, &tris);
++        }
+         return (tris, unresolved, None);
+     }
+     let mut audit = QualityAudit::default();
+@@ -161,5 +165,8 @@
+             unresolved
+         };
+     super::local_coverage::finish_with_transport(points, &ordered, &tris, flip_transport.as_ref());
++    if let Some(snapshot) = arrangement_metadata {
++        snapshot.verify(points, &tris);
++    }
+     (tris, unresolved, Some(audit))
+ }
+diff --git a/gcad-wasm/kernel/src/sfcc/box_arrangement.rs b/gcad-wasm/kernel/src/sfcc/box_arrangement.rs
+new file mode 100644
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/box_arrangement.rs
+@@ -0,0 +1,1237 @@
++//! Complete bounded rectilinear surface arrangements, clipped to actual leaves.
++//! See docs/research/sfcc-aligned-box-reconstruction.md for the checked premises.
++use super::{
++    feature_curves::make_segment_curve,
++    feature_set::{SfccCorner, SfccFeatureSet},
++    local_coverage::{CellId, Witness},
++    octree::SfccCell,
++    point_table::{CurveInterval, PointTable},
++    predicates::exact_affine_eq,
++    spatial_index::SfccSpatialIndex,
++};
++use crate::{
++    math::grid::{cell_aabb, cell_key, point_to_world, stride_at_level, SfccLattice},
++    sdf::{CsgNode, Shape},
++};
++use std::collections::{BTreeMap, BTreeSet};
++
++const MAX_OCCURRENCES: usize = 4096;
++const MAX_AXIS: usize = 128;
++const MAX_STRATA: usize = 262144;
++const MAX_SIGN_WORK: usize = 16_777_216;
++const MAX_CUTS: usize = 1024;
++const MAX_RECTANGLES: usize = 262144;
++const MAX_LEAVES: usize = 32768;
++#[derive(Clone, Debug)]
++struct BoxOccurrence {
++    bounds: [f64; 6],
++    ranks: [usize; 6],
++    sign: i8,
++    path: Vec<usize>,
++}
++#[derive(Clone, Debug)]
++enum Expr {
++    Leaf(usize),
++    Min(Vec<Expr>),
++    Max(Vec<Expr>),
++}
++impl Expr {
++    fn sign(&self, p: [usize; 3], boxes: &[BoxOccurrence]) -> i8 {
++        match self {
++            Self::Leaf(i) => {
++                let b = &boxes[*i];
++                let mut s = -1;
++                for a in 0..3 {
++                    if p[a] < 2 * b.ranks[a] + 1 || p[a] > 2 * b.ranks[a + 3] + 1 {
++                        s = 1;
++                        break;
++                    }
++                    if p[a] == 2 * b.ranks[a] + 1 || p[a] == 2 * b.ranks[a + 3] + 1 {
++                        s = 0;
++                    }
++                }
++                s * b.sign
++            }
++            Self::Min(c) => c.iter().map(|c| c.sign(p, boxes)).min().unwrap_or(1),
++            Self::Max(c) => c.iter().map(|c| c.sign(p, boxes)).max().unwrap_or(-1),
++        }
++    }
++    fn owned_sign(&self, p: [usize; 3], boxes: &[BoxOccurrence]) -> (i8, Vec<usize>) {
++        match self {
++            Self::Leaf(i) => {
++                let sign = self.sign(p, boxes);
++                (sign, if sign == 0 { vec![*i] } else { Vec::new() })
++            }
++            Self::Min(children) | Self::Max(children) => {
++                let minimum = matches!(self, Self::Min(_));
++                let mut best = if minimum { 1 } else { -1 };
++                let mut owners = Vec::new();
++                for child in children {
++                    let (sign, mut child_owners) = child.owned_sign(p, boxes);
++                    if if minimum { sign < best } else { sign > best } {
++                        best = sign;
++                        owners.clear();
++                    }
++                    if best == 0 && sign == 0 {
++                        owners.append(&mut child_owners);
++                    }
++                }
++                (best, owners)
++            }
++        }
++    }
++}
++#[derive(Clone, Debug)]
++pub(crate) struct Facet {
++    pub axis: usize,
++    pub sign: i8,
++    pub bounds: [f64; 6],
++    pub owners: Vec<usize>,
++}
++#[derive(Clone, Debug)]
++pub(crate) struct Piece {
++    pub cell: usize,
++    pub facet: usize,
++    pub corners: [[usize; 3]; 4],
++}
++pub(crate) struct Plan {
++    pub leaves: Vec<SfccCell>,
++    pub cuts: [Vec<f64>; 3],
++    pub facets: Vec<Facet>,
++    pub pieces: Vec<Piece>,
++    pub signature: Vec<u64>,
++    pub needed: bool,
++    occurrences: Vec<BoxOccurrence>,
++}
++pub(crate) enum Attempt {
++    Outside,
++    Reject(&'static str),
++    Ready(Plan),
++}
++
++/// Preserve provenance even when checked flips retain old cell cuts virtually.
++/// New triangles after those flips need not have a single original patch owner.
++pub(crate) struct MetadataSnapshot {
++    patches: BTreeMap<[usize; 3], Option<usize>>,
++    protected: BTreeSet<(usize, usize)>,
++    curves: Vec<(usize, usize, usize, u64, u64)>,
++}
++impl MetadataSnapshot {
++    fn curves(pt: &PointTable) -> Vec<(usize, usize, usize, u64, u64)> {
++        let mut curves = pt
++            .identified_edges()
++            .flat_map(|((a, b), intervals)| {
++                intervals
++                    .iter()
++                    .map(move |c| (a, b, c.curve_id, c.start.to_bits(), c.end.to_bits()))
++            })
++            .collect::<Vec<_>>();
++        curves.sort();
++        curves
++    }
++    pub(crate) fn capture(pt: &PointTable, tris: &[usize]) -> Option<Self> {
++        pt.arrangement.then(|| Self {
++            patches: tris
++                .chunks_exact(3)
++                .map(|t| {
++                    let mut t = [t[0], t[1], t[2]];
++                    t.sort_unstable();
++                    (t, pt.patch(t))
++                })
++                .collect(),
++            protected: pt.protected_edges().collect(),
++            curves: Self::curves(pt),
++        })
++    }
++    pub(crate) fn verify(self, pt: &mut PointTable, tris: &[usize]) {
++        if self.patches.iter().any(|(&t, &owner)| pt.patch(t) != owner)
++            || tris.chunks_exact(3).any(|t| {
++                let mut t = [t[0], t[1], t[2]];
++                t.sort_unstable();
++                !self.patches.contains_key(&t) && pt.patch(t).is_some()
++            })
++            || self.protected != pt.protected_edges().collect()
++            || self.curves != Self::curves(pt)
++        {
++            for witness in &mut pt.coverage {
++                if witness.reason.is_none() {
++                    witness.reason = Some("arrangement_cleanup_metadata".into());
++                }
++            }
++        }
++    }
++}
++fn identity(c: &CsgNode, depth: usize) -> bool {
++    if depth > 128 {
++        return false;
++    }
++    match c {
++        CsgNode::Leaf(l) => {
++            matches!(l.shape, Shape::Cuboid { .. })
++                && l.sim.r == [1., 0., 0., 0., 1., 0., 0., 0., 1.]
++                && l.sim.s == 1.
++                && l.sim.t == [0.; 3]
++        }
++        CsgNode::Min(c) | CsgNode::Max(c) => {
++            !c.is_empty() && c.iter().all(|c| identity(c, depth + 1))
++        }
++        _ => false,
++    }
++}
++fn compile(
++    c: &CsgNode,
++    path: &mut Vec<usize>,
++    boxes: &mut Vec<BoxOccurrence>,
++    words: &mut Vec<u64>,
++) -> Result<Expr, &'static str> {
++    if path.len() > 128 || boxes.len() >= MAX_OCCURRENCES {
++        return Err("arrangement_occurrence_budget");
++    }
++    match c {
++        CsgNode::Leaf(l) => {
++            let Shape::Cuboid { half } = l.shape else {
++                return Err("arrangement_scope");
++            };
++            if ![1., -1.].contains(&l.sign)
++                || half.iter().any(|h| !h.is_finite() || *h <= 0.)
++                || l.pos.iter().any(|x| !x.is_finite())
++            {
++                return Err("arrangement_invalid_box");
++            }
++            let mut b = [0.; 6];
++            for a in 0..3 {
++                b[a] = l.pos[a] - half[a];
++                b[a + 3] = l.pos[a] + half[a];
++                if !exact_affine_eq(l.pos[a], half[a], -1., b[a])
++                    || !exact_affine_eq(l.pos[a], half[a], 1., b[a + 3])
++                    || b[a] >= b[a + 3]
++                {
++                    return Err("arrangement_unrepresented_endpoint");
++                }
++            }
++            words.extend([0, l.sign.to_bits()]);
++            words.extend(l.pos.map(f64::to_bits));
++            words.extend(half.map(f64::to_bits));
++            words.push(path.len() as u64);
++            words.extend(path.iter().map(|&v| v as u64));
++            let i = boxes.len();
++            boxes.push(BoxOccurrence {
++                bounds: b,
++                ranks: [0; 6],
++                sign: l.sign as i8,
++                path: path.clone(),
++            });
++            Ok(Expr::Leaf(i))
++        }
++        CsgNode::Min(ch) | CsgNode::Max(ch) => {
++            words.extend([
++                if matches!(c, CsgNode::Min(_)) { 1 } else { 2 },
++                ch.len() as u64,
++            ]);
++            let mut out = Vec::new();
++            for (i, c) in ch.iter().enumerate() {
++                path.push(i);
++                out.push(compile(c, path, boxes, words)?);
++                path.pop();
++            }
++            Ok(if matches!(c, CsgNode::Min(_)) {
++                Expr::Min(out)
++            } else {
++                Expr::Max(out)
++            })
++        }
++        _ => Err("arrangement_scope"),
++    }
++}
++fn unique(v: &mut Vec<f64>) {
++    for x in v.iter_mut() {
++        if *x == 0. {
++            *x = 0.;
++        }
++    }
++    v.sort_by(f64::total_cmp);
++    v.dedup_by(|a, b| *a == *b);
++}
++fn rank(v: &[f64], x: f64) -> usize {
++    v.binary_search_by(|q| q.total_cmp(&if x == 0. { 0. } else { x }))
++        .expect("arrangement coordinate from canonical set")
++}
++fn adjacent_open(s: usize, n: usize) -> Vec<usize> {
++    if s % 2 == 0 {
++        vec![s]
++    } else {
++        [s - 1, s + 1].into_iter().filter(|&x| x <= 2 * n).collect()
++    }
++}
++fn cell_id(c: &SfccCell) -> CellId {
++    (c.level, c.ix, c.iy, c.iz)
++}
++fn axes(a: usize) -> [usize; 2] {
++    [(a + 1) % 3, (a + 2) % 3]
++}
++fn target(
++    tree: &CsgNode,
++) -> Result<(Vec<BoxOccurrence>, Vec<Facet>, [Vec<f64>; 3], Vec<u64>), &'static str> {
++    let mut boxes = Vec::new();
++    let mut signature = Vec::new();
++    let expr = compile(tree, &mut Vec::new(), &mut boxes, &mut signature)?;
++    let mut coords: [Vec<f64>; 3] = std::array::from_fn(|a| {
++        boxes
++            .iter()
++            .flat_map(|b| [b.bounds[a], b.bounds[a + 3]])
++            .collect()
++    });
++    for v in &mut coords {
++        unique(v);
++        if v.len() > MAX_AXIS {
++            return Err("arrangement_plane_budget");
++        }
++    }
++    for b in &mut boxes {
++        for a in 0..3 {
++            b.ranks[a] = rank(&coords[a], b.bounds[a]);
++            b.ranks[a + 3] = rank(&coords[a], b.bounds[a + 3]);
++        }
++    }
++    let dims = coords.each_ref().map(|c| 2 * c.len() + 1);
++    let count = dims
++        .into_iter()
++        .try_fold(1usize, |p, n| p.checked_mul(n))
++        .ok_or("arrangement_strata_budget")?;
++    if count > MAX_STRATA || count.saturating_mul(signature.len()) > MAX_SIGN_WORK {
++        return Err("arrangement_strata_budget");
++    }
++    let idx = |p: [usize; 3]| (p[0] * dims[1] + p[1]) * dims[2] + p[2];
++    let mut signs = vec![0i8; count];
++    for x in 0..dims[0] {
++        if super::cancel::is_cancelled() {
++            return Err("arrangement_cancelled");
++        }
++        for y in 0..dims[1] {
++            for z in 0..dims[2] {
++                let p = [x, y, z];
++                signs[idx(p)] = expr.sign(p, &boxes);
++            }
++        }
++    }
++    let mut facets = Vec::new();
++    let mut face_keys = BTreeSet::new();
++    for a in 0..3 {
++        let [u, v] = axes(a);
++        for plane in 0..coords[a].len() {
++            for iu in 1..coords[u].len() {
++                for iv in 1..coords[v].len() {
++                    let mut p = [0; 3];
++                    p[a] = 2 * plane + 1;
++                    p[u] = 2 * iu;
++                    p[v] = 2 * iv;
++                    if signs[idx(p)] != 0 {
++                        continue;
++                    }
++                    let mut l = p;
++                    let mut r = p;
++                    l[a] -= 1;
++                    r[a] += 1;
++                    let sl = signs[idx(l)];
++                    let sr = signs[idx(r)];
++                    if sl == sr {
++                        return Err("arrangement_zero_only_face");
++                    }
++                    let sign = if sl < sr { 1 } else { -1 };
++                    let mut b = [0.; 6];
++                    b[a] = coords[a][plane];
++                    b[a + 3] = b[a];
++                    b[u] = coords[u][iu - 1];
++                    b[u + 3] = coords[u][iu];
++                    b[v] = coords[v][iv - 1];
++                    b[v + 3] = coords[v][iv];
++                    let (_, owners) = expr.owned_sign(p, &boxes);
++                    if owners.is_empty() {
++                        return Err("arrangement_owner_missing");
++                    }
++                    face_keys.insert(p);
++                    facets.push(Facet {
++                        axis: a,
++                        sign,
++                        bounds: b,
++                        owners,
++                    });
++                }
++            }
++        }
++    }
++    // Lower-dimensional zero strata are legitimate only as closures of exposed faces.
++    for x in 0..dims[0] {
++        for y in 0..dims[1] {
++            for z in 0..dims[2] {
++                let p = [x, y, z];
++                if signs[idx(p)] != 0 || p.iter().filter(|&&s| s % 2 == 1).count() < 2 {
++                    continue;
++                }
++                let mut covered = false;
++                for a in 0..3 {
++                    if p[a] % 2 == 0 {
++                        continue;
++                    }
++                    let [u, v] = axes(a);
++                    for iu in adjacent_open(p[u], coords[u].len()) {
++                        for iv in adjacent_open(p[v], coords[v].len()) {
++                            let mut q = p;
++                            q[u] = iu;
++                            q[v] = iv;
++                            covered |= face_keys.contains(&q);
++                        }
++                    }
++                }
++                if !covered {
++                    return Err("arrangement_zero_only_edge_or_point");
++                }
++            }
++        }
++    }
++    Ok((boxes, facets, coords, signature))
++}
++impl Plan {
++    /// Bounded production fallback: retain every nondegenerate legacy fast path.
++    pub(crate) fn for_export(tree: &CsgNode, lat: &SfccLattice, leaves: &[SfccCell]) -> Attempt {
++        if !leaves.iter().any(|c| c.degenerate) {
++            return Attempt::Outside;
++        }
++        Self::new(tree, lat, leaves)
++    }
++    pub fn new(tree: &CsgNode, lat: &SfccLattice, leaves: &[SfccCell]) -> Attempt {
++        if !identity(tree, 0) {
++            return Attempt::Outside;
++        }
++        match Self::checked(tree, lat, leaves) {
++            Ok(p) => Attempt::Ready(p),
++            Err(e) => {
++                let optional_scope = matches!(
++                    e,
++                    "arrangement_occurrence_budget"
++                        | "arrangement_plane_budget"
++                        | "arrangement_strata_budget"
++                        | "arrangement_unrepresented_endpoint"
++                        | "arrangement_grid"
++                        | "arrangement_cell_map"
++                        | "arrangement_grid_contact"
++                        | "arrangement_leaf_budget"
++                );
++                if optional_scope && !leaves.iter().any(|c| c.degenerate) {
++                    Attempt::Outside
++                } else {
++                    Attempt::Reject(e)
++                }
++            }
++        }
++    }
++    fn checked(
++        tree: &CsgNode,
++        lat: &SfccLattice,
++        leaves: &[SfccCell],
++    ) -> Result<Self, &'static str> {
++        let (occurrences, facets, mut cuts, signature) = target(tree)?;
++        if leaves.len() > MAX_LEAVES {
++            return Err("arrangement_leaf_budget");
++        }
++        if lat.max_depth < 1
++            || lat.max_depth > 14
++            || lat.res != 1 << lat.max_depth
++            || lat.span != lat.res + 1
++            || !lat.world_size.is_finite()
++            || lat.world_size <= 0.
++            || !lat.step.is_finite()
++            || lat.step <= 0.
++            || [lat.origin_x, lat.origin_y, lat.origin_z]
++                .iter()
++                .any(|x| !x.is_finite())
++            || !exact_affine_eq(0., lat.step, lat.res as f64, lat.world_size)
++        {
++            return Err("arrangement_grid");
++        }
++        let primitive_planes = cuts.clone();
++        let mut bounds = Vec::new();
++        let mut seen = BTreeSet::new();
++        let origin = [lat.origin_x, lat.origin_y, lat.origin_z];
++        for c in leaves {
++            if c.level > lat.max_depth || !seen.insert(cell_id(c)) {
++                return Err("arrangement_leaf_identity");
++            }
++            let res = 1i64 << c.level;
++            if [c.ix, c.iy, c.iz].iter().any(|&i| i < 0 || i >= res) {
++                return Err("arrangement_leaf_identity");
++            }
++            if c.key != cell_key(lat, c.level, c.ix, c.iy, c.iz) {
++                return Err("arrangement_leaf_identity");
++            }
++            let s = stride_at_level(lat, c.level);
++            let g = [c.ix * s, c.iy * s, c.iz * s];
++            let lo = point_to_world(lat, g[0], g[1], g[2]);
++            let hi = point_to_world(lat, g[0] + s, g[1] + s, g[2] + s);
++            let b = cell_aabb(lat, c.level, c.ix, c.iy, c.iz);
++            for a in 0..3 {
++                if b[a] != lo[a]
++                    || b[a + 3] != hi[a]
++                    || !exact_affine_eq(origin[a], lat.step, g[a] as f64, lo[a])
++                    || !exact_affine_eq(origin[a], lat.step, (g[a] + s) as f64, hi[a])
++                {
++                    return Err("arrangement_cell_map");
++                }
++                if primitive_planes[a].contains(&lo[a]) || primitive_planes[a].contains(&hi[a]) {
++                    return Err("arrangement_grid_contact");
++                }
++                cuts[a].extend([lo[a], hi[a]]);
++            }
++            bounds.push(b);
++        }
++        // The fallback trigger uses a complete target in each actual cell; it does
++        // not depend on whether the old mesher happened to emit triangles.
++        let needed = leaves.iter().any(|c| c.degenerate)
++            || leaves.is_empty() && !facets.is_empty()
++            || bounds.iter().any(|b| !target_is_disk_or_empty(&facets, b));
++        if !needed {
++            return Ok(Self {
++                leaves: leaves.to_vec(),
++                cuts: primitive_planes,
++                facets,
++                pieces: Vec::new(),
++                signature,
++                needed: false,
++                occurrences,
++            });
++        }
++        for v in &mut cuts {
++            unique(v);
++            if v.len() > MAX_CUTS {
++                return Err("arrangement_cut_budget");
++            }
++            if v.windows(2).any(|w| {
++                !(w[0] as f32).is_finite()
++                    || !(w[1] as f32).is_finite()
++                    || w[0] as f32 >= w[1] as f32
++            }) {
++                return Err("arrangement_f32_collapse");
++            }
++        }
++        // Strict coordinate order gives an ambient piecewise-linear map to f32.
++        // Supporting planes may move: this proves topology, not exact f32 loci.
++        let mut estimate = 0usize;
++        for f in &facets {
++            let [u, v] = axes(f.axis);
++            estimate = estimate
++                .checked_add(
++                    (rank(&cuts[u], f.bounds[u + 3]) - rank(&cuts[u], f.bounds[u]))
++                        * (rank(&cuts[v], f.bounds[v + 3]) - rank(&cuts[v], f.bounds[v])),
++                )
++                .ok_or("arrangement_rectangle_budget")?;
++            if estimate > MAX_RECTANGLES {
++                return Err("arrangement_rectangle_budget");
++            }
++        }
++        if estimate.saturating_mul(leaves.len()) > 32_000_000 {
++            return Err("arrangement_owner_budget");
++        }
++        let mut pieces = Vec::with_capacity(estimate);
++        for (fi, f) in facets.iter().enumerate() {
++            let [u, v] = axes(f.axis);
++            let k = rank(&cuts[f.axis], f.bounds[f.axis]);
++            for i in rank(&cuts[u], f.bounds[u])..rank(&cuts[u], f.bounds[u + 3]) {
++                for j in rank(&cuts[v], f.bounds[v])..rank(&cuts[v], f.bounds[v + 3]) {
++                    let owners: Vec<_> = bounds
++                        .iter()
++                        .enumerate()
++                        .filter(|(_, b)| {
++                            b[f.axis] < f.bounds[f.axis]
++                                && f.bounds[f.axis] < b[f.axis + 3]
++                                && b[u] <= cuts[u][i]
++                                && cuts[u][i + 1] <= b[u + 3]
++                                && b[v] <= cuts[v][j]
++                                && cuts[v][j + 1] <= b[v + 3]
++                        })
++                        .map(|(i, _)| i)
++                        .collect();
++                    if owners.len() != 1 {
++                        return Err("arrangement_missing_or_overlapping_leaf");
++                    }
++                    let mut corners = [[0; 3]; 4];
++                    for (n, (du, dv)) in [(0, 0), (1, 0), (1, 1), (0, 1)].into_iter().enumerate() {
++                        corners[n][f.axis] = k;
++                        corners[n][u] = i + du;
++                        corners[n][v] = j + dv;
++                    }
++                    if f.sign < 0 {
++                        corners.swap(1, 3);
++                    }
++                    pieces.push(Piece {
++                        cell: owners[0],
++                        facet: fi,
++                        corners,
++                    });
++                }
++            }
++        }
++        let out = Self {
++            leaves: leaves.to_vec(),
++            cuts,
++            facets,
++            pieces,
++            signature,
++            needed,
++            occurrences,
++        };
++        let (pt, tris, _features) = out.mesh(None)?;
++        let (_, indices) = pt.build_mesh(&tris);
++        if !super::manifold_check::check_manifold(&indices, true).ok {
++            return Err("arrangement_nonmanifold_contact");
++        }
++        Ok(out)
++    }
++    fn position(&self, key: [usize; 3]) -> [f64; 3] {
++        std::array::from_fn(|a| self.cuts[a][key[a]])
++    }
++    pub(crate) fn mesh(
++        &self,
++        owned: Option<&BTreeSet<CellId>>,
++    ) -> Result<(PointTable, Vec<usize>, SfccFeatureSet), &'static str> {
++        let mut point_faces: BTreeMap<[usize; 3], BTreeSet<(usize, i8)>> = BTreeMap::new();
++        let mut edges: BTreeMap<([usize; 3], [usize; 3]), BTreeSet<usize>> = BTreeMap::new();
++        for p in &self.pieces {
++            let f = &self.facets[p.facet];
++            for i in 0..4 {
++                point_faces
++                    .entry(p.corners[i])
++                    .or_default()
++                    .insert((f.axis, f.sign));
++                let a = p.corners[i];
++                let b = p.corners[(i + 1) % 4];
++                edges
++                    .entry((a.min(b), a.max(b)))
++                    .or_default()
++                    .insert(p.facet);
++            }
++        }
++        let mut strata = Vec::new();
++        for (i, o) in self.occurrences.iter().enumerate() {
++            debug_assert!(o.path.len() <= 128);
++            for axis in 0..3 {
++                for side in [1usize, 0] {
++                    let n = if side == 1 { 1. } else { -1. };
++                    let id = strata.len();
++                    let ident = crate::strata::StratumIdentity {
++                        id,
++                        owner_node_id: -1,
++                        leaf_index: i,
++                        local_index: axis * 2 + 1 - side,
++                        sign: o.sign as f64,
++                    };
++                    let v: [f64; 3] = std::array::from_fn(|a| if a == axis { n } else { 0. });
++                    strata.push(crate::strata::Stratum::plane(
++                        ident,
++                        v[0],
++                        v[1],
++                        v[2],
++                        -n * o.bounds[axis + 3 * side],
++                    ));
++                }
++            }
++        }
++        let mut curves = Vec::new();
++        let mut edge_curves = BTreeMap::new();
++        let mut index = SfccSpatialIndex::new(1.);
++        let mut corner_curves: BTreeMap<[usize; 3], Vec<(usize, u8)>> = BTreeMap::new();
++        for (&(a, b), fs) in &edges {
++            let planes: BTreeSet<_> = fs
++                .iter()
++                .map(|&fi| (self.facets[fi].axis, self.facets[fi].sign))
++                .collect();
++            if planes.len() == 1 {
++                continue;
++            }
++            if fs.len() != 2 || planes.len() != 2 {
++                return Err("arrangement_crease_incidence");
++            }
++            let adjacent: Vec<_> = fs.iter().map(|&fi| self.patch_owner(fi)).collect();
++            let pa = self.position(a);
++            let pb = self.position(b);
++            if (0..3).any(|i| !exact_affine_eq(pa[i], pb[i] - pa[i], 1., pb[i])) {
++                return Err("arrangement_crease_parameter");
++            }
++            let id = curves.len();
++            let curve = make_segment_curve(
++                id,
++                -1,
++                [adjacent[0], adjacent[1]],
++                pa[0],
++                pa[1],
++                pa[2],
++                pb[0],
++                pb[1],
++                pb[2],
++            );
++            index.insert_curve(&curve);
++            curves.push(curve);
++            edge_curves.insert((a, b), id);
++            corner_curves.entry(a).or_default().push((id, 0));
++            corner_curves.entry(b).or_default().push((id, 1));
++        }
++        let mut corners = Vec::new();
++        for (k, ends) in corner_curves {
++            let p = self.position(k);
++            let id = corners.len();
++            let strata: Vec<_> = ends
++                .iter()
++                .flat_map(|(i, _)| curves[*i].adjacent_strata)
++                .collect::<BTreeSet<_>>()
++                .into_iter()
++                .collect();
++            for &(i, e) in &ends {
++                if e == 0 {
++                    curves[i].corner_start = id as i64;
++                } else {
++                    curves[i].corner_end = id as i64;
++                }
++            }
++            index.insert_corner(id, p[0], p[1], p[2]);
++            corners.push(SfccCorner {
++                id,
++                x: p[0],
++                y: p[1],
++                z: p[2],
++                strata,
++                curve_ends: ends,
++            });
++        }
++        let features = SfccFeatureSet {
++            unresolved_branch_paths: Vec::new(),
++            trace_diagnostics: Default::default(),
++            curves,
++            corners,
++            index,
++            strata,
++            run_id: super::feature_set::next_feature_set_run_id(),
++        };
++        let mut pt = PointTable::new();
++        pt.arrangement = true;
++        let mut ids = BTreeMap::new();
++        let mut tris = Vec::new();
++        let mut cell_tris: Vec<Vec<usize>> = vec![Vec::new(); self.leaves.len()];
++        for p in &self.pieces {
++            if owned.is_some_and(|o| !o.contains(&cell_id(&self.leaves[p.cell]))) {
++                continue;
++            }
++            let mut ci = [0; 4];
++            for i in 0..4 {
++                let k = p.corners[i];
++                ci[i] = *ids.entry(k).or_insert_with(|| {
++                    let pos = self.position(k);
++                    let mut n = [0.; 3];
++                    for &(a, s) in &point_faces[&k] {
++                        n[a] += s as f64;
++                    }
++                    let len = n[0].hypot(n[1]).hypot(n[2]);
++                    let n = if len > 0. {
++                        n.map(|v| v / len)
++                    } else {
++                        let &(a, s) = point_faces[&k].first().expect("incident facet");
++                        std::array::from_fn(|i| if i == a { s as f64 } else { 0. })
++                    };
++                    pt.get_or_create_str(&format!("arr:{},{},{}", k[0], k[1], k[2]), || {
++                        [pos[0], pos[1], pos[2], n[0], n[1], n[2]]
++                    })
++                });
++            }
++            for t in [[ci[0], ci[1], ci[2]], [ci[0], ci[2], ci[3]]] {
++                pt.set_patch(t, self.patch_owner(p.facet));
++                tris.extend(t);
++                cell_tris[p.cell].extend(t);
++            }
++            for i in 0..4 {
++                let a = p.corners[i];
++                let b = p.corners[(i + 1) % 4];
++                if let Some(&curve_id) = edge_curves.get(&(a.min(b), a.max(b))) {
++                    let (start, end) = if a < b { (0., 1.) } else { (1., 0.) };
++                    pt.protect_curve_edge(
++                        ci[i],
++                        ci[(i + 1) % 4],
++                        CurveInterval {
++                            curve_id,
++                            start,
++                            end,
++                        },
++                    );
++                }
++            }
++        }
++        for (i, c) in self.leaves.iter().enumerate() {
++            if owned.is_some_and(|o| !o.contains(&cell_id(c))) {
++                continue;
++            }
++            let triangles: Vec<_> = cell_tris[i]
++                .chunks_exact(3)
++                .map(|t| {
++                    let t = [t[0], t[1], t[2]];
++                    let j = (0..3).min_by_key(|&j| t[j]).unwrap();
++                    [t[j], t[(j + 1) % 3], t[(j + 2) % 3]]
++                })
++                .collect();
++            let vertices = cell_tris[i]
++                .iter()
++                .copied()
++                .collect::<BTreeSet<_>>()
++                .into_iter()
++                .map(|j| {
++                    (
++                        j,
++                        pt.key_at(j).clone(),
++                        super::local_coverage::payload(&pt, j),
++                    )
++                })
++                .collect();
++            let es: BTreeSet<_> = cell_tris[i]
++                .chunks_exact(3)
++                .flat_map(|t| {
++                    (0..3).map(move |j| (t[j].min(t[(j + 1) % 3]), t[j].max(t[(j + 1) % 3])))
++                })
++                .collect();
++            let curves = es
++                .into_iter()
++                .flat_map(|(a, b)| pt.curve_intervals(a, b).into_iter().map(move |c| (a, b, c)))
++                .collect();
++            pt.coverage.push(Witness {
++                transported: false,
++                cell: SfccCell {
++                    degenerate: false,
++                    ..*c
++                },
++                reason: None,
++                triangles,
++                vertices,
++                faces: Vec::new(),
++                curves,
++            });
++        }
++        Ok((pt, tris, features))
++    }
++    fn patch_owner(&self, facet: usize) -> usize {
++        let f = &self.facets[facet];
++        let i = *f
++            .owners
++            .iter()
++            .find(|&&i| {
++                let o = &self.occurrences[i];
++                let side = if o.bounds[f.axis + 3] == f.bounds[f.axis] {
++                    1
++                } else {
++                    -1
++                };
++                side * o.sign == f.sign
++            })
++            .expect("a crossing min/max expression has an aligned active occurrence");
++        let side = usize::from(self.occurrences[i].bounds[f.axis + 3] == f.bounds[f.axis]);
++        i * 6 + f.axis * 2 + 1 - side
++    }
++    #[cfg(all(test, feature = "serde"))]
++    pub(crate) fn provenance(&self) -> Vec<(Vec<usize>, [f64; 6], i8)> {
++        self.occurrences
++            .iter()
++            .map(|o| (o.path.clone(), o.bounds, o.sign))
++            .collect()
++    }
++}
++fn target_is_disk_or_empty(facets: &[Facet], cell: &[f64; 6]) -> bool {
++    let mut points: BTreeMap<[u64; 3], usize> = BTreeMap::new();
++    let mut tris = Vec::new();
++    for f in facets {
++        let a = f.axis;
++        let [u, v] = axes(a);
++        if !(cell[a] < f.bounds[a] && f.bounds[a] < cell[a + 3]) {
++            continue;
++        }
++        let lo = [f.bounds[u].max(cell[u]), f.bounds[v].max(cell[v])];
++        let hi = [
++            f.bounds[u + 3].min(cell[u + 3]),
++            f.bounds[v + 3].min(cell[v + 3]),
++        ];
++        if lo[0] >= hi[0] || lo[1] >= hi[1] {
++            continue;
++        }
++        let mut ids = [0; 4];
++        for (i, (su, sv)) in [(0, 0), (1, 0), (1, 1), (0, 1)].into_iter().enumerate() {
++            let mut p = [0.; 3];
++            p[a] = f.bounds[a];
++            p[u] = if su == 0 { lo[0] } else { hi[0] };
++            p[v] = if sv == 0 { lo[1] } else { hi[1] };
++            let next = points.len();
++            ids[i] = *points.entry(p.map(f64::to_bits)).or_insert(next);
++        }
++        if f.sign < 0 {
++            ids.swap(1, 3);
++        }
++        tris.extend([ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]]);
++    }
++    tris.is_empty() || is_disk(&tris)
++}
++fn is_disk(tris: &[usize]) -> bool {
++    super::local_coverage::disk(tris).is_ok()
++}
++
++#[cfg(all(test, feature = "serde"))]
++mod tests {
++    use super::super::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++    use super::*;
++    use crate::scene_bridge::build_csg_tree_from_json;
++    const SHEETS: &str = r#"{"kind":"union","children":[{"kind":"box","pos":[-1.875,0,0],"half":[2.125,4,4]},{"kind":"intersect","lh":{"kind":"box","pos":[2.25,0,0],"half":[1.75,4,4]},"rh":{"kind":"box","pos":[-1.625,0,0],"half":[2.375,4,4]}}]}"#;
++    #[test]
++    fn coarse_plan_constructs_two_cuboids() {
++        let tree = build_csg_tree_from_json(SHEETS).unwrap();
++        let tuning = PipelineTuning::default();
++        let cube = SfccWorldCube {
++            min_x: -128.,
++            min_y: -128.,
++            min_z: -128.,
++            size: 256.,
++        };
++        let ctx = build_pipeline_context(&tree, &cube, &tuning);
++        let oct = ctx.build_tagged_octree(&tuning);
++        let plan = match Plan::new(&tree, &oct.lat, &oct.leaves) {
++            Attempt::Ready(p) => p,
++            Attempt::Reject(e) => panic!("{e}"),
++            Attempt::Outside => panic!("outside"),
++        };
++        assert!(plan.needed);
++        let mut shared: BTreeMap<([usize; 3], [usize; 3]), BTreeSet<u32>> = BTreeMap::new();
++        for p in &plan.pieces {
++            for i in 0..4 {
++                let a = p.corners[i];
++                let b = p.corners[(i + 1) % 4];
++                shared
++                    .entry((a.min(b), a.max(b)))
++                    .or_default()
++                    .insert(plan.leaves[p.cell].level);
++            }
++        }
++        assert!(
++            shared
++                .values()
++                .any(|levels| levels.len() == 2
++                    && levels.last().unwrap() - levels.first().unwrap() == 1),
++            "actual 2:1 interface required"
++        );
++        let (mut pt, tris, features) = plan.mesh(None).unwrap();
++        let (before_v, before_t) = pt.build_mesh(&tris);
++        assert_eq!(
++            super::super::manifold_check::check_manifold(&before_t, true).components,
++            2
++        );
++        let (out, unresolved, q) = super::super::assembly::finish(
++            &tree,
++            &features,
++            &mut pt,
++            &tris,
++            oct.lat.step,
++            &tuning,
++            None,
++        );
++        let (v, t) = pt.build_mesh(&out);
++        let m = super::super::manifold_check::check_manifold(&t, true);
++        assert!(m.ok);
++        assert_eq!(m.components, 2);
++        assert_eq!(unresolved, 0);
++        assert!(q.is_none());
++        let report = super::super::local_coverage::report(&tree, &pt);
++        assert!(report.unresolved.is_empty(), "{report:?}");
++        let fc = super::super::feature_chain::audit_feature_chains(
++            &pt,
++            &out,
++            &features,
++            tuning.surface_tol_mm,
++        );
++        assert!(fc.passed(), "{fc:?}");
++        std::fs::write("/tmp/sfcc-arrangement-b-coarse.json",serde_json::to_string(&serde_json::json!({"verts":v,"tris":t,"initialVertices":before_v,"initialTriangles":before_t,"leaves":plan.leaves.iter().map(|c|[c.level as i64,c.ix,c.iy,c.iz]).collect::<Vec<_>>(),"primitiveProvenance":plan.provenance(),"coverage":report.to_json()})).unwrap()).unwrap();
++        println!(
++            "leaves={} rectangles={} triangles={} curves={} report={report:?}",
++            oct.leaves.len(),
++            plan.pieces.len(),
++            t.len() / 3,
++            features.curves.len()
++        );
++    }
++}
++
++pub(crate) fn mark_unresolved(
++    validation: &mut super::validation::SfccValidation,
++    reason: &str,
++    leaves: &[SfccCell],
++) {
++    let cell = leaves.first().map(cell_id).unwrap_or((0, 0, 0, 0));
++    if !validation
++        .local_coverage
++        .unresolved
++        .iter()
++        .any(|(c, _)| *c == cell)
++    {
++        validation.unresolved_cells += 1;
++    }
++    validation
++        .local_coverage
++        .unresolved
++        .push((cell, reason.into()));
++    validation.local_coverage.unresolved.sort();
++}
++
++#[cfg(feature = "sfcc-profile")]
++pub(crate) fn diagnose(
++    plan: &Plan,
++    lat: SfccLattice,
++    validation: &super::validation::SfccValidation,
++) {
++    if !super::diagnosis::payload_available() {
++        return;
++    }
++    let (pt, _, _) = plan.mesh(None).expect("checked arrangement diagnostic");
++    for w in &pt.coverage {
++        let tris: Vec<_> = w.triangles.iter().flatten().copied().collect();
++        super::diagnosis::mesh(&w.cell, &pt, &tris, "box_arrangement", false);
++    }
++    let leaves: Vec<_> = plan
++        .leaves
++        .iter()
++        .map(|c| SfccCell {
++            degenerate: false,
++            ..*c
++        })
++        .collect();
++    let failed: Vec<_> = leaves
++        .iter()
++        .filter(|c| {
++            validation
++                .local_coverage
++                .unresolved
++                .iter()
++                .any(|(i, _)| *i == cell_id(c))
++        })
++        .copied()
++        .collect();
++    super::diagnosis::snapshot(lat, &leaves, &failed, 0, true);
++}
++
++#[cfg(all(test, feature = "serde"))]
++mod adversaries {
++    use super::*;
++    use serde_json::{json, Value};
++    fn bx(p: [f64; 3], h: [f64; 3]) -> Value {
++        json!({"kind":"box","nodeId":7,"pos":p,"half":h})
++    }
++    fn one_cell(scene: Value) -> Attempt {
++        let tree = crate::scene_bridge::build_csg_tree_from_json(&scene.to_string()).unwrap();
++        let lat = crate::math::grid::make_lattice(8, -8.125, -8.25, -8.5, 16.);
++        let cell = SfccCell {
++            level: 0,
++            ix: 0,
++            iy: 0,
++            iz: 0,
++            key: 0,
++            degenerate: false,
++            feature_curve: -1,
++            feature_corner: -1,
++        };
++        Plan::new(&tree, &lat, &[cell])
++    }
++    #[test]
++    fn closed_internal_box_and_duplicate_occurrences_are_complete() {
++        let b = bx([0.; 3], [1.; 3]);
++        for scene in [b.clone(), json!({"kind":"union","children":[b.clone(),b]})] {
++            let Attempt::Ready(plan) = one_cell(scene) else {
++                panic!("closed arrangement rejected")
++            };
++            assert!(plan.needed);
++            let (p, t, f) = plan.mesh(None).unwrap();
++            let (_, t) = p.build_mesh(&t);
++            let m = super::super::manifold_check::check_manifold(&t, true);
++            assert!(m.ok);
++            assert_eq!(m.components, 1);
++            assert_eq!(t.len(), 36);
++            assert_eq!(f.curves.len(), 12);
++            if plan.occurrences.len() == 2 {
++                assert!(plan.facets.iter().all(|f| f.owners == [0, 1]));
++                assert_ne!(plan.occurrences[0].path, plan.occurrences[1].path);
++            }
++        }
++    }
++    #[test]
++    fn cleanup_cannot_change_original_carriers_or_protected_memberships() {
++        let Attempt::Ready(plan) = one_cell(bx([0.; 3], [1.; 3])) else {
++            panic!("closed arrangement rejected")
++        };
++        for mutation in 0..4 {
++            let (mut points, tris, _) = plan.mesh(None).unwrap();
++            let snapshot = MetadataSnapshot::capture(&points, &tris).unwrap();
++            let t = [tris[0], tris[1], tris[2]];
++            let mut final_tris = tris.clone();
++            match mutation {
++                0 => points.set_patch(t, usize::MAX),
++                1 => points.protect_edge(t[0], t[2]),
++                2 => points.protect_curve_edge(
++                    t[0],
++                    t[2],
++                    CurveInterval {
++                        curve_id: 0,
++                        start: 0.,
++                        end: 1.,
++                    },
++                ),
++                _ => {
++                    let other = (0..points.count())
++                        .find(|&i| !t.contains(&i) && points.patch([t[0], t[1], i]).is_none())
++                        .unwrap();
++                    let added = [t[0], t[1], other];
++                    points.set_patch(added, 0);
++                    final_tris.extend(added);
++                }
++            }
++            snapshot.verify(&mut points, &final_tris);
++            assert!(points
++                .coverage
++                .iter()
++                .all(|w| w.reason.as_deref() == Some("arrangement_cleanup_metadata")));
++        }
++        let (mut points, tris, _) = plan.mesh(None).unwrap();
++        MetadataSnapshot::capture(&points, &tris)
++            .unwrap()
++            .verify(&mut points, &tris);
++        assert!(points.coverage.iter().all(|w| w.reason.is_none()));
++    }
++    #[test]
++    fn zero_only_faces_edges_and_points_are_not_regularized() {
++        let b = bx([0.; 3], [1.; 3]);
++        let scenes = [
++            json!({"kind":"subtract","lh":b.clone(),"rh":b}),
++            json!({"kind":"intersect","lh":bx([-1.,-1.,0.],[1.;3]),"rh":bx([1.,1.,0.],[1.;3])}),
++            json!({"kind":"intersect","lh":bx([-1.;3],[1.;3]),"rh":bx([1.;3],[1.;3])}),
++        ];
++        for scene in scenes {
++            assert!(matches!(
++                one_cell(scene),
++                Attempt::Reject(
++                    "arrangement_zero_only_face" | "arrangement_zero_only_edge_or_point"
++                )
++            ));
++        }
++    }
++    #[test]
++    fn nonmanifold_edge_and_point_contacts_are_rejected() {
++        for p in [[1., 1., -1.], [1., 1., 1.]] {
++            let s = json!({"kind":"union","children":[bx([-1.;3],[1.;3]),bx(p,[1.;3])]});
++            assert!(matches!(
++                one_cell(s),
++                Attempt::Reject("arrangement_nonmanifold_contact" | "arrangement_crease_incidence")
++            ));
++        }
++    }
++    #[test]
++    fn f32_sheet_collapse_rejects_but_separated_inexact_planes_remain_embedded() {
++        let s = bx([1., 0., 0.], [2_f64.powi(-27), 1., 1.]);
++        assert!(matches!(
++            one_cell(s),
++            Attempt::Reject("arrangement_f32_collapse")
++        ));
++        let s = bx([0.; 3], [1. + 2_f64.powi(-30), 1., 1.]);
++        let Attempt::Ready(plan) = one_cell(s) else {
++            panic!("separated inexact planes need only an ordered f32 map")
++        };
++        let (points, triangles, _) = plan.mesh(None).unwrap();
++        let (vertices, triangles) = points.build_mesh(&triangles);
++        let topology = super::super::manifold_check::check_manifold(&triangles, true);
++        assert!(topology.ok);
++        assert_eq!(topology.components, 1);
++        assert_eq!(triangles.len(), 36);
++        assert!(vertices.chunks_exact(8).all(|p| p[0].abs() == 1.));
++        let maximum_rounding = plan
++            .cuts
++            .iter()
++            .flatten()
++            .map(|&x| (x - x as f32 as f64).abs())
++            .fold(0., f64::max);
++        assert_eq!(maximum_rounding, 2_f64.powi(-30));
++    }
++    #[test]
++    fn rank_signs_cover_gaps_without_represented_midpoints() {
++        let s = json!({"kind":"union","children":[bx([0.;3],[1.;3]),bx([1.5,0.,0.],[0.5-2_f64.powi(-52),1.,1.])]});
++        let tree = crate::scene_bridge::build_csg_tree_from_json(&s.to_string()).unwrap();
++        let (_, faces, coords, _) = target(&tree).unwrap();
++        assert!(coords[0]
++            .windows(2)
++            .any(|w| w[0] == 1. && w[1] == 1f64.next_up()));
++        assert!(faces.iter().any(|f| f.axis == 0 && f.bounds[0] == 1.));
++        assert!(faces
++            .iter()
++            .any(|f| f.axis == 0 && f.bounds[0] == 1f64.next_up()));
++    }
++    #[test]
++    fn optional_decimal_scope_preserves_fast_path() {
++        let tree =
++            crate::scene_bridge::build_csg_tree_from_json(&bx([0.3; 3], [0.1; 3]).to_string())
++                .unwrap();
++        let lat = crate::math::grid::make_lattice(8, -8.125, -8.25, -8.5, 16.);
++        let c = SfccCell {
++            level: 0,
++            ix: 0,
++            iy: 0,
++            iz: 0,
++            key: 0,
++            degenerate: false,
++            feature_curve: -1,
++            feature_corner: -1,
++        };
++        assert!(matches!(Plan::new(&tree, &lat, &[c]), Attempt::Outside));
++        assert!(matches!(
++            Plan::new(
++                &tree,
++                &lat,
++                &[SfccCell {
++                    degenerate: true,
++                    ..c
++                }]
++            ),
++            Attempt::Reject("arrangement_unrepresented_endpoint")
++        ));
++    }
++    #[test]
++    fn scope_depth_budget_precedes_recursive_walk() {
++        let mut tree =
++            crate::scene_bridge::build_csg_tree_from_json(&bx([0.; 3], [1.; 3]).to_string())
++                .unwrap();
++        for _ in 0..130 {
++            tree = CsgNode::Min(vec![tree]);
++        }
++        let lat = crate::math::grid::make_lattice(8, -8.125, -8.25, -8.5, 16.);
++        assert!(matches!(Plan::new(&tree, &lat, &[]), Attempt::Outside));
++    }
++    #[test]
++    fn plane_budget_and_bad_lattice_never_certify() {
++        let scene = json!({"kind":"union","children":(0..65).map(|i|bx([i as f64*0.125,0.,0.],[0.03125,1.,1.])).collect::<Vec<_>>()});
++        let tree = crate::scene_bridge::build_csg_tree_from_json(&scene.to_string()).unwrap();
++        let mut lat = crate::math::grid::make_lattice(8, -8.125, -8.25, -8.5, 32.);
++        let c = SfccCell {
++            level: 0,
++            ix: 0,
++            iy: 0,
++            iz: 0,
++            key: 0,
++            degenerate: true,
++            feature_curve: -1,
++            feature_corner: -1,
++        };
++        assert!(matches!(
++            Plan::new(&tree, &lat, &[c]),
++            Attempt::Reject("arrangement_plane_budget")
++        ));
++        let tree = crate::scene_bridge::build_csg_tree_from_json(&bx([0.; 3], [1.; 3]).to_string())
++            .unwrap();
++        lat.span += 1;
++        assert!(matches!(
++            Plan::new(&tree, &lat, &[c]),
++            Attempt::Reject("arrangement_grid")
++        ));
++    }
++}
+diff --git a/gcad-wasm/kernel/src/sfcc/diagnosis.rs b/gcad-wasm/kernel/src/sfcc/diagnosis.rs
+--- a/gcad-wasm/kernel/src/sfcc/diagnosis.rs
++++ b/gcad-wasm/kernel/src/sfcc/diagnosis.rs
+@@ -259,7 +259,7 @@
+     });
+ }
+ 
+-fn payload_available() -> bool {
++pub(crate) fn payload_available() -> bool {
+     STATE.with(|s| match s.borrow_mut().as_mut() {
+         Some(s) if s.trace.records.len() < s.budget => true,
+         Some(s) => {
+diff --git a/gcad-wasm/kernel/src/sfcc/feature_set.rs b/gcad-wasm/kernel/src/sfcc/feature_set.rs
+--- a/gcad-wasm/kernel/src/sfcc/feature_set.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature_set.rs
+@@ -46,7 +46,7 @@
+ /// 1 (the memo treats 0 as "unset"); wraparound is harmless (4e18 exports).
+ static NEXT_FEATURE_SET_RUN_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+ 
+-fn next_feature_set_run_id() -> u64 {
++pub(crate) fn next_feature_set_run_id() -> u64 {
+     NEXT_FEATURE_SET_RUN_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+ }
+ 
+diff --git a/gcad-wasm/kernel/src/sfcc/local_coverage.rs b/gcad-wasm/kernel/src/sfcc/local_coverage.rs
+--- a/gcad-wasm/kernel/src/sfcc/local_coverage.rs
++++ b/gcad-wasm/kernel/src/sfcc/local_coverage.rs
+@@ -395,7 +395,7 @@
+     root: &CsgNode,
+ ) {
+     assert!(
+-        !matches!(Scope::new(root), Scope::Outside) || incoming.is_empty(),
++        pt.arrangement || !matches!(Scope::new(root), Scope::Outside) || incoming.is_empty(),
+         "outside-scope worker certificate"
+     );
+     for w in &mut incoming {
+diff --git a/gcad-wasm/kernel/src/sfcc/mod.rs b/gcad-wasm/kernel/src/sfcc/mod.rs
+--- a/gcad-wasm/kernel/src/sfcc/mod.rs
++++ b/gcad-wasm/kernel/src/sfcc/mod.rs
+@@ -14,6 +14,7 @@
+ //! Rust mesh. DEFERRED: feature classification / curves / corners and the
+ //! feature-aware refine/contour/cell-mesh paths (M4).
+ 
++pub(crate) mod box_arrangement;
+ pub mod cancel;
+ pub mod cell_mesh;
+ pub(crate) mod local_coverage;
+diff --git a/gcad-wasm/kernel/src/sfcc/pipeline.rs b/gcad-wasm/kernel/src/sfcc/pipeline.rs
+--- a/gcad-wasm/kernel/src/sfcc/pipeline.rs
++++ b/gcad-wasm/kernel/src/sfcc/pipeline.rs
+@@ -1230,6 +1230,7 @@
+     let mut cell_result: CellMeshResult;
+     let mut re_refine_rounds = 0u32;
+     let mut separate_audit = None;
++    let mut arrangement_failure;
+     phase_mark(now, &mut ph_last, &mut ph_feature);
+     let mut round = 0u32;
+     let mut retained_samples = HashMap::new();
+@@ -1266,6 +1267,66 @@
+         // before the expensive contour/mesh phases.
+         if crate::sfcc::cancel::is_cancelled() {
+             return cancelled_pipeline_result();
++        }
++        let arrangement_attempt = super::box_arrangement::Plan::for_export(tree, &lat, &oct.leaves);
++        arrangement_failure = match &arrangement_attempt {
++            super::box_arrangement::Attempt::Reject(reason) => Some(*reason),
++            _ => None,
++        };
++        if let super::box_arrangement::Attempt::Ready(plan) = arrangement_attempt {
++            if plan.needed {
++                let count = match strategy {
++                    MeshStrategy::Serial => 1,
++                    MeshStrategy::Shared(n)
++                    | MeshStrategy::Separate(n)
++                    | MeshStrategy::SharedMorton(n)
++                    | MeshStrategy::SeparateMorton(n) => n,
++                };
++                let r =
++                    super::worker::arrangement_inprocess(tree, features, &lat, tuning, &plan, count);
++                #[cfg(feature = "sfcc-profile")]
++                super::box_arrangement::diagnose(&plan, lat, &r.validation);
++                if super::cancel::is_cancelled() {
++                    return cancelled_pipeline_result();
++                }
++                let stats = SfccStats {
++                    leaves: oct.leaves.len(),
++                    degenerate_cells: r.degenerate_cells,
++                    faces: plan.pieces.len(),
++                    cross_points: r.cross_points,
++                    tris: r.tris.len() / 3,
++                    failed_cells: r.failed_cells,
++                    multi_loop_cells: r.multi_loop_cells,
++                    multi_run_faces: r.multi_run_faces,
++                    boundary_violations: r.boundary_violations,
++                    face_audit_failures: r.face_audit_failures,
++                    feature_curves: r.feature_curves,
++                    edge_cells: r.edge_cells,
++                    corner_cells: r.corner_cells,
++                    feature_cell_fallbacks: r.feature_cell_fallbacks,
++                    re_refine_rounds: round,
++                };
++                phase_mark(now, &mut ph_last, &mut ph_cellmesh);
++                emit(SFCC_PHASE_COUNT, "Done");
++                return SfccPipelineResult {
++                    feature_edges: r.feature_edges,
++                    verts: r.verts,
++                    tris: r.tris,
++                    stats,
++                    manifold: r.manifold,
++                    ok: r.ok,
++                    validation: r.validation,
++                    phase_feature_ms: ph_feature,
++                    phase_octree_ms: ph_octree,
++                    phase_contour_ms: ph_contour,
++                    phase_cellmesh_ms: ph_cellmesh,
++                    phase_assemble_ms: ph_assemble,
++                    phase_octree_decide_ms: ph_oct_decide,
++                    phase_octree_apply_ms: ph_oct_apply,
++                    octree_rounds: oct_rounds,
++                    cancelled: false,
++                };
++            }
+         }
+         points = PointTable::new();
+         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
+@@ -1479,6 +1540,9 @@
+     validation.numerical.chord_budget += unresolved_triangles;
+     validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
+     validation.check_triangles(&verts, &out_tris);
++    if let Some(reason) = arrangement_failure {
++        super::box_arrangement::mark_unresolved(&mut validation, reason, &oct.leaves);
++    }
+     let ok = validation.ok();
+     phase_mark(now, &mut ph_last, &mut ph_assemble);
+     emit(SFCC_PHASE_COUNT, "Done");
+diff --git a/gcad-wasm/kernel/src/sfcc/point_table.rs b/gcad-wasm/kernel/src/sfcc/point_table.rs
+--- a/gcad-wasm/kernel/src/sfcc/point_table.rs
++++ b/gcad-wasm/kernel/src/sfcc/point_table.rs
+@@ -70,6 +70,7 @@
+ /// Positions and normals are stored flat (xyz triples), indexed by point id.
+ #[derive(Default)]
+ pub struct PointTable {
++    pub(crate) arrangement: bool,
+     pub(crate) coverage: Vec<super::local_coverage::Witness>,
+     pub(crate) coverage_edge_failures: Vec<super::local_coverage::EdgeFailure>,
+     pub(crate) coverage_cells: HashSet<super::local_coverage::CellId>,
+diff --git a/gcad-wasm/kernel/src/sfcc/worker.rs b/gcad-wasm/kernel/src/sfcc/worker.rs
+--- a/gcad-wasm/kernel/src/sfcc/worker.rs
++++ b/gcad-wasm/kernel/src/sfcc/worker.rs
+@@ -152,6 +152,12 @@
+     let iz = r.i64();
+     let feature_curve = r.i64();
+     let feature_corner = r.i64();
++    assert!(level <= lat.max_depth, "worker: leaf level outside lattice");
++    let cells = 1_i64 << level;
++    assert!(
++        [ix, iy, iz].iter().all(|&i| i >= 0 && i < cells),
++        "worker: leaf index outside lattice"
++    );
+     let key = cell_key(lat, level, ix, iy, iz);
+     SfccCell { level, ix, iy, iz, key, degenerate, feature_curve, feature_corner }
+ }
+@@ -178,7 +184,12 @@
+     assert_eq!(magic, LEAVES_MAGIC, "worker: bad tagged-leaves buffer magic");
+     let _fingerprint = r.u64();
+     let lat = get_lattice(&mut r);
+-    let n = r.u64() as usize;
++    let n = usize::try_from(r.u64()).expect("worker: leaf count exceeds address width");
++    let payload_bytes = n.checked_mul(48).expect("worker: leaf payload size overflow");
++    assert_eq!(
++        payload_bytes, r.buf.len() - r.pos,
++        "worker: inconsistent tagged-leaf payload length"
++    );
+     let mut leaves = Vec::with_capacity(n);
+     for _ in 0..n {
+         leaves.push(get_leaf(&mut r, &lat));
+@@ -651,6 +662,14 @@
+     verify_feature_fingerprint(leaves_bytes, features);
+     let (lat, leaves) = decode_tagged_leaves(leaves_bytes);
+ 
++    let arrangement_attempt = super::box_arrangement::Plan::for_export(tree, &lat, &leaves);
++    let arrangement_rejected = matches!(arrangement_attempt, super::box_arrangement::Attempt::Reject(_));
++    if let super::box_arrangement::Attempt::Ready(plan) = arrangement_attempt {
++        if plan.needed {
++            return arrangement_partial(tree, &plan, &lat, leaves_bytes, group_index, group_count);
++        }
++    }
++
+     // Reconstruct a usable octree from the tagged leaves (cheap — re-derives the
+     // lookup maps + re-seeds the corner-sample cache, NO decision work).
+     let oct: SfccOctree = rebuild_octree_from_leaves(tree, &lat, leaves);
+@@ -680,7 +699,20 @@
+         multi_run_faces: fr.multi_run_faces as u64,
+         boundary_violations: fr.boundary_violations as u64,
+     };
+-    encode_partial(&pt, features.fingerprint(), &cm.tris, &counters, &fr.faces,&lat,&super::local_coverage::signature(tree))
++    let body = encode_partial(
++        &pt, features.fingerprint(), &cm.tris, &counters, &fr.faces, &lat,
++        &super::local_coverage::signature(tree),
++    );
++    if arrangement_rejected {
++        let mut out = Vec::new();
++        put_u32(&mut out, ARRANGEMENT_REJECT_MAGIC);
++        put_u64(&mut out, leaves_bytes.len() as u64);
++        out.extend(leaves_bytes);
++        out.extend(body);
++        out
++    } else {
++        body
++    }
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -777,9 +809,27 @@
+     tuning: &PipelineTuning,
+     partials: &[Vec<u8>],
+ ) -> MergedMesh {
++    if partials.first().is_some_and(|p| p.starts_with(&ARRANGEMENT_REJECT_MAGIC.to_le_bytes())) {
++        return merge_rejected_arrangement(tree, features, lat, tuning, partials);
++    }
++    if partials.first().is_some_and(|p| p.starts_with(&ARRANGEMENT_MAGIC.to_le_bytes())) {
++        return merge_arrangement(tree, features, lat, tuning, partials);
++    }
++    merge_partials_impl(tree, features, lat, tuning, partials, None)
++}
++
++fn merge_partials_impl(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    lat: &SfccLattice,
++    tuning: &PipelineTuning,
++    partials: &[Vec<u8>],
++    arrangement: Option<&[u64]>,
++) -> MergedMesh {
+     #[cfg(feature = "sfcc-profile")]
+     let _diagnostic_export = super::diagnosis::ExportScope::begin();
+     let mut merged = PointTable::new();
++    merged.arrangement = arrangement.is_some();
+     let mut tris: Vec<usize> = Vec::new();
+     let mut failed_cells = 0usize;
+     let mut failed_degenerate=0usize;
+@@ -796,7 +846,11 @@
+     let fingerprint = features.fingerprint();
+     for buf in partials {
+         let p = decode_partial(buf);
+-        assert_eq!(p.scope_signature,super::local_coverage::signature(tree),"worker coverage field scope mismatch");
++        assert_eq!(
++            p.scope_signature,
++            arrangement.map_or_else(|| super::local_coverage::signature(tree), |s| s.to_vec()),
++            "worker coverage field scope mismatch"
++        );
+         assert_eq!((p.lattice.max_depth,p.lattice.origin_x.to_bits(),p.lattice.origin_y.to_bits(),p.lattice.origin_z.to_bits(),p.lattice.world_size.to_bits()),
+             (lat.max_depth,lat.origin_x.to_bits(),lat.origin_y.to_bits(),lat.origin_z.to_bits(),lat.world_size.to_bits()),"worker lattice mismatch");
+         assert_eq!(p.fingerprint, fingerprint, "worker: partial feature graph mismatch");
+@@ -879,7 +933,9 @@
+     }
+ 
+     let failed_before:std::collections::BTreeSet<_>=super::local_coverage::failed_cells(&merged).iter().map(|c|(c.level,c.ix,c.iy,c.iz)).collect();
+-    super::local_coverage::reverify_transport(&mut merged,tree,features,lat,&tris,&face_uses);
++    if arrangement.is_none() {
++        super::local_coverage::reverify_transport(&mut merged, tree, features, lat, &tris, &face_uses);
++    }
+     let failed_before_cleanup=super::local_coverage::failed_cells(&merged);
+     for c in &failed_before_cleanup {
+         if !failed_before.contains(&(c.level,c.ix,c.iy,c.iz)){failed_cells+=1;failed_degenerate+=usize::from(c.degenerate);}
+@@ -894,6 +950,9 @@
+     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
+     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
+     validation.local_coverage=super::local_coverage::report(tree,&merged);
++    if arrangement.is_some() {
++        validation.local_coverage.scope = "signedBoxArrangement".into();
++    }
+     let withdrawn=super::local_coverage::failed_cells(&merged).iter().filter(|c|
+         !c.degenerate&&!failed_before_cleanup.contains(&(c.level,c.ix,c.iy,c.iz))).count();
+     validation.quality = quality_audit;
+@@ -939,6 +998,177 @@
+         cross_points: merged.count(),
+         feature_curves: features.curves.len(),
+     }
++}
++
++const ARRANGEMENT_MAGIC: u32 = 0x5346_4131;
++const ARRANGEMENT_REJECT_MAGIC: u32 = 0x5346_4132;
++fn merge_rejected_arrangement(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    lat: &SfccLattice,
++    tuning: &PipelineTuning,
++    partials: &[Vec<u8>],
++) -> MergedMesh {
++    let mut manifest = None;
++    let mut bodies = Vec::new();
++    for bytes in partials {
++        let mut r = Reader::new(bytes);
++        assert_eq!(
++            r.u32(),
++            ARRANGEMENT_REJECT_MAGIC,
++            "mixed rejected arrangement partial"
++        );
++        let n = usize::try_from(r.u64()).expect("arrangement manifest count exceeds address width");
++        assert!(n <= 56 + 32768 * 48, "arrangement manifest budget");
++        let prepared = r.bytes(n);
++        if let Some(p) = &manifest {
++            assert!(p == prepared, "arrangement rejected manifest mismatch");
++        } else {
++            manifest = Some(prepared.to_vec());
++        }
++        bodies.push(r.bytes(bytes.len() - r.pos).to_vec());
++    }
++    let prepared = manifest.expect("nonempty rejected partials");
++    verify_feature_fingerprint(&prepared, features);
++    let (stored, leaves) = decode_tagged_leaves(&prepared);
++    assert_eq!(&stored, lat, "rejected arrangement lattice mismatch");
++    let super::box_arrangement::Attempt::Reject(reason) =
++        super::box_arrangement::Plan::new(tree, lat, &leaves)
++    else {
++        panic!("unjustified rejected arrangement");
++    };
++    let mut result = merge_partials_impl(tree, features, lat, tuning, &bodies, None);
++    super::box_arrangement::mark_unresolved(&mut result.validation, reason, &leaves);
++    result.ok = result.validation.ok();
++    result
++}
++fn arrangement_body(
++    plan: &super::box_arrangement::Plan,
++    lat: &SfccLattice,
++    owned: &std::collections::BTreeSet<super::local_coverage::CellId>,
++) -> Vec<u8> {
++    let (pt, tris, features) = plan
++        .mesh(Some(owned))
++        .expect("checked arrangement construction");
++    encode_partial(
++        &pt,
++        features.fingerprint(),
++        &tris,
++        &PartialCounters::default(),
++        &std::array::from_fn(|_| HashMap::new()),
++        lat,
++        &plan.signature,
++    )
++}
++fn arrangement_partial(
++    tree: &CsgNode,
++    plan: &super::box_arrangement::Plan,
++    lat: &SfccLattice,
++    prepared: &[u8],
++    group: usize,
++    count: usize,
++) -> Vec<u8> {
++    let oct = rebuild_octree_from_leaves(tree, lat, plan.leaves.clone());
++    let groups = morton_partition_indices(&oct, count.max(1));
++    let owned = groups[group]
++        .iter()
++        .map(|&i| {
++            let c = &plan.leaves[i];
++            (c.level, c.ix, c.iy, c.iz)
++        })
++        .collect();
++    let body = arrangement_body(plan, lat, &owned);
++    let mut out = Vec::new();
++    put_u32(&mut out, ARRANGEMENT_MAGIC);
++    put_u64(&mut out, prepared.len() as u64);
++    out.extend(prepared);
++    put_u64(&mut out, group as u64);
++    put_u64(&mut out, count.max(1) as u64);
++    out.extend(body);
++    out
++}
++fn merge_arrangement(
++    tree: &CsgNode,
++    original_features: &SfccFeatureSet,
++    lat: &SfccLattice,
++    tuning: &PipelineTuning,
++    partials: &[Vec<u8>],
++) -> MergedMesh {
++    let mut manifest: Option<Vec<u8>> = None;
++    let mut bodies = Vec::new();
++    let mut ownership = std::collections::BTreeSet::new();
++    let mut plan = None;
++    for bytes in partials {
++        let mut r = Reader::new(bytes);
++        assert_eq!(
++            r.u32(),
++            ARRANGEMENT_MAGIC,
++            "mixed arrangement/legacy worker partials"
++        );
++        let n = usize::try_from(r.u64()).expect("arrangement manifest count exceeds address width");
++        assert!(n <= 56 + 32768 * 48, "arrangement manifest budget");
++        let prepared = r.bytes(n);
++        if let Some(expected) = &manifest {
++            assert_eq!(
++                expected, prepared,
++                "arrangement shared leaf manifest mismatch"
++            );
++        } else {
++            verify_feature_fingerprint(prepared, original_features);
++            let (stored, leaves) = decode_tagged_leaves(prepared);
++            assert_eq!(&stored, lat, "arrangement prepared lattice mismatch");
++            let super::box_arrangement::Attempt::Ready(p) =
++                super::box_arrangement::Plan::new(tree, lat, &leaves)
++            else {
++                panic!("arrangement receiver could not prove target");
++            };
++            assert!(p.needed, "unnecessary arrangement worker mode");
++            plan = Some(p);
++            manifest = Some(prepared.to_vec());
++        }
++        let group = usize::try_from(r.u64()).expect("arrangement group exceeds address width");
++        let count = usize::try_from(r.u64()).expect("arrangement count exceeds address width");
++        assert_eq!(count, partials.len(), "arrangement worker group count");
++        assert!(
++            group < count && ownership.insert(group),
++            "arrangement duplicate/invalid worker ownership"
++        );
++        let p = plan.as_ref().expect("first manifest initialized plan");
++        let oct = rebuild_octree_from_leaves(tree, lat, p.leaves.clone());
++        let groups = morton_partition_indices(&oct, count);
++        let owned = groups[group]
++            .iter()
++            .map(|&i| {
++                let c = &p.leaves[i];
++                (c.level, c.ix, c.iy, c.iz)
++            })
++            .collect();
++        let expected = arrangement_body(p, lat, &owned);
++        let body = r.bytes(bytes.len() - r.pos);
++        assert!(
++            body == expected,
++            "arrangement actual partial differs from complete per-cell construction"
++        );
++        bodies.push(body.to_vec());
++    }
++    let plan = plan.expect("nonempty arrangement partials");
++    let (_, _, features) = plan.mesh(None).expect("checked features");
++    merge_partials_impl(tree, &features, lat, tuning, &bodies, Some(&plan.signature))
++}
++
++pub(crate) fn arrangement_inprocess(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    lat: &SfccLattice,
++    tuning: &PipelineTuning,
++    plan: &super::box_arrangement::Plan,
++    count: usize,
++) -> MergedMesh {
++    let prepared = encode_tagged_leaves(lat, &plan.leaves, features.fingerprint());
++    let partials = (0..count.max(1))
++        .map(|i| arrangement_partial(tree, plan, lat, &prepared, i, count))
++        .collect::<Vec<_>>();
++    merge_arrangement(tree, features, lat, tuning, &partials)
+ }
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/gcad-wasm/kernel/tests/box_arrangement_contract.rs b/gcad-wasm/kernel/tests/box_arrangement_contract.rs
+new file mode 100644
+--- /dev/null
++++ b/gcad-wasm/kernel/tests/box_arrangement_contract.rs
+@@ -0,0 +1,270 @@
++#![cfg(feature = "serde")]
++use gcad_kernel::{
++    scene_bridge::build_csg_tree_from_json,
++    sfcc::{
++        pipeline::{
++            run_sfcc_pipeline, run_sfcc_pipeline_separate_partitioned_morton, PipelineTuning,
++            SfccWorldCube,
++        },
++        worker::{build_octree_resumable_inprocess, merge, mesh_partition, prepare},
++    },
++};
++use serde_json::{json, Value};
++fn box_at(pos: [f64; 3], half: [f64; 3]) -> Value {
++    json!({"kind":"box","pos":pos,"half":half})
++}
++fn sheets() -> Value {
++    json!({"kind":"union","children":[box_at([-1.875,0.,0.],[2.125,4.,4.]),{"kind":"intersect","lh":box_at([2.25,0.,0.],[1.75,4.,4.]),"rh":box_at([-1.625,0.,0.],[2.375,4.,4.])}]})
++}
++fn cube() -> SfccWorldCube {
++    SfccWorldCube {
++        min_x: -128.,
++        min_y: -128.,
++        min_z: -128.,
++        size: 256.,
++    }
++}
++fn canonical(v: &[f32], t: &[u32]) -> Vec<Vec<u32>> {
++    let mut out = Vec::new();
++    for t in t.chunks_exact(3) {
++        let vv: Vec<Vec<_>> = t
++            .iter()
++            .map(|&i| {
++                v[i as usize * 8..i as usize * 8 + 8]
++                    .iter()
++                    .map(|v| v.to_bits())
++                    .collect()
++            })
++            .collect();
++        let t = (0..3)
++            .map(|i| {
++                vv[i]
++                    .iter()
++                    .chain(&vv[(i + 1) % 3])
++                    .chain(&vv[(i + 2) % 3])
++                    .copied()
++                    .collect::<Vec<_>>()
++            })
++            .min()
++            .unwrap();
++        out.push(t);
++    }
++    out.sort();
++    out
++}
++#[test]
++fn coarse_three_sheets_are_complete_in_serial_resumable_and_raw_workers() {
++    let tree = build_csg_tree_from_json(&sheets().to_string()).unwrap();
++    let t = PipelineTuning::default();
++    let c = cube();
++    let r = run_sfcc_pipeline(&tree, &c, &t);
++    assert!(r.ok, "{:?}", r.validation);
++    assert_eq!(r.manifold.components, 2);
++    assert_eq!(r.stats.leaves, 106);
++    assert_eq!(r.validation.local_coverage.scope, "signedBoxArrangement");
++    assert_eq!(r.validation.local_coverage.certified_cells, 106);
++    let expected = canonical(&r.verts, &r.tris);
++    let prepared = prepare(&tree, &c, &t);
++    assert_eq!(prepared, build_octree_resumable_inprocess(&tree, &c, &t));
++    for n in [1, 2, 4, 8] {
++        let parts: Vec<_> = (0..n)
++            .map(|i| mesh_partition(&tree, &c, &t, &prepared, i, n))
++            .collect();
++        for (order, mut p) in [parts.clone(), parts].into_iter().enumerate() {
++            if order == 1 {
++                p.reverse();
++            }
++            let m = merge(&tree, &c, &t, &p);
++            assert!(!m.serial_recovery);
++            assert!(m.ok, "{:?}", m.validation);
++            assert_eq!(canonical(&m.verts, &m.tris), expected);
++            assert_eq!(m.validation, r.validation);
++        }
++        let s = run_sfcc_pipeline_separate_partitioned_morton(&tree, &c, &t, n);
++        assert_eq!(canonical(&s.verts, &s.tris), expected);
++    }
++    std::fs::write(
++        "/tmp/sfcc-arrangement-b-integrated-coarse.json",
++        serde_json::to_string(
++            &json!({"verts":r.verts,"tris":r.tris,"validation":r.validation.to_json()}),
++        )
++        .unwrap(),
++    )
++    .unwrap();
++}
++#[test]
++fn complete_internal_components_cavities_and_thin_walls() {
++    let outer = box_at([0.; 3], [1.; 3]);
++    let inner = box_at([0.; 3], [0.75; 3]);
++    let cases = [
++        ("enclosed", outer.clone(), 1),
++        (
++            "two_enclosed",
++            json!({"kind":"union","children":[box_at([-0.375,0.,0.],[0.125;3]),box_at([0.375,0.,0.],[0.125;3])]}),
++            2,
++        ),
++        (
++            "cavity",
++            json!({"kind":"subtract","lh":outer.clone(),"rh":inner}),
++            2,
++        ),
++        (
++            "through_hole",
++            json!({"kind":"subtract","lh":outer.clone(),"rh":box_at([0.;3],[0.25,0.25,2.])}),
++            1,
++        ),
++        ("thin_wall", box_at([0.; 3], [0.015625, 0.5, 0.5]), 1),
++    ];
++    for (name, scene, components) in cases {
++        let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
++        let r = run_sfcc_pipeline(&tree, &cube(), &PipelineTuning::default());
++        assert!(r.ok, "{name}: {:?}", r.validation);
++        assert_eq!(r.manifold.components, components, "{name}");
++        if name == "through_hole" {
++            assert_eq!(r.manifold.euler_per_component, vec![0]);
++        }
++        println!(
++            "{name}:{} triangles {} certificates {:?}",
++            r.tris.len() / 3,
++            r.validation.local_coverage.certified_cells,
++            r.validation.local_coverage.scope
++        );
++    }
++}
++#[test]
++fn receiver_rejects_mutation_and_duplicate_partition() {
++    let tree = build_csg_tree_from_json(&sheets().to_string()).unwrap();
++    let t = PipelineTuning::default();
++    let c = cube();
++    let prepared = prepare(&tree, &c, &t);
++    let mut corrupt_prepared = prepared.clone();
++    corrupt_prepared[48..56].copy_from_slice(&u64::MAX.to_le_bytes());
++    assert!(
++        std::panic::catch_unwind(|| gcad_kernel::sfcc::worker::decode_tagged_leaves(
++            &corrupt_prepared
++        ))
++        .is_err()
++    );
++    for (offset, bytes) in [
++        (56, u32::MAX.to_le_bytes().to_vec()),
++        (64, i64::MAX.to_le_bytes().to_vec()),
++        (72, (-1_i64).to_le_bytes().to_vec()),
++    ] {
++        let mut corrupt = prepared.clone();
++        corrupt[offset..offset + bytes.len()].copy_from_slice(&bytes);
++        assert!(
++            std::panic::catch_unwind(|| gcad_kernel::sfcc::worker::decode_tagged_leaves(&corrupt))
++                .is_err()
++        );
++    }
++    let a = mesh_partition(&tree, &c, &t, &prepared, 0, 2);
++    let b = mesh_partition(&tree, &c, &t, &prepared, 1, 2);
++    let mut wrong = b.clone();
++    let i = wrong.len() - 1;
++    wrong[i] ^= 1;
++    assert!(std::panic::catch_unwind(|| merge(&tree, &c, &t, &[a.clone(), wrong])).is_err());
++    assert!(std::panic::catch_unwind(|| merge(&tree, &c, &t, &[a.clone(), a.clone()])).is_err());
++}
++#[test]
++fn singular_zero_sets_are_explicit_in_serial_and_workers() {
++    let b = box_at([0.; 3], [1.; 3]);
++    let scene = json!({"kind":"subtract","lh":b.clone(),"rh":b});
++    let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
++    let c = cube();
++    let tuning = PipelineTuning::default();
++    let r = run_sfcc_pipeline(&tree, &c, &tuning);
++    assert!(!r.ok);
++    assert!(r
++        .validation
++        .local_coverage
++        .unresolved
++        .iter()
++        .any(|(_, r)| r == "arrangement_zero_only_face"));
++    let prepared = prepare(&tree, &c, &tuning);
++    let p = mesh_partition(&tree, &c, &tuning, &prepared, 0, 1);
++    let r = merge(&tree, &c, &tuning, &[p]);
++    assert!(!r.ok);
++    assert!(r
++        .validation
++        .local_coverage
++        .unresolved
++        .iter()
++        .any(|(_, r)| r == "arrangement_zero_only_face"));
++}
++#[test]
++fn quality_stages_still_execute_and_unproved_edits_withdraw() {
++    let tree = build_csg_tree_from_json(&sheets().to_string()).unwrap();
++    let tuning = PipelineTuning {
++        quality_triangulation: true,
++        quality_refinement: true,
++        quality_remeshing: true,
++        quality_audit: true,
++        ..Default::default()
++    };
++    let r = run_sfcc_pipeline(&tree, &cube(), &tuning);
++    let q = r
++        .validation
++        .quality
++        .as_ref()
++        .expect("quality stages remain enabled");
++    assert_eq!(q.before_triangles, 848);
++    assert!(!q.cancelled);
++    assert_eq!(q.geometry_failures, 0);
++    assert_eq!(q.intersections, 0);
++    if q.flips + q.inserted + q.collapses + q.relocations > 0 {
++        assert!(!r.validation.local_coverage.unresolved.is_empty());
++        assert!(!r.ok);
++    }
++    println!("quality={q:?}");
++}
++#[test]
++fn ordering_duplicate_ids_and_grid_phase_preserve_complete_targets() {
++    let a = box_at([-1.875, 0., 0.], [2.125, 4., 4.]);
++    let b = box_at([2.25, 0., 0.], [1.75, 4., 4.]);
++    let c = box_at([-1.625, 0., 0.], [2.375, 4., 4.]);
++    let variants = [
++        sheets(),
++        json!({"kind":"union","children":[{"kind":"intersect","lh":c.clone(),"rh":b.clone()},a.clone()]}),
++        json!({"kind":"union","children":[a.clone(),a,{"kind":"intersect","lh":b,"rh":c}]}),
++    ];
++    for (i, scene) in variants.into_iter().enumerate() {
++        let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
++        for (phase, shift) in [0., 0.125, -0.25].into_iter().enumerate() {
++            let world = SfccWorldCube {
++                min_x: -128. + shift,
++                min_y: -128. + shift,
++                min_z: -128. + shift,
++                size: 256.,
++            };
++            let r = run_sfcc_pipeline(&tree, &world, &PipelineTuning::default());
++            assert!(r.ok, "variant{i}, phase{phase}: {:?}", r.validation);
++            assert_eq!(r.manifold.components, 2);
++            assert_eq!(r.validation.local_coverage.scope, "signedBoxArrangement");
++            std::fs::write(
++                format!("/tmp/sfcc-arrangement-b-variant-{i}-{phase}.json"),
++                serde_json::to_string(&json!({"verts":r.verts,"tris":r.tris})).unwrap(),
++            )
++            .unwrap();
++        }
++    }
++}
++
++#[test]
++fn whole_components_can_be_inside_one_actual_production_cell() {
++    for (scene, components, triangles) in [
++        (box_at([-0.5; 3], [0.0625; 3]), 1, 12),
++        (
++            json!({"kind":"union","children":[box_at([-0.625,-0.5,-0.5],[0.0625;3]),box_at([-0.375,-0.5,-0.5],[0.0625;3])]}),
++            2,
++            24,
++        ),
++    ] {
++        let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
++        let r = run_sfcc_pipeline(&tree, &cube(), &PipelineTuning::default());
++        assert!(r.ok, "{:?}", r.validation);
++        assert_eq!(r.stats.leaves, 1);
++        assert_eq!(r.manifold.components, components);
++        assert_eq!(r.tris.len() / 3, triangles);
++        assert_eq!(r.validation.local_coverage.certified_cells, 1);
++    }
++}
+diff --git a/gcad-wasm/kernel/tests/coverage_obstruction.rs b/gcad-wasm/kernel/tests/coverage_obstruction.rs
+--- a/gcad-wasm/kernel/tests/coverage_obstruction.rs
++++ b/gcad-wasm/kernel/tests/coverage_obstruction.rs
+@@ -194,7 +194,7 @@
+     use gcad_kernel::sfcc::worker::{merge, merge_partials, mesh_partition};
+     for (name, scene, world, recovery) in [
+         ("clipped-box", clipped_box(), cube(-4., 8.), false),
+-        ("three-sheets-coarse", sheets(), cube(-128., 256.), true),
++        ("three-sheets-coarse", sheets(), cube(-128., 256.), false),
+     ] {
+         let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
+         let tuning = PipelineTuning::default();
+@@ -239,7 +239,7 @@
+ 
+ #[cfg(feature = "sfcc-profile")]
+ #[test]
+-fn locate_every_accepted_three_sheet_cell_in_coarse_full_export() {
++fn locate_every_reconstructed_three_sheet_cell_in_coarse_full_export() {
+     use gcad_kernel::sfcc::diagnosis::{capture, CellId, Event};
+     let scene = sheets();
+     let tree = build_csg_tree_from_json(&scene.to_string()).unwrap();
+@@ -258,7 +258,7 @@
+         assert!(cells.iter().any(|c|{
+             let b=cell_aabb(&lat,c.level,c.ix,c.iy,c.iz);
+             c.degenerate&&b[0]<0.25&&0.75<b[3]&&b[1]<y&&y<b[4]&&b[2]<z&&z<b[5]
+-        }),"original responsible cell or its descendants must remain unresolved");
++        }),"original responsible region remains represented at its existing depth");
+     }
+     let mut rows = Vec::new();
+     for c in cells {
+@@ -300,10 +300,12 @@
+         r.validation.unresolved_cells,
+         rows.len()
+     );
+-    assert!(rows.iter().all(|r|r["degenerate"]==true&&r["unresolved"]==true),
+-        "every responsible final region must be explicitly unresolved");
+-    assert!(r.validation.unresolved_cells>=rows.len());
+-    assert!(!r.ok);
++    assert!(rows.iter().all(|r|r["degenerate"]==true&&r["unresolved"]==false),
++        "arrangement construction resolves the prior depth-limited discovery tags");
++    assert_eq!(r.validation.unresolved_cells,0);
++    assert_eq!(r.validation.local_coverage.scope,"signedBoxArrangement");
++    assert_eq!(r.validation.local_coverage.certified_cells,r.stats.leaves);
++    assert!(r.ok);
+     assert!(
+         !rows.is_empty(),
+         "fixture must include actual production cells containing all three sheets"
+diff --git a/src/export/export.mts b/src/export/export.mts
+--- a/src/export/export.mts
++++ b/src/export/export.mts
+@@ -56,9 +56,10 @@
+ }
+ 
+ export interface MeshSfccValidation {
+-    /** Bounded abstract cell-relative coverage; no embedding or metric claim. */
++    /** Sphere/positiveBoxIntersection give abstract cell maps. signedBoxArrangement
++     * additionally checks initial f32 correspondence under its separate premises. */
+     localCoverage?: {
+-        scope: "sphere" | "positiveBoxIntersection" | "outsideScope"
++        scope: "sphere" | "positiveBoxIntersection" | "signedBoxArrangement" | "outsideScope"
+         certifiedCells: number
+         transportedCells: number
+         excludedCells: number

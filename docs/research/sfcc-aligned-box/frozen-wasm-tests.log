@@ -1,0 +1,45 @@
+✖ closed internal components, cavities, holes and thin walls reconstruct (422.889125ms)
+✔ zero-only signed sheet stays explicitly unresolved (5.80975ms)
+✔ wasm32 rejects envelope integers that would truncate to valid values (290.640583ms)
+✔ mandatory positive controls and full-object localized three-sheet obstruction (656.40075ms)
+✔ raw positive workers and complete coarse construction retain both completion orders (4678.052458ms)
+✔ quality stages retain topology and ownership across actual WASM workers: return box(10, 10, 10) (730.011416ms)
+✔ quality stages retain topology and ownership across actual WASM workers: return sphere.radius(8) (5203.879ms)
+✔ quality stages retain topology and ownership across actual WASM workers: return union(sphere.radius(5), ...Array.from({length: 7}, (_, i) => sphere.radius(0.1).shift(i * 0.1, 0, 0))) (3982.98975ms)
+✔ SFCC WASM reports performed and skipped audits distinctly (178.85125ms)
+✔ SFCC WASM uses sampled refinement for the legacy analytic blend option (36.224167ms)
+✔ SFCC WASM reports a hidden surface as unresolved, then discovers it with sufficient depth (15.045291ms)
+✔ SFCC WASM workers retain serial diagnostics and support reversed completion order (41.207583ms)
+✔ SFCC WASM rejects float32-collapsed triangles in serial and worker output (418.621708ms)
+✔ SFCC WASM preserves a clipped cube whose edges fall between old trim samples (105.223875ms)
+✔ SFCC WASM workers retain unresolved exposed-seam discovery (213.997ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 14
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17580.916208
+
+✖ failing tests:
+
+test at gcad-wasm/fixtures/sfcc-box-arrangement_test.mjs:37:1
+✖ closed internal components, cavities, holes and thin walls reconstruct (422.889125ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'positiveBoxIntersection'
+  - 'signedBoxArrangement'
+  
+      at TestContext.<anonymous> (file:///Users/matt/gcad/galacticad/gcad-wasm/fixtures/sfcc-box-arrangement_test.mjs:44:20)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'positiveBoxIntersection',
+    expected: 'signedBoxArrangement',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

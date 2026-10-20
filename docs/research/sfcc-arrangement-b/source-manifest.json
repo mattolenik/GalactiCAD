@@ -1,0 +1,316 @@
+{
+  "baselineCommit": "04d889f911ba6c89981752df02cc2ad7a67ddc0f",
+  "logicalSourceSha256": "99eafaa6ae7767a19f9d8b6524a69f866edd4440ddcdfafe829ee1f62e0a3316",
+  "files": [
+    {
+      "path": "gcad-wasm/Cargo.lock",
+      "sha256": "2fb8a8700e3c88f11323dede3f35c5a83ec8ff57ee5e20c8f998fd8892469025"
+    },
+    {
+      "path": "gcad-wasm/Cargo.toml",
+      "sha256": "1291209c0af81ae668275cc3d3743f31913e0bb5ea26b4112edfcff18d439db6"
+    },
+    {
+      "path": "gcad-wasm/kernel/Cargo.toml",
+      "sha256": "47d4892846a0af30794ef9b8f03fc4a3cdbc0ffde50670527be470ffe5339b1d"
+    },
+    {
+      "path": "gcad-wasm/kernel/build.rs",
+      "sha256": "502f8cdfbf16e2c651b894196915f4233d41a55551ad66b9fc886a0cc42e75f3"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/codegen.rs",
+      "sha256": "a553da4919d9c763507a21dd61d6ce11254e90fb014a82e6b2320f764b312317"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/lib.rs",
+      "sha256": "13a61451f369d0281af653308b6621dc1f2dee75abcaf64a9f959d7172587551"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/math/grid.rs",
+      "sha256": "72b4409fc927ac9e7fb45fe677b12c87c89e1e223bbede8426fc91c3fe5c4526"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/math/mod.rs",
+      "sha256": "70a4552b25798e323f1fb15021820fe495a59a106c594ce85de962bdab31871f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/math/similarity.rs",
+      "sha256": "ba8373996fb47786bc1ae600c43157e4424a73cc9c81a3a7a965cb07bcae6290"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/parity.rs",
+      "sha256": "5be7d4d5a79b01b5d4db50d50fa7eb893381480d60174d9fda49927786466c33"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/mod.rs",
+      "sha256": "048139cce02913f4d4f2a29ce15f14654078a8db43e1c3a10f95d62fb0c6adc8"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/polygon2d.rs",
+      "sha256": "a442f1e3ba065987212c04b632d658bc8a18d4eba5cb9a6b734055fbbeb9cc30"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/shapes.rs",
+      "sha256": "17fedcce617102370b7d0df7c68bbd44b66abca09ce9583de1e58b8a07461ebc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/smin.rs",
+      "sha256": "3f4e4329ec2f25534d3d5d10ea9030a692edd1fcd1e9c15fe9449cd9ba7c2711"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/scene.rs",
+      "sha256": "cd2490a6c6fce95b09d316bef0a8f248e5378c0386045b3c8660770270b0a00b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/scene_bridge.rs",
+      "sha256": "d639a7b3db05510ae6987e3fe2deb59c1cdd7fbbcbe5a4d505149d2b1fd1c4b6"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sdf/enclosure.rs",
+      "sha256": "158e52d2001fc7db70c0de1b77f9edd1f1f06073d47d98410648b9250b596d56"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sdf.rs",
+      "sha256": "2870ab41b872d264e3c9a380972bf62702069d0501eef43444c57bf5d92980d4"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/adaptive_refine.rs",
+      "sha256": "50ab45093cf73d66071688780b31e80a00f55e9731b2184664a88523091f5bdb"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/assembly.rs",
+      "sha256": "8682d62ea87a048ece19eb6ccc0ef9c5081c81bce1f0f35937058042ab2ee6cd"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/blend_surfaces.rs",
+      "sha256": "731f64c1fd34673aa4083c9e207796d8a3a713878bd762cbccc36d676363681f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/box_arrangement.rs",
+      "sha256": "ea0af3c075b7abd38d04ab063bb7cc05cb88fbb6026605a87fa22e27e9433d57"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/branch_surfaces.rs",
+      "sha256": "d44f8d17829d487d6877f77b9656c4472ce80dc80fe7ec9135e4fe572477c986"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cancel.rs",
+      "sha256": "3e69b037a8110db35b692dd5edafabb37837a44d9ff5f40761aaa42940416440"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "3fe05e8b361d984be7b72d1b8d895fd99a91dc19104b339be78825b54e4097a7"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/diagnosis.rs",
+      "sha256": "8cc67c0ec08b45d25576114426af0aa2642d65be51e728015a8f6ec22d9aa098"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/face_contour.rs",
+      "sha256": "ad2238c5fd8fb7ee7fb0383d149e694b4a2de839cbd2f4fc8456ec8b02911a92"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_chain.rs",
+      "sha256": "b6d14bb094aa8928e225ec1c0a6b1aa880cf13fd31e7b905acda9da385dfda7c"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+      "sha256": "3ee6369749bc22ed89b2e5117df8285e4032d82c59cdadbbd26fbd6042b70391"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_set.rs",
+      "sha256": "90be2e293c0fb7117300aca27350417e2c2d3c6fa3a9bdea3bd9968cca4ba740"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "685c152afffac664a9141f02c8b56514122d9ecfbe121ecd8aa66a767bb43a61"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/local_coverage.rs",
+      "sha256": "02afda0050cb48881789955dabcc852811d22f7f307c790dcafb4b03f7178bcf"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/manifold_check.rs",
+      "sha256": "98d532c37eaed880114e7cda3eaa2766150587c2bd5461f6f415d052c5552ab3"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/mesh_edit.rs",
+      "sha256": "9a2ef5237187b1680f3582bba86a3ab89eb0ccd860307bc3971cbcd0b9cdc2fc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/mod.rs",
+      "sha256": "95587f6c5ecba6ed2a7a1253cdb6ff4a177c8221bb947aad1a621a141b7e9fa8"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/newton.rs",
+      "sha256": "3d0326d2bc18c1f1e880875fbcd4e54bc08a613a329d076ffb8abf1b3ccd4d2f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/octree.rs",
+      "sha256": "90b382d65284bd416fcb8636a88ca2e7a3fee3625b00716a65f8c84737105d8b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/patch_triangulate.rs",
+      "sha256": "02caf4c6403c336aca8566072584da73d5d95cfe108590d29fc6e7a09710cf94"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/perf.rs",
+      "sha256": "b69457d9e0736fc994f783e0fff43225f5b546d1ed2b817271ac5049d8edb24d"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/pipeline.rs",
+      "sha256": "aa432b4c2e0d1b4a31f53a2e77ba039d8a00baffed9505a3fcba90c0e6aaf3e0"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/point_table.rs",
+      "sha256": "233d2d4b21790c05135b2ea52a75084710911bbf64f545023ae9b14ce4630264"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/predicates.rs",
+      "sha256": "9a9013af4fbe0bb1765138fac3a671fcbdc6c4f1c780540fd32c5b7c0992dec2"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/predicates_reference.rs",
+      "sha256": "f78fbef729fe77f8ae9d9af45b435722bbf671ecabbce0772fdbb4c09626cb9f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/provenance.rs",
+      "sha256": "3373abfeaf3f9a734b01188db31053066ff33215d189b4561c1512496d0cb6b9"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/quality_remesh.rs",
+      "sha256": "81c7acdc9e2460a0e2b39554a8b1e0374c8bbc21235883391f2156ff3bb6ffdd"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/refine_criteria.rs",
+      "sha256": "423926b0daef5f54558c4875073963fc4bbc3d95fc7eadc45a982f6ba1cd4896"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/sdf_simd.rs",
+      "sha256": "5c5b3513250909fa3d4c675e5c59b8ea7acbd7bafd002818f8a086ba5d3d53ae"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/seam_trace.rs",
+      "sha256": "de7b2a15e034e948e483dd244ec8cae41eecefa05cd1cc40e39d0dd30dd34778"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/segment_exposure.rs",
+      "sha256": "a24bd1053d560b61a02e98a010e4a1c18d7e34e88d08b075e412eec01ed5bf5f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/sliver_flip.rs",
+      "sha256": "a6f4a336feb051f473317dc96a7c386ff611a859af0931730c22e3494bd06c94"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/spatial_index.rs",
+      "sha256": "38291743fe56e3064d348ae7889d035986bf1c1c1ae8050f274c3001d40f1b5f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/surface_patch.rs",
+      "sha256": "bfa8cb1bc0275c8c381ecefd652feddbccdf55344298d38f0cb75c3ba3541a17"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/surface_refine.rs",
+      "sha256": "58f81701defa2b657a7390351b4052fa2b96a75113110ba48b0bcd3ef54e9807"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/tree.rs",
+      "sha256": "490e51a541a5b25f923a58800ce74cc5c57565660bd14ec7225f3a44ac8a5590"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/triangle_quality.rs",
+      "sha256": "5d0ac3025431b8b82abcead5de3e07fb6ebba1f21bff5de388942e7d1d7a8e00"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/validation.rs",
+      "sha256": "b94b712c02827a1918bed9f8fb2adf8fadc399f85654122b7976d5c7a89bbb32"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/worker.rs",
+      "sha256": "7133ed9a0cdaeb11087349fa1c7ad57b2ef306f302b86aa45a87e3629d3ab7eb"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "8c0dbc74f7adb1627a84cf656f745be7f08f971c726ef26afc67fc04b3c8d439"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/tolerances.rs",
+      "sha256": "fb75477635d5f3a9c884e494b3f356b17eb88eaee2893c55e42ee8c2de8ec119"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/tuning.rs",
+      "sha256": "c80cadbdcd9f8a56cafa924be5d3e2ccadbf8507b5eb87ca93ccd389368c9f46"
+    },
+    {
+      "path": "gcad-wasm/wasm/Cargo.toml",
+      "sha256": "7531b68bf9b60491b5d0c75faad54be41127477a3c3b858d5617db84da0b82eb"
+    },
+    {
+      "path": "gcad-wasm/wasm/src/lib.rs",
+      "sha256": "a31b8f1af144f685d480862b4deaf67d74ec8cc55c5a4bf035fb215d2514c807"
+    }
+  ],
+  "wasm": {
+    "sha256": "d50ff31b9ccef74a9ce2c406aca2f7de2dc94a8c558e289d5bc4c90d9582694c",
+    "bytes": 1575546,
+    "rust": "1.96.0",
+    "flags": "release +simd128 opt-level3 lto codegen-units1",
+    "version": "0.1.0; VERSION unset",
+    "package": "/tmp/sfcc-arrangement-b-artifacts/pkg"
+  },
+  "native": [
+    {
+      "kind": "profile",
+      "path": "/tmp/sfcc-arrangement-b-artifacts/profile/gcad_kernel-f0486a86ed8387a5",
+      "sha256": "129ebff515f72d98f6de25a7cf04994b10cda3fbde6d893cdfa9ae91fcdc8b09",
+      "bytes": 3314416,
+      "rust": "1.99.0",
+      "flags": "release offline jobs1"
+    },
+    {
+      "kind": "profile",
+      "path": "/tmp/sfcc-arrangement-b-artifacts/profile/box_arrangement_contract-a520b842b784bd18",
+      "sha256": "c3d6e787c5e6583aad5dcbad72c8036cebe2114043a128806d816e69c54b18eb",
+      "bytes": 2712048,
+      "rust": "1.99.0",
+      "flags": "release offline jobs1"
+    },
+    {
+      "kind": "profile",
+      "path": "/tmp/sfcc-arrangement-b-artifacts/profile/coverage_obstruction-7753f66001813285",
+      "sha256": "9d6e8f134b8d0b6b67e5e61422ebab73a881320af1e7bc581b3602e698b5bdd5",
+      "bytes": 2712144,
+      "rust": "1.99.0",
+      "flags": "release offline jobs1"
+    },
+    {
+      "kind": "profile",
+      "path": "/tmp/sfcc-arrangement-b-artifacts/profile/diagnosis_contract-5f22f0f5fd3d254d",
+      "sha256": "16630ac939e8124c540c56ddb80b5816cdf61fa85c9caf5c9131b3f2fdcddb2a",
+      "bytes": 2914704,
+      "rust": "1.99.0",
+      "flags": "release offline jobs1"
+    },
+    {
+      "kind": "profile",
+      "path": "/tmp/sfcc-arrangement-b-artifacts/profile/discovery_contract-4de0b66c164563df",
+      "sha256": "e9c9cfbf9330ca00f00c3ea9790a7d60d133c4d387d636bbc573c6762dcab913",
+      "bytes": 2439648,
+      "rust": "1.99.0",
+      "flags": "release offline jobs1"
+    },
+    {
+      "kind": "default",
+      "path": "/tmp/sfcc-arrangement-b-artifacts/default/gcad_kernel-96eba4bc7dd364d6",
+      "sha256": "9b4d761e2f09124d510518edf8cd2730228303c2c3093c40b5847fa77f5dcbea",
+      "bytes": 2234752,
+      "rust": "1.99.0",
+      "flags": "release offline jobs1"
+    }
+  ]
+}

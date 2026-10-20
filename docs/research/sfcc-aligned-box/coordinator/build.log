@@ -1,0 +1,23 @@
+RUSTFLAGS='-C target-feature=+simd128' wasm-pack build gcad-wasm/wasm --target web
+ver='v0.0.0-04d889f-dirty'; ver="${ver#v}"
+jq --arg v "$ver" '.version = $v' gcad-wasm/wasm/pkg/package.json > gcad-wasm/wasm/pkg/package.json.tmp && mv gcad-wasm/wasm/pkg/package.json.tmp gcad-wasm/wasm/pkg/package.json
+printf '\xf0\x9f\xa6\x80 stamped gcad-wasm component version: %s\n' "$ver"
+touch gcad-wasm/wasm/pkg/.stamp
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+   Compiling gcad-kernel v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/kernel)
+   Compiling gcad-wasm v0.1.0 (/Users/matt/gcad/galacticad/gcad-wasm/wasm)
+    Finished `release` profile [optimized] target(s) in 27.66s
+[INFO]: ⬇️  Installing wasm-bindgen...
+[INFO]: found wasm-opt at "/opt/homebrew/bin/wasm-opt"
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: Optional fields missing from Cargo.toml: 'description', 'repository', and 'license'. These are not necessary, but recommended
+[INFO]: ✨   Done in 32.22s
+[INFO]: 📦   Your wasm pkg is ready to publish at gcad-wasm/wasm/pkg.
+[WARN]: ⚠️   failed to get wasm-pack version
+🦀 stamped gcad-wasm component version: 0.0.0-04d889f-dirty
+node_modules/.bin/tsc --noEmit
+node --import tsx --disable-warning=ExperimentalWarning build/build.mts 
+14:55:27 PID 20536
+14:55:27 Building
+14:55:28 🌱🐢 619.35ms

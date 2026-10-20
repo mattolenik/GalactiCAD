@@ -1,0 +1,18 @@
+[
+  {
+    "path": "docs/research/sfcc-aligned-box/candidates/a.patch",
+    "sha256": "b7e05fc38ba0b51b67b137a776108e3b8e23876bc6c1d14605f0d5593d6aa6e0"
+  },
+  {
+    "path": "docs/research/sfcc-aligned-box/candidates/b.patch",
+    "sha256": "15f240dd5e2f6ea7e1692ff4cd2c995f549fe20d5980c2b422b58e3c052c64d7"
+  },
+  {
+    "path": "docs/research/sfcc-aligned-box/candidates/c.patch",
+    "sha256": "e298e86a75985d95c1c371f4ab459d0b9e8944ef2135cd8182c6d1eb269c9a9f"
+  },
+  {
+    "path": "docs/research/sfcc-aligned-box/selected-runtime.patch",
+    "sha256": "16373051e481dd94cfd33c2813d9963eb306db1ad2bb24a9cc53123da49c10e6"
+  }
+]

@@ -395,7 +395,7 @@ pub(crate) fn import_witnesses(
     root: &CsgNode,
 ) {
     assert!(
-        !matches!(Scope::new(root), Scope::Outside) || incoming.is_empty(),
+        pt.arrangement || !matches!(Scope::new(root), Scope::Outside) || incoming.is_empty(),
         "outside-scope worker certificate"
     );
     for w in &mut incoming {

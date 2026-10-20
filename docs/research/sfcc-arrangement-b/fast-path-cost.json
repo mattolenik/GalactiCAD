@@ -1,0 +1,84 @@
+{
+  "caution": "Short local wall times; no general speed claim",
+  "paths": [
+    "/tmp/sfcc-step4-consensus-artifacts/pkg",
+    "/private/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-arrangement-7jkxizj8/b/gcad-wasm/wasm/pkg"
+  ],
+  "rows": [
+    {
+      "name": "single-box",
+      "samplesMs": [
+        [
+          58.24733299999997,
+          57.360000000000014,
+          56.15141600000004,
+          55.25929200000007,
+          55.10966600000006
+        ],
+        [
+          69.66324999999995,
+          56.272374999999954,
+          56.394250000000056,
+          56.603541000000064,
+          55.84183299999995
+        ]
+      ],
+      "mediansMs": [
+        56.15141600000004,
+        56.394250000000056
+      ],
+      "exactOrderedGeometryAndValidation": true
+    },
+    {
+      "name": "16-duplicates",
+      "samplesMs": [
+        [
+          2071.0621249999995,
+          2082.6682500000006,
+          2038.5286670000005,
+          2008.2742499999986,
+          2012.455332999998
+        ],
+        [
+          2065.596334,
+          2081.110958000001,
+          2008.5910419999982,
+          2041.8499999999985,
+          2062.8942080000015
+        ]
+      ],
+      "mediansMs": [
+        2038.5286670000005,
+        2062.8942080000015
+      ],
+      "exactOrderedGeometryAndValidation": true
+    },
+    {
+      "name": "clipped-box",
+      "samplesMs": [
+        [
+          13.328874999999243,
+          13.312667000001966,
+          13.991875000003347,
+          13.71099999999933,
+          13.44604199999958
+        ],
+        [
+          14.033124999998108,
+          13.851749999997992,
+          13.879166999999143,
+          14.025875000002998,
+          13.571749999999156
+        ]
+      ],
+      "mediansMs": [
+        13.44604199999958,
+        13.879166999999143
+      ],
+      "exactOrderedGeometryAndValidation": true
+    }
+  ],
+  "coordinatorQuietWindow": true,
+  "wallSeconds": 25.733037375,
+  "omittedTimingCase": "256 duplicates omitted before B samples because coordinator measured unexpected control cost; correctness tests unchanged"
+}

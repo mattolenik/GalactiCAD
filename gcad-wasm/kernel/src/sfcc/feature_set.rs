@@ -46,7 +46,7 @@ pub struct SfccCorner {
 /// 1 (the memo treats 0 as "unset"); wraparound is harmless (4e18 exports).
 static NEXT_FEATURE_SET_RUN_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-fn next_feature_set_run_id() -> u64 {
+pub(crate) fn next_feature_set_run_id() -> u64 {
     NEXT_FEATURE_SET_RUN_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 

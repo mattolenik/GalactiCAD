@@ -1,0 +1,9 @@
+{
+  "triangles": 848,
+  "completeOrientedRectangles": 12,
+  "surfaceArea": "400",
+  "orientedVolume": "288",
+  "disjointTargetComponents": 2,
+  "trianglePairChecks": 46848,
+  "scope": "exact geometric coverage of frozen target; indexed topology verified separately"
+}

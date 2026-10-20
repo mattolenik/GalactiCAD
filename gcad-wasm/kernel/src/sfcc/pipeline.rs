@@ -1230,6 +1230,7 @@ fn run_sfcc_pipeline_impl(
     let mut cell_result: CellMeshResult;
     let mut re_refine_rounds = 0u32;
     let mut separate_audit = None;
+    let mut arrangement_failure;
     phase_mark(now, &mut ph_last, &mut ph_feature);
     let mut round = 0u32;
     let mut retained_samples = HashMap::new();
@@ -1266,6 +1267,66 @@ fn run_sfcc_pipeline_impl(
         // before the expensive contour/mesh phases.
         if crate::sfcc::cancel::is_cancelled() {
             return cancelled_pipeline_result();
+        }
+        let arrangement_attempt = super::box_arrangement::Plan::for_export(tree, &lat, &oct.leaves);
+        arrangement_failure = match &arrangement_attempt {
+            super::box_arrangement::Attempt::Reject(reason) => Some(*reason),
+            _ => None,
+        };
+        if let super::box_arrangement::Attempt::Ready(plan) = arrangement_attempt {
+            if plan.needed {
+                let count = match strategy {
+                    MeshStrategy::Serial => 1,
+                    MeshStrategy::Shared(n)
+                    | MeshStrategy::Separate(n)
+                    | MeshStrategy::SharedMorton(n)
+                    | MeshStrategy::SeparateMorton(n) => n,
+                };
+                let r =
+                    super::worker::arrangement_inprocess(tree, features, &lat, tuning, &plan, count);
+                #[cfg(feature = "sfcc-profile")]
+                super::box_arrangement::diagnose(&plan, lat, &r.validation);
+                if super::cancel::is_cancelled() {
+                    return cancelled_pipeline_result();
+                }
+                let stats = SfccStats {
+                    leaves: oct.leaves.len(),
+                    degenerate_cells: r.degenerate_cells,
+                    faces: plan.pieces.len(),
+                    cross_points: r.cross_points,
+                    tris: r.tris.len() / 3,
+                    failed_cells: r.failed_cells,
+                    multi_loop_cells: r.multi_loop_cells,
+                    multi_run_faces: r.multi_run_faces,
+                    boundary_violations: r.boundary_violations,
+                    face_audit_failures: r.face_audit_failures,
+                    feature_curves: r.feature_curves,
+                    edge_cells: r.edge_cells,
+                    corner_cells: r.corner_cells,
+                    feature_cell_fallbacks: r.feature_cell_fallbacks,
+                    re_refine_rounds: round,
+                };
+                phase_mark(now, &mut ph_last, &mut ph_cellmesh);
+                emit(SFCC_PHASE_COUNT, "Done");
+                return SfccPipelineResult {
+                    feature_edges: r.feature_edges,
+                    verts: r.verts,
+                    tris: r.tris,
+                    stats,
+                    manifold: r.manifold,
+                    ok: r.ok,
+                    validation: r.validation,
+                    phase_feature_ms: ph_feature,
+                    phase_octree_ms: ph_octree,
+                    phase_contour_ms: ph_contour,
+                    phase_cellmesh_ms: ph_cellmesh,
+                    phase_assemble_ms: ph_assemble,
+                    phase_octree_decide_ms: ph_oct_decide,
+                    phase_octree_apply_ms: ph_oct_apply,
+                    octree_rounds: oct_rounds,
+                    cancelled: false,
+                };
+            }
         }
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
@@ -1479,6 +1540,9 @@ fn run_sfcc_pipeline_impl(
     validation.numerical.chord_budget += unresolved_triangles;
     validation.check_vertices(tree, &verts, tuning.surface_tol_mm);
     validation.check_triangles(&verts, &out_tris);
+    if let Some(reason) = arrangement_failure {
+        super::box_arrangement::mark_unresolved(&mut validation, reason, &oct.leaves);
+    }
     let ok = validation.ok();
     phase_mark(now, &mut ph_last, &mut ph_assemble);
     emit(SFCC_PHASE_COUNT, "Done");

@@ -498,8 +498,10 @@ _yaml_apply_overrides() {
 _ssim() {
     local -r a="$1"
     local -r b="$2"
-    local out
-    if ! out=$(npx --yes @blazediff/cli hitchhikers-ssim "$a" "$b" 2>&1); then
+    local out rc
+    # Some CLI versions return 1 for a below-threshold score, just like pixel diff.
+    out=$(npx --yes @blazediff/cli hitchhikers-ssim "$a" "$b" 2>&1) && rc=0 || rc=$?
+    if (( rc > 1 )); then
         log_error "blazediff hitchhikers-ssim failed:"
         printf '%s\n' "$out" >&2
         return 4

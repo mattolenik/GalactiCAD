@@ -16,6 +16,7 @@ import { DEFAULT_SFCC_TUNING, normalizeSfccTuning, type SfccTuning } from "../sf
 import { serializeSceneToBridgeJson } from "./scene-bridge.mjs"
 import {
     ensureWasmReady,
+    version,
     export_sfcc,
     sfcc_worker_prepare,
     sfcc_worker_merge,
@@ -154,6 +155,10 @@ async function runSfccRs(ctx: MeshExportContext, tuning: SfccTuning): Promise<Me
     const mesh: MeshData = { verts, tris }
     mesh.debug = {
         sfcc: {
+            execution: {
+                ok, exportMs: elapsedMs, partitions: partitionsUsed,
+                cube, paddedBounds: ctx.bounds, sceneJson, tuning, wasmVersion: version(),
+            },
             featureEdges,
             stats,
             validation: stats.validation as MeshSfccValidation | undefined,

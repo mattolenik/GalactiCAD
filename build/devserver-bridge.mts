@@ -65,8 +65,11 @@ export type DevServerAgentRenderResultMessage = {
     type: "agentRenderResult"
     id: string
     pngBase64?: string
+    capture?: Record<string, unknown>
     error?: string
 }
+
+type AgentRenderResult = Pick<DevServerAgentRenderResultMessage, "pngBase64" | "capture" | "error">
 
 /** Server → browser: run agent render (SDF normal preview or mesh normal RGB). */
 export type DevServerAgentRenderMessage = {
@@ -163,7 +166,7 @@ export class BrowserBridge {
     private readonly pendingAgentTestcase = new Map<string, { resolve: (v: Record<string, unknown> | null) => void }>()
     private readonly pendingAgentRender = new Map<
         string,
-        { resolve: (v: { pngBase64?: string; error?: string } | null) => void }
+        { resolve: (v: AgentRenderResult | null) => void }
     >()
     private readonly pendingScreenshot = new Map<
         string,
@@ -171,6 +174,7 @@ export class BrowserBridge {
     >()
     /** Only one agent-render RPC at a time so the browser does not supersede `SDFRenderer` pipeline work. */
     private agentRenderChain = Promise.resolve()
+    private acceptanceClient: { id: string; socket: WebSocket } | null = null
     private seq = 0
     /** Monotonic counter incremented on every new WS connection — used by `broadcastReloadAndAwaitReady` to detect a fresh post-reload connection. */
     private connectionEpoch = 0
@@ -358,11 +362,24 @@ export class BrowserBridge {
      * Ask one connected browser tab to run `runAgentRenderPipeline` (WebGPU). Payload matches `AgentRenderRequest`.
      * Serialized: the next HTTP caller waits until the previous render round-trip finishes (avoids "Superseded" races).
      */
-    requestAgentRender(payload: Record<string, unknown>, timeoutMs = AGENT_RENDER_TIMEOUT_MS): Promise<{ pngBase64?: string; error?: string } | null> {
-        const run = (): Promise<{ pngBase64?: string; error?: string } | null> => {
+    requestAgentRender(payload: Record<string, unknown>, timeoutMs = AGENT_RENDER_TIMEOUT_MS): Promise<AgentRenderResult | null> {
+        const run = (): Promise<AgentRenderResult | null> => {
             const wss = this.wsServer
             if (!wss || wss.clients.size === 0) {
                 return Promise.resolve(null)
+            }
+            let captureSocket: WebSocket | undefined
+            if (payload.kind === "meshAcceptance") {
+                const captureId = String(payload.captureId)
+                if (payload.action === "prepare") {
+                    if (this.acceptanceClient?.socket.readyState === WS_OPEN && this.acceptanceClient.id !== captureId) return Promise.resolve({ error: "Another acceptance capture owns this browser" })
+                    captureSocket = this.lastReadyClient?.readyState === WS_OPEN ? this.lastReadyClient : [...wss.clients].find(c => c.readyState === WS_OPEN)
+                    if (captureSocket) this.acceptanceClient = { id: captureId, socket: captureSocket }
+                } else {
+                    if (this.acceptanceClient?.id !== captureId) return Promise.resolve({ error: "Missing or stale acceptance browser session" })
+                    captureSocket = this.acceptanceClient.socket
+                }
+                if (!captureSocket || captureSocket.readyState !== WS_OPEN) return Promise.resolve({ error: "Acceptance browser disconnected; refusing cross-tab fallback" })
             }
             const id = `ard-${Date.now()}-${++this.seq}`
             return new Promise(resolve => {
@@ -370,15 +387,20 @@ export class BrowserBridge {
                     this.pendingAgentRender.delete(id)
                     resolve(null)
                 }, timeoutMs)
-                const finish = (v: { pngBase64?: string; error?: string } | null) => {
+                const finish = (v: AgentRenderResult | null) => {
                     clearTimeout(timeout)
                     this.pendingAgentRender.delete(id)
+                    if (payload.kind === "meshAcceptance" && payload.action === "clear") this.acceptanceClient = null
                     resolve(v)
                 }
                 this.pendingAgentRender.set(id, { resolve: finish })
                 const msg: DevServerAgentRenderMessage = { type: "agentRender", id, payload }
                 const wire = JSON.stringify(msg)
-                if (!sendPayloadToFirstOpenClient(wss, wire, this.lastReadyClient)) {
+                let sent = false
+                if (captureSocket) {
+                    try { captureSocket.send(wire); sent = true } catch { /* no other tab owns this artifact */ }
+                } else sent = sendPayloadToFirstOpenClient(wss, wire, this.lastReadyClient)
+                if (!sent) {
                     clearTimeout(timeout)
                     this.pendingAgentRender.delete(id)
                     resolve(null)
@@ -482,7 +504,7 @@ export class BrowserBridge {
         if (msg.type === "agentRenderResult" && typeof msg.id === "string") {
             const p = this.pendingAgentRender.get(msg.id)
             if (p) {
-                p.resolve({ pngBase64: msg.pngBase64, error: msg.error })
+                p.resolve({ pngBase64: msg.pngBase64, capture: msg.capture, error: msg.error })
             }
             return
         }

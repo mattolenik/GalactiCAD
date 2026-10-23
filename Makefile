@@ -46,6 +46,10 @@ build: setup gcad-wasm
 test: build
 	$(TSX) --test
 
+.PHONY: acceptance-tests
+acceptance-tests: build
+	$(TSX) scripts/sdf-meshing-acceptance.mts
+
 # check is deprecated, just use build instead
 #.PHONY: check
 #check: gcad-wasm
@@ -68,7 +72,7 @@ _start: gcad-wasm
 	nohup $(BUILD) -w $(BUILD_FLAGS) > $(LOG_FILE) 2>&1 &
 	i=0
 	while (( i < 60 )); do
-		if [[ -f "$(RUN_FILE)" ]]; then
+		if [[ -f "$(RUN_FILE)" ]] && kill -0 "$$(jq -r .pid "$(RUN_FILE)")" 2>/dev/null; then
 			port=$$(jq -r .port "$(RUN_FILE)")
 			echo ""
 			echo "Server running at http://localhost:$$port, logs at $(LOG_FILE)"

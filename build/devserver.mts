@@ -734,6 +734,7 @@ const INJECTED_BRIDGE_SCRIPT = `
                                     type: "agentRenderResult",
                                     id: msg.id,
                                     pngBase64: o.pngBase64,
+                                    capture: o.capture,
                                     error: o.error,
                                 }),
                             );
@@ -1208,6 +1209,26 @@ function createHttpServer(
                 },
                 buf,
             )
+            return
+        }
+
+        if (pathname === "/_agent/mesh-acceptance") {
+            if (!AGENT_MODE || req.method !== "POST") {
+                res.writeHead(405, { "content-type": "application/json" })
+                res.end(JSON.stringify({ error: "POST on the agent server only" }))
+                return
+            }
+            try {
+                const payload = JSON.parse(await readHttpBody(req)) as Record<string, unknown>
+                if (!payload || payload.kind !== "meshAcceptance" || !["prepare", "export", "restore", "view", "clear"].includes(String(payload.action))) throw new Error("Invalid acceptance request")
+                const timeout = payload.action === "export" ? 180_000 : 60_000
+                const out = await bridge.requestAgentRender(payload, timeout)
+                res.writeHead(out === null ? 504 : out.error ? 400 : 200, { "content-type": "application/json" })
+                res.end(JSON.stringify(out ?? { error: "Acceptance RPC timed out or browser unavailable" }))
+            } catch (e) {
+                res.writeHead(400, { "content-type": "application/json" })
+                res.end(JSON.stringify({ error: String(e) }))
+            }
             return
         }
 

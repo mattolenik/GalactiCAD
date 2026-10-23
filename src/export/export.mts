@@ -133,6 +133,17 @@ export interface MeshSfccValidation {
 
 /** SFCC topology, numerical-budget, and final vertex-residual diagnostics. */
 export interface MeshSfccDebugData {
+    /** Actual export invocation; retained for accountable acceptance captures. */
+    execution?: {
+        ok: boolean
+        exportMs: number
+        partitions: number
+        cube: { min: number[]; max: number[] }
+        paddedBounds: { min: number[]; max: number[] }
+        sceneJson: string
+        tuning: unknown
+        wasmVersion: string
+    }
     /** Final vertex IDs and analytical interval: [a,b,curveId,start,end], f64 stride 5. */
     featureEdges?: Float64Array<ArrayBuffer>
     /** Pipeline stats blob (cell/face counts, audits, fallback counters). */

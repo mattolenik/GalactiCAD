@@ -1,7 +1,19 @@
 # SDF meshing acceptance suite
 
-Status: implementation plan, October 22, 2026. No acceptance run or image capture
-has been performed for this plan. Repository inspected at `70f6862`.
+Status: steps 1–3 implemented and exercised on October 23, 2026. Run the full
+process with `make acceptance-tests` (`.PHONY`, depends on the application build).
+The [milestone record](../research/sdf-meshing-acceptance-milestone1.md) links the
+five-model Markdown report and validation. Four models produced failing meshes;
+Mess 1 reached the 180-second export limit. These are recorded acceptance
+outcomes, not a claim that the meshes are fixed. Steps 4–6 remain future work.
+Original plan: October 22, 2026, repository inspected at `70f6862`.
+
+Diagnostic follow-up: the suite now exposes separate acceptance dimensions,
+complete existing counters/curve issues, exact float32 defect locations and
+geometric point witnesses. The [bracket/housing investigation](../research/sfcc-bracket-housing-investigation.md)
+identifies a missed known corner, quantization/construction degeneracies, and
+housing gap spans that are geometrically present under other feature labels.
+These targeted checks do not complete the remaining general-coverage matrix.
 
 ## Objective and completion criterion
 

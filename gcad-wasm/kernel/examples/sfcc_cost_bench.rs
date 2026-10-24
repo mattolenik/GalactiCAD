@@ -257,7 +257,7 @@ fn main() {
                 #[cfg(feature = "sfcc-profile")]
                 {
                     assert_eq!(trace.dropped, 0);
-                    let events = trace.records.iter().filter(|r| !matches!(r.event, gcad_kernel::sfcc::diagnosis::Event::Mesh { .. })).map(|r| format!("{:?}\n", r)).collect::<String>();
+                    let events = trace.records.iter().filter(|r| !matches!(r.event, gcad_kernel::sfcc::diagnosis::Event::Mesh { .. } | gcad_kernel::sfcc::diagnosis::Event::Assembled { .. })).map(|r| format!("{:?}\n", r)).collect::<String>();
                     std::fs::write(dir.join("trace.txt"), events).unwrap();
                 }
             }

@@ -184,6 +184,49 @@ fn snapshot(scope: &Scope, pt: &PointTable, w: &mut Witness) -> Result<(), &'sta
     }
     Ok(())
 }
+/// A retained best-effort constrained filling must never gain a certificate.
+/// Negative construction evidence is retained even outside certificate scope.
+pub(crate) fn record_unresolved_filling(c: &SfccCell, pt: &mut PointTable, tris: &[usize]) {
+    assert!(
+        pt.coverage_cells.insert(id(c)),
+        "duplicate local cell ownership"
+    );
+    let mut triangles: Vec<_> = tris
+        .chunks_exact(3)
+        .map(|t| canonical_triangle([t[0], t[1], t[2]]))
+        .collect();
+    triangles.sort();
+    pt.coverage.push(Witness {
+        transported: false,
+        cell: *c,
+        reason: Some("constrained_fan_unresolved".into()),
+        triangles,
+        vertices: Vec::new(),
+        faces: Vec::new(),
+        curves: Vec::new(),
+    });
+}
+fn unresolved_filling(w: &Witness) -> bool {
+    w.reason.as_deref() == Some("constrained_fan_unresolved")
+        && !w.transported
+        && w.vertices.is_empty()
+        && w.faces.is_empty()
+        && w.curves.is_empty()
+}
+/// Keep unsupported retained geometry visible without introducing a new retry
+/// on an uncertified model. Independent coverage failures still require retry.
+pub(crate) fn report_only_retained_cells(root: &CsgNode, pt: &PointTable) -> BTreeSet<CellId> {
+    if pt.arrangement || !matches!(Scope::new(root), Scope::Outside) {
+        return BTreeSet::new();
+    }
+    let mut out: BTreeSet<_> = pt.coverage.iter()
+        .filter(|w| unresolved_filling(w)).map(|w| id(&w.cell)).collect();
+    for failure in &pt.coverage_edge_failures {
+        out.remove(&id(&failure.cell));
+    }
+    out
+}
+
 pub(crate) fn record(
     scope: &Scope,
     oct: &SfccOctree,
@@ -395,12 +438,12 @@ pub(crate) fn import_witnesses(
     root: &CsgNode,
 ) {
     assert!(
-        pt.arrangement || !matches!(Scope::new(root), Scope::Outside) || incoming.is_empty(),
+        pt.arrangement || !matches!(Scope::new(root), Scope::Outside) || incoming.iter().all(unresolved_filling),
         "outside-scope worker certificate"
     );
     for w in &mut incoming {
         assert!(
-            cell_box(lat, &w.cell).is_ok() || w.reason.as_deref().is_some_and(|r| !unresolved(r)),
+            unresolved_filling(w) || cell_box(lat, &w.cell).is_ok() || w.reason.as_deref().is_some_and(|r| !unresolved(r)),
             "worker certificate cell/grid mismatch"
         );
         assert!(
@@ -463,7 +506,7 @@ pub(crate) fn reverify_transport(
 ) {
     let scope = Scope::new(root);
     if matches!(scope, Scope::Outside) {
-        assert!(pt.coverage.is_empty());
+        assert!(pt.coverage.iter().all(unresolved_filling));
         return;
     }
     let cells = pt.coverage.iter().map(|w| w.cell).collect::<Vec<_>>();
@@ -2126,6 +2169,22 @@ mod tests {
             feature_curve: -1,
             feature_corner: -1,
         }
+    }
+    #[test]
+    fn report_only_retained_failure_preserves_other_retry_contracts() {
+        let cylinder = crate::sdf::leaf_at(Shape::Cylinder { r: 1., h: 1. }, [0.; 3]);
+        let sphere = crate::sdf::leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
+        let cell = root_cell();
+        let mut points = PointTable::new();
+        record_unresolved_filling(&cell, &mut points, &[]);
+        assert!(report_only_retained_cells(&cylinder, &points).contains(&id(&cell)));
+        assert!(report_only_retained_cells(&sphere, &points).is_empty());
+        points.arrangement = true;
+        assert!(report_only_retained_cells(&cylinder, &points).is_empty());
+        points.arrangement = false;
+        points.coverage_edge_failures.push(EdgeFailure { cell, kind: EdgeFailureKind::Budget });
+        assert!(report_only_retained_cells(&cylinder, &points).is_empty());
+        assert_eq!(report(&cylinder, &points).unresolved.len(), 1);
     }
     #[test]
     fn exact_arithmetic_and_grid_do_not_equate_rounded_formulas() {

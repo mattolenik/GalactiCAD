@@ -9,7 +9,17 @@ retains all five original cases and all remaining failures. Milestone 2's
 [membership repair](../research/sfcc-feature-overlap-repair.md) and
 [five-model campaign](../../.testresults/sdf-meshing/2026-10-24T01-45-13-111Z/report.md)
 preserve all four available meshes' geometry while restoring the eleven housing
-memberships. Milestones 3–5 remain pending.
+memberships. Milestone 3's bounded
+[float32 construction repair](../research/sfcc-f32-construction-repair.md) is
+implemented: original/rotated/worker bracket and housing have zero exact invalid
+faces, with the prior junction and overlap obligations preserved. The
+[final campaign](../../.testresults/sdf-meshing/2026-10-24T06-37-24-409Z/report.md)
+reproduces the focused meshes exactly. Overall acceptance remains failed:
+bracket retains earlier chain failures, housing remains incomplete, knob and
+Mess 2 retain malformed geometry, and Mess 1 times out. Four small Mess 2
+memberships on already failed traces remain explicitly unresolved within the
+[documented collateral limits](../research/sfcc-f32-construction-repair.md#retry-policy-controls-and-bounded-collateral-result).
+Milestones **4 and 5 remain pending**.
 
 Evidence: [investigation](../research/sfcc-bracket-housing-investigation.md),
 [acceptance report](../../.testresults/sdf-meshing/investigated-2026-10-23/report.md),

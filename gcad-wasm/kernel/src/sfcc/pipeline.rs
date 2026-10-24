@@ -1419,20 +1419,8 @@ fn run_sfcc_pipeline_impl(
         for c in super::local_coverage::failed_cells(&points) {
             if !cell_result.failed_cells.iter().any(|old|old.level==c.level&&old.key==c.key){cell_result.failed_cells.push(c);}
         }
-        // Failed cells re-refine every round; fallback cells get ONE forced round.
-        let mut suspects: Vec<SfccCell> = Vec::new();
-        for c in &cell_result.failed_cells {
-            if c.level < max_depth {
-                suspects.push(*c);
-            }
-        }
-        if round == 0 {
-            for c in &cell_result.fallback_cells {
-                if c.level < max_depth {
-                    suspects.push(*c);
-                }
-            }
-        }
+        let report_only = super::local_coverage::report_only_retained_cells(tree, &points);
+        let suspects = refinement_candidates(&cell_result, &report_only, max_depth, round);
         #[cfg(feature = "sfcc-profile")]
         super::diagnosis::snapshot(lat, &oct.leaves, &cell_result.failed_cells,
             cell_result.fallback_cells.len(), round >= tuning.re_refine_max_rounds || suspects.is_empty());
@@ -1571,9 +1559,50 @@ fn hypot3(x: f64, y: f64, z: f64) -> f64 {
     (x * x + y * y + z * z).sqrt()
 }
 
+fn refinement_candidates(
+    result: &CellMeshResult,
+    report_only: &std::collections::BTreeSet<super::local_coverage::CellId>,
+    max_depth: u32,
+    round: u32,
+) -> Vec<SfccCell> {
+    let mut out = Vec::new();
+    for c in &result.failed_cells {
+        if c.level < max_depth && !report_only.contains(&(c.level, c.ix, c.iy, c.iz)) {
+            out.push(*c);
+        }
+    }
+    // Preserve the existing one-round retry for an independent graph fallback,
+    // even when the same cell also has a retained-filling failure report.
+    if round == 0 {
+        for c in &result.fallback_cells {
+            if c.level < max_depth {
+                out.push(*c);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod recovery_cache_tests {
     use super::*;
+    #[test]
+    fn retained_failure_does_not_mask_independent_fallback_retry() {
+        let cell = SfccCell { level: 2, ix: 0, iy: 0, iz: 0, key: 0,
+            degenerate: false, feature_curve: -1, feature_corner: -1 };
+        let report_only = [(2, 0, 0, 0)].into_iter().collect();
+        let mut result = CellMeshResult { tris: vec![], failed_cells: vec![cell],
+            multi_loop_cells: 0, edge_cells: 0, corner_cells: 0,
+            feature_cell_fallbacks: 1, fallback_cells: vec![] };
+        assert!(refinement_candidates(&result, &report_only, 3, 0).is_empty());
+        assert_eq!(result.failed_cells.len(), 1, "failure remains reported");
+        result.fallback_cells.push(cell);
+        assert_eq!(refinement_candidates(&result, &report_only, 3, 0).len(), 1);
+        assert!(refinement_candidates(&result, &report_only, 3, 1).is_empty());
+        assert_eq!(refinement_candidates(&result, &Default::default(), 3, 1).len(), 1);
+        assert!(refinement_candidates(&result, &Default::default(), 2, 0).is_empty());
+    }
+
     #[test]
     fn discovery_precedes_both_corner_exemptions() {
         use crate::scene_bridge::{build_csg_tree, BridgeNode};

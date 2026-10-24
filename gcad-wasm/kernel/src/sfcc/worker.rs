@@ -1256,6 +1256,101 @@ pub fn octree_session_finish() -> Vec<u8> {
 mod reliability_tests {
     use super::*;
     #[test]
+    fn partial_roundtrip_preserves_unresolved_constrained_filling_without_ownership() {
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Cylinder { r: 1., h: 1. }, [0.; 3]);
+        let lat = make_lattice(1, -0.5, 0.5, 0.5, 2.);
+        let cell = SfccCell {
+            level: 1,
+            ix: 0,
+            iy: 0,
+            iz: 0,
+            key: 0,
+            degenerate: false,
+            feature_curve: 0,
+            feature_corner: -1,
+        };
+        let mut points = PointTable::new();
+        let a = points.add(-0.5, 1., 1., 0., 1., 1.);
+        let b = points.add(-0.5, 1., 1., 0., 1., 1.);
+        let c = points.add(0.5, 1., 1., 0., 1., 1.);
+        let interval = CurveInterval {
+            curve_id: 0,
+            start: 0.,
+            end: 1.,
+        };
+        points.protect_curve_edge(a, c, interval);
+        super::super::local_coverage::record_unresolved_filling(&cell, &mut points, &[a, b, c]);
+        let counters = PartialCounters {
+            failed_cells: 1,
+            feature_cell_fallbacks: 1,
+            ..Default::default()
+        };
+        let faces = std::array::from_fn(|_| HashMap::new());
+        let decoded = decode_partial(&encode_partial(
+            &points,
+            123,
+            &[a, b, c],
+            &counters,
+            &faces,
+            &lat,
+            &super::super::local_coverage::signature(&tree),
+        ));
+        assert_eq!(decoded.tris, vec![a as u32, b as u32, c as u32]);
+        assert_eq!(decoded.intervals, vec![(a, c, interval)]);
+        assert_eq!(decoded.patches, vec![None]);
+        assert_eq!(decoded.counters.failed_cells, 1);
+        assert_eq!(decoded.counters.feature_cell_fallbacks, 1);
+        assert_eq!(
+            decoded.coverage[0].reason.as_deref(),
+            Some("constrained_fan_unresolved")
+        );
+        let mut imported = PointTable::new();
+        for id in 0..points.count() {
+            imported.add(
+                points.x(id),
+                points.y(id),
+                points.z(id),
+                points.nx(id),
+                points.ny(id),
+                points.nz(id),
+            );
+        }
+        let mut forged = decoded.coverage.clone();
+        forged[0].reason = None;
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::super::local_coverage::import_witnesses(
+                &mut PointTable::new(),
+                forged,
+                &[a, b, c],
+                &lat,
+                &tree,
+            )
+        }))
+        .is_err());
+        super::super::local_coverage::import_witnesses(
+            &mut imported,
+            decoded.coverage,
+            &[a, b, c],
+            &lat,
+            &tree,
+        );
+        let features = super::super::feature_set::compile_native_features(&tree);
+        super::super::local_coverage::reverify_transport(
+            &mut imported,
+            &tree,
+            &features,
+            &lat,
+            &[a, b, c],
+            &HashMap::new(),
+        );
+        let report = super::super::local_coverage::report(&tree, &imported);
+        assert_eq!(report.scope, "outsideScope");
+        assert_eq!(report.certified_cells, 0);
+        assert_eq!(report.unresolved.len(), 1);
+        assert!(super::super::local_coverage::report_only_retained_cells(&tree, &imported)
+            .contains(&(cell.level, cell.ix, cell.iy, cell.iz)));
+    }
+    #[test]
     fn partial_roundtrip_retains_f64_and_crease_locks() {
         let mut p = PointTable::new();
         let x = 1.0 + f64::EPSILON * 7.0;

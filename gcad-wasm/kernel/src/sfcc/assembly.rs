@@ -46,6 +46,8 @@ pub(crate) fn finish(
         if let Some(snapshot) = arrangement_metadata {
             snapshot.verify(points, &tris);
         }
+        #[cfg(feature="sfcc-profile")]
+        super::diagnosis::assembled(points,&tris);
         return (tris, unresolved, None);
     }
     let mut audit = QualityAudit::default();
@@ -169,5 +171,7 @@ pub(crate) fn finish(
     if let Some(snapshot) = arrangement_metadata {
         snapshot.verify(points, &tris);
     }
+    #[cfg(feature="sfcc-profile")]
+    super::diagnosis::assembled(points,&tris);
     (tris, unresolved, Some(audit))
 }

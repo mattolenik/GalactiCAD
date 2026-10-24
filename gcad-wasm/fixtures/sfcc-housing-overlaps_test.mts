@@ -8,6 +8,7 @@ import { load } from "js-yaml"
 import { SceneInfo } from "../../src/scene/scene.mjs"
 import { serializeSceneToBridgeJson } from "../../src/export/sfcc-rs/scene-bridge.mjs"
 import { inspectMesh } from "../../test/acceptance/sdf-meshing/diagnostics.mjs"
+import { saveRepairEvidence } from "./sfcc-repair-evidence.mjs"
 import { initSync, export_sfcc, sfcc_worker_prepare, sfcc_worker_merge } from "../wasm/pkg/gcad_wasm.js"
 
 initSync({ module: readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.meta.url)) })
@@ -27,12 +28,35 @@ function source() {
     assert.equal(createHash("sha256").update(source).digest("hex"), "54964141fea0ed055f5392837c5e524f4a358e1c610f0b11a90857b8b57ad4a5")
     return serializeSceneToBridgeJson(new SceneInfo(source).root)
 }
-function check(result: ReturnType<typeof export_sfcc>, t: TestContext) {
+type ChainIssue = {curveId: number; kind: string; range: [number, number]}
+const rotatedBaseline = JSON.parse(readFileSync(new URL("./sfcc-housing-rotated-baseline.json", import.meta.url), "utf8"))
+function checkRotatedIssues(issues: ChainIssue[]) {
+    // Preserve the actual milestone2 receipt; do not turn its remaining failures
+    // into a passed validator status or permit new failures on different spans.
+    const previous = rotatedBaseline.featureChains.issues as ChainIssue[]
+    for (const issue of issues) {
+        let end = issue.range[0]
+        const ranges = previous.filter(p => p.curveId === issue.curveId && p.kind === issue.kind)
+            .map(p => p.range).sort((a,b) => a[0]-b[0])
+        for (const [lo,hi] of ranges) if (lo <= end + 1e-10) end = Math.max(end,hi)
+        assert.ok(end >= issue.range[1] - 1e-10, `new rotated feature obligation: ${JSON.stringify(issue)}`)
+    }
+    assert.ok(!issues.some(i => i.curveId === 46), "the near-endpoint hole-rim crossing must survive")
+}
+function check(result: ReturnType<typeof export_sfcc>, sceneJson: string, t: TestContext, parts: Uint8Array[] = [], rotated = false) {
     const stats = JSON.parse(result.stats_json)
+    assert.equal(stats.components, 1, "repairs must preserve the connected housing")
+    assert.deepEqual(stats.euler, [-8], "retain the existing housing topology")
     for (const name of ["edgeIncidence", "vertexLinks", "faceSegments"]) assert.equal(stats.validation[name], "passed", name)
     const verts = result.verts, tris = result.tris, data = result.feature_edges
     const audit = inspectMesh(verts, tris, data, [])
-    assert.ok(audit.defects.length <= 180, "membership reconciliation must not introduce invalid faces")
+    saveRepairEvidence(t.name, sceneJson, result, parts, audit)
+    assert.equal(audit.defects.length, 0, "the complete housing must contain no exact invalid float32 triangles")
+    if (rotated) checkRotatedIssues(stats.validation.featureChains.issues)
+    else assert.equal(stats.validation.featureChains.status, "passed", "every compiled curve, including 75 and 106, must survive")
+    for (const name of ["missingCurves", "offCurveEdges", "invalidMemberships", "unidentifiedEdges"]) {
+        assert.equal(stats.validation.featureChains[name], 0, name)
+    }
     const edges = new Map<string, Map<number, number[]>>()
     const ranges = new Map<number, number[][]>()
     const key = (a: number, b: number) => `${Math.min(a,b)}:${Math.max(a,b)}`
@@ -67,21 +91,18 @@ function check(result: ReturnType<typeof export_sfcc>, t: TestContext) {
         }
         assert.ok(shared > 0, `no valid physical edges for pair ${a}/${b}`)
         const issues = stats.validation.featureChains.issues.filter((i: {curveId:number}) => i.curveId === a || i.curveId === b)
-        // These two pairs already have duplicated physical rim edges and
-        // zero-area fans. Keep the strict connectivity failure for milestone 3.
-        const unexpected = issues.filter((i: {kind:string}) => !([6,30].includes(a) && i.kind === "disconnected"))
-        assert.deepEqual(unexpected,[],`reconciled pair ${a}/${b} has an unaccounted feature failure`)
+        assert.deepEqual(issues,[],`reconciled pair ${a}/${b} must have a complete connected chain`)
     }
     const curve75Issues = stats.validation.featureChains.issues.filter((i: {curveId:number}) => i.curveId === 75)
-    t.diagnostic(JSON.stringify({triangles:tris.length/3,invalidTriangles:audit.defects.length,
+    t.diagnostic(JSON.stringify({components:stats.components,euler:stats.euler,triangles:tris.length/3,invalidTriangles:audit.defects.length,
         repairedGapSpans:gaps.length,reconciledPairs:pairs.length,curve75Issues,
         vertsSha256:createHash("sha256").update(new Uint8Array(verts.buffer,verts.byteOffset,verts.byteLength)).digest("hex"),
         trisSha256:createHash("sha256").update(new Uint8Array(tris.buffer,tris.byteOffset,tris.byteLength)).digest("hex"),featureChains:stats.validation.featureChains,serialRecovery:stats.serialRecovery}))
 }
 
 test("full housing preserves all eleven overlapping-rim memberships on valid mesh edges", t => {
-    const result = export_sfcc(source(),"{}",...cube)
-    try { check(result,t) } finally { result.free() }
+    const scene = source(), result = export_sfcc(scene,"{}",...cube)
+    try { check(result,scene,t) } finally { result.free() }
 })
 
 test("housing overlap memberships survive reverse worker merge order", async t => {
@@ -98,12 +119,12 @@ test("housing overlap memberships survive reverse worker merge order", async t =
             worker.once("exit",code => code === 0 && result ? resolve(result) : reject(new Error(`worker exit ${code}`)))
         }))
     }
-    const result = sfcc_worker_merge(scene,"{}",...cube,parts.reverse())
-    try { check(result,t) } finally { result.free() }
+    const result = sfcc_worker_merge(scene,"{}",...cube,[...parts].reverse())
+    try { check(result,scene,t,parts) } finally { result.free() }
 })
 
 test("full housing overlap memberships survive a rigid axis rotation", t => {
     const scene = JSON.stringify({kind:"rotate",node_id:-100,fwd:[0,1,0,-1,0,0,0,0,1],arg:JSON.parse(source())})
     const result = export_sfcc(scene,"{}",-32.2,-22.45,-22.2,44.9)
-    try { check(result,t) } finally { result.free() }
+    try { check(result,scene,t,[],true) } finally { result.free() }
 })

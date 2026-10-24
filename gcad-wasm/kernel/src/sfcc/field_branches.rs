@@ -28,6 +28,15 @@ impl FieldRef {
         hash.include(&self.partners);
         hash.0
     }
+    pub(crate) fn same_domain(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.root, &other.root)
+            && self.path == other.path
+            && self.branch == other.branch
+            && self.partners == other.partners
+    }
+    pub(crate) fn plain_node(&self) -> Option<&CsgNode> {
+        self.branch.is_none().then(|| self.node())
+    }
     pub fn new(root: std::sync::Arc<CsgNode>, path: Vec<usize>) -> Self {
         Self { root, path, branch: None, partners: std::sync::Arc::from([]) }
     }

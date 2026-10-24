@@ -323,6 +323,8 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
     const SUBDIV: usize = 8;
     struct Cand {
         t: f64,
+        lo: f64,
+        hi: f64,
         stratum: usize,
         f_abs: f64,
     }
@@ -362,7 +364,7 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
                     let q = at_t(t);
                     let f_abs = tree.f([q[0], q[1], q[2]]).abs();
                     if f_abs <= root_tol * 4.0 {
-                        cand.push(Cand { t, stratum: sid, f_abs });
+                        cand.push(Cand { t, lo, hi, stratum: sid, f_abs });
                     }
                 }
                 prev_t = tk;
@@ -376,7 +378,7 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
     }
     cand.sort_by(|x, y| x.t.partial_cmp(&y.t).unwrap());
     // Dedupe near-coincident candidates (AMBIGUOUS sets only).
-    let dd: Vec<Cand> = if cand.len() > 2 {
+    let mut dd: Vec<Cand> = if cand.len() > 2 {
         let mut dd: Vec<Cand> = Vec::new();
         for c in cand {
             if let Some(last) = dd.last() {
@@ -394,21 +396,78 @@ fn recovered_crossings_for<T: SdfQuery + ?Sized>(
         cand
     };
 
-    // --- verification: ground-truth sign flips at gap midpoints ---
-    let mut gap_inside: Option<Vec<bool>> = None;
-    let survivors: Vec<&Cand> = if dd.len() > 2 {
-        let mut ts: Vec<f64> = Vec::with_capacity(dd.len() + 2);
-        ts.push(0.0);
-        for c in &dd {
-            ts.push(c.t);
+    // Coarse root_tol brackets can overlap around distinct, representable
+    // crossings. Refine only that bounded ambiguous set before asking for a
+    // sign sample between roots; rejecting it immediately loses thin features.
+    if dd.windows(2).any(|pair| pair[0].hi >= pair[1].lo) {
+        for c in &mut dd {
+            let st = &features.strata[c.stratum];
+            let p = at_t(c.lo);
+            let mut flo = st.f(p[0], p[1], p[2]);
+            if !flo.is_finite() {
+                cache.insert(cache_key, out.clone());
+                return out;
+            }
+            for _ in 0..50 {
+                let mid = (c.lo + c.hi) * 0.5;
+                if mid == c.lo || mid == c.hi {
+                    break;
+                }
+                let p = at_t(mid);
+                let fm = st.f(p[0], p[1], p[2]);
+                if !fm.is_finite() {
+                    cache.insert(cache_key, out.clone());
+                    return out;
+                }
+                if (fm < 0.) == (flo < 0.) {
+                    c.lo = mid;
+                    flo = fm;
+                } else {
+                    c.hi = mid;
+                }
+            }
+            c.t = (c.lo + c.hi) * 0.5;
+            c.f_abs = tree.f(at_t(c.t)).abs();
+            if !c.f_abs.is_finite() || c.f_abs > root_tol * 4. {
+                cache.insert(cache_key, out.clone());
+                return out;
+            }
         }
-        ts.push(1.0);
+        dd.sort_by(|a, b| a.t.total_cmp(&b.t));
+    }
+
+    // Probe outside the retained carrier-root brackets. A midpoint between the
+    // edge endpoint and the approximate root can lie INSIDE the root's error
+    // interval and on the wrong side of a genuine near-endpoint crossing.
+    let mut gap_inside: Option<Vec<bool>> = None;
+    let survivors: Vec<&Cand> = if dd.len() >= 2 {
         let mut gi: Vec<bool> = Vec::new();
-        for g in 0..ts.len() - 1 {
-            let q = at_t((ts[g] + ts[g + 1]) / 2.0);
+        for g in 0..=dd.len() {
+            let lo = if g == 0 { 0. } else { dd[g - 1].hi };
+            let hi = if g == dd.len() { 1. } else { dd[g].lo };
+            if lo > hi || (g > 0 && g < dd.len() && lo == hi) {
+                cache.insert(cache_key, out.clone());
+                return out;
+            }
+            let previous = if g == 0 { 0. } else { dd[g - 1].t };
+            let next = if g == dd.len() { 1. } else { dd[g].t };
+            let midpoint = (previous + next) * 0.5;
+            // Keep an already valid probe stable: near a separate zero-level
+            // carrier, even an unnecessary arithmetic shift can change ties.
+            let probe = if midpoint >= lo && midpoint <= hi {
+                midpoint
+            } else {
+                (lo + hi) * 0.5
+            };
+            let q = at_t(probe);
             gi.push(tree.f([q[0], q[1], q[2]]) < 0.0);
         }
-        let s: Vec<&Cand> = dd.iter().enumerate().filter(|(i, _)| gi[*i] != gi[*i + 1]).map(|(_, c)| c).collect();
+        let s: Vec<&Cand> = dd
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| gi[*i] != gi[*i + 1])
+            .map(|(_, c)| c)
+            .collect();
         gap_inside = Some(gi);
         s
     } else {
@@ -772,11 +831,21 @@ fn contour_face(
                 if pos[u] < min_w[u] || pos[u] > max_u || pos[v] < min_w[v] || pos[v] > max_v {
                     continue;
                 }
-                let pkey = format!("F{}:{}:{}:{:.12}", axis, key, curve_id, cr.t);
-                let (crx, cry, crz) = (cr.x, cr.y, cr.z);
-                let sa = &features.strata[curve.adjacent_strata[0]];
-                let sb = &features.strata[curve.adjacent_strata[1]];
-                let pid = points.get_or_create_str(&pkey, || {
+                let (identity, parameter) = super::feature_overlap::canonical_pin(curve_id, cr.t, pos, features);
+                let pkey = format!("F{}:{}:{}:{:.12}", axis, key, identity, parameter);
+                let [crx, cry, crz] = pos;
+                let canonical = &features.curves[identity];
+                let sa = &features.strata[canonical.adjacent_strata[0]];
+                let sb = &features.strata[canonical.adjacent_strata[1]];
+                let shared_pin = record.pins.iter().find_map(|pin| {
+                    let target=&features.curves[pin.curve_id];
+                    let other=[points.x(pin.point_id),points.y(pin.point_id),points.z(pin.point_id)];
+                    (super::feature_overlap::same_traced_endpoints(curve,target)
+                        && other.map(|x|x as f32)==pos.map(|x|x as f32)
+                        && super::loft_seam::quantized_face_root(features,curve_id,pin.curve_id,axis,coord,pos))
+                        .then_some(pin.point_id)
+                });
+                let pid = shared_pin.unwrap_or_else(|| points.get_or_create_str(&pkey, || {
                     let na = sa.normal(crx, cry, crz);
                     let nb = sb.normal(crx, cry, crz);
                     let mut nx = na[0] + nb[0];
@@ -793,7 +862,7 @@ fn contour_face(
                         nz = 0.0;
                     }
                     [crx, cry, crz, nx, ny, nz]
-                });
+                }));
                 record.pins.push(FacePin { point_id: pid, curve_id, t: cr.t });
             }
         }
@@ -1564,6 +1633,85 @@ mod projection_tests {
     use super::*;
     use crate::sdf::{leaf_at, Shape};
     use crate::sfcc::validation::{numerical_failures, NumericalGuard};
+
+    #[test]
+    fn two_carrier_candidates_require_actual_scene_sign_changes() {
+        use crate::sfcc::{feature_curves::make_segment_curve, spatial_index::SfccSpatialIndex};
+        use crate::strata::{Stratum, StratumIdentity};
+        for (radius, offset, plane_offset, expected) in [
+            (1., [0., 1., 0.], 0., 0usize),
+            (0.01, [0., 0., 0.], 0.01, 2usize),
+            // Distinct f32 roots whose initial 1e-6 brackets touch at zero.
+            (1e-7, [0., 0., 0.], 1e-7, 2usize),
+        ] {
+            let tree = leaf_at(Shape::Sphere { r: radius }, offset);
+            let mut features = crate::sfcc::feature_set::compile_native_features(&tree);
+            let identity = |id| StratumIdentity {
+                id,
+                owner_node_id: 0,
+                leaf_index: 0,
+                local_index: id,
+                sign: 1.,
+            };
+            features.strata = vec![
+                Stratum::plane(identity(0), 1., 0., 0., plane_offset),
+                Stratum::plane(identity(1), 1., 0., 0., -plane_offset),
+            ];
+            features.curves = vec![make_segment_curve(0, 0, [0, 1], 0., -1., 0., 0., 1., 0.)];
+            features.index = SfccSpatialIndex::new(1.);
+            features.index.insert_curve(&features.curves[0]);
+            let crossings = recovered_crossings_for(
+                &mut HashMap::new(),
+                0,
+                [-1., 0., 0.],
+                [1., 0., 0.],
+                &tree,
+                1.,
+                &mut PointTable::new(),
+                &features,
+                1e-6,
+                false,
+            );
+            assert_eq!(crossings.len(), expected);
+        }
+    }
+
+    #[test]
+    fn near_endpoint_crossing_is_probed_outside_its_root_bracket() {
+        use crate::sfcc::{feature_curves::make_segment_curve, spatial_index::SfccSpatialIndex};
+        use crate::strata::{Stratum, StratumIdentity};
+        // First root is only .00002 from the edge endpoint, ten times closer
+        // than root_tol. The old endpoint/approximate-root midpoint was inside.
+        let tree = leaf_at(Shape::Sphere { r: 0.31998 }, [-0.68, 0., 0.]);
+        let mut features = crate::sfcc::feature_set::compile_native_features(&tree);
+        let identity = |id| StratumIdentity {
+            id,
+            owner_node_id: 0,
+            leaf_index: 0,
+            local_index: id,
+            sign: 1.,
+        };
+        features.strata = vec![
+            Stratum::plane(identity(0), 1., 0., 0., 0.99998),
+            Stratum::plane(identity(1), 1., 0., 0., 0.36002),
+        ];
+        features.curves = vec![make_segment_curve(0, 0, [0, 1], 0., -1., 0., 0., 1., 0.)];
+        features.index = SfccSpatialIndex::new(1.);
+        features.index.insert_curve(&features.curves[0]);
+        let crossings = recovered_crossings_for(
+            &mut HashMap::new(),
+            0,
+            [-1., 0., 0.],
+            [1., 0., 0.],
+            &tree,
+            1.,
+            &mut PointTable::new(),
+            &features,
+            0.0002,
+            false,
+        );
+        assert_eq!(crossings.len(), 2);
+    }
 
     fn triangle_face(negative: bool) -> (CsgNode, SfccFeatureSet, PointTable, FaceRecord, SfccLattice) {
         let polygon = [[-0.4, -0.3], [0.4, -0.3], [0., 0.4]];

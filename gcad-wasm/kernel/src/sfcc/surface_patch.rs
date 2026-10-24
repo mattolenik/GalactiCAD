@@ -61,6 +61,50 @@ pub(crate) fn disk<T: SdfQuery + ?Sized>(
     disk_prepared(points,boundary,tree,carrier,tolerance,chart,&mut Prepared::default())
 }
 
+/// Retriangulate an approximately planar boundary at the original surface
+/// displacement budget. Curved trim chords can leave the carrier's exposed
+/// domain, so this returns geometry with UNKNOWN patch ownership. Unlike disk,
+/// it does not claim that all triangle samples belong to the supporting plane.
+pub(crate) fn planar_boundary_disk<T: SdfQuery + ?Sized>(
+    points: &PointTable,
+    boundary: &[usize],
+    tree: &T,
+    carrier: &Stratum,
+    tolerance: f64,
+) -> Result<Vec<usize>, Rejection> {
+    if carrier.certificate_plane().is_none() {
+        return Err(Rejection::Ownership);
+    }
+    let chart = Chart::from_boundary(points, boundary)?;
+    for &id in boundary {
+        let p = q::pos(points, id);
+        let y = carrier.project(p[0], p[1], p[2]);
+        if !y.iter().all(|v| v.is_finite())
+            || q::norm(q::sub(y, p)) > tolerance * 0.1
+            || !carrier.domain_contains(y, tolerance * 0.01)
+        {
+            return Err(Rejection::Ownership);
+        }
+    }
+    let xy: Vec<_> = boundary
+        .iter()
+        .map(|&id| chart.map(q::pos(points, id)))
+        .collect();
+    let local = patch_triangulate::triangulate(&xy, &[(0..boundary.len()).collect()])?;
+    let mut out = Vec::with_capacity(local.len() * 3);
+    for t in local {
+        let ids = t.map(|i| boundary[i]);
+        let p = ids.map(|id| q::pos(points, id));
+        if !q::valid_orientation(p, chart.normal) {
+            return Err(Rejection::Orientation);
+        }
+        q::deviation(tree, p, tolerance)?;
+        q::deviation(tree, p.map(q::rounded), tolerance)?;
+        out.extend_from_slice(&ids);
+    }
+    Ok(out)
+}
+
 type PreparedGeometry = Result<(Vec<[f64; 2]>, Vec<Vec<[usize; 3]>>), Rejection>;
 #[derive(Default)]
 struct Prepared {

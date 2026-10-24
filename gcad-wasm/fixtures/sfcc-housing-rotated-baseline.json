@@ -1,0 +1,749 @@
+{
+  "baselineCommit": "64399ed",
+  "sourceLog": ".testresults/sdf-meshing/2026-10-24T01-45-13-111Z/provenance/feature-overlap/wasm-gates.log",
+  "sourceSha256": "54964141fea0ed055f5392837c5e524f4a358e1c610f0b11a90857b8b57ad4a5",
+  "cube": {
+    "min": [
+      -32.2,
+      -22.45,
+      -22.2
+    ],
+    "size": 44.9
+  },
+  "rotation": [
+    0,
+    1,
+    0,
+    -1,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "triangles": 127960,
+  "invalidTriangles": 175,
+  "repairedGapSpans": 11,
+  "reconciledPairs": 9,
+  "curve75Issues": [
+    {
+      "curveId": 75,
+      "kind": "disconnected",
+      "range": [
+        0,
+        4
+      ]
+    },
+    {
+      "curveId": 75,
+      "kind": "parameterGap",
+      "range": [
+        1.2887241984695907,
+        2.9762168801535362
+      ]
+    },
+    {
+      "curveId": 75,
+      "kind": "removedEdge",
+      "range": [
+        1.2887241984695907,
+        2
+      ]
+    },
+    {
+      "curveId": 75,
+      "kind": "removedEdge",
+      "range": [
+        2,
+        2.9762168801535362
+      ]
+    }
+  ],
+  "vertsSha256": "208e8e755f81c6949c4a9f8e3e3890b3fdb2dbabc230841e0855b060570ac659",
+  "trisSha256": "d1eb29e66a0efc300809549fc9b6fdedc7e768171b4eb98afd781f3998129fac",
+  "featureChains": {
+    "issues": [
+      {
+        "curveId": 6,
+        "kind": "disconnected",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 7,
+        "kind": "disconnected",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 30,
+        "kind": "disconnected",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 31,
+        "kind": "disconnected",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 71,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          5.671107347018833
+        ]
+      },
+      {
+        "curveId": 75,
+        "kind": "disconnected",
+        "range": [
+          0,
+          4
+        ]
+      },
+      {
+        "curveId": 75,
+        "kind": "parameterGap",
+        "range": [
+          1.2887241984695907,
+          2.9762168801535362
+        ]
+      },
+      {
+        "curveId": 75,
+        "kind": "removedEdge",
+        "range": [
+          1.2887241984695907,
+          2
+        ]
+      },
+      {
+        "curveId": 75,
+        "kind": "removedEdge",
+        "range": [
+          2,
+          2.9762168801535362
+        ]
+      },
+      {
+        "curveId": 78,
+        "kind": "parameterGap",
+        "range": [
+          2.45036376569813,
+          4
+        ]
+      },
+      {
+        "curveId": 78,
+        "kind": "removedEdge",
+        "range": [
+          2.45036376569813,
+          3
+        ]
+      },
+      {
+        "curveId": 78,
+        "kind": "removedEdge",
+        "range": [
+          3,
+          4
+        ]
+      },
+      {
+        "curveId": 79,
+        "kind": "parameterGap",
+        "range": [
+          3.6318695619690358,
+          5
+        ]
+      },
+      {
+        "curveId": 79,
+        "kind": "removedEdge",
+        "range": [
+          3.6318695619690358,
+          4
+        ]
+      },
+      {
+        "curveId": 79,
+        "kind": "removedEdge",
+        "range": [
+          4,
+          5
+        ]
+      },
+      {
+        "curveId": 80,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          0.0894360095937633
+        ]
+      },
+      {
+        "curveId": 80,
+        "kind": "parameterGap",
+        "range": [
+          10.747680165511957,
+          12
+        ]
+      },
+      {
+        "curveId": 80,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          0.0894360095937633
+        ]
+      },
+      {
+        "curveId": 80,
+        "kind": "removedEdge",
+        "range": [
+          10.747680165511957,
+          11
+        ]
+      },
+      {
+        "curveId": 80,
+        "kind": "removedEdge",
+        "range": [
+          11,
+          12
+        ]
+      },
+      {
+        "curveId": 81,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          2.346655812478084
+        ]
+      },
+      {
+        "curveId": 81,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 81,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          1.0038921046844398
+        ]
+      },
+      {
+        "curveId": 82,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          0.7649342724734404
+        ]
+      },
+      {
+        "curveId": 82,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          0.7649342724734404
+        ]
+      },
+      {
+        "curveId": 84,
+        "kind": "disconnected",
+        "range": [
+          0,
+          3
+        ]
+      },
+      {
+        "curveId": 84,
+        "kind": "parameterGap",
+        "range": [
+          0.3175230202111085,
+          0.603106920585354
+        ]
+      },
+      {
+        "curveId": 84,
+        "kind": "parameterGap",
+        "range": [
+          1.2797595731481586,
+          3
+        ]
+      },
+      {
+        "curveId": 84,
+        "kind": "removedEdge",
+        "range": [
+          0.3175230202111085,
+          0.603106920585354
+        ]
+      },
+      {
+        "curveId": 84,
+        "kind": "removedEdge",
+        "range": [
+          1.2797595731481586,
+          2
+        ]
+      },
+      {
+        "curveId": 84,
+        "kind": "removedEdge",
+        "range": [
+          2,
+          3
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "disconnected",
+        "range": [
+          0,
+          4
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "parameterGap",
+        "range": [
+          0.9577105524926556,
+          1.2625149831295077
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "parameterGap",
+        "range": [
+          1.9122346141554525,
+          4
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "removedEdge",
+        "range": [
+          0.9577105524926556,
+          1
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          1.2625149831295077
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "removedEdge",
+        "range": [
+          1.9122346141554525,
+          2
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "removedEdge",
+        "range": [
+          2,
+          3
+        ]
+      },
+      {
+        "curveId": 85,
+        "kind": "removedEdge",
+        "range": [
+          3,
+          4
+        ]
+      },
+      {
+        "curveId": 86,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          1.2249629452851711
+        ]
+      },
+      {
+        "curveId": 86,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 86,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          1.2249629452851711
+        ]
+      },
+      {
+        "curveId": 90,
+        "kind": "parameterGap",
+        "range": [
+          12.732861665456058,
+          13
+        ]
+      },
+      {
+        "curveId": 90,
+        "kind": "removedEdge",
+        "range": [
+          12.732861665456058,
+          13
+        ]
+      },
+      {
+        "curveId": 91,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          2.4026824247754437
+        ]
+      },
+      {
+        "curveId": 91,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 91,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          2
+        ]
+      },
+      {
+        "curveId": 91,
+        "kind": "removedEdge",
+        "range": [
+          2,
+          2.4026824247754437
+        ]
+      },
+      {
+        "curveId": 92,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          3.2062021232253928
+        ]
+      },
+      {
+        "curveId": 92,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 92,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          2
+        ]
+      },
+      {
+        "curveId": 92,
+        "kind": "removedEdge",
+        "range": [
+          2,
+          3
+        ]
+      },
+      {
+        "curveId": 92,
+        "kind": "removedEdge",
+        "range": [
+          3,
+          3.2062021232253928
+        ]
+      },
+      {
+        "curveId": 93,
+        "kind": "parameterGap",
+        "range": [
+          11.48042249093756,
+          12
+        ]
+      },
+      {
+        "curveId": 93,
+        "kind": "removedEdge",
+        "range": [
+          11.48042249093756,
+          12
+        ]
+      },
+      {
+        "curveId": 94,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          1.368130438031301
+        ]
+      },
+      {
+        "curveId": 94,
+        "kind": "parameterGap",
+        "range": [
+          1.891602124174991,
+          5
+        ]
+      },
+      {
+        "curveId": 94,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 94,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          1.368130438031301
+        ]
+      },
+      {
+        "curveId": 94,
+        "kind": "removedEdge",
+        "range": [
+          2.237968361411714,
+          3
+        ]
+      },
+      {
+        "curveId": 94,
+        "kind": "removedEdge",
+        "range": [
+          3,
+          4
+        ]
+      },
+      {
+        "curveId": 94,
+        "kind": "removedEdge",
+        "range": [
+          4,
+          5
+        ]
+      },
+      {
+        "curveId": 95,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          1.5496362343022052
+        ]
+      },
+      {
+        "curveId": 95,
+        "kind": "parameterGap",
+        "range": [
+          2.3582004096146982,
+          4
+        ]
+      },
+      {
+        "curveId": 95,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 95,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          1.5496362343022052
+        ]
+      },
+      {
+        "curveId": 95,
+        "kind": "removedEdge",
+        "range": [
+          2.3582004096146982,
+          3
+        ]
+      },
+      {
+        "curveId": 95,
+        "kind": "removedEdge",
+        "range": [
+          3,
+          4
+        ]
+      },
+      {
+        "curveId": 96,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          1.3523501056234108
+        ]
+      },
+      {
+        "curveId": 96,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "curveId": 96,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          1.3523501056234108
+        ]
+      },
+      {
+        "curveId": 100,
+        "kind": "parameterGap",
+        "range": [
+          0.8018219126390675,
+          4
+        ]
+      },
+      {
+        "curveId": 100,
+        "kind": "removedEdge",
+        "range": [
+          2.619411077828225,
+          3
+        ]
+      },
+      {
+        "curveId": 100,
+        "kind": "removedEdge",
+        "range": [
+          3,
+          4
+        ]
+      },
+      {
+        "curveId": 101,
+        "kind": "parameterGap",
+        "range": [
+          3.631869561969082,
+          5
+        ]
+      },
+      {
+        "curveId": 101,
+        "kind": "removedEdge",
+        "range": [
+          3.631869561969082,
+          4
+        ]
+      },
+      {
+        "curveId": 101,
+        "kind": "removedEdge",
+        "range": [
+          4,
+          5
+        ]
+      },
+      {
+        "curveId": 102,
+        "kind": "parameterGap",
+        "range": [
+          0,
+          0.2195250344319715
+        ]
+      },
+      {
+        "curveId": 102,
+        "kind": "removedEdge",
+        "range": [
+          0,
+          0.2195250344319715
+        ]
+      },
+      {
+        "curveId": 106,
+        "kind": "disconnected",
+        "range": [
+          0,
+          4
+        ]
+      },
+      {
+        "curveId": 106,
+        "kind": "parameterGap",
+        "range": [
+          0.6593311962569414,
+          2.017934140692703
+        ]
+      },
+      {
+        "curveId": 106,
+        "kind": "removedEdge",
+        "range": [
+          0.6593311962569414,
+          1
+        ]
+      },
+      {
+        "curveId": 106,
+        "kind": "removedEdge",
+        "range": [
+          1,
+          2
+        ]
+      },
+      {
+        "curveId": 106,
+        "kind": "removedEdge",
+        "range": [
+          2,
+          2.017934140692703
+        ]
+      }
+    ],
+    "status": "failed",
+    "scope": "compiledCurves",
+    "missingEdges": 50,
+    "missingCurves": 0,
+    "disconnectedCurves": 8,
+    "intervalGaps": 26,
+    "offCurveEdges": 0,
+    "invalidMemberships": 0,
+    "unidentifiedEdges": 0
+  }
+}

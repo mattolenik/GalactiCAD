@@ -235,6 +235,195 @@ impl Stratum {
         }
         false
     }
+    pub(crate) fn same_exposed_domain(&self, other: &Self) -> bool {
+        match (&self.domain, &other.domain) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.same_domain(b))
+            }
+            _ => false,
+        }
+    }
+
+    /// The bounded seam certificate handles a plain two-profile loft operand
+    /// and a two-term chamfer carrier; arbitrary nested carriers stay unsupported.
+    pub(crate) fn loft_cut_operands<'a>(
+        &self,
+        common: &'a Self,
+    ) -> Option<(
+        LoftSideParams,
+        &'a crate::sdf::CsgNode,
+        &'a crate::sdf::Leaf,
+        crate::sdf::enclosure::Interval,
+    )> {
+        if self.sign != 1. || self.field.is_some() || self.compound.is_some() {
+            return None;
+        }
+        let Carrier::LoftSide(p) = self.carrier else {
+            return None;
+        };
+        let compound = common.compound.as_ref()?;
+        if compound.terms.len() != 2 {
+            return None;
+        }
+        for index in 0..2 {
+            let (loft, w) = &compound.terms[index];
+            let (other, v) = &compound.terms[1 - index];
+            if loft.sign != 1.
+                || other.sign != 1.
+                || !w.is_finite()
+                || *w <= 0.
+                || !v.is_finite()
+                || *v <= 0.
+            {
+                continue;
+            }
+            let Some(field) = &loft.field else {
+                continue;
+            };
+            let Some(crate::sdf::CsgNode::Leaf(leaf)) = field.plain_node() else {
+                continue;
+            };
+            let crate::sdf::Shape::Loft { profs, h, .. } = &leaf.shape else {
+                continue;
+            };
+            if leaf.index != self.leaf_index
+                || leaf.sign != 1.
+                || leaf.sim != p.sim
+                || leaf.pos != [p.pos_x, p.pos_y, p.pos_z]
+                || profs.len() != 2
+                || p.seg_y0 != -*h
+                || p.seg_h != 2. * h
+            {
+                continue;
+            }
+            let level = -compound.offset / *v;
+            if !level.is_finite() {
+                continue;
+            }
+            return Some((
+                p,
+                other.field.as_ref()?.plain_node()?,
+                leaf,
+                crate::sdf::enclosure::Interval {
+                    lo: level.next_down(),
+                    hi: level.next_up(),
+                },
+            ));
+        }
+        None
+    }
+    /// Equal local loft equations from the same active endpoint-distance terms.
+    /// Outward-rounded inverse-transform arithmetic rejects ambiguous branches.
+    pub(crate) fn same_loft_field_on_box(&self, other: &Self, lo: [f64; 3], hi: [f64; 3]) -> bool {
+        use crate::sdf::enclosure::Interval;
+        if self.leaf_index != other.leaf_index
+            || self.sign != other.sign
+            || self.compound.is_some()
+            || other.compound.is_some()
+            || self.field.is_some()
+            || other.field.is_some()
+            || !(0..3).all(|k| lo[k].is_finite() && hi[k].is_finite() && lo[k] <= hi[k])
+        {
+            return false;
+        }
+        let (Carrier::LoftSide(a), Carrier::LoftSide(b)) = (self.carrier, other.carrier) else {
+            return false;
+        };
+        if a.sim != b.sim
+            || [a.pos_x, a.pos_y, a.pos_z, a.seg_y0, a.seg_h]
+                != [b.pos_x, b.pos_y, b.pos_z, b.seg_y0, b.seg_h]
+            || !a.seg_h.is_finite()
+            || a.seg_h <= 0.
+            || !a.sim.s.is_finite()
+            || a.sim.s <= 0.
+            || a.sim
+                .r
+                .iter()
+                .chain(&a.sim.t)
+                .chain([a.pos_x, a.pos_y, a.pos_z].iter())
+                .any(|x| !x.is_finite())
+        {
+            return false;
+        }
+        let local = (|| {
+            let mut local = [Interval::point(0.); 2];
+            for (j, axis) in [0, 2].into_iter().enumerate() {
+                for k in 0..3 {
+                    let delta = Interval {
+                        lo: lo[k],
+                        hi: hi[k],
+                    }
+                    .sub(Interval::point(a.sim.t[k]))?;
+                    let scaled = Interval {
+                        lo: (delta.lo / a.sim.s).next_down(),
+                        hi: (delta.hi / a.sim.s).next_up(),
+                    };
+                    local[j] = local[j].add(scaled.mul(a.sim.r[k * 3 + axis])?)?;
+                }
+                local[j] =
+                    local[j].sub(Interval::point(if axis == 0 { a.pos_x } else { a.pos_z }))?;
+            }
+            Some(local)
+        })();
+        let Some(local) = local else {
+            return false;
+        };
+        let equal = |ea: [f64; 6], eb: [f64; 6]| {
+            if ea.iter().chain(&eb).any(|x| !x.is_finite()) {
+                return false;
+            }
+            if ea == eb {
+                return true;
+            }
+            let branch = |e: [f64; 6]| -> Option<([f64; 2], i8)> {
+                let d = [e[2] - e[0], e[3] - e[1]];
+                let length = d[0] * d[0] + d[1] * d[1];
+                if !length.is_finite() || length < 1e-18 {
+                    return None;
+                }
+                let dot = |origin: [f64; 2], direction: [f64; 2]| {
+                    local[0]
+                        .sub(Interval::point(origin[0]))?
+                        .mul(direction[0])?
+                        .add(
+                            local[1]
+                                .sub(Interval::point(origin[1]))?
+                                .mul(direction[1])?,
+                        )
+                };
+                let endpoint = if dot([e[0], e[1]], d)?.hi < 0. {
+                    [e[0], e[1]]
+                } else if dot([e[2], e[3]], d)?.lo > 0. {
+                    [e[2], e[3]]
+                } else {
+                    return None;
+                };
+                let dx = local[0].sub(Interval::point(endpoint[0]))?;
+                let dz = local[1].sub(Interval::point(endpoint[1]))?;
+                if ![dx, dz].iter().any(|x| x.lo > 1e-12 || x.hi < -1e-12) {
+                    return None;
+                }
+                let side = dot([e[0], e[1]], [e[4], e[5]])?;
+                if side.lo > 0. {
+                    Some((endpoint, 1))
+                } else if side.hi < 0. {
+                    Some((endpoint, -1))
+                } else {
+                    None
+                }
+            };
+            matches!((branch(ea),branch(eb)),(Some(x),Some(y)) if x==y)
+        };
+        equal(
+            [a.a_x, a.a_z, a.a_x1, a.a_z1, a.a_nx, a.a_nz],
+            [b.a_x, b.a_z, b.a_x1, b.a_z1, b.a_nx, b.a_nz],
+        ) && equal(
+            [a.b_x, a.b_z, a.b_x1, a.b_z1, a.b_nx, a.b_nz],
+            [b.b_x, b.b_z, b.b_x1, b.b_z1, b.b_nx, b.b_nz],
+        )
+    }
+
     pub(crate) fn certificate_plane(&self)->Option<([f64;3],f64)> {
         // This returns the carrier equation only. Signed occurrence domains are
         // established independently by the coverage certificate.
@@ -885,6 +1074,54 @@ mod tests {
         assert!((st.f(3.0, 10.0, 0.0) - 2.0).abs() < 1e-12); // radial 3 − r 1, y-invariant
         let n = st.normal(3.0, 10.0, 0.0);
         assert!((n[0] - 1.0).abs() < 1e-12 && n[1].abs() < 1e-12 && n[2].abs() < 1e-12);
+    }
+
+    #[test]
+    fn local_loft_equivalence_rejects_voronoi_boundaries_and_endpoint_fallback() {
+        let a = LoftSideParams {
+            sim: Similarity::identity(),
+            pos_x: 0.,
+            pos_y: 0.,
+            pos_z: 0.,
+            seg_y0: -3.,
+            seg_h: 6.,
+            a_x: -10.,
+            a_z: 10.,
+            a_x1: -10.,
+            a_z1: -10.,
+            a_nx: -1.,
+            a_nz: 0.,
+            b_x: -7.62,
+            b_z: 4.4,
+            b_x1: -8.8,
+            b_z1: 0.,
+            b_nx: -0.965869632003452,
+            b_nz: 0.2590286740372895,
+        };
+        let b = LoftSideParams {
+            b_x: -8.8,
+            b_z: 0.,
+            b_x1: -7.62,
+            b_z1: -4.4,
+            b_nz: -a.b_nz,
+            ..a
+        };
+        let sa = Stratum::loft_side(ident(), a);
+        let sb = Stratum::loft_side(ident(), b);
+        assert!(sa.same_loft_field_on_box(&sb, [-9.51, -0.6, 0.16], [-9.49, -0.5, 0.17]));
+        let x = sa.raw_field(-9.5, -0.55, 0.165);
+        let y = sb.raw_field(-9.5, -0.55, 0.165);
+        assert_eq!(x.value, y.value);
+        assert_eq!(x.gradient, y.gradient);
+        assert!(!sa.same_loft_field_on_box(&sb, [-9.51, -0.6, 0.16], [-9.49, -0.5, 0.4]));
+        assert!(!sa.same_loft_field_on_box(&sb, [-8.8 - 1e-14, 0., 0.], [-8.8 - 1e-14, 0., 0.]));
+        assert!(!sa.same_loft_field_on_box(&sb, [f64::NAN, 0., 0.], [0., 0., 0.]));
+        assert!(!sa.same_loft_field_on_box(&sb, [1., 0., 0.], [0., 0., 0.]));
+        let invalid = Stratum::loft_side(ident(), LoftSideParams { seg_h: 0., ..a });
+        assert!(!invalid.same_loft_field_on_box(&invalid, [-10.; 3], [10.; 3]));
+        let mut other = sb.clone();
+        other.leaf_index += 1;
+        assert!(!sa.same_loft_field_on_box(&other, [-9.51, -0.6, 0.16], [-9.49, -0.5, 0.17]));
     }
 
     #[test]

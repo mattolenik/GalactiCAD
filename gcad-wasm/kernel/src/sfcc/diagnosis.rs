@@ -52,6 +52,10 @@ pub enum Event {
         fallback: bool,
         triangles: Vec<[[f64; 3]; 3]>,
     },
+    Assembled {
+        positions: Vec<[f64;3]>,
+        triangles: Vec<[usize;3]>,
+    },
     Round {
         lattice: SfccLattice,
         leaves: usize,
@@ -282,6 +286,65 @@ pub(crate) fn features(
         strata,
         adjacent_strata: curves.iter().map(|c| c.adjacent_strata).collect(),
     });
+}
+
+/// Final working coordinates, before float32 output compaction. Profile only.
+pub(crate) fn assembled(points: &super::point_table::PointTable, tris: &[usize]) {
+    if !payload_available() {
+        return;
+    }
+    push(Event::Assembled {
+        positions: (0..points.count())
+            .map(|i| [points.x(i), points.y(i), points.z(i)])
+            .collect(),
+        triangles: tris.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect(),
+    });
+}
+
+/// Exact local intersection checks against the entire supplied mesh. Selection
+/// identifies obligations, never exempts a contact with unselected geometry.
+pub fn mesh_intersections(
+    positions: &[[f64; 3]],
+    triangles: &[[usize; 3]],
+    selected: &[bool],
+) -> Vec<(usize, usize, bool, bool)> {
+    assert_eq!(selected.len(), triangles.len());
+    let geometry: Vec<_> = triangles.iter().map(|t| t.map(|i| positions[i])).collect();
+    let index = super::mesh_edit::TriangleIndex::new(&geometry);
+    let mut out = Vec::new();
+    for (i, &p) in geometry.iter().enumerate() {
+        if !selected[i] {
+            continue;
+        }
+        for j in index.query(p) {
+            if i == j || (j < i && selected[j]) {
+                continue;
+            }
+            let raw = super::mesh_edit::intersects(p, geometry[j], triangles[i], triangles[j]);
+            let rounded = super::mesh_edit::intersects(
+                p.map(super::triangle_quality::rounded),
+                geometry[j].map(super::triangle_quality::rounded),
+                triangles[i],
+                triangles[j],
+            );
+            if raw || rounded {
+                out.push((i, j, raw, rounded));
+            }
+        }
+    }
+    out
+}
+
+/// Expose the bounded seam gate without running a mesh or changing geometry.
+pub fn loft_seam_gate(
+    features: &super::feature_set::SfccFeatureSet,
+    a: usize,
+    b: usize,
+    lo: [f64; 3],
+    hi: [f64; 3],
+    axis: usize,
+) -> Option<bool> {
+    super::loft_seam::certify(features, a, b, lo, hi).map(|proof| proof.unique_face(axis))
 }
 
 /// Post-capture audit of represented coordinates using exact projected predicates.

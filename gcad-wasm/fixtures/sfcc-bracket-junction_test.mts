@@ -8,6 +8,7 @@ import { load } from "js-yaml"
 import { SceneInfo } from "../../src/scene/scene.mjs"
 import { serializeSceneToBridgeJson } from "../../src/export/sfcc-rs/scene-bridge.mjs"
 import { inspectMesh } from "../../test/acceptance/sdf-meshing/diagnostics.mjs"
+import { saveRepairEvidence } from "./sfcc-repair-evidence.mjs"
 import { witnessesFor } from "../../test/acceptance/sdf-meshing/manifest.mjs"
 import { initSync, export_sfcc, audit_field_samples, sfcc_worker_prepare, sfcc_worker_merge } from "../wasm/pkg/gcad_wasm.js"
 
@@ -21,10 +22,20 @@ function fixture() {
     return { sourceJson, witnesses }
 }
 const cube = [-25.2, -19.2, -25.2, 50.4] as const
-function checkJunction(result: ReturnType<typeof export_sfcc>, sourceJson: string, witnesses: ReturnType<typeof witnessesFor>, t: TestContext) {
+function checkProductionFeatureObligations(result: ReturnType<typeof export_sfcc>) {
+    const chains = JSON.parse(result.stats_json).validation.featureChains
+    for (const [name,limit] of Object.entries({intervalGaps:46,disconnectedCurves:4,missingEdges:7,missingCurves:0,offCurveEdges:0,invalidMemberships:0})) {
+        assert.ok(chains[name] <= limit, `production bracket ${name} regressed: ${chains[name]} > ${limit}`)
+    }
+    assert.deepEqual(chains.issues.filter((i: {curveId:number}) => i.curveId === 63 || i.curveId === 64), [],
+        "concave planar trim triangulation must preserve both complete notch curves")
+}
+function checkJunction(result: ReturnType<typeof export_sfcc>, sourceJson: string, witnesses: ReturnType<typeof witnessesFor>, t: TestContext, parts: Uint8Array[] = []) {
     const stats = JSON.parse(result.stats_json)
     assert.equal(stats.components, 1, "the junction must attach to the bracket, not form a separately capped bubble")
     const audit = inspectMesh(result.verts, result.tris, result.feature_edges, [], witnesses)
+    saveRepairEvidence(t.name, sourceJson, result, parts, audit)
+    assert.equal(audit.defects.length, 0, "the complete bracket must contain no exact invalid float32 triangles")
     for (const witness of audit.pointWitnesses) assert.ok(witness.passed, `${witness.id} misses mesh by ${witness.distance} mm`)
     for (const check of ["edgeIncidence", "vertexLinks", "faceSegments"]) assert.equal(stats.validation[check], "passed", check)
     const verts = result.verts, tris = result.tris, edges = result.feature_edges
@@ -56,7 +67,7 @@ function checkJunction(result: ReturnType<typeof export_sfcc>, sourceJson: strin
     for (let i = 0; i < fields.length; i += 15) maxResidual = Math.max(maxResidual, Math.abs(fields[i]!))
     assert.ok(maxResidual < 0.01, `junction triangle interiors have exporter-field residual ${maxResidual}`)
     assert.equal(audit.defects.filter(d => d.vertices.includes(junction)).length, 0)
-    t.diagnostic(JSON.stringify({ triangleCount: tris.length / 3, cornerDistance: audit.pointWitnesses[0]!.distance,
+    t.diagnostic(JSON.stringify({ components: stats.components, euler: stats.euler, invalidTriangles: audit.defects.length, triangleCount: tris.length / 3, cornerDistance: audit.pointWitnesses[0]!.distance,
         junctionVertexDistance: distance, incidentCurveCount: incident.size, localTriangles, maxExporterFieldResidual: maxResidual,
         validation: stats.validation }))
 }
@@ -64,7 +75,7 @@ function checkJunction(result: ReturnType<typeof export_sfcc>, sourceJson: strin
 test("full bracket retains the dent/rib junction on the production acceptance lattice", t => {
     const { sourceJson, witnesses } = fixture()
     const result = export_sfcc(sourceJson, "{}", ...cube)
-    try { checkJunction(result, sourceJson, witnesses, t) } finally { result.free() }
+    try { checkJunction(result, sourceJson, witnesses, t); checkProductionFeatureObligations(result) } finally { result.free() }
 })
 
 test("the full bracket junction survives a rigid axis rotation", t => {
@@ -94,9 +105,10 @@ test("worker partitions retain the same connected bracket junction when merged i
         }))
     }
     checkRawPartitionNeighborhood(parts, witnesses[0]!.position)
-    const result = sfcc_worker_merge(sourceJson, "{}", ...cube, parts.reverse())
+    const result = sfcc_worker_merge(sourceJson, "{}", ...cube, [...parts].reverse())
     try {
-        checkJunction(result, sourceJson, witnesses, t)
+        checkJunction(result, sourceJson, witnesses, t, parts)
+        checkProductionFeatureObligations(result)
         t.diagnostic(`serialRecovery=${JSON.parse(result.stats_json).serialRecovery}; final recovery is reported, not mistaken for raw partition certification`)
     } finally { result.free() }
 })

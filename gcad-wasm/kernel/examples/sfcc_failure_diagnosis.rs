@@ -83,12 +83,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _=>{},
         }
     }
+    if let Some(record)=trace.records.iter().rev().find(|r|(r.export,r.round)==final_round&&matches!(r.event,Event::Assembled{..})) {
+        if let Event::Assembled{positions,triangles}=&record.event {
+            std::fs::write(output.join("native.working.verts.bin"),positions.iter().flatten().flat_map(|v|v.to_le_bytes()).collect::<Vec<_>>())?;
+            std::fs::write(output.join("native.working.tris.bin"),triangles.iter().flatten().flat_map(|&i|(u32::try_from(i).expect("u32 point")).to_le_bytes()).collect::<Vec<_>>())?;
+        }
+    }
     let geometric_bag=|v:&[f32],tris:&[u32]| {let mut b=BTreeMap::new();for tri in tris.chunks_exact(3){let k=key([position(v,tri[0]),position(v,tri[1]),position(v,tri[2])]);*b.entry(k).or_insert(0usize)+=1;}b};
     let same_geometry=geometric_bag(&source_v,&source_t)==geometric_bag(&result.verts,&result.tris);
     std::fs::write(output.join("native.verts.bin"),result.verts.iter().flat_map(|v|v.to_le_bytes()).collect::<Vec<_>>())?;
     std::fs::write(output.join("native.tris.bin"),result.tris.iter().flat_map(|v|v.to_le_bytes()).collect::<Vec<_>>())?;
+    std::fs::write(output.join("native.feature-edges.bin"),result.feature_edges.iter().flat_map(|e|[e.vertices[0] as f64,e.vertices[1] as f64,e.interval.curve_id as f64,e.interval.start,e.interval.end]).flat_map(|v|v.to_le_bytes()).collect::<Vec<_>>())?;
     let summary=json!({"backend":"native Rust diagnostic; never relabeled as the original WASM run","geometryMatchesSavedUnorientedF32TriangleMultiset":same_geometry,
-        "traceRecords":trace.records.len(),"dropped":trace.dropped,"finalExportRound":final_round,"leaves":result.stats.leaves,"triangles":result.tris.len()/3,
+        "traceRecords":trace.records.len(),"dropped":trace.dropped,"finalExportRound":final_round,"leaves":result.stats.leaves,"triangles":result.tris.len()/3,"components":result.manifold.components,"euler":result.manifold.euler_per_component,
         "validation":serde_json::from_str::<Value>(&result.validation.to_json())?,"finalUnresolvedFirstReasons":reason_counts,
         "finalPreassemblyF64Degenerate":raw64,"finalPreassemblyF32Degenerate":raw32,"savedBadTriangleSourceCandidates":matches,"nativeBadTriangleSourceCandidates":native_matches});
     std::fs::write(output.join("native-diagnosis.json"),serde_json::to_string_pretty(&summary)?)?;
@@ -159,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match &r.event {
                     Event::Decision{cell,reason,split,curve,corner,..} if contains(p,*cell)=>events.push(json!({"round":r.round,"stage":"decision","cell":[cell.0 as i64,cell.1,cell.2,cell.3],"reason":reason,"split":split,"curve":curve,"corner":corner})),
                     Event::Split{cell,balance} if contains(p,*cell)=>events.push(json!({"round":r.round,"stage":"split","cell":[cell.0 as i64,cell.1,cell.2,cell.3],"balance":balance})),
-                    Event::Mesh{cell,kind,fallback,triangles} if contains(p,CellId::from(cell))=>events.push(json!({"round":r.round,"stage":"mesh","cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"kind":kind,"fallback":fallback,"triangles":triangles.len()})),
+                    Event::Mesh{cell,kind,fallback,triangles} if contains(p,CellId::from(cell))=>events.push(json!({"round":r.round,"stage":"mesh","cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"kind":kind,"fallback":fallback,"triangles":triangles.len(),"workingTriangles":triangles})),
                     Event::Unresolved{cell,failed} if contains(p,CellId::from(cell))=>events.push(json!({"round":r.round,"stage":"unresolved","cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"failed":failed})),
                     _=>{},
                 }

@@ -77,6 +77,41 @@ fn parameter_map(
     (lo.min(hi) < b.t_max && lo.max(hi) > b.t_min).then_some((shift, scale))
 }
 
+/// The same source cap restriction gives a common pin identity, without equating
+/// the different interior side carriers. Exact payload equality is required here.
+pub(crate) fn canonical_pin(
+    curve_id: usize,
+    t: f64,
+    p: [f64; 3],
+    features: &SfccFeatureSet,
+) -> (usize, f64) {
+    let source = &features.curves[curve_id];
+    if source.segment_chart().is_none() {
+        return (curve_id, t);
+    }
+    for target in &features.curves[..curve_id] {
+        if let Some((shift, scale)) = parameter_map(source, target, features) {
+            let mapped = shift + scale * t;
+            if mapped >= target.t_min && mapped <= target.t_max && target.point_at(mapped) == p {
+                return (target.id, mapped);
+            }
+        }
+    }
+    (curve_id, t)
+}
+
+pub(crate) fn same_traced_endpoints(source: &FeatureCurve, target: &FeatureCurve) -> bool {
+    source.kind() == super::feature_curves::CurveKind::Traced
+        && target.kind() == source.kind()
+        && !source.closed
+        && !target.closed
+        && source.corner_start >= 0
+        && source.corner_end >= 0
+        && source.corner_start != source.corner_end
+        && ((source.corner_start, source.corner_end) == (target.corner_start, target.corner_end)
+            || (source.corner_start, source.corner_end) == (target.corner_end, target.corner_start))
+}
+
 pub(crate) fn complete(points: &mut PointTable, tris: &mut Vec<usize>, features: &SfccFeatureSet) {
     let mut maps = BTreeMap::<usize, Vec<(usize, f64, f64)>>::new();
     for a in &features.curves {

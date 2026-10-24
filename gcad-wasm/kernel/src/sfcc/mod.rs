@@ -22,6 +22,7 @@ pub mod face_contour;
 pub mod feature_curves;
 pub mod feature_chain;
 mod feature_overlap;
+mod loft_seam;
 pub(crate) mod provenance;
 pub mod feature_set;
 pub mod field_branches;

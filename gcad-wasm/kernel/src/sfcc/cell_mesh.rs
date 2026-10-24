@@ -63,7 +63,8 @@ pub struct CellMeshResult {
     pub corner_cells: usize,
     /// Feature cells that fell back to smooth meshing (kept closed; reported).
     pub feature_cell_fallbacks: usize,
-    /// The fallback cells themselves — candidates for forced re-refinement.
+    /// Fallback retry candidates; retained report-only fillings are counted
+    /// above but do not add a new forced-refinement reason.
     pub fallback_cells: Vec<SfccCell>,
 }
 
@@ -381,6 +382,7 @@ pub fn mesh_cells_subset(
 
         let mut meshed_loops: std::collections::HashSet<usize> = std::collections::HashSet::new();
         let mut feature_graph_failed = false;
+        let mut retained_unresolved = false;
 
         // The depth ceiling can leave several modeled junctions in one cell.
         // Such a cell cannot be represented by a fan from whichever corner the
@@ -406,15 +408,19 @@ pub fn mesh_cells_subset(
                     .any(|&(curve, _)| features.curves[curve].kind() != CurveKind::Segment)
             });
             if corners.len() > 1 || ((cell.degenerate || loops.len() > 1) && distinct_curves.len() > 1) || curved_corner {
-                if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris) {
-                    if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
+                if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris, &mut retained_unresolved) {
+                    if retained_unresolved {
+                        failed_cells.push(*cell);
+                        feature_cell_fallbacks+=1;
+                        super::local_coverage::record_unresolved_filling(cell,points,&tris[coverage_start..]);
+                    } else if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
                     if corners.is_empty() {
                         edge_cells += 1;
                     } else {
                         corner_cells += 1;
                     }
                     #[cfg(feature = "sfcc-profile")]
-                    super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "feature-graph", false);
+                    super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "feature-graph", retained_unresolved);
                     continue;
                 }
                 feature_graph_failed = true;
@@ -504,6 +510,7 @@ pub fn mesh_cells_subset(
                         opts,
                         features,
                         &mut tris,
+                        &mut retained_unresolved,
                     );
                     if did {
                         meshed_loops.insert(idx);
@@ -524,6 +531,8 @@ pub fn mesh_cells_subset(
         if feature_graph_failed {
             feature_cell_fallbacks += 1;
             fallback_cells.push(*cell);
+        } else if retained_unresolved {
+            feature_cell_fallbacks += 1;
         }
 
         for (li, loop_pts) in loops.iter().enumerate() {
@@ -533,8 +542,11 @@ pub fn mesh_cells_subset(
             triangulate_loop(loop_pts, q, points, &cbox, opts, &mut tris);
         }
         #[cfg(feature = "sfcc-profile")]
-        super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "cell-loops", fallback_cells.last().is_some_and(|c| c.level == cell.level && c.key == cell.key));
-        if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
+        super::diagnosis::mesh(cell, points, &tris[diagnostic_start..], "cell-loops", retained_unresolved || fallback_cells.last().is_some_and(|c| c.level == cell.level && c.key == cell.key));
+        if retained_unresolved {
+            failed_cells.push(*cell);
+            super::local_coverage::record_unresolved_filling(cell,points,&tris[coverage_start..]);
+        } else if super::local_coverage::record(&coverage_scope,oct,cell,faces,points,&tris[coverage_start..],opts.features) {failed_cells.push(*cell);}
     }
 
     for failure in &points.coverage_edge_failures {
@@ -788,13 +800,15 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
     opts: &CellMeshOptions,
     features: &SfccFeatureSet,
     out: &mut Vec<usize>,
+    retained_unresolved: &mut bool,
 ) -> bool {
     use std::collections::{BTreeMap, BTreeSet};
     if loops.is_empty() {
         return false;
     }
     let key = |a: usize, b: usize| if a < b { (a, b) } else { (b, a) };
-    let mut edges: BTreeMap<(usize, usize), Option<[usize; 2]>> = BTreeMap::new();
+    let mut edges: BTreeMap<(usize, usize), Option<BTreeSet<usize>>> = BTreeMap::new();
+    let mut shared_arcs: Vec<SharedArc> = Vec::new();
     let mut memberships = Vec::new();
     let mut boundary_forward = BTreeSet::new();
     for boundary in loops {
@@ -848,15 +862,37 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
             let Some(interior) = sample_in_cell_arc(curve, ta, tb, cell_box, points, features, &arc_opts) else {
                 return false;
             };
+            let own_nodes: Vec<_> = std::iter::once(a).chain(interior.points.iter().copied()).chain(std::iter::once(b)).collect();
+            let mut shared = None;
+            for arc in &shared_arcs {
+                if let Some(mapped) = transport_shared_arc(arc, id, &own_nodes, &interior.parameters, points, features, opts.curve_chord_tol) {
+                    shared = Some(mapped);break;
+                }
+            }
+            if let Some((nodes,parameters)) = shared {
+                for (edge,span) in nodes.windows(2).zip(parameters.windows(2)) {
+                    edges.get_mut(&key(edge[0],edge[1])).unwrap().get_or_insert_with(BTreeSet::new).extend(curve.adjacent_strata);
+                    memberships.push((edge[0],edge[1],CurveInterval{curve_id:id,start:span[0],end:span[1]}));
+                }
+                continue;
+            }
+            shared_arcs.push(SharedArc{curve:id,nodes:own_nodes,parameters:interior.parameters.clone()});
             let mut previous = a;
             for (span, next) in
                 interior.parameters.windows(2).zip(interior.points.iter().copied().chain(std::iter::once(b)))
             {
                 let k = key(previous, next);
-                if edges.contains_key(&k) {
-                    return false;
+                if let Some(existing) = edges.get_mut(&k) {
+                    let midpoint=curve.point_at_checked((span[0]+span[1])*0.5);
+                    let supported=midpoint.is_some_and(|p| {
+                        let pad=opts.curve_chord_tol*0.001;
+                        super::loft_seam::certify(features,id,id,p.map(|x|x-pad),p.map(|x|x+pad)).is_some()
+                    });
+                    if existing.is_some() || !supported {return false;}
+                    *existing=Some(curve.adjacent_strata.into_iter().collect());
+                } else {
+                    edges.insert(k, Some(curve.adjacent_strata.into_iter().collect()));
                 }
-                edges.insert(k, Some(curve.adjacent_strata));
                 memberships.push((
                     previous,
                     next,
@@ -917,8 +953,8 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
                 polygon.push(edge.0);
                 forward |= boundary_forward.contains(&edge);
                 backward |= boundary_forward.contains(&(edge.1, edge.0));
-                if let Some(ids) = edges[&key(edge.0, edge.1)] {
-                    let ids: BTreeSet<_> = ids.into_iter().collect();
+                if let Some(ids) = &edges[&key(edge.0, edge.1)] {
+                    let ids = ids.clone();
                     candidates = Some(match candidates {
                         None => ids,
                         // Lifted and native carriers can describe the same patch with
@@ -970,14 +1006,17 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
         }
     }
     if used_boundary != boundary_forward
-        || edges.iter().any(|(edge, ids)| ids.is_some() && used_features.get(edge) != Some(&2))
+        || edges.iter().any(|(edge, ids)| ids.is_some()
+            && !boundary_forward.contains(edge) && !boundary_forward.contains(&(edge.1,edge.0))
+            && used_features.get(edge) != Some(&2))
     {
         return false;
     }
     let mut triangles = Vec::new();
+    let mut unresolved=false;
     for (id, polygon) in patches {
         let start = triangles.len();
-        fan_from_stratum_vertex(&polygon, &features.strata[id], cell_box, tree, points, opts, &mut triangles);
+        if !fan_from_stratum_vertex(&polygon, &features.strata[id], cell_box, tree, points, opts, &mut triangles) {unresolved=true;}
         if loops.len() > 1 {
             for tri in triangles[start..].chunks_exact(3) {
                 let p = [tri[0], tri[1], tri[2]].map(|i| q::pos(points, i));
@@ -1021,6 +1060,7 @@ fn mesh_feature_graph<T: SdfQuery + ?Sized>(
         points.protect_curve_edge(a, b, interval);
     }
     out.extend(triangles);
+    *retained_unresolved|=unresolved;
     true
 }
 
@@ -1079,6 +1119,7 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
     opts: &CellMeshOptions,
     features: &SfccFeatureSet,
     out_tris: &mut Vec<usize>,
+    retained_unresolved: &mut bool,
 ) -> bool {
     let curve = &features.curves[cell.feature_curve as usize];
     let i = match loop_pts.iter().position(|&x| x == pin_a.point_id) {
@@ -1172,15 +1213,139 @@ fn mesh_edge_cell<T: SdfQuery + ?Sized>(
 
     let st1 = if side1_is_a { sa } else { sb };
     let st2 = if side2_is_a { sa } else { sb };
-    fan_from_stratum_vertex(&side1, &st1, cell_box, tree, points, opts, out_tris);
-    fan_from_stratum_vertex(&side2, &st2, cell_box, tree, points, opts, out_tris);
+    // Keep modeled edge constraints in unsupported best-effort output. The
+    // caller marks this cell failed and requests bounded refinement; replacing
+    // these fans with an unconstrained loop would silently flatten the crease.
+    let first=fan_from_stratum_vertex(&side1, &st1, cell_box, tree, points, opts, out_tris);
+    let second=fan_from_stratum_vertex(&side2, &st2, cell_box, tree, points, opts, out_tris);
+    *retained_unresolved|=!first||!second;
     true
+}
+
+struct SharedArc { curve:usize,nodes:Vec<usize>,parameters:Vec<f64> }
+
+/// Keep one physical sampling of a supported seam, with each original chart's
+/// ordered parameters. Chord fidelity remains a sampled obligation, as for the
+/// existing traced-arc sampler; the source restriction checks are independent.
+fn transport_shared_arc(
+    source: &SharedArc,
+    target: usize,
+    target_nodes: &[usize],
+    target_parameters: &[f64],
+    points: &PointTable,
+    features: &SfccFeatureSet,
+    tolerance: f64,
+) -> Option<(Vec<usize>, Vec<f64>)> {
+    let a = &features.curves[source.curve];
+    let b = &features.curves[target];
+    if !super::feature_overlap::same_traced_endpoints(a, b) {
+        return None;
+    }
+    let mut nodes = source.nodes.clone();
+    if nodes.first() == target_nodes.last() && nodes.last() == target_nodes.first() {
+        nodes.reverse();
+    }
+    if nodes.first() != target_nodes.first() || nodes.last() != target_nodes.last() {
+        return None;
+    }
+    let (_, _, ar) = a.traced_carriers()?;
+    let (_, _, br) = b.traced_carriers()?;
+    let numerical = 8. * ar.curve_eps.max(br.curve_eps);
+    if !numerical.is_finite() || numerical <= 0. || numerical > tolerance * 0.01 {
+        return None;
+    }
+    let t0 = *target_parameters.first()?;
+    let t1 = *target_parameters.last()?;
+    let match_point = |curve: &FeatureCurve, p: [f64; 3], range: [f64; 2]| -> Option<f64> {
+        let (t, d) = curve.project(p[0], p[1], p[2]);
+        if !t.is_finite()
+            || !d.is_finite()
+            || d > numerical
+            || t < range[0].min(range[1])
+            || t > range[0].max(range[1])
+        {
+            return None;
+        }
+        let q = curve.point_at_checked(t)?;
+        let lo = std::array::from_fn(|k| p[k].min(q[k]) - numerical);
+        let hi = std::array::from_fn(|k| p[k].max(q[k]) + numerical);
+        super::loft_seam::certify(features, source.curve, target, lo, hi)?;
+        if curve
+            .adjacent_strata
+            .iter()
+            .any(|&id| !features.strata[id].domain_contains(p, numerical))
+        {
+            return None;
+        }
+        Some(t)
+    };
+    let mut parameters = vec![t0];
+    for &node in nodes.iter().skip(1).take(nodes.len() - 2) {
+        parameters.push(match_point(b, q::pos(points, node), [t0, t1])?);
+    }
+    parameters.push(t1);
+    if parameters
+        .windows(2)
+        .any(|p| (p[1] - p[0]) * (t1 - t0) <= 0.)
+    {
+        return None;
+    }
+    let distance = |p: [f64; 3]| {
+        nodes
+            .windows(2)
+            .map(|v| {
+                let a = q::pos(points, v[0]);
+                let d = q::sub(q::pos(points, v[1]), a);
+                let len = q::dot(d, d);
+                let u = if len > 0. {
+                    (q::dot(q::sub(p, a), d) / len).clamp(0., 1.)
+                } else {
+                    0.
+                };
+                q::norm(q::sub(p, std::array::from_fn(|k| a[k] + u * d[k])))
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    let range = [source.parameters[0], *source.parameters.last()?];
+    for span in target_parameters.windows(2) {
+        for u in [0.25, 0.5, 0.75] {
+            let p = b.point_at_checked(span[0] + u * (span[1] - span[0]))?;
+            match_point(a, p, range)?;
+            if distance(p) > tolerance * 0.5 {
+                return None;
+            }
+        }
+    }
+    for &node in target_nodes.iter().skip(1).take(target_nodes.len() - 2) {
+        let p = q::pos(points, node);
+        match_point(a, p, range)?;
+        if distance(p) > tolerance * 0.5 {
+            return None;
+        }
+    }
+    Some((nodes, parameters))
 }
 
 struct SampledArc {
     points: Vec<usize>,
     /// Includes both endpoints and retains the chosen unwrapped arc.
     parameters: Vec<f64>,
+}
+
+/// Remove only redundant interior samples of one ordered curve. Both endpoint
+/// parameters remain fixed; an entirely unrepresentable open span is rejected.
+fn coalesce_arc_samples(samples: &mut Vec<(f64, [f64; 3])>) -> bool {
+    let mut i = 1;
+    while i + 1 < samples.len() {
+        if q::rounded(samples[i].1) == q::rounded(samples[i - 1].1)
+            || q::rounded(samples[i].1) == q::rounded(samples[i + 1].1)
+        {
+            samples.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+    samples.len() > 2 || q::rounded(samples[0].1) != q::rounded(samples[1].1)
 }
 
 /// Interior polyline points along the curve between two parameters, choosing the
@@ -1320,6 +1485,25 @@ fn sample_in_cell_arc(
             }
         }
     }
+    let original_samples = samples.len();
+    if !coalesce_arc_samples(&mut samples) { return None; }
+    if samples.len() != original_samples {
+        // Recheck the combined traced intervals at the original chord budget.
+        // A circle would need a new analytic sagitta allocation, so reject that
+        // unsupported quantization case instead of borrowing a larger tolerance.
+        if curve.kind() != CurveKind::Traced { return None; }
+        for pair in samples.windows(2) {
+            let [(ta,a),(tb,b)] = [pair[0],pair[1]];
+            for u in [0.25,0.5,0.75] {
+                let Some(p)=curve.point_at_checked(ta+u*(tb-ta)) else {
+                    crate::sfcc::validation::curve_projection_failed();return None;
+                };
+                let chord=std::array::from_fn(|k|a[k]*(1.-u)+b[k]*u);
+                if !live(p) || !in_box(cell_box,p[0],p[1],p[2],margin)
+                    || q::norm(q::sub(p,chord)) > opts.curve_chord_tol*0.5 { return None; }
+            }
+        }
+    }
     let sa = &features.strata[curve.adjacent_strata[0]];
     let sb = &features.strata[curve.adjacent_strata[1]];
     let mut ids: Vec<usize> = Vec::new();
@@ -1354,15 +1538,24 @@ fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
     points: &mut PointTable,
     opts: &CellMeshOptions,
     out_tris: &mut Vec<usize>,
-) {
+) -> bool {
     if opts.quality_triangulation && super::surface_patch::supports_local_edits(stratum) {
-        let candidate = super::surface_patch::disk_strict_or_coarse(points, boundary, tree, Some(stratum), opts.curve_chord_tol);
+        let candidate = super::surface_patch::disk_strict_or_coarse(
+            points,
+            boundary,
+            tree,
+            Some(stratum),
+            opts.curve_chord_tol,
+        );
         if let Ok(candidate) = candidate {
-            for t in candidate.chunks_exact(3) { points.set_patch([t[0], t[1], t[2]], stratum.id); }
+            for t in candidate.chunks_exact(3) {
+                points.set_patch([t[0], t[1], t[2]], stratum.id);
+            }
             out_tris.extend(candidate);
-            return;
+            return true;
         }
     }
+    let start = out_tris.len();
     let m = boundary.len();
     let mut cx = 0.0;
     let mut cy = 0.0;
@@ -1387,24 +1580,270 @@ fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
         let gl = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
         wrong_patch = gl > 1e-12 && (g[0] * n[0] + g[1] * n[1] + g[2] * n[2]).abs() / gl < 0.8;
     }
-    if !in_box(cell_box, px, py, pz, margin) || wrong_patch || tree.f([px, py, pz]).abs() > opts.surface_tol {
+    if !in_box(cell_box, px, py, pz, margin)
+        || wrong_patch
+        || tree.f([px, py, pz]).abs() > opts.surface_tol
+    {
         let kb = best_fan_apex(points, boundary);
         for k in 1..m - 1 {
-            out_tris.extend_from_slice(&[boundary[kb], boundary[(kb + k) % m], boundary[(kb + k + 1) % m]]);
+            out_tris.extend_from_slice(&[
+                boundary[kb],
+                boundary[(kb + k) % m],
+                boundary[(kb + k + 1) % m],
+            ]);
         }
-        return;
+        return repair_planar_fan(
+            points,
+            boundary,
+            tree,
+            stratum,
+            opts.surface_tol,
+            out_tris,
+            start,
+        );
     }
     let n = stratum.normal(px, py, pz);
     let c = points.add(px, py, pz, n[0], n[1], n[2]);
     for k in 0..m {
         out_tris.extend_from_slice(&[c, boundary[k], boundary[(k + 1) % m]]);
     }
+    repair_planar_fan(
+        points,
+        boundary,
+        tree,
+        stratum,
+        opts.surface_tol,
+        out_tris,
+        start,
+    )
+}
+
+/// A projected average need not see every edge of a concave planar disk.
+/// Only the free interior fan point is discarded; all model corners and feature
+/// segments are immutable polygon boundary constraints of the strict fallback.
+fn repair_planar_fan<T: SdfQuery + ?Sized>(
+    points: &mut PointTable,
+    boundary: &[usize],
+    tree: &T,
+    stratum: &Stratum,
+    tolerance: f64,
+    out: &mut Vec<usize>,
+    start: usize,
+) -> bool {
+    if stratum.certificate_plane().is_none() {
+        return true;
+    }
+    let embedded = |triangles: &[usize], points: &PointTable| {
+        let mut index = super::mesh_edit::GrowingIndex::new();
+        for t in triangles.chunks_exact(3) {
+            let ids = [t[0], t[1], t[2]];
+            let p = ids.map(|i| q::pos(points, i));
+            if index.conflicts(ids, p) {
+                return false;
+            }
+            index.extend([(ids, p)]);
+        }
+        true
+    };
+    // Boundary winding comes from shared face consumption. The selected
+    // carrier can have the opposite supporting orientation at a CSG tie.
+    let Ok(chart) = super::surface_patch::Chart::from_boundary(points, boundary) else {
+        return false;
+    };
+    let normal = chart.normal;
+    if out[start..]
+        .chunks_exact(3)
+        .all(|t| q::valid_orientation([t[0], t[1], t[2]].map(|i| q::pos(points, i)), normal))
+        && embedded(&out[start..], points)
+    {
+        return true;
+    }
+    let Ok(candidate)=super::surface_patch::planar_boundary_disk(points, boundary, tree, stratum, tolerance) else {return false;};
+    let key = |a: usize, b: usize| (a.min(b), a.max(b));
+    let edges: std::collections::BTreeSet<_> = candidate
+        .chunks_exact(3)
+        .flat_map(|t| (0..3).map(move |k| key(t[k], t[(k + 1) % 3])))
+        .collect();
+    if !(0..boundary.len())
+        .all(|k| edges.contains(&key(boundary[k], boundary[(k + 1) % boundary.len()])))
+        || !embedded(&candidate, points)
+    {
+        return false;
+    }
+    out.truncate(start);
+    // Curved trim chords need not lie in the exposed planar domain. The
+    // displacement checks accept geometry, but do not assign carrier ownership.
+    out.extend(candidate);
+    true
 }
 
 #[cfg(test)]
 mod reliability_tests {
     use super::*;
     use crate::sfcc::feature_curves::{make_circle_curve, make_traced_curve, TracedRefine};
+    fn planar_fixture(polygon: &[[f64; 2]]) -> (CsgNode, Stratum, PointTable, Vec<usize>) {
+        let tree = crate::sdf::leaf_at(
+            crate::sdf::Shape::Extrude {
+                verts: polygon.iter().flatten().copied().collect(),
+                wind: crate::primitives::polygon2d::winding_sign(polygon),
+                h: 1.,
+                twist_rad: 0.,
+            },
+            [0.; 3],
+        );
+        let carrier = Stratum::plane(
+            crate::strata::StratumIdentity {
+                id: 0,
+                owner_node_id: 0,
+                leaf_index: 0,
+                local_index: 0,
+                sign: 1.,
+            },
+            0.,
+            1.,
+            0.,
+            -1.,
+        );
+        let mut points = PointTable::new();
+        for (i, &[x, z]) in polygon.iter().enumerate() {
+            points.get_or_create_str(&format!("corner:{i}"), || [x, 1., z, 0., 1., 0.]);
+        }
+        let boundary: Vec<_> = (0..polygon.len()).collect();
+        for i in 0..polygon.len() {
+            points.protect_curve_edge(
+                i,
+                (i + 1) % polygon.len(),
+                CurveInterval {
+                    curve_id: i,
+                    start: 0.,
+                    end: 1.,
+                },
+            );
+        }
+        (tree, carrier, points, boundary)
+    }
+    fn assert_planar_constraints(points: &PointTable, boundary: &[usize], triangles: &[usize]) {
+        let ids: Vec<_> = triangles
+            .chunks_exact(3)
+            .map(|t| [t[0], t[1], t[2]])
+            .collect();
+        for (i, &t) in ids.iter().enumerate() {
+            let p = t.map(|v| q::pos(points, v));
+            assert!(q::valid_orientation(p, [0., 1., 0.]));
+            for &other in &ids[..i] {
+                assert!(!super::super::mesh_edit::intersects_both(
+                    p,
+                    other.map(|v| q::pos(points, v)),
+                    t,
+                    other
+                ));
+            }
+        }
+        let edges: std::collections::BTreeSet<_> = ids
+            .iter()
+            .flat_map(|t| (0..3).map(move |k| (t[k].min(t[(k + 1) % 3]), t[k].max(t[(k + 1) % 3]))))
+            .collect();
+        for (i, &a) in boundary.iter().enumerate() {
+            let b = boundary[(i + 1) % boundary.len()];
+            assert!(edges.contains(&(a.min(b), a.max(b))));
+            assert_eq!(
+                points.curve_intervals(a, b),
+                vec![CurveInterval {
+                    curve_id: i,
+                    start: 0.,
+                    end: 1.
+                }]
+            );
+        }
+    }
+    #[test]
+    fn concave_planar_projection_fan_keeps_every_corner_and_boundary_segment() {
+        let polygon = [
+            [0., 0.],
+            [0., 3.],
+            [1., 3.],
+            [1., 1.],
+            [3., 1.],
+            [3., 0.],
+            [2.5, 0.],
+            [2., 0.],
+            [1.5, 0.],
+            [1., 0.],
+        ];
+        let (tree, carrier, mut points, boundary) = planar_fixture(&polygon);
+        let opts = CellMeshOptions {
+            surface_tol: 0.01,
+            interior_vertex_mode: InteriorVertexMode::Project,
+            quality_triangulation: false,
+            project_max_iters: 16,
+            curve_chord_tol: 0.02,
+            max_polyline_points_per_cell: 64,
+            features: None,
+        };
+        let mut triangles = vec![];
+        assert!(fan_from_stratum_vertex(
+            &boundary,
+            &carrier,
+            &[-1., -1., -1., 4., 4., 4.],
+            &tree,
+            &mut points,
+            &opts,
+            &mut triangles
+        ));
+        assert_eq!(triangles.len() / 3, boundary.len() - 2);
+        assert_planar_constraints(&points, &boundary, &triangles);
+    }
+    #[test]
+    fn planar_collinear_fan_is_retriangulated_without_erasing_its_feature_vertex() {
+        let (tree, carrier, mut points, boundary) =
+            planar_fixture(&[[0., 0.], [0., 1.], [0., 2.], [2., 2.], [2., 0.]]);
+        let mut triangles = vec![0, 1, 2, 0, 2, 3, 0, 3, 4];
+        assert!(repair_planar_fan(
+            &mut points,
+            &boundary,
+            &tree,
+            &carrier,
+            0.01,
+            &mut triangles,
+            0
+        ));
+        assert_planar_constraints(&points, &boundary, &triangles);
+        let original = vec![0, 1, 2];
+        let mut unsupported = original.clone();
+        assert!(!repair_planar_fan(
+            &mut points,
+            &[0, 1, 2],
+            &tree,
+            &carrier,
+            0.01,
+            &mut unsupported,
+            0
+        ));
+        assert_eq!(unsupported, original);
+    }
+
+    #[test]
+    fn quantized_arc_keeps_end_parameters_and_tiny_representable_turns() {
+        let mut samples = vec![
+            (0., [1., 0., 0.]),
+            (1., [1. + f64::EPSILON, 0., 0.]),
+            (2., [2., 0., 0.]),
+        ];
+        assert!(coalesce_arc_samples(&mut samples));
+        assert_eq!(samples, vec![(0., [1., 0., 0.]), (2., [2., 0., 0.])]);
+        let mut tiny = vec![
+            (0., [1., 0., 0.]),
+            (1., [1., f32::from_bits(1) as f64, 0.]),
+            (2., [2., 0., 0.]),
+        ];
+        assert!(coalesce_arc_samples(&mut tiny));
+        assert_eq!(tiny.len(), 3);
+        let mut collapsed = vec![(0., [1., 0., 0.]), (1., [1. + f64::EPSILON, 0., 0.])];
+        assert!(!coalesce_arc_samples(&mut collapsed));
+        assert_eq!(collapsed.len(), 2);
+    }
+
+
     #[test]
     fn interior_face_cycle_is_shared_oppositely_across_coarse_fine_cells() {
         let lat = crate::math::grid::make_lattice(2, 0., 0., 0., 4.);
@@ -1447,6 +1886,112 @@ mod reliability_tests {
     }
 
     #[test]
+    fn unsupported_constrained_fan_retains_crease_and_propagates_unresolved_cell() {
+        use super::super::face_contour::FaceSegment;
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Cuboid { half: [1.; 3] }, [0.; 3]);
+        let features = crate::sfcc::feature_set::compile_native_features(&tree);
+        let curve = features
+            .curves
+            .iter()
+            .find(|c| {
+                c.axis_plane_crossings(0, -0.5)
+                    .iter()
+                    .any(|p| p.y == 1. && p.z == 1.)
+            })
+            .unwrap();
+        let lat = crate::math::grid::make_lattice(1, -0.5, 0.5, 0.5, 2.);
+        let cell = SfccCell {
+            level: 1,
+            ix: 0,
+            iy: 0,
+            iz: 0,
+            key: 0,
+            degenerate: false,
+            feature_curve: curve.id as i64,
+            feature_corner: -1,
+        };
+        let oct = crate::sfcc::octree::rebuild_octree_from_leaves(&tree, &lat, vec![cell]);
+        let mut points = PointTable::new();
+        // Two distinct shared-face pin identities round to the same position.
+        // The old constrained fan is malformed; dropping its real box edge is
+        // not an acceptable substitute for reporting that unresolved filling.
+        for (p, n) in [
+            ([-0.5, 1., 1.], [0., 1., 1.]),
+            ([-0.5, 1., 1.], [0., 1., 1.]),
+            ([-0.5, 1., 0.5], [0., 1., 0.]),
+            ([0.5, 1., 0.5], [0., 1., 0.]),
+            ([0.5, 1., 1.], [0., 1., 1.]),
+            ([0.5, 0.5, 1.], [0., 0., 1.]),
+            ([-0.5, 0.5, 1.], [0., 0., 1.]),
+        ] {
+            points.add(p[0], p[1], p[2], n[0], n[1], n[2]);
+        }
+        let mut faces: [HashMap<i64, FaceRecord>; 3] = std::array::from_fn(|_| HashMap::new());
+        for (axis, g, edges, pin) in [
+            (0, [0, 0, 0], vec![(0, 1), (1, 2), (6, 0)], Some(0)),
+            (0, [1, 0, 0], vec![(4, 3), (5, 4)], Some(4)),
+            (2, [0, 0, 0], vec![(2, 3)], None),
+            (1, [0, 0, 0], vec![(5, 6)], None),
+        ] {
+            let key = pack_point(&lat, g[0], g[1], g[2]);
+            let count = edges.len();
+            let pins = pin
+                .map(|id| {
+                    let p = q::pos(&points, id);
+                    let (t, _) = curve.project(p[0], p[1], p[2]);
+                    FacePin {
+                        point_id: id,
+                        curve_id: curve.id,
+                        t,
+                    }
+                })
+                .into_iter()
+                .collect();
+            faces[axis].insert(
+                key,
+                FaceRecord {
+                    axis,
+                    key,
+                    len: 1,
+                    segments: edges
+                        .into_iter()
+                        .map(|(a, b)| FaceSegment { a, b })
+                        .collect(),
+                    pins,
+                    interior_cycle: false,
+                    consumed_fwd: vec![0; count],
+                    consumed_rev: vec![0; count],
+                },
+            );
+        }
+        let opts = CellMeshOptions {
+            surface_tol: 0.01,
+            interior_vertex_mode: InteriorVertexMode::Project,
+            quality_triangulation: false,
+            project_max_iters: 16,
+            curve_chord_tol: 0.02,
+            max_polyline_points_per_cell: 16,
+            features: Some(&features),
+        };
+        let result = mesh_cells_subset(&oct, &mut faces, &tree, &mut points, &opts, &[cell]);
+        assert!(!result.tris.is_empty());
+        assert_eq!(result.failed_cells.len(), 1);
+        assert!(result.fallback_cells.is_empty());
+        assert_eq!(result.feature_cell_fallbacks, 1);
+        assert!(points.edge_is_protected(0, 4));
+        assert!(result
+            .tris
+            .chunks_exact(3)
+            .any(|t| t.contains(&0) && t.contains(&4)));
+        let report = super::super::local_coverage::report(&tree, &points);
+        assert_eq!(report.certified_cells, 0);
+        assert!(report
+            .unresolved
+            .iter()
+            .any(|(_, reason)| reason == "constrained_fan_unresolved"));
+    }
+
+    #[test]
     fn modeled_feature_paths_connect_two_boundary_loops_without_caps() {
         let polygon = [[-0.4, -0.3], [0.4, -0.3], [0., 0.4]];
         let tree = crate::sdf::leaf_at(crate::sdf::Shape::Extrude {
@@ -1472,7 +2017,7 @@ mod reliability_tests {
             max_polyline_points_per_cell: 16, features: Some(&features) };
         let mut triangles = Vec::new();
         assert!(mesh_feature_graph(&loops, &pins, &[], &[-1., -0.5, -1., 1., 0.5, 1.],
-            &tree, &mut points, &opts, &features, &mut triangles));
+            &tree, &mut points, &opts, &features, &mut triangles, &mut false));
         assert!(!triangles.is_empty());
         for tri in triangles.chunks_exact(3) {
             // A cap would contain only one Y coordinate and lie inside the solid.
@@ -1481,7 +2026,7 @@ mod reliability_tests {
         let mut disconnected_pins = pins.clone();
         disconnected_pins.retain(|p| p.point_id < 3);
         assert!(!mesh_feature_graph(&loops, &disconnected_pins, &[], &[-1., -0.5, -1., 1., 0.5, 1.],
-            &tree, &mut points, &opts, &features, &mut Vec::new()));
+            &tree, &mut points, &opts, &features, &mut Vec::new(), &mut false));
     }
     use crate::sfcc::spatial_index::SfccSpatialIndex;
     use crate::sfcc::validation::{numerical_failures, NumericalGuard};

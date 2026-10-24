@@ -283,10 +283,14 @@ comparison also proves a new local working-mesh crossing, blocking integration.
 The unchanged endpoint observer identifies actual shared-edge alias admission
 failures. A subsequent twelve-phase capture reproduces all candidate buffers and
 localizes the new crossing to legacy surface refinement, with clean local
-predecessors in both coordinate formats. Next, competing repairs must guard that
-first refinement pass; source preservation and the residual conversion/alias
-families remain open. No E4 production repair has been integrated; E5–E6 remain
-pending in order.
+predecessors in both coordinate formats. The two-guarded-pass replacement passes
+focused controls but its full-knob run times out at 180 seconds without output
+buffers. A bounded profile also times out: rebuilding is material, but embedding checks
+dominate the measured later work. The equivalent forest index passes focused
+controls; full-model execution and repeated-sign reuse remain candidate steps
+without weakening geometry guards. Source
+preservation and the residual conversion/alias families remain open. No E4
+production repair has been integrated; E5–E6 remain pending in order.
 
 ### Baseline and non-negotiable obligations
 

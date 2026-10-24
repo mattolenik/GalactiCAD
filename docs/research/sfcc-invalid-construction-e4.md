@@ -647,6 +647,122 @@ and [successful exact phase classification](../../.testresults/sfcc-critical-rep
 retain both the causal phase evidence and its limits. No geometry repair has yet
 been integrated from this experiment.
 
+### Guarded-prefix candidate: controls pass, full execution times out
+
+The next isolated runtime candidate removes the unchecked legacy routine. It
+uses the existing guarded edge-star refiner first at feature tolerance, then at
+the minimum surface/feature tolerance when needed. Both stages share the cap
+computed from the original input; the eight-plus-eight sweep ceilings, no-blend
+bypass and guard/projection bodies remain unchanged. Final sampled failures are
+counted at the minimum tolerance, including cancellation and budget exhaustion.
+
+All twelve refinement tests passed, including eight new actual lifecycle and
+metadata controls. Five focused surface-budget tests also passed. A fresh
+feature-only probe reproduced the entire frozen structural feature receipt
+byte-for-byte. This verifies that receipt, not a separately measured complete
+mesh/PointTable state at refinement entry. The latter remains an unchanged-code
+premise for this routing-only change.
+
+The full-knob falsifier nevertheless timed out at 180.016 seconds before saving
+any mesh buffers. Its geometry, fidelity and intersection outcome are unknown.
+An existing full-housing export embedded in the surface-budget test group also
+hit that group's 60-second watchdog; it remains incomplete. Separating the five
+short controls did not convert the full-housing timeout into a pass. No timeout,
+solver tolerance or geometry budget was raised, and this candidate is not
+accepted or integrated.
+
+Before execution, independent review also corrected an unjustified positive
+gate: the tiny cube around the bad crossing is not a proved source-surface
+region. With true SDF `f=z`, an erroneous crossing centered at z=0.005 mm can lie
+inside that cube while a perfect repair on z=0 misses it and improves fidelity
+within the 0.01 mm budget. The fixed cube remains a negative contact witness.
+No-loss obligations instead concern the complete affected patch, its boundary,
+corners, physical feature paths and own-chart interval unions. Historical owner
+labels alone are not new domain certificates.
+
+At this freeze, an actual-route test against previously accepted children in the
+same sweep was still unexecuted; helper-level tests were not relabeled as that
+test. The later isolated index validation below executes that control. The
+complete source-preservation ledger, E2/E3 collateral checks and remaining
+conversion/alias families stay open.
+
+[Frozen runtime patch and handoff](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round6-guarded-prefix-job/handoff.md),
+[focused refinement execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round6-guarded-prefix-job/focused-execution.json),
+[separated surface-budget controls](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round6-guarded-prefix-job/surface-budget-focused-execution.json),
+[feature receipt identity](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round6-guarded-prefix-job/feature-identity.json),
+[full-housing test timeout](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round6-guarded-prefix-job/surface-budget-execution.json),
+and [full-knob timeout](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round6-guarded-prefix-job/execution.json)
+retain the results without inferred output counts.
+
+The next cost investigation distinguishes field/projection work from collision
+index construction and queries. One source-level mechanism is already clear:
+`GrowingIndex` rebuilds its entire accepted-triangle BVH after each 256 appends.
+For N triangles arriving in full batches of B=256, rebuilding prefixes submits
+exactly `N(N/B+1)/2` triangle records, before sorting costs. The recursively
+sorting BVH builder has an `O(n log² n)` worst-case build bound. Bounding the
+unindexed tail therefore does not eliminate quadratic cumulative rebuild work.
+This is a structural cost defect, not yet proof that it caused the timeout.
+The proposed alternatives must preserve every working/rounded collision check;
+profiling and equivalent indexing are being compared without weakening guards.
+
+The isolated indexing candidate keeps the append-only triangle records and
+existing flush boundary, but replaces repeated full-prefix rebuilds with a
+binary-carry forest of immutable BVHs. Local leaf offsets are mapped back to
+global records; topological vertex IDs and working/rounded predicates remain
+unchanged. Each item participates in logarithmically many carry builds, giving
+`O(N log F)` construction-input records for F flushes. This is not a logarithmic
+query-time theorem: overlapping bounds can still require linear traversal.
+
+Four frozen index controls passed against the old implementation/exhaustive
+queries, including carry/tail boundaries, irregular batches, duplicate identities,
+rounded-only contacts and malformed-input compatibility. The actual same-sweep
+control also passed: two initially disjoint sphere-constrained edge stars propose
+bit-identical new points with different IDs; the first complete star commits,
+and the second is rejected against its newly accepted children. A real
+cancellation hook then stops the next sweep. This exercises the short unindexed
+tail; indexed-run equivalence is tested separately. All thirteen refinement tests
+pass with the isolated forest. No full optimized model has yet completed, and
+the index remains unintegrated.
+
+[Index source review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-forest-controls/decision.md),
+[four equivalence/work controls](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-forest-controls/forest-execution.json),
+[actual same-sweep execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-forest-controls/actual-sweep-execution.json),
+and [refinement controls with the forest](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-forest-controls/refinement-execution.json)
+establish these bounded results, without claiming a measured speedup or resolved
+full-model timeout.
+
+### Original-index cost observation
+
+The reviewed observation-only profiler passed three lifecycle/accounting controls
+and repeated the unchanged original-knob guarded-prefix export under the same
+180-second watchdog. It timed out at 180.025 seconds without mesh buffers. The
+last complete row, at 179.158 seconds in the tighter pass's fifth sweep, records
+103.426 seconds in embedding checks, 22.981 seconds in growing-index rebuilding,
+27.834 seconds in all index builds, 4.353 seconds in index queries, 5.399 seconds
+in queue/field/order work and 0.444 seconds in split projection. These are
+**inclusive buckets**: growing rebuilds contain index builds, and embedding
+contains index queries. They must not be summed as disjoint phase durations.
+
+The stream retained 2,272 complete rows without hitting its row/byte cap. It
+records 61,828,794 exact fallbacks and 560,514,267 exact-zero shortcuts, with zero
+limb heap allocations and maximum five limbs. Existing counters do not divide
+those predicates between retained triangles and the appended-index tail, or
+between 2D and 3D predicates. Rebuilding is material, but the claim that it alone
+dominates the timeout is contradicted by this run. Per-call reuse of repeated
+coplanar orientation signs is a further candidate, not yet an executed repair.
+
+The owned child consumed 145.875 user CPU seconds and 2.146 system CPU seconds;
+host load rose from 31.57 to 45.12. This is a bounded cost observation under
+contention, not a controlled speed comparison. No complete same-routing mesh
+exists to compare with a prospective forest output. The missing output provides
+no geometry result and does not close the source or conversion failures.
+
+[Profiler review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-guard-cost-profile-job/consensus.md),
+[frozen source/input manifest](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-guard-cost-profile-job/manifest.json),
+[execution and resource receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-guard-cost-profile-job/execution.json),
+and [retained partial stream](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-guard-cost-profile-job/export.log)
+preserve the result.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

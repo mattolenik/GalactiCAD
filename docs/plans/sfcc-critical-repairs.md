@@ -276,10 +276,15 @@ unchanged source-component capture exposes missing endpoint intervals, lost
 physical feature edges and incomplete later-face ancestry. A bounded proof at
 both endpoint neighborhoods then disproves independence of an ancestor-field /
 descendant-surface pair: its common zero set contains an open surface patch.
-The next competing implementations address source-aware pair eligibility and
-trace the actual endpoint graph abort, preserving legitimate external cuts and
-inherited seams. No E4 production repair has been integrated; E5–E6 remain pending
-in order.
+The restricted source-pair candidate passes its focused controls and a full
+native construction discriminator removes all 266 working-f64 degenerate faces,
+but leaves 1,876 emitted-f32 degenerate faces. An exact fixed-neighborhood
+comparison also proves a new local working-mesh crossing, blocking integration.
+The unchanged endpoint observer identifies actual shared-edge alias admission
+failures. Next, bounded assembly-phase snapshots locate the crossing's first
+appearance before another geometry repair; source preservation and the residual
+conversion/alias families remain open. No E4 production repair has been
+integrated; E5–E6 remain pending in order.
 
 ### Baseline and non-negotiable obligations
 

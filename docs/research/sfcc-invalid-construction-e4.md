@@ -386,7 +386,7 @@ remain intact. No new ownership or coverage certificate is assigned.
 and [actual ownership/coverage capture](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round2-owner-coverage-provenance/owner-coverage-provenance.json)
 retain the results and their limits. No E4 runtime change has been integrated.
 
-## Current next step: source-complete closure measurement
+## Source-complete closure experiment
 
 The [independent round-two consensus](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round2-consensus/decision.md)
 accepts the experiment as a correct refusal and rejects its geometry. The next
@@ -536,6 +536,76 @@ handling or an embedded graph.
 [unchanged endpoint execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-endpoint-graph-job/execution.json),
 and [actual graph-refusal provenance](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-endpoint-graph-aborts/endpoint-graph-provenance.json)
 keep enumeration changes separate from demonstrated construction failures.
+
+### Full structural-candidate construction: substantial change, still rejected
+
+The fourth reviewer selected one frozen full native export as a negative
+construction discriminator before investing in a complete feature-preservation
+ledger. It reused the already executed diagnostic helper, original source,
+settings and cube. The build passed in 35.776 seconds and the export completed
+in 57.774 seconds with all five buffers and zero dropped trace records. These
+single observations are not a performance comparison.
+
+| Native geometry measure | Original | Structural candidate |
+| --- | ---: | ---: |
+| Triangles | 245,932 | 228,162 |
+| Exact working-f64 degenerate faces | 266 | 0 |
+| Exact emitted-f32 degenerate faces | 3,953 | 1,876 |
+| Working contact/intersection pairs | 3,779 | 622 |
+| Rounded contact/intersection pairs | 27,540 | 16,890 |
+
+The candidate has one indexed component with Euler characteristic 2 and zero
+open, misoriented or nonmanifold edges or nonmanifold vertices. This establishes
+indexed manifold checks, not an embedded surface or correct topology relative
+to the source. Exact first-reference compaction and coordinate rounding were
+verified against the actual emitted buffers, so the working/rounded audit is
+applicable to that output. Malformed faces remain separately counted when
+excluded from intersection predicates.
+
+All 1,876 remaining invalid faces are valid in f64 before conversion: 1,872
+collapse to two distinct f32 positions, and four become collinear with three
+distinct positions. Oriented geometric multisets retain 1,613 old invalid faces,
+remove 2,340 and introduce 263 new invalid identities. Contact comparison finds
+381 new working and 2,443 new rounded pair identities despite lower totals.
+Retessellation can change identities of existing physical defects; these are
+unresolved change witnesses, not automatically new physical failures. Neither
+their old-location proximity nor the favorable totals discharge preservation.
+
+The source gate alone therefore remains an incomplete, unintegrated candidate.
+Its downstream failures do not disprove the local source-independence result,
+but they do disprove treating that filter as the finished construction repair.
+The next comparison localizes the residual conversion/alias families and the
+changed contact witnesses. The complete source-occurrence, alias and trim ledger
+remains necessary before any favorable preservation or integration decision.
+
+[Independent execution decision](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-outcome-review/decision.md),
+[full export receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-structural-full-knob-job/execution.json),
+[exact malformed-face and output-compaction comparison](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-structural-geometry-audit/malformed-comparison.json),
+[whole-mesh geometry audit](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-structural-geometry-audit/audit.json),
+and [contact-identity comparison](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-structural-geometry-audit/intersection-identity-comparison.json)
+retain the complete failed construction result.
+
+An independent exact witness now strengthens the rejection beyond changed
+identity counts. Candidate faces 19879 and 20415 share no vertex and intersect
+strictly inside both triangles, with independent plane normals, in both working
+and rounded coordinates. The working intersection midpoint is approximately
+`(-8.6694060, -3.9828992, -4.6242210)` mm. In the fixed cube of radius 1/1024 mm
+around that point, every one of the 3,779 baseline working-contact overlap boxes
+and all 3,960 baseline faces invalid in either representation are excluded.
+Independent exact checks of all 28 baseline face AABBs meeting the cube test
+378 pairs without a strict interior crossing; four coplanar pairs are legal
+shared-edge neighbors. The rounded candidate witness also lies inside this cube.
+Root replayed both checks successfully. This proves a new local working-mesh
+obstruction; it does not establish source-surface correspondence or claim absence
+of every class of baseline rounded contact.
+
+The [fixed crossing certificate and replay](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-crossing-witness-replay/execution.json)
+therefore block integration even though degeneracy and topology totals improve.
+The next causal question is which initial construction or later pass produced
+these two faces. Their point numbers and spatially overlapping cell labels alone
+cannot establish producer ancestry. The protected edge on face 20415 belongs to
+a generated chamfer/cutter source pair, so repairing the original native/plain
+Field alias family alone cannot be assumed to repair this separate crossing.
 
 ## Evidence
 

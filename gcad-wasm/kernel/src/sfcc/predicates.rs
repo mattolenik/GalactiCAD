@@ -216,6 +216,11 @@ fn square_sum(a: &[Dyadic; 2]) -> Dyadic {
     a[0].mul(&a[0]).add(&a[1].mul(&a[1]))
 }
 
+/// Sign of (a-b) x direction without rounding either a-b or b+direction.
+pub(crate) fn displacement_cross(a: [f64;2], b: [f64;2], direction: [f64;2]) -> i8 {
+    cross(&std::array::from_fn(|k|difference(a[k],b[k])), &direction.map(Dyadic::from)).sign()
+}
+
 pub(crate) fn orient2d(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> i8 {
     #[cfg(feature = "sfcc-profile")]
     if super::perf::disabled(2) {

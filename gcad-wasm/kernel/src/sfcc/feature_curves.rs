@@ -109,6 +109,9 @@ pub struct FeatureCurve {
 }
 
 impl FeatureCurve {
+    pub(crate) fn segment_chart(&self) -> Option<([f64;3],[f64;3])> {
+        match self.geom { Geom::Segment{a,d,..} => Some((a,d)), _ => None }
+    }
     /// Only a checked straight parameter chart; carrier ownership is checked by caller.
     pub(crate) fn straight_parameter_direction(&self,axis:usize,planes:[([f64;3],f64);2])->Option<i8> {
         if !self.t_min.is_finite()||!self.t_max.is_finite()||self.t_min>=self.t_max{return None;}

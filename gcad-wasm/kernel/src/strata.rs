@@ -213,6 +213,28 @@ struct CompoundCarrier {
 }
 
 impl Stratum {
+    /// Two loft branches may have different interior patches but the same cap
+    /// restriction: at t=0/1 the other profile's term vanishes identically.
+    pub(crate) fn shares_loft_rim(&self, other: &Self, cap: &Self) -> bool {
+        if self.leaf_index != other.leaf_index || self.leaf_index != cap.leaf_index
+            || self.sign != other.sign || self.sign != cap.sign
+            || self.compound.is_some() || other.compound.is_some()
+            || self.field.is_some() || other.field.is_some()
+        { return false; }
+        let (Carrier::LoftSide(a), Carrier::LoftSide(b)) = (self.carrier, other.carrier) else { return false; };
+        let Some((normal, offset)) = cap.certificate_plane() else { return false; };
+        if a.sim != b.sim || [a.pos_x,a.pos_y,a.pos_z,a.seg_y0,a.seg_h] != [b.pos_x,b.pos_y,b.pos_z,b.seg_y0,b.seg_h]
+            || !a.seg_h.is_finite() || a.seg_h <= 0. { return false; }
+        for (direction, y, edge_a, edge_b) in [
+            (-1., a.pos_y+a.seg_y0, [a.a_x,a.a_z,a.a_x1,a.a_z1,a.a_nx,a.a_nz], [b.a_x,b.a_z,b.a_x1,b.a_z1,b.a_nx,b.a_nz]),
+            (1., a.pos_y+a.seg_y0+a.seg_h, [a.b_x,a.b_z,a.b_x1,a.b_z1,a.b_nx,a.b_nz], [b.b_x,b.b_z,b.b_x1,b.b_z1,b.b_nx,b.b_nz]),
+        ] {
+            let n = a.sim.rotate_vector(0.,direction,0.);
+            let off = -(n[0]*a.sim.t[0]+n[1]*a.sim.t[1]+n[2]*a.sim.t[2])-a.sim.s*direction*y;
+            if edge_a == edge_b && normal == n && offset == off { return true; }
+        }
+        false
+    }
     pub(crate) fn certificate_plane(&self)->Option<([f64;3],f64)> {
         // This returns the carrier equation only. Signed occurrence domains are
         // established independently by the coverage certificate.

@@ -23,7 +23,8 @@ pub(crate) fn finish(
             progress(label);
         }
     };
-    let ordered = points.ordered_triangles(tris);
+    let mut ordered = points.ordered_triangles(tris);
+    super::feature_overlap::complete(points, &mut ordered, features);
     let arrangement_metadata = super::box_arrangement::MetadataSnapshot::capture(points, &ordered);
     let deduped = drop_coincident_triangle_pairs(&ordered);
     let filtered = drop_debris_components(points, &deduped, step * 4., features, step * 2., 600);

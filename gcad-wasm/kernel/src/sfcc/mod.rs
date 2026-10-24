@@ -21,6 +21,7 @@ pub(crate) mod local_coverage;
 pub mod face_contour;
 pub mod feature_curves;
 pub mod feature_chain;
+mod feature_overlap;
 pub(crate) mod provenance;
 pub mod feature_set;
 pub mod field_branches;

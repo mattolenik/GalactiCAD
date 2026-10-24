@@ -5,8 +5,11 @@ Status: implementation underway, October 23, 2026. Baseline commit:
 and focused native/WASM checks are implemented; see the
 [corner repair record](../research/sfcc-corner-repair.md). The
 [first candidate acceptance run](../../.testresults/sdf-meshing/2026-10-24T01-04-11-157Z/report.md)
-retains all five original cases and all remaining failures. Milestones 2–5 are
-pending.
+retains all five original cases and all remaining failures. Milestone 2's
+[membership repair](../research/sfcc-feature-overlap-repair.md) and
+[five-model campaign](../../.testresults/sdf-meshing/2026-10-24T01-45-13-111Z/report.md)
+preserve all four available meshes' geometry while restoring the eleven housing
+memberships. Milestones 3–5 remain pending.
 
 Evidence: [investigation](../research/sfcc-bracket-housing-investigation.md),
 [acceptance report](../../.testresults/sdf-meshing/investigated-2026-10-23/report.md),

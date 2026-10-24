@@ -266,7 +266,15 @@ Original/shifted bore witnesses remain passing. The
 matches the audited WASM meshes exactly; no new measured malformed faces or
 intersection identities occur in the original and declared transformed controls.
 Housing is now INCOMPLETE, while bracket/knob/Mess 2 remain FAIL and Mess 1
-retains its 180-second TIMEOUT. E4–E6 remain pending in order.
+retains its 180-second TIMEOUT. **E4 is in progress**, beginning with the
+[knob construction-family investigation](../research/sfcc-invalid-construction-e4.md).
+The first full native knob candidate repairs the witnessed cells but leaves
+unresolved changed defect identities and fails a concrete graph-embedding control.
+A private 31-face replacement subsequently refuses correctly: its fixed f32
+boundary retraces itself, so interior triangulation cannot repair it. The next
+bounded measurement follows the complete typed source-curve component to an
+admissible frontier before constructing another replacement. No E4 production
+repair has been integrated; E5–E6 remain pending in order.
 
 ### Baseline and non-negotiable obligations
 

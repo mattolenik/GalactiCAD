@@ -3,7 +3,7 @@ import { closestPoint } from "./diagnostics.mjs"
 export type Point = [number, number, number]
 export type Sample = { point: Point; normal: Point; field: number }
 export type Sampler = (points: Point[]) => Promise<Sample[]>
-export interface Region { id: string; center: Point; half: number; spacing: number; crease?: [Point, Point] }
+export interface Region { id: string; center: Point; half: number; spacing: number; crease?: [Point, Point]; creaseMemberships?: { ids: number[]; range: [number, number]; endpointMode: "curve-ends" | "section-cuts" } }
 export interface RefinementAttempt {
     iteration: number; before: [Sample, Sample]; midpoint: Sample; quarter?: Sample
     after: [Sample, Sample]; width: number; reason: string
@@ -36,8 +36,8 @@ export function regionsFor(id: string, hash: string): Region[] {
     if (id === "housing") {
         if (hash !== "54964141fea0ed055f5392837c5e524f4a358e1c610f0b11a90857b8b57ad4a5") throw new Error("GPU housing reference source changed")
         return [
-            { id: "loft-chamfer-crease", center: [8.225, 4.75, 14.74], half: 0.25, spacing: 0.025, crease: [[8.3191, 4.5872, 14.8059], [8.1316, 4.9120, 14.6752]] },
-            { id: "flange-rim", center: [10, 0, 19], half: 0.2, spacing: 0.025, crease: [[10, -0.12, 19], [10, 0.12, 19]] },
+            { id: "loft-chamfer-crease", center: [8.225, 4.75, 14.74], half: 0.25, spacing: 0.025, crease: [[8.3191, 4.5872, 14.8059], [8.1316, 4.9120, 14.6752]], creaseMemberships: { ids: [75, 106], range: [0, 4], endpointMode: "curve-ends" } },
+            { id: "flange-rim", center: [10, 0, 19], half: 0.2, spacing: 0.025, crease: [[10, -0.12, 19], [10, 0.12, 19]], creaseMemberships: { ids: [9, 10], range: [0, 1], endpointMode: "section-cuts" } },
             { id: "internal-main-bore", center: [5.5, 0, 0], half: 0.3, spacing: 0.05 },
             { id: "internal-main-bore-shifted", center: [5.5, 0.0125, 0.0125], half: 0.3, spacing: 0.025 },
             { id: "internal-branch-bore", center: [4, 16, 0], half: 0.3, spacing: 0.05 },
@@ -103,6 +103,10 @@ export async function refineBrackets(brackets: [Sample, Sample][], sample: Sampl
 export interface NormalSearchTarget { point: Point; normal: Point }
 export interface NormalAssociation {
     eligible: boolean; reason: string; rootIndex?: number; normalDotDirection?: number
+}
+export interface BudgetAssociation extends NormalAssociation {
+    budgetMm: number
+    rootBounds: Array<{ rootIndex: number; lower: number; upper: number; classification: "INSIDE" | "OUTSIDE" | "BORDERLINE" }>
 }
 export interface NormalSearchReceipt {
     target: NormalSearchTarget; extent: number; direction: Point
@@ -174,6 +178,41 @@ export async function searchNormalBrackets(targets: NormalSearchTarget[], extent
         }
     }
     return receipts
+}
+
+/** Empirical association inside an existing surface budget, not root uniqueness. */
+export function associateWithinSurfaceBudget(search: NormalSearchReceipt, budgetMm = COVERAGE_TOLERANCE): BudgetAssociation {
+    const result: BudgetAssociation = { eligible: false, reason: "NO_OBSERVED_CROSSING_WITHIN_SURFACE_BUDGET", budgetMm, rootBounds: [] }
+    if (!(budgetMm > 0) || !Number.isFinite(budgetMm)) throw new Error("Invalid surface association budget")
+    if (!finitePoint(search.direction) || !(norm(search.direction) > 0)) {
+        result.reason = "INVALID_SEARCH_DIRECTION"; return result
+    }
+    for (const [rootIndex, root] of search.roots.entries()) {
+        if (!finitePoint(root.point) || !Number.isFinite(root.width) || root.width < 0
+            || !Number.isFinite(root.allowance) || root.allowance < 0
+            || !Array.isArray(root.bracket) || root.bracket.length !== 2
+            || root.bracket.some(s => !finitePoint(s.point) || !Number.isFinite(s.field))
+            || !oppositeSigns(root.bracket[0].field, root.bracket[1].field)) {
+            result.reason = "INVALID_ROOT_BOUNDS"; return result
+        }
+        const d = distance(root.point, search.target.point), uncertainty = root.width / 2 + root.allowance
+        const lower = Math.max(0, d - uncertainty), upper = d + uncertainty
+        result.rootBounds.push({ rootIndex, lower, upper,
+            classification: upper <= budgetMm ? "INSIDE" : lower > budgetMm ? "OUTSIDE" : "BORDERLINE" })
+    }
+    if (result.rootBounds.some(r => r.classification === "BORDERLINE")) {
+        result.reason = "SURFACE_BUDGET_BOUNDARY_UNRESOLVED"; return result
+    }
+    const inside = result.rootBounds.filter(r => r.classification === "INSIDE")
+    if (inside.length > 1) { result.reason = "MULTIPLE_OBSERVED_CROSSINGS_WITHIN_SURFACE_BUDGET"; return result }
+    if (!inside.length) return result
+    const rootIndex = inside[0].rootIndex, root = search.roots[rootIndex]
+    if (root.width > 4 * root.allowance) { result.reason = "BRACKET_WIDTH_UNRESOLVED"; return result }
+    if (!finitePoint(root.normal) || !(norm(root.normal) > 0)) { result.reason = "ZERO_OR_INVALID_ROOT_NORMAL"; return result }
+    const normalDotDirection = dot(unit(root.normal), unit(search.direction))
+    return normalDotDirection > 0
+        ? { ...result, eligible: true, reason: "ONE_EMPIRICAL_FORWARD_CROSSING_WITHIN_SURFACE_BUDGET", rootIndex, normalDotDirection }
+        : { ...result, reason: "NON_FORWARD_ROOT_NORMAL", normalDotDirection }
 }
 
 function countReasons(reasons: string[]): Record<string, number> {
@@ -289,7 +328,7 @@ export function measureReference(reference: Reference, mesh: MeshQuery) {
 export interface CreaseReference {
     station: number; seed: Point; status: "RESOLVED" | "AMBIGUOUS"; reason?: string
     point?: Point; tangent?: Point; normals?: [Point, Point]; contrast?: number; angularAllowance?: number; supports?: [Root, Root]
-    verification?: { offsets: number[]; contrasts: number[]; roots: Root[]; candidateField: number; center?: Sample; failedTargets?: number[] }
+    verification?: { offsets: number[]; contrasts: number[]; roots: Root[]; candidateField: number; center?: Sample; failedTargets?: number[]; surfaceAssociations?: BudgetAssociation[] }
     initialIntersection?: { supportCount: number; contrast: number; supports?: [Root, Root]; determinant?: number; proposedPoint?: Point }
     searchAttempts?: Array<{ stage: string; radius?: number; searches: NormalSearchReceipt[] }>
     refinementStops?: Array<{ radius: number; reason: string; determinant?: number; proposedPoint?: Point }>
@@ -347,31 +386,100 @@ export async function verifyCreaseReferences(references: CreaseReference[], samp
             ref.point = point; ref.normals = [n1, n2]; ref.supports = [a, b]
         }
         const [center] = await checkedSample([rounded(ref.point!)], sample)
-        const projected = await project(offsets.flatMap(sideTargets), "SHRINKING_SIDE_VERIFICATION")
-        const roots = projected.filter((r): r is Root => r !== null)
-        const failedTargets = projected.flatMap((r, i) => r ? [] : [i])
-        const contrasts = roots.length === 6 ? offsets.map((_, i) => angle(roots[2 * i].normal, roots[2 * i + 1].normal)) : []
-        ref.verification = { offsets, contrasts, roots, candidateField: center.field, center, failedTargets }
-        if (roots.length !== 6 || Math.abs(center.field) > 0.002) { ref.status = "AMBIGUOUS"; ref.reason = roots.length !== 6 && Math.abs(center.field) > 0.002 ? "SIDE_BRACKETS_AND_CANDIDATE_FIELD_UNRESOLVED" : roots.length !== 6 ? "SIDE_BRACKETS_UNRESOLVED" : "CANDIDATE_FIELD_AGREEMENT_FAILED"; continue }
-        if (roots.some(r => r.width > 4 * r.allowance) || contrasts[2] < Math.PI / 180 || Math.max(...contrasts) - Math.min(...contrasts) > 0.2 * contrasts[2]) {
-            ref.status = "AMBIGUOUS"; ref.reason = roots.some(r => r.width > 4 * r.allowance) ? "SIDE_ROOT_REFINEMENT_UNRESOLVED" : contrasts[2] < Math.PI / 180 ? "INSUFFICIENT_NORMAL_CONTRAST" : "NORMAL_CONTRAST_COLLAPSES_WITH_OFFSET"; continue
-        }
-        ref.normals = [unit(roots[4].normal), unit(roots[5].normal)]
-        ref.contrast = contrasts[2]
-        // Empirical normal budget, paired with a separate retained-jump test:
-        // two faces with identical normals cannot pass even inside this angle.
-        ref.angularAllowance = Math.max(2 * Math.PI / 180, ref.contrast / 2)
+        const searches = await searchNormalBrackets(offsets.flatMap(sideTargets), 0.03, sample)
+        ref.searchAttempts.push({ stage: "SHRINKING_SIDE_VERIFICATION", searches })
+        verifyShrinkingSamples(ref, searches, center)
+
     }
     return references
 }
 
-export function measureCrease(reference: ReturnType<typeof creaseReferences>, mesh: MeshQuery, features: Float64Array, centroidNormals?: Map<number, Point>) {
+/** Pure final check: saved and live receipts use the same contextual association. */
+export function verifyShrinkingSamples(ref: CreaseReference, searches: NormalSearchReceipt[], center: Sample): void {
+    const offsets = [0.02, 0.01, 0.005]
+    const surfaceAssociations = searches.map(s => associateWithinSurfaceBudget(s))
+    const projected = searches.map((s, i) => surfaceAssociations[i].eligible ? s.roots[surfaceAssociations[i].rootIndex!] : null)
+    const roots = projected.filter((r): r is Root => r !== null)
+    const failedTargets = projected.flatMap((r, i) => r ? [] : [i])
+    const contrasts = roots.length === 6 ? offsets.map((_, i) => angle(roots[2 * i].normal, roots[2 * i + 1].normal)) : []
+    ref.verification = { offsets, contrasts, roots, candidateField: center.field, center, failedTargets, surfaceAssociations }
+    if (!ref.point || !ref.tangent || !Number.isFinite(center.field)) {
+        ref.status = "AMBIGUOUS"; ref.reason = "INVALID_SAVED_REFERENCE_GEOMETRY"; return
+    }
+    if (searches.length !== 6 || roots.length !== 6 || Math.abs(center.field) > 0.002) {
+        ref.status = "AMBIGUOUS"
+        ref.reason = roots.length !== 6 && Math.abs(center.field) > 0.002 ? "SIDE_BRACKETS_AND_CANDIDATE_FIELD_UNRESOLVED" : roots.length !== 6 ? "SIDE_BRACKETS_UNRESOLVED" : "CANDIDATE_FIELD_AGREEMENT_FAILED"
+        return
+    }
+    if (roots.some(r => r.width > 4 * r.allowance) || contrasts[2] < Math.PI / 180 || Math.max(...contrasts) - Math.min(...contrasts) > 0.2 * contrasts[2]) {
+        ref.status = "AMBIGUOUS"; ref.reason = roots.some(r => r.width > 4 * r.allowance) ? "SIDE_ROOT_REFINEMENT_UNRESOLVED" : contrasts[2] < Math.PI / 180 ? "INSUFFICIENT_NORMAL_CONTRAST" : "NORMAL_CONTRAST_COLLAPSES_WITH_OFFSET"; return
+    }
+    ref.status = "RESOLVED"; delete ref.reason
+    ref.normals = [unit(roots[4].normal), unit(roots[5].normal)]
+    ref.contrast = contrasts[2]
+    ref.angularAllowance = Math.max(2 * Math.PI / 180, ref.contrast / 2)
+}
+
+/** Source-pinned regression obligations; numerical IDs are not cross-backend identities. */
+export function measureCreaseMemberships(region: Region, mesh: MeshQuery, features: Float64Array) {
+    const expected = region.creaseMemberships
+    if (!expected || !region.crease) return null
+    const curves = expected.ids.map(curveId => {
+        const rows: Array<{ a: number; b: number; start: number; end: number; key: string }> = []
+        for (let i = 0; i < features.length; i += 5) if (features[i + 2] === curveId) {
+            let a = features[i], b = features[i + 1], start = features[i + 3], end = features[i + 4]
+            if (start > end) { [a, b] = [b, a]; [start, end] = [end, start] }
+            rows.push({ a, b, start, end, key: [a, b].sort((a, b) => a - b).join(":") })
+        }
+        const outgoing = new Map<number, typeof rows>(), incoming = new Map<number, number>()
+        for (const row of rows) { if (!outgoing.has(row.a)) outgoing.set(row.a, []); outgoing.get(row.a)!.push(row); incoming.set(row.b, (incoming.get(row.b) ?? 0) + 1) }
+        const starts = rows.filter(r => Math.abs(r.start - expected.range[0]) <= 1e-10)
+        const walked: typeof rows = [], seen = new Set<string>()
+        let current = starts.length === 1 ? starts[0] : undefined, cursor = expected.range[0]
+        while (current && !seen.has(current.key)) {
+            if (Math.abs(current.start - cursor) > 1e-10 || !(current.end > current.start)) break
+            seen.add(current.key); walked.push(current); cursor = current.end
+            const next = outgoing.get(current.b) ?? []
+            current = next.length === 1 && incoming.get(current.b) === 1 ? next[0] : undefined
+        }
+        const first = walked[0], last = walked.at(-1)
+        const ordered = rows.length > 0 && walked.length === rows.length && Math.abs(cursor - expected.range[1]) <= 1e-10
+            && first !== undefined && last !== undefined && outgoing.get(first.a)?.length === 1 && !incoming.has(first.a)
+            && !outgoing.has(last.b) && incoming.get(last.b) === 1
+        const physical = rows.length > 0 && rows.every(r => mesh.edges.get(r.key)?.faces.length === 2)
+        const endpointDistances = region.crease!.map((seed, i) => {
+            if (!ordered || !physical) return null
+            if (expected.endpointMode === "curve-ends") return distance(seed, mesh.positions[i ? walked.at(-1)!.b : walked[0].a])
+            return Math.min(...walked.map(r => {
+                const a = mesh.positions[r.a], b = mesh.positions[r.b], ab = sub(b, a), denominator = dot(ab, ab)
+                return denominator > 0 ? distance(seed, add(a, ab, Math.max(0, Math.min(1, dot(sub(seed, a), ab) / denominator)))) : Infinity
+            }))
+        })
+        return { curveId, rows, physicalEdgesPresent: physical, ordered, endpointDistances, endpointStatus: endpointDistances.some(d => d === null) ? "INCOMPLETE" : endpointDistances.every(d => d! <= FEATURE_TOLERANCE) ? "SAMPLED_PASS" : "FAIL" }
+    })
+    const edgeSets = curves.map(c => new Set(c.rows.map(r => r.key)))
+    const samePhysicalEdges = edgeSets.length > 0 && edgeSets.every(s => s.size === edgeSets[0].size && [...s].every(k => edgeSets[0].has(k)))
+    const membershipStatus = curves.every(c => c.physicalEdgesPresent && c.rows.length) && samePhysicalEdges ? "SAMPLED_PASS" : "FAIL"
+    return { scope: "Original source-pinned WASM curve memberships; not independent surface or cross-backend identity proof", expected, membershipStatus,
+        orderedPathStatus: curves.some(c => !c.rows.length) ? "INCOMPLETE" : curves.every(c => c.ordered) ? "SAMPLED_PASS" : "FAIL",
+        endpointStatus: curves.some(c => c.endpointStatus === "FAIL") ? "FAIL" : curves.some(c => c.endpointStatus === "INCOMPLETE") ? "INCOMPLETE" : "SAMPLED_PASS",
+        samePhysicalEdges, curves }
+}
+
+export function measureCrease(reference: ReturnType<typeof creaseReferences>, mesh: MeshQuery, features: Float64Array, centroidNormals?: Map<number, Point>, region?: Region) {
     const memberships = new Set<string>()
-    for (let i = 0; i < features.length; i += 5) memberships.add([features[i], features[i + 1]].sort((a, b) => a - b).join(":"))
+    const curveIdsByEdge = new Map<string, Set<number>>()
+    for (let i = 0; i < features.length; i += 5) {
+        const key = [features[i], features[i + 1]].sort((a, b) => a - b).join(":")
+        memberships.add(key)
+        if (!curveIdsByEdge.has(key)) curveIdsByEdge.set(key, new Set())
+        curveIdsByEdge.get(key)!.add(features[i + 2])
+    }
     const stations = reference.map(r => {
-        if (r.status !== "RESOLVED") return { station: r.station, status: "AMBIGUOUS", reason: r.reason, candidates: [] as string[] }
+        if (r.status !== "RESOLVED") return { station: r.station, status: "AMBIGUOUS", reason: r.reason, candidates: [] as string[], edgeDiagnostics: [] as Array<Record<string, unknown>> }
         const candidates: string[] = [], labeled: string[] = []
-        let nearestSharpDistance = Infinity, bestNormalError = Infinity, centroidNormalError = Infinity, missingCentroidPairs = 0
+        const edgeDiagnostics: Array<Record<string, unknown>> = []
+        let nearestSharpDistance = Infinity, bestNormalError = Infinity, centroidNormalError = Infinity, missingCentroidPairs = 0, ambiguousSupportPairs = 0, centroidSideMismatchPairs = 0
         for (const [key, edge] of mesh.edges) {
             if (edge.faces.length !== 2) continue
             const [a, b] = edge.ids.map(i => mesh.positions[i]), ab = sub(b, a), q = add(a, ab, Math.max(0, Math.min(1, dot(sub(r.point!, a), ab) / dot(ab, ab)))), d = distance(q, r.point!)
@@ -379,22 +487,50 @@ export function measureCrease(reference: ReturnType<typeof creaseReferences>, me
             const normals = edge.faces.map(f => f.normal)
             const error = Math.min(Math.max(angle(normals[0], r.normals![0]), angle(normals[1], r.normals![1])), Math.max(angle(normals[1], r.normals![0]), angle(normals[0], r.normals![1])))
             bestNormalError = Math.min(bestNormalError, error)
+            const diagnostic: Record<string, unknown> = { edge: key, vertices: edge.ids, incidentTriangles: edge.faces.map(f => f.id), distance: d, labeled: memberships.has(key), curveIds: [...(curveIdsByEdge.get(key) ?? [])], requiredMemberships: region?.creaseMemberships?.ids.every(id => curveIdsByEdge.get(key)?.has(id)) ?? false, sideNormalErrorDegrees: error * 180 / Math.PI, geometricDihedralDegrees: angle(normals[0], normals[1]) * 180 / Math.PI, geometryStatus: "FAIL" }
+            const directGeometryPass = error <= r.angularAllowance! && angle(normals[0], normals[1]) >= 0.5 * r.contrast!
+            diagnostic.directGeometryStatus = directGeometryPass ? "SAMPLED_PASS" : "FAIL"
+            edgeDiagnostics.push(diagnostic)
             if (centroidNormals) {
                 const refs = edge.faces.map(f => centroidNormals.get(f.id))
-                if (refs.some(n => !n)) { missingCentroidPairs++; continue }
-                const localError = Math.max(...normals.map((n, i) => angle(n, refs[i]!)))
-                centroidNormalError = Math.min(centroidNormalError, localError)
+                if (refs.some(n => !n)) {
+                    diagnostic.centroidStatus = "INCOMPLETE"
+                    if (directGeometryPass) { diagnostic.geometryStatus = "INCOMPLETE"; missingCentroidPairs++ }
+                    continue
+                }
+                const errors = normals.map((n, i) => angle(n, refs[i]!))
+                diagnostic.centroidNormalErrorsDegrees = errors.map(e => e * 180 / Math.PI)
+                diagnostic.centroidRawAngleStatus = errors.every(e => e <= r.angularAllowance!) ? "SAMPLED_PASS" : "FAIL"
+                const localError = Math.max(...errors)
+                const sideAngles = refs.map(n => r.normals!.map(side => angle(n!, side)))
+                const tied = sideAngles.some(a => Math.abs(a[0] - a[1]) <= 1e-12)
+                const sides = sideAngles.map(a => a[0] < a[1] ? 0 : 1)
+                const sideError = Math.min(Math.max(sideAngles[0][0], sideAngles[1][1]), Math.max(sideAngles[0][1], sideAngles[1][0]))
+                diagnostic.centroidSupportSideAnglesDegrees = sideAngles.map(a => a.map(x => x * 180 / Math.PI))
+                const compatiblePair = !tied && sides[0] !== sides[1] && sideError <= r.angularAllowance!
+                diagnostic.centroidSupportPairStatus = compatiblePair ? "SAMPLED_PASS" : "INCOMPLETE"
+                diagnostic.centroidSupportPairReason = compatiblePair ? "DISTINCT_NEAREST_REFERENCE_SIDES" : tied ? "TIED_REFERENCE_SIDES" : "REFERENCE_SIDE_CORRESPONDENCE_UNRESOLVED"
+                diagnostic.centroidStatus = compatiblePair ? diagnostic.centroidRawAngleStatus : "INCOMPLETE"
+                if (compatiblePair) centroidNormalError = Math.min(centroidNormalError, localError)
+                if (!directGeometryPass) continue
+                // A nearby root can cross the true crease inside the chord-error
+                // strip. Incompatible support normals do not prove a bad facet.
+                if (!compatiblePair) {
+                    diagnostic.geometryStatus = "INCOMPLETE"; ambiguousSupportPairs++
+                    if (!tied) centroidSideMismatchPairs++
+                    continue
+                }
                 if (localError > r.angularAllowance!) continue
             }
-            if (error > r.angularAllowance! || angle(normals[0], normals[1]) < 0.5 * r.contrast!) continue
+            if (!directGeometryPass) continue
+            diagnostic.geometryStatus = "SAMPLED_PASS"
             nearestSharpDistance = Math.min(nearestSharpDistance, d); candidates.push(key)
             if (memberships.has(key)) labeled.push(key)
         }
-        return { station: r.station, status: candidates.length ? "SAMPLED_PASS" : missingCentroidPairs ? "AMBIGUOUS" : "FAIL", missingCentroidPairs, correspondingCentroidNormalErrorDegrees: Number.isFinite(centroidNormalError) ? centroidNormalError * 180 / Math.PI : null, position: r.point, referenceContrastDegrees: r.contrast! * 180 / Math.PI, minimumRetainedContrastFraction: 0.5, angularAllowanceDegrees: r.angularAllowance! * 180 / Math.PI, bestNormalErrorDegrees: Number.isFinite(bestNormalError) ? bestNormalError * 180 / Math.PI : null, nearestSharpDistance: Number.isFinite(nearestSharpDistance) ? nearestSharpDistance : null, candidates, labeled }
+        return { station: r.station, status: candidates.length ? "SAMPLED_PASS" : missingCentroidPairs || ambiguousSupportPairs ? "AMBIGUOUS" : "FAIL", missingCentroidPairs, ambiguousSupportPairs, centroidSideMismatchPairs, correspondingCentroidNormalErrorDegrees: Number.isFinite(centroidNormalError) ? centroidNormalError * 180 / Math.PI : null, position: r.point, referenceContrastDegrees: r.contrast! * 180 / Math.PI, minimumRetainedContrastFraction: 0.5, angularAllowanceDegrees: r.angularAllowance! * 180 / Math.PI, bestNormalErrorDegrees: Number.isFinite(bestNormalError) ? bestNormalError * 180 / Math.PI : null, nearestSharpDistance: Number.isFinite(nearestSharpDistance) ? nearestSharpDistance : null, candidates, labeled, edgeDiagnostics }
     })
-    // Follow the ordered sections through the complete candidate-edge graph.
-    // Several short edges may lie between two sections; direct adjacency is not
-    // required. Direction is measured along this short reference section path.
+    // This graph includes station-near candidates only. A found path is useful,
+    // but failure to find one cannot exclude unsearched intervening mesh edges.
     const first = reference.find(r => r.status === "RESOLVED"), last = [...reference].reverse().find(r => r.status === "RESOLVED")
     const direction = first && last ? unit(sub(last.point!, first.point!)) : [0, 0, 0] as Point
     const graph = new Map<number, number[]>()
@@ -412,7 +548,22 @@ export function measureCrease(reference: ReturnType<typeof creaseReferences>, me
         if (!next.size) connected = false
         reachable = next
     }
-    return { toleranceMm: FEATURE_TOLERANCE, metadataStatus: stations.some(s => s.status === "SAMPLED_PASS" && !s.labeled?.length) ? "FAIL" : stations.some(s => s.status !== "SAMPLED_PASS") ? "INCOMPLETE" : "SAMPLED_PASS", status: stations.some(s => s.status === "FAIL") ? "FAIL" : !stations.length || stations.some(s => s.status === "AMBIGUOUS") ? "INCOMPLETE" : connected ? "SAMPLED_PASS" : "FAIL", connected, stations, missingLabelStations: stations.filter(s => s.status === "SAMPLED_PASS" && !s.labeled?.length).length }
+    const sourceMemberships = region ? measureCreaseMemberships(region, mesh, features) : null
+    const identifiedGeometry = sourceMemberships ? stations.map(station => {
+        const edges = station.edgeDiagnostics?.filter(edge => edge.requiredMemberships) ?? []
+        const status = !station.edgeDiagnostics.length || sourceMemberships.membershipStatus !== "SAMPLED_PASS" ? "INCOMPLETE" : edges.some(e => e.geometryStatus === "SAMPLED_PASS") ? "SAMPLED_PASS" : edges.some(e => e.geometryStatus === "INCOMPLETE") ? "INCOMPLETE" : "FAIL"
+        return { station: station.station, status, edges }
+    }) : null
+    // Unrelated ambiguous nearby edges cannot hide a measured source-identified
+    // failure, or supply a substitute for the required physical curve.
+    const sectionStatuses = identifiedGeometry?.map(s => s.status) ?? stations.map(s => s.status === "AMBIGUOUS" ? "INCOMPLETE" : s.status)
+    const localFailure = sectionStatuses.includes("FAIL")
+    const unresolvedSections = !sectionStatuses.length || sectionStatuses.includes("INCOMPLETE")
+    const connectionReason = localFailure ? "LOCAL_SECTION_FAILED" : unresolvedSections ? "UNRESOLVED_SECTIONS"
+        : connected ? "STATION_SUBGRAPH_PATH_FOUND" : "UNSEARCHED_INTERSTATION_CONNECTORS"
+    const geometricStatus = localFailure ? "FAIL" : unresolvedSections || !connected ? "INCOMPLETE" : "SAMPLED_PASS"
+    const statuses = [geometricStatus, sourceMemberships?.membershipStatus, sourceMemberships?.orderedPathStatus, sourceMemberships?.endpointStatus, ...(identifiedGeometry?.map(s => s.status) ?? [])]
+    return { toleranceMm: FEATURE_TOLERANCE, metadataScope: sourceMemberships ? "sourcePinnedPhysicalCurvePaths" : "localCandidateEdgeLabelsOnly", connectionReason, metadataStatus: sourceMemberships?.membershipStatus ?? (stations.some(s => s.status === "SAMPLED_PASS" && !s.labeled?.length) ? "FAIL" : stations.some(s => s.status !== "SAMPLED_PASS") ? "INCOMPLETE" : "SAMPLED_PASS"), status: statuses.includes("FAIL") ? "FAIL" : statuses.includes("INCOMPLETE") ? "INCOMPLETE" : "SAMPLED_PASS", geometricStatus, connected, stations, sourceMemberships, identifiedGeometry, missingLabelStations: stations.filter(s => s.status === "SAMPLED_PASS" && !s.labeled?.length).length }
 }
 
 export async function runCoverage(regions: Region[], mesh: MeshQuery, features: Float64Array, sample: Sampler) {
@@ -432,11 +583,15 @@ export async function runCoverage(regions: Region[], mesh: MeshQuery, features: 
         })
         const projectionReasons = countReasons(projectionSearches.map(s => s.reason))
         const centroidNormals = new Map<number, Point>()
-        for (const d of displacements) if (projectionSearches[d.searchIndex].association.eligible && d.kind === "triangle-interior" && d.displacementUpperBound <= COVERAGE_TOLERANCE && d.root.width <= 4 * d.root.allowance) centroidNormals.set(d.triangle, d.root.normal)
-        const creaseReference = await verifyCreaseReferences(creaseReferences(reference), sample), crease = region.crease ? measureCrease(creaseReference, mesh, features, centroidNormals) : null
-        records.push({ region, reference, surfaceToMesh, referenceDiagnostics: { meshProjection: summarizeNormalSearches(projectionSearches), creaseProjection: summarizeNormalSearches(creaseReference.flatMap(r => r.searchAttempts?.flatMap(s => s.searches) ?? [])), creaseSectionReasons: countReasons(creaseReference.map(r => r.reason ?? "RESOLVED")), tangentPlaneReasons: countReasons(creaseReference.flatMap(r => r.refinementStops?.map(s => s.reason) ?? [])) }, meshToField: { samples: residuals.length, trianglesInRegion: selected.trianglesInRegion, triangleStride: selected.triangleStride, fieldResidualBudget: COVERAGE_TOLERANCE, residualFailures: residuals.filter(s => Math.abs(s.field) > COVERAGE_TOLERANCE).length, worstResidual, residuals, ambiguousProjections: samples.length - displacements.length, ambiguousSheetAssociations: projectionSearches.filter(s => !s.association.eligible).length, multipleCrossingLines: projectionSearches.filter(s => s.roots.length > 1).length, projectionReasons, projectionSearches, projectionBudgetMm: COVERAGE_TOLERANCE, unresolvedProjectionBudget: displacements.filter(d => d.displacementUpperBound > COVERAGE_TOLERANCE || d.root.width > 4 * d.root.allowance).length, displacements }, creaseReference, crease })
+        const centroidAssociations = projectionSearches.flatMap((search, searchIndex) => selected.points[searchIndex].kind === "triangle-interior"
+            ? [{ triangle: selected.points[searchIndex].triangle, searchIndex, association: associateWithinSurfaceBudget(search) }] : [])
+        for (const { triangle, searchIndex, association } of centroidAssociations) if (association.eligible) {
+            centroidNormals.set(triangle, projectionSearches[searchIndex].roots[association.rootIndex!].normal)
+        }
+        const creaseReference = await verifyCreaseReferences(creaseReferences(reference), sample), crease = region.crease ? measureCrease(creaseReference, mesh, features, centroidNormals, region) : null
+        records.push({ region, reference, surfaceToMesh, referenceDiagnostics: { centroidSurfaceAssociationReasons: countReasons(centroidAssociations.map(c => c.association.reason)), meshProjection: summarizeNormalSearches(projectionSearches), creaseProjection: summarizeNormalSearches(creaseReference.flatMap(r => r.searchAttempts?.flatMap(s => s.searches) ?? [])), creaseSectionReasons: countReasons(creaseReference.map(r => r.reason ?? "RESOLVED")), creaseSurfaceAssociationReasons: countReasons(creaseReference.flatMap(r => r.verification?.surfaceAssociations?.map(a => a.reason) ?? [])), tangentPlaneReasons: countReasons(creaseReference.flatMap(r => r.refinementStops?.map(s => s.reason) ?? [])) }, meshToField: { samples: residuals.length, trianglesInRegion: selected.trianglesInRegion, triangleStride: selected.triangleStride, fieldResidualBudget: COVERAGE_TOLERANCE, residualFailures: residuals.filter(s => Math.abs(s.field) > COVERAGE_TOLERANCE).length, worstResidual, residuals, ambiguousProjections: samples.length - displacements.length, ambiguousSheetAssociations: projectionSearches.filter(s => !s.association.eligible).length, multipleCrossingLines: projectionSearches.filter(s => s.roots.length > 1).length, projectionReasons, projectionSearches, centroidAssociations, projectionBudgetMm: COVERAGE_TOLERANCE, unresolvedProjectionBudget: displacements.filter(d => d.displacementUpperBound > COVERAGE_TOLERANCE || d.root.width > 4 * d.root.allowance).length, displacements }, creaseReference, crease })
     }
-    return { schemaVersion: 2, normalSearchBudget: NORMAL_SEARCH_BUDGET, evaluator: "GPU sceneSDF / IsoSampleBatch", toleranceMm: COVERAGE_TOLERANCE, coverageMs: performance.now() - start, status: records.some(r => r.surfaceToMesh.status === "FAIL" || r.meshToField.residualFailures || r.crease?.status === "FAIL" || r.crease?.metadataStatus === "FAIL") ? "FAIL" : records.some(r => r.surfaceToMesh.status === "INCOMPLETE" || r.meshToField.ambiguousProjections || r.meshToField.ambiguousSheetAssociations || r.meshToField.unresolvedProjectionBudget || r.crease?.status === "INCOMPLETE") ? "INCOMPLETE" : "SAMPLED_REGIONS_ONLY", regions: records, limitations: ["Finite regional sign-bracket samples, not global Hausdorff or multi-sheet coverage.", "Same-sign grid segments are unchanged and unsearched for hidden roots. Finite nested normal searches can still miss thin sheets and tangencies; no absence or uniqueness inference.", "Multiple observed normal-line crossings retain all brackets; a nearby bracket supports existential proximity but does not identify an incident sheet. Unresolved bracket width and zero or non-forward root normals also prevent centroid/crease normal association.", "Float32 position allowance does not certify WGSL field arithmetic or CPU/GPU model equivalence.", "Mesh-to-GPU field residual has field units; it is not Euclidean distance. Normal-bracket displacement is a sampled upper bound only.", "Crease references are local intersections of GPU tangent planes, with empirical curvature error; they are not analytic curve certificates."] }
+    return { schemaVersion: 3, normalSearchBudget: NORMAL_SEARCH_BUDGET, evaluator: "GPU sceneSDF / IsoSampleBatch", toleranceMm: COVERAGE_TOLERANCE, coverageMs: performance.now() - start, status: records.some(r => r.surfaceToMesh.status === "FAIL" || r.meshToField.residualFailures || r.crease?.status === "FAIL" || r.crease?.metadataStatus === "FAIL") ? "FAIL" : records.some(r => r.surfaceToMesh.status === "INCOMPLETE" || r.meshToField.ambiguousProjections || r.meshToField.ambiguousSheetAssociations || r.meshToField.unresolvedProjectionBudget || r.crease?.status === "INCOMPLETE") ? "INCOMPLETE" : "SAMPLED_REGIONS_ONLY", regions: records, limitations: ["Finite regional sign-bracket samples, not global Hausdorff or multi-sheet coverage.", "Same-sign grid segments are unchanged and unsearched for hidden roots. Finite nested normal searches can still miss thin sheets and tangencies; no absence or uniqueness inference.", "Multiple observed normal-line crossings retain all brackets and do not prove physical sheets or root uniqueness. Centroid and final shrinking crease probes may associate one bracket wholly inside the unchanged surface budget only when all other observed brackets lie outside it; borderline and multiple nearby brackets remain unresolved. Seed association keeps the broader-search rule and every broad-search ambiguity stays recorded.", "Float32 position allowance does not certify WGSL field arithmetic or CPU/GPU model equivalence.", "Mesh-to-GPU field residual has field units; it is not Euclidean distance. Normal-bracket displacement is a sampled upper bound only.", "Crease references are local intersections of GPU tangent planes, with empirical curvature error; they are not analytic curve certificates."] }
 }
 
 /** Real captured geometry is deliberately damaged; references are held fixed. */

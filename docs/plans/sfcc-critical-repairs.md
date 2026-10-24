@@ -256,8 +256,17 @@ All 170 original and 626 fresh shifted GPU bore witnesses pass the unchanged
 intersection-pair identities or malformed faces on the original collateral
 models and the declared transformed matrix. Existing invalid faces, contacts,
 feature failures and recovery remain visible; overall acceptance still fails.
-The housing crease and flange-association exits remain open. E3–E6 are next,
-starting with E3.
+**E3's bounded housing crease exit is implemented and validated**: the
+[crease investigation and release record](../research/sfcc-housing-creases-e3.md)
+retains the rejected candidates and the selected atomic paired-flip repair.
+Fresh GPU checks pass all nine loft/chamfer and nine flange sections, including
+incident normals, contrast, own-chart memberships, ordered paths and endpoints.
+Original/shifted bore witnesses remain passing. The
+[final five-model report](../../.testresults/sdf-meshing/2026-10-24T16-17-21-370Z/report.md)
+matches the audited WASM meshes exactly; no new measured malformed faces or
+intersection identities occur in the original and declared transformed controls.
+Housing is now INCOMPLETE, while bracket/knob/Mess 2 remain FAIL and Mess 1
+retains its 180-second TIMEOUT. E4–E6 remain pending in order.
 
 ### Baseline and non-negotiable obligations
 

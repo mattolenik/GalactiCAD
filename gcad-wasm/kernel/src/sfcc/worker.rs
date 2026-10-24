@@ -956,6 +956,7 @@ fn merge_partials_impl(
     let withdrawn=super::local_coverage::failed_cells(&merged).iter().filter(|c|
         !c.degenerate&&!failed_before_cleanup.contains(&(c.level,c.ix,c.iy,c.iz))).count();
     validation.quality = quality_audit;
+    validation.normal_repair = merged.normal_repair.clone();
     validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
         &merged,
         &refined,

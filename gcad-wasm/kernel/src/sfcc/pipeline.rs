@@ -1508,6 +1508,7 @@ fn run_sfcc_pipeline_impl(
     let mut validation = SfccValidation::with_topology(&manifold, tuning.check_vertex_links);
     validation.local_coverage=super::local_coverage::report(tree,&points);
     validation.quality = quality_audit;
+    validation.normal_repair = points.normal_repair.clone();
     validation.feature_chains = Some(super::feature_chain::audit_feature_chains(
         &points,
         &refined,

@@ -103,6 +103,7 @@ impl QualityAudit {
 pub struct SfccValidation {
     pub local_coverage: super::local_coverage::CoverageReport,
     pub quality: Option<QualityAudit>,
+    pub normal_repair: super::normal_fidelity::NormalRepairReport,
     /// Compiled-curve preservation only; independent representation coverage
     /// remains a separate question even when this report passes.
     pub feature_chains: Option<super::feature_chain::FeatureChainReport>,
@@ -181,6 +182,7 @@ impl SfccValidation {
         if checks.contains(&AuditStatus::Failed) || self.quality.as_ref().is_some_and(|q| !q.passed()) {
             "failed"
         } else if checks.contains(&AuditStatus::NotChecked)
+            || self.normal_repair.incomplete()
             || self.unresolved_cells > 0
             || !self.local_coverage.unresolved.is_empty()
             || self.feature_fallback_cells > 0
@@ -202,7 +204,7 @@ impl SfccValidation {
     pub fn to_json(&self) -> String {
         format!(
             concat!(
-                "{{\"localCoverage\":{},\"quality\":{},\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
+                "{{\"localCoverage\":{},\"quality\":{},\"normalRepair\":{},\"unresolvedBranchPaths\":{:?},\"featureChains\":{},\"status\":\"{}\",\"edgeIncidence\":\"{}\",\"vertexLinks\":\"{}\",",
                 "\"faceSegments\":\"{}\",\"vertexResiduals\":\"{}\",\"triangleNondegeneracy\":\"{}\",\"invalidTriangles\":{},\"unresolvedCells\":{},",
                 "\"featureFallbackCells\":{},\"curveProjectionFailures\":{},\"faceProjectionFailures\":{},",
                 "\"chordBudgetFailures\":{},\"offSurfaceVertices\":{},\"maxVertexResidual\":{},",
@@ -212,6 +214,7 @@ impl SfccValidation {
             ),
             self.local_coverage.to_json(),
             self.quality.as_ref().map_or_else(|| "null".into(), QualityAudit::to_json),
+            self.normal_repair.to_json(),
             self.unresolved_branch_paths,
             self.feature_chains.as_ref().map_or_else(|| "{\"status\":\"notChecked\"}".into(), |r| r.to_json()),
             self.status(),
@@ -255,6 +258,30 @@ mod tests {
             ..Default::default()
         }
     }
+    #[test]
+    fn sampled_normal_reporting_distinguishes_unchecked_empty_and_unresolved() {
+        let mut v = passed();
+        assert!(v.normal_repair.to_json().contains("notChecked"));
+        v.normal_repair.checked = true;
+        assert!(v.normal_repair.to_json().contains("notApplicable"));
+        assert_eq!(v.status(), "passed");
+        v.normal_repair.seeds = 1;
+        for outcome in 0..4 {
+            v.normal_repair.unsupported = usize::from(outcome == 0);
+            v.normal_repair.rejected = usize::from(outcome == 1);
+            v.normal_repair.exhausted = usize::from(outcome == 2);
+            v.normal_repair.cancelled = outcome == 3;
+            assert_eq!(v.status(), "incomplete");
+        }
+        v.normal_repair.cancelled = false;
+        v.normal_repair.passing = 1;
+        v.normal_repair.visited = 1;
+        assert_eq!(v.status(), "passed");
+        v.triangle_non_degeneracy = AuditStatus::Failed;
+        v.normal_repair.cancelled = true;
+        assert_eq!(v.status(), "failed");
+    }
+
     #[test]
     fn skipped_checks_and_exhausted_budgets_are_not_success() {
         assert!(passed().ok());

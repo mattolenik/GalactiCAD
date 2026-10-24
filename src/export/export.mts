@@ -56,6 +56,34 @@ export interface MeshMdcDebugData {
 }
 
 export interface MeshSfccValidation {
+    /** Finite paired normal-repair checks, separate from coverage and carrier ownership. */
+    normalRepair?: {
+        scope: "sampledNormalTransactions"
+        status: "notChecked" | "notApplicable" | "sampledPass" | "incomplete"
+        unresolvedPairs: number
+        seeds: number
+        visited: number
+        passing: number
+        unsupported: number
+        rejected: number
+        exhausted: number
+        accepted: number
+        flips: number
+        stagedFlips: number
+        scores: number
+        triggerScores: number
+        trials: number
+        remaining: number
+        cancelled: boolean
+        maxScoresPerSide: number
+        maxFlipsPerSide: number
+        maxPairScores: number
+        maxPairFlips: number
+        chartObservations: number
+        supportObservations: number
+        normalSites: number
+        positionSites: number
+    }
     /** Sphere/positiveBoxIntersection give abstract cell maps. signedBoxArrangement
      * additionally checks initial f32 correspondence under its separate premises. */
     localCoverage?: {

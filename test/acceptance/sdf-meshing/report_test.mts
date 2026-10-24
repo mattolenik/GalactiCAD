@@ -89,3 +89,45 @@ test("normal-search reasons and multiple crossings remain visible in Markdown", 
     assert.match(report, /do not select an incident sheet/)
     assert.doesNotMatch(report, /undefined|NaN/)
 })
+
+test("identified crease failures show both incident errors beside passing membership obligations", () => {
+    const r = row({ status: "incomplete" })
+    r.gpuCoverage = { status: "FAIL", coverageMs: 2, regions: [{
+        id: "loft-chamfer-crease", referencePoints: 2, surfaceToMesh: { status: "SAMPLED_PASS", worst: { distance: 0.001 } },
+        meshSamples: 2, residualFailures: 0, ambiguousProjections: 0, unresolvedProjectionBudget: 0, sameSignEdges: 0, zeroEndpoints: 0,
+        crease: { status: "FAIL", metadataStatus: "SAMPLED_PASS", connectionReason: "LOCAL_SECTION_FAILED",
+            sourceMemberships: { expected: { ids: [75, 106], endpointMode: "curve-ends" }, membershipStatus: "SAMPLED_PASS", orderedPathStatus: "SAMPLED_PASS", endpointStatus: "SAMPLED_PASS" },
+            stations: [{ station: 5, angularAllowanceDegrees: 5.869687 }],
+            identifiedGeometry: [{ station: 5, status: "FAIL", edges: [{ edge: "57784:57785", incidentTriangles: [110164, 110236], distance: 0.001476913,
+                centroidNormalErrorsDegrees: [6.488312, 13.055455], geometricDihedralDegrees: 7.178198, geometryStatus: "FAIL" }] }],
+        },
+    }] }
+    classify(r)
+    assert.equal(r.status, "FAIL")
+    const report = renderReport({ runId: "x", commit: "abc" }, [r])
+    assert.match(report, /Ordered parameter paths/)
+    assert.match(report, /75, 106/)
+    assert.match(report, /110164, 110236/)
+    assert.match(report, /6\.48831/)
+    assert.match(report, /13\.05546/)
+    assert.match(report, /LOCAL_SECTION_FAILED/)
+    assert.doesNotMatch(report, /undefined|NaN/)
+})
+
+test("normal-repair reports distinguish unresolved pairs and staged work from output defects", () => {
+    const r = row({ status: "incomplete", invalidTriangles: 0, normalRepair: {
+        status: "incomplete", seeds: 5, visited: 5, passing: 2, accepted: 1, unresolvedPairs: 2,
+        flips: 3, stagedFlips: 6, unsupported: 1, rejected: 0, exhausted: 1, remaining: 0, cancelled: false,
+        scores: 34, trials: 15, triggerScores: 6, chartObservations: 150, supportObservations: 961,
+        normalSites: 752, positionSites: 1040, maxScoresPerSide: 192, maxPairScores: 384, maxFlipsPerSide: 3, maxPairFlips: 6,
+    } })
+    classify(r)
+    assert.equal(r.status, "INCOMPLETE")
+    const report = renderReport({ runId: "x", commit: "abc" }, [r])
+    assert.match(report, /Committed flips \| 3/)
+    assert.match(report, /Staged flips including rejected work \| 6/)
+    assert.match(report, /Unvisited \/ unresolved pairs \| 0 \/ 2/)
+    assert.match(report, /Score limit per side \/ pair \| 192 \/ 384/)
+    assert.match(report, /notChecked.*notApplicable/)
+    assert.doesNotMatch(report, /undefined|NaN/)
+})

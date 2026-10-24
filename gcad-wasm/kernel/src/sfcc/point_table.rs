@@ -71,6 +71,7 @@ pub fn interior_key(lattice_key: i64) -> i64 {
 #[derive(Default)]
 pub struct PointTable {
     pub(crate) arrangement: bool,
+    pub(crate) normal_repair: super::normal_fidelity::NormalRepairReport,
     pub(crate) coverage: Vec<super::local_coverage::Witness>,
     pub(crate) coverage_edge_failures: Vec<super::local_coverage::EdgeFailure>,
     pub(crate) coverage_cells: HashSet<super::local_coverage::CellId>,
@@ -95,6 +96,10 @@ impl PointTable {
     pub(crate) fn set_patch(&mut self, mut triangle: [usize; 3], owner: usize) {
         triangle.sort_unstable();
         self.patch_owners.insert(triangle, owner);
+    }
+    pub(crate) fn clear_patch(&mut self, mut triangle: [usize; 3]) {
+        triangle.sort_unstable();
+        self.patch_owners.remove(&triangle);
     }
     pub(crate) fn patch(&self, mut triangle: [usize; 3]) -> Option<usize> {
         triangle.sort_unstable();
@@ -261,7 +266,7 @@ impl PointTable {
     /// Stable processing order for greedy cleanup, independent of partition
     /// order and table-local ids. Coordinates order payloads; they do not weld
     /// or identify vertices. Preserve each triangle's cyclic orientation.
-    pub fn ordered_triangles(&self, tris: &[usize]) -> Vec<usize> {
+    pub(crate) fn geometric_ranks(&self) -> Vec<usize> {
         let mut ids: Vec<usize> = (0..self.count()).collect();
         let cmp = |&a: &usize, &b: &usize| {
             for (x, y) in self.pos[a * 3..a * 3 + 3]
@@ -281,6 +286,11 @@ impl PointTable {
         for (rank, &id) in ids.iter().enumerate() {
             ranks[id] = rank;
         }
+        ranks
+    }
+
+    pub fn ordered_triangles(&self, tris: &[usize]) -> Vec<usize> {
+        let ranks = self.geometric_ranks();
         let mut triangles: Vec<[usize; 3]> = tris
             .chunks_exact(3)
             .map(|t| {

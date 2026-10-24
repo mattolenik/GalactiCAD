@@ -43,6 +43,12 @@ pub(crate) fn finish(
             tuning.surface_tol_mm,
             tuning.curve_chord_tol_mm,
         );
+        let (tris, normal_report) = super::normal_fidelity::repair(
+            tree, features, points, &tris, tuning.surface_tol_mm.min(tuning.curve_chord_tol_mm),
+        );
+        points.normal_repair = normal_report;
+        // This noncoplanar pass never extends the planar transport certificate.
+        // Final-complex comparison withdraws affected witnesses below.
         super::local_coverage::finish_with_transport(points, &ordered, &tris, transport.as_ref());
         if let Some(snapshot) = arrangement_metadata {
             snapshot.verify(points, &tris);
@@ -134,6 +140,12 @@ pub(crate) fn finish(
         audit.rejected += r.rejected;
         audit.cancelled |= r.cancelled;
     }
+    emit("Checking feature facet normals");
+    let (out, normal_report) = super::normal_fidelity::repair(
+        tree, features, points, &tris, tuning.surface_tol_mm.min(tuning.curve_chord_tol_mm),
+    );
+    tris = out;
+    points.normal_repair = normal_report;
     emit("Auditing final triangle geometry");
     let after = q::measure(points, &tris);
     audit.after_triangles = after.triangles;

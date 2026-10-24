@@ -78,13 +78,15 @@ test("authentic housing GPU normals detect lost labels and flattened geometry in
     assert.equal(fixture.sourceSha256, "54964141fea0ed055f5392837c5e524f4a358e1c610f0b11a90857b8b57ad4a5")
     const mesh = (positions: number[][]) => { const verts = new Float32Array(positions.length * 8); positions.forEach((p, i) => verts.set(p, i * 8)); return new MeshQuery(verts, new Uint32Array(fixture.triangles.flat())) }
     const query = mesh(fixture.positions), features = new Float64Array(fixture.features)
-    const baseline = measureCrease(fixture.references, query, features, new Map(fixture.centroidNormals))
+    const region = regionsFor("housing", fixture.sourceSha256)[0]
+    const baseline = measureCrease(fixture.references, query, features, new Map(fixture.centroidNormals), region)
     assert.ok(baseline.stations.some(s => s.status === "SAMPLED_PASS"))
-    assert.ok(baseline.stations.some(s => s.status === "FAIL"), "retain the existing failed section")
-    const noLabels = measureCrease(fixture.references, query, new Float64Array(), new Map(fixture.centroidNormals))
+    assert.equal(baseline.status, "FAIL", "unrelated ambiguous edges cannot hide the identified failure")
+    assert.ok(baseline.identifiedGeometry!.some(s => s.status === "FAIL"), "retain the existing failed physical crease section")
+    const noLabels = measureCrease(fixture.references, query, new Float64Array(), new Map(fixture.centroidNormals), region)
     assert.equal(noLabels.status, baseline.status)
     assert.ok(noLabels.missingLabelStations > baseline.missingLabelStations)
-    const flattened = measureCrease(fixture.references, mesh(fixture.flattenedPositions), features, new Map(fixture.centroidNormals))
+    const flattened = measureCrease(fixture.references, mesh(fixture.flattenedPositions), features, new Map(fixture.centroidNormals), region)
     assert.ok(flattened.stations.filter(s => s.status === "FAIL").length > baseline.stations.filter(s => s.status === "FAIL").length)
 })
 
@@ -283,4 +285,33 @@ test("quarter and final-center refinement replies are bound to their requested p
         await assert.rejects(refineBrackets([bracket(extent)], sampler, true), /position does not match/)
         assert.equal(calls, corruptCall)
     }
+})
+
+test("same-side projected normals cannot establish corresponding incident patch references", async () => {
+    const { measureCrease } = await import("./gpu-coverage.mjs")
+    const n = (a: number): Point => [-Math.sin(a), -Math.cos(a), 0]
+    const positions = [[0, 0, -0.01], [0, 0, 0.01], [0.01, 0, 0], [-0.01 * Math.cos(0.11), 0.01 * Math.sin(0.11), 0]]
+    const verts = new Float32Array(32); positions.forEach((p, i) => verts.set(p, i * 8))
+    const mesh = new MeshQuery(verts, new Uint32Array([0, 2, 1, 0, 1, 3]))
+    const reference: CreaseReference[] = [{ station: 0, seed: [0, 0, 0], point: [0, 0, 0], tangent: [0, 0, 1], normals: [n(0), n(0.2)], contrast: 0.2, angularAllowance: 0.1, status: "RESOLVED" }]
+    const features = new Float64Array([0, 1, 7, 0, 1])
+    const wrongSides = measureCrease(reference, mesh, features, new Map([[0, n(0.055)], [1, n(0.055)]]))
+    assert.equal(wrongSides.status, "INCOMPLETE")
+    assert.equal(wrongSides.stations[0].centroidSideMismatchPairs, 1)
+    const distinctSides = measureCrease(reference, mesh, features, new Map([[0, n(0)], [1, n(0.2)]]))
+    assert.equal(distinctSides.status, "SAMPLED_PASS")
+})
+
+
+test("equal bisector reference normals do not establish distinct incident support sides", async () => {
+    const { measureCrease } = await import("./gpu-coverage.mjs")
+    const n = (a: number): Point => [-Math.sin(a), -Math.cos(a), 0]
+    const verts = new Float32Array(32)
+    ;[[0, 0, -0.01], [0, 0, 0.01], [0.01, 0, 0], [-0.01 * Math.cos(0.11), 0.01 * Math.sin(0.11), 0]].forEach((p, i) => verts.set(p, 8 * i))
+    const mesh = new MeshQuery(verts, new Uint32Array([0, 2, 1, 0, 1, 3]))
+    const reference: CreaseReference[] = [{ station: 0, seed: [0, 0, 0], point: [0, 0, 0], tangent: [0, 0, 1], normals: [n(-0.02), n(0.18)], contrast: 0.2, angularAllowance: 0.1, status: "RESOLVED" }]
+    const result = measureCrease(reference, mesh, new Float64Array([0, 1, 7, 0, 1]), new Map([[0, n(0.08)], [1, n(0.08)]]))
+    assert.equal(result.status, "INCOMPLETE")
+    assert.equal(result.stations[0].ambiguousSupportPairs, 1)
+    assert.equal(result.stations[0].edgeDiagnostics[0].centroidSupportPairStatus, "INCOMPLETE")
 })

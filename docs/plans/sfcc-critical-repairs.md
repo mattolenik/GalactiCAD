@@ -239,28 +239,288 @@ partially met until housing can be measured under suitable host conditions.
 
 ## Execution and review
 
-Implement one numbered milestone at a time in a reviewable commit. At each step,
-run the relevant focused native and actual-WASM tests, the acceptance checker
-tests, and `make build`. Use targeted bracket/housing exports during iteration;
-after an accepted candidate for each geometry milestone, run
-`make acceptance-tests` once across all five unchanged models. Preserve original
-and candidate reports with per-metric deltas; do not rerun the full campaign for
-documentation-only changes.
+This is the next implementation sequence for the **open exits**, not a restart
+of completed repairs 1–5. Use commit `701997c` and the
+[final five-model report](../../.testresults/sdf-meshing/2026-10-24T08-17-05-970Z/report.md)
+as the recorded starting baseline. At execution time, record the actual checkout
+and any intervening changes; do not reset another contributor's work to recreate
+that revision. This section is a plan; its packages have not been executed.
 
-Compare geometry, feature obligations, topology, numerical events, triangle
-counts, export times and worker recovery. Existing unrelated failures can remain,
-but a new failure blocks the milestone. A single timing sample can flag a cost
-change; use repeated measurements before claiming a regression or improvement.
-Substantial additional tessellation must be explained by restored geometry and
-reviewed, not hidden by an aggregate quality score.
+### Baseline and non-negotiable obligations
 
-Release gates use production settings and actual WASM serial/worker exports.
-Focused tests additionally vary worker partition/order and a small deterministic
-set of rigid transforms on the full models. Require geometric obligations,
-not identical triangulations across lattices. Reuse the suite's capture owner;
-multiple agents, if requested later, must not run competing browser/timing jobs.
+The coordinator prepares one common baseline packet before the first fan-out:
+source revision/digest, original YAML snapshots, effective tuning and export
+cube, simplification/quality switches, toolchain versions, actual WASM hash,
+GPU adapter, raw meshes, and links to the corresponding numerical receipts.
+Reuse the existing acceptance manifest and structured results. If an ignored
+artifact is unavailable, regenerate it from the pinned source and identify that
+new run; do not silently substitute a current mesh or require a private binary
+to run a checked-in regression.
 
-First implementation deliverable: the bracket junction regression, a shared-face
-construction repair, and a report showing the 0.057258117 mm miss reduced below
-0.02 mm with incident features and topology preserved. This is a concrete bounded
-repair; general multi-sheet reconstruction remains outside its completion claim.
+| Case | Recorded starting obligations |
+| --- | --- |
+| Bracket | Preserve the repaired junction, zero invalid f32 faces and topology. Existing chain failures and 106 ambiguous GPU normal-line projections remain open; 19,263 unresolved cells. |
+| Housing | Preserve zero invalid f32 faces and all restored memberships. Main-bore miss is 0.0132767 mm against 0.01 mm; one loft/chamfer section fails an empirical normal check; flange references remain ambiguous; 15,185 unresolved cells. |
+| Knob | 4,582 invalid f32 faces and existing feature-chain failures; 45,019 unresolved cells. |
+| Mess 2 | 17,953 invalid f32 faces, existing topology/chain failures and four recorded residual memberships; 30,083 unresolved cells. |
+| Mess 1 | Full original model times out at the 180-second export limit; no accepted mesh or inferred zero defect counts. |
+
+Keep **0.01 mm surface** and **0.02 mm feature** budgets separate. Record field
+residuals in field units. A normal-line displacement upper bound exceeding a
+budget is an unresolved projection obligation, not a lower bound on distance
+to every surface point. Keep normal fidelity, positions, ordered connectivity,
+labels, reference ambiguity, construction uncertainty and execution errors as
+separate report dimensions. A demonstrated failure takes precedence over an
+incomplete measurement; neither a missing reference nor a successful harness
+exit can produce an acceptance pass.
+
+### Team and concurrency model
+
+For **each package below**, start three independent competitors on the same
+contract and frozen baseline. Each must address the whole contract; the emphases
+below are starting approaches, not three fragments of a predetermined solution.
+
+| Agent | Responsibility | Required output |
+| --- | --- | --- |
+| A — construction | Find the first responsible stage and propose a bounded mathematical/construction repair. | Causal hypothesis, distinguishing experiment, proof premises, candidate patch and regression evidence. |
+| B — representation | Independently solve the same failure through source identity, constraints, f64/f32 conversion and transport analysis. | Alternative cause/repair, point/edge/patch provenance, quantization and worker counterexamples. |
+| C — falsification | Independently challenge the measurement and construction assumptions using GPU evidence and adversarial cases. | Alternative safe candidate, or a reproducible counterexample explaining why a proposed repair cannot satisfy the contract. |
+| D — consensus | After A/B/C finish, read all three handoffs and the connected code; reconcile facts, disagreements and candidate costs. | Selected minimal repair, rejected alternatives with reasons, unresolved disputes, fixed validation gates and integration instructions. |
+| Coordinator | Own baseline, scheduling, integration, final evidence and commit decisions. | One reproducible integrated candidate and an honest package/overall status. |
+
+There are four concurrent slots including the coordinator: run coordinator plus
+A/B/C, then finish those turns before D runs. Prefer a fresh fourth reviewer who
+did not author a candidate. If the platform cannot allocate another thread, the
+coordinator acts explicitly as D, provided it has not authored a competing
+candidate. Do not describe an author's self-review as independent consensus.
+
+Candidates use separate worktrees or the existing isolated-checkout workflow,
+with uniquely named scratch/artifact locations. They do not edit the integration
+tree or overwrite its generated WASM package. Do not create a new orchestration
+framework. Analysis and isolated edits may run concurrently; one named owner
+schedules builds, native/WASM exports, browser/GPU captures and benchmarks
+sequentially. Ownership can be handed off explicitly, never held by two agents.
+
+### Ordered remaining implementation packages
+
+Execute one bounded package at a time, with a new A/B/C/D cycle for each. Split
+a large package into construction-family commits when necessary; each such
+repair retains the same independent review and release gates.
+
+**E1 — Make ambiguous regional references diagnosable.** Start in
+`test/acceptance/sdf-meshing/gpu-coverage.mts`, its tests, capture receipts and
+reporting. Save every failed probe's endpoints, GPU values, search extent,
+bracket width and rejection reason. Compare bounded nested normal searches,
+alternative transverse/side sampling, and adversarial reference calibration.
+Test same-sign endpoints containing two crossings, rounded-zero plateaus,
+tangencies and nearby separated sheets. Preserve strict-sign brackets and the
+shrinking-offset evidence; declare search budgets before running candidates.
+
+Exit: the old bracket omission and all four deliberate corruptions remain
+detectable; known good regional controls still pass; every attempted reference
+has usable evidence or a specific unresolved reason. Run the revised checker on
+both the baseline and candidate artifacts. Mesh buffers must remain identical
+for this measurement-only package. A still-ambiguous flange remains INCOMPLETE.
+This is a bounded diagnostic deliverable, not a requirement to solve universal
+root discovery before E2: the existing bore witness already supports its repair.
+
+**E2 — Repair the housing main bore.** Freeze the existing failed GPU witnesses,
+including the worst near `(5.49795437, 0.150000006, -0.050000001)` mm. Trace
+responsible cells, carriers and triangles through projection, refinement,
+triangulation, assembly and final f32 conversion. Competing candidates should
+distinguish inadequate interior approximation from projection/carrier mistakes
+and later movement. Inspect `pipeline.rs`, `cell_mesh.rs` and
+`patch_triangulate.rs` only as the evidence leads there. Vertex residuals alone
+cannot validate this repair: the recorded failures include edge midpoints and
+triangle interiors.
+
+Exit: all original failing bore witnesses meet the unchanged 0.01 mm gate,
+including their numerical allowance. Add a predeclared shifted/denser regional
+GPU sample set to test between the original samples. Preserve passage topology,
+housing memberships, zero invalid bracket/housing faces and prior junction
+obligations. Attribute any additional tessellation to the restored accuracy;
+do not raise global depth or substitute a simpler model.
+
+**E3 — Resolve the housing crease obligations.** Investigate loft/chamfer section
+5 near `(8.214349029, 4.772261598, 14.691963856)` mm independently of the bore.
+The recorded centroid-normal error is 6.4895767 degrees against a 5.8702329-degree
+empirical allowance; this is not evidence by itself of a positional miss or a
+deleted crease. Compete on incident-patch approximation, feature representation,
+and whether the reference pairs the correct surface sides. Evaluate flange
+geometry only where E1 supplies an adequate reference.
+
+Exit: supported crease sections pass their position, geometric-face-normal,
+retained normal-jump, ordered-path, endpoint-incidence and membership checks
+separately. Improve the geometry to satisfy the existing angular rule, or prove
+a checker defect with independently justified positive/negative controls and
+re-evaluate both old and new meshes. Do not choose a larger allowance because
+the candidate fails. Label changes or display-normal changes cannot repair a
+geometric crease. Any unresolved flange section leaves that acceptance exit open.
+
+**E4 — Repair malformed knob and Mess 2 construction.** Inventory exact invalid
+f32 faces by first defective stage and source/constraint provenance, beginning
+with knob and then Mess 2. Keep the original full scenes mandatory. Use reduced
+cases only to distinguish construction families. Compete on constrained patch
+construction, legitimate shared-geometry identities and final-coordinate
+validation. Preserve evidence of f64 defects separately from conversion collapse.
+
+Exit per construction-family commit: its previously failing emitted faces are
+valid, with retained boundary constraints, memberships, winding, vertex links
+and local nonincident-intersection checks. Compare defect identities and
+locations, not merely net counts: fewer total defects must not conceal newly
+introduced ones. No blanket welding, face deletion, unconstrained filling or
+arbitrary coordinate perturbation. E4 stays open until both full models have
+zero invalid emitted faces; fixing the largest family is partial progress.
+
+**E5 — Close remaining feature-chain and worker obligations.** After the relevant
+construction families are stable, classify bracket/knob/Mess 2 chain failures
+and the four recorded Mess 2 memberships. Compete on missing physical geometry,
+lost metadata/parameter intervals, and invalid or incomplete compiled-feature
+expectations. Match witnesses by geometry and source occurrence; native and
+WASM curve IDs are not interchangeable. Removing a supposed phantom trace needs
+evidence from the full expression and a counterexample test, not just a nearby
+edge or a favorable aggregate count.
+
+Use a separate subpackage for raw worker reconstruction: preserve pre-recovery
+partition/merge receipts and compare them with the recovered and serial outputs.
+Start with the existing reverse-order bracket/housing failures, then a bounded
+2/4/8-worker and completion-order matrix. Retain recovery as a separate behavior.
+Record requested and actual partition/worker counts and the recovery reason;
+a clamped worker configuration does not establish the requested configuration.
+
+Exit: targeted visible chains have ordered coverage, correct endpoints, incident
+patches and every applicable parameter interval. Separately, the targeted raw
+worker outputs satisfy the same geometric/topological obligations without
+serial recovery. A passing recovered result does not close the raw-worker exit.
+Unresolved compiler completeness stays explicit; these repairs do not establish
+general multi-sheet reconstruction.
+
+**E6 — Close resource and performance exits.** First isolate Mess 1's dominant
+executed phase under the original source, settings and 180-second export limit.
+Use an external watchdog; retain partial phase/worker/resource receipts. A longer
+diagnostic run, if needed, must be separately named and bounded before launch;
+it cannot replace the production acceptance row. Competing implementations must
+preserve geometry/feature quality while reducing measured work. A first completed
+mesh still needs all acceptance checks, not merely a triangle count.
+
+Then reassess housing exclusion cost on a suitable host. Use a matching frozen
+baseline/candidate pair differing only in the proposed optimization. The retained
+milestone-5 pair can answer the historical claim; it cannot by itself establish
+the performance of a later geometry repair. Start with diagnosis and measurement;
+implement another optimization only if a repeatable cost warrants it.
+
+Exit: Mess 1's resource exit closes only when the full original export finishes
+within 180 seconds. A performance claim requires one warm-up per configuration
+and five alternating baseline/candidate pairs with reversing pair order, unchanged
+quality obligations, and every sample retained. Report backend, median, range,
+paired outcomes, phase times and output hashes. Keep Node/WASM export-only and
+browser end-to-end measurements separate. Housing's prior **+25.44% raw median**
+remains documented; noisy or conflicting follow-ups stay inconclusive. One-pair
+collateral observations cannot support speed claims. E6 has separate resource
+and performance exits; neither can stand in for the other.
+
+### Per-package implementation and consensus procedure
+
+1. **Freeze the contract.** Name the failing obligations, full-model inputs,
+   allowed edits, expected improvement, preserved invariants, numeric budgets
+   and stop conditions. State whether this package repairs geometry, measurement,
+   transport or cost. Preserve known failures by identity/region, not only count.
+2. **Independent diagnosis.** A/B/C each submit a causal hypothesis and the
+   smallest experiment that could disprove it before expensive validation.
+   Sharing the common evidence packet is expected; copying another candidate's
+   proposed answer is not an independent result.
+3. **Competing implementation.** Each author produces a reviewable isolated
+   patch, focused regressions and requested validation jobs. An alternative
+   disproved by a concrete counterexample is a valid handoff; three production
+   patches are not required merely to satisfy the agent count.
+4. **Complete handoffs before consensus.** Include source revision/diff, proof
+   premises and unsupported cases, old-fails/new-passes evidence, adversarial
+   controls, commands/results, actual WASM/configuration/output hashes, affected
+   obligations, cost/tessellation changes and remaining uncertainties. Clearly
+   label evidence that has not yet run and native-only observations.
+5. **Fourth-agent decision.** D resolves contradictions by experiments and
+   invariants, never voting or averaging scores. Select the smallest sufficient
+   candidate. Combining changes requires compatible assumptions and fresh
+   integrated validation. If none satisfies the contract, retain the rejection
+   evidence and return a focused follow-up to the competitors; do not merge a
+   union of speculative repairs.
+6. **Single-writer integration and freeze.** The coordinator or explicitly
+   designated integrator applies the selected patch. Review the integrated diff,
+   build it, and record source/toolchain/binary/scene/settings digests before
+   release validation. Evidence from a different worktree binary does not
+   automatically apply to the integration result.
+7. **Validate and decide.** Apply the matrix below. A new defect blocks the
+   candidate even when net defect counts improve. If a new checker exposes an
+   existing defect, demonstrate that attribution by running it on the baseline;
+   the defect still fails acceptance. Keep `implemented`, `target validated` and
+   `overall accepted` distinct. Do not redefine a failed repair as a completed
+   diagnostic task; any useful diagnostic commit leaves the repair explicitly open.
+8. **Commit before the next package.** Commit the bounded implementation, tests
+   and result record after review. Include compact necessary fixtures even if
+   their directory is normally ignored. Preserve complete external artifacts and
+   report links. State exactly which exits passed and which remain open; a partial
+   family repair does not close its parent package.
+
+### Validation matrix and evidence invalidation
+
+| Change | Required validation before commit |
+| --- | --- |
+| Measurement/reference/report behavior | Harness tests, positive controls and all four corruption checks; matching baseline/candidate checker runs; targeted live GPU captures for sampling changes; verify captured mesh identity. Run the full five-model report when shared capture or release verdict behavior changes. |
+| Geometry/construction | Relevant native and actual release-WASM regressions, f64/f32 validity, topology/intersections, ordered features and GPU regional checks; deterministic transformed full models and affected serial/worker paths; then one full five-model campaign. |
+| Worker/transport | Separate raw and recovered receipts, production serial comparison, affected partition counts/orders, boundary/coarse-fine cases, feature transport and topology; final integrated five-model campaign. |
+| Exclusion/performance | Numerical/adversarial enclosure tests, shipped-WASM arithmetic, full-model correctness gates and repeated paired timing after the freeze. For a change claiming unchanged construction, require exact vertex/index/feature-buffer preservation on the available original models. |
+| Documentation only | Review links, baseline references and consistency. No build, export or full campaign rerun solely for prose. |
+
+Use `make build` for application validation and `make acceptance-tests` for the
+final production campaign. Run applicable native kernel tests and focused WASM
+fixtures through their existing commands. Test discovery must include both
+`*_test.mts` and `*_test.mjs` WASM fixtures. For acceptance checkers use
+`node --import tsx --test test/acceptance/sdf-meshing/*test.mts`; selecting only
+`*_test.mts` would omit `gpu-coverage.test.mts`.
+
+Predeclare a small transform matrix that includes the existing rotations plus
+non-axis rotation and grid-phase translation cases on the complete models.
+Transform the witnesses with the model. Compare geometric obligations across
+changed lattices, not identical triangulations. Use a bounded pairwise worker/
+transform matrix rather than the Cartesian product of every option.
+
+A runtime source, compiler flag, binary, scene, tuning or acceptance-rule change
+invalidates affected evidence. Rebuild as needed and repeat the affected gates;
+if it changes production geometry, shared sampling or release verdict behavior
+after the full-campaign freeze, repeat that campaign. Tests run before a later
+guard or synthesis must be labelled with their actual source/binary, rather than
+silently presented as final-candidate receipts. Prose-only edits do not invalidate
+runtime evidence. No new CPU scene-reference evaluator or in-agent manual visual
+QA is introduced; automate image collection and leave visual acceptance to the user.
+
+### Resource controls and final report
+
+Before heavyweight work, check disk against expected compiler growth, temporary
+writes, complete retained artifacts and a reserve; the previous 141 MB report is
+not the whole working-space requirement. Avoid an unbounded target directory
+per experiment. Record host load, memory pressure/swap and GPU/browser state.
+For timing runs, predeclare a resource-suitability policy and run no competing
+owned builds/exports. If conditions violate that policy, retain the observations
+and mark timing inconclusive; do not discard slow samples or repeat until a
+favorable median appears. Changes to conditions require a separately labelled run.
+
+On disk exhaustion, preserve partial receipts and the frozen candidate, reclaim
+only identified task-owned disposable compiler caches, and restart an immutable
+new run after capacity is restored. Do not delete baselines, source or unique
+evidence. On timeout, retain the stage, elapsed time and completed outputs, then
+recover only the owned isolated test context. Distinguish export, sampling,
+rendering and infrastructure failures. Verify ownership before terminating a
+leftover process; unrelated workloads and interactive browsers are untouched.
+
+For each accepted candidate, retain the generated Markdown report with all five
+original rows, linked SDF/mesh/wireframe/diff images, triangle and buffer counts,
+export time and separate measurement overhead. Add baseline deltas for geometric
+errors, exact invalid faces, topology, feature identities/intervals, numerical
+events, unresolved references/construction and worker recovery. Link the A/B/C
+handoffs, D's decision, integrated source/binary receipts, tests, raw timing
+samples and rejected experiments from a compact result record. A complete report
+with FAIL/TIMEOUT rows is a completed harness run, not completed mesh acceptance.
+
+The first new deliverable is E1's bounded reference-diagnostic patch and evidence
+packet. E2 then targets the already demonstrated housing bore error. General
+multi-sheet reconstruction remains outside these bounded completion claims.

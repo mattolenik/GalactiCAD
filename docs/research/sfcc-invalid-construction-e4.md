@@ -410,6 +410,133 @@ obligations must be known. Equal coordinates can expose an obstruction but never
 authorize source identification. A bounded refusal remains a measurement result,
 not a repaired mesh. E4, E5 and E6 remain open.
 
+### Complete-source capture: unchanged execution, incomplete lineage
+
+After independent review corrected four observer defects, all four focused
+capture controls passed. The unchanged full native run completed in 77.364
+seconds and reproduced all five baseline buffers exactly, with zero dropped
+records and no exceeded capture limits. Its 17.5 MB receipt nevertheless reports
+`CAPTURE_GAP`, correctly refusing source-closure completeness.
+
+It observes 39 source-consuming cells, 196 minimal faces, 461 preassembly faces,
+421 selected final faces, 339 metadata vertices and 94 relevant interval records.
+Twenty-three final face occurrences lack exact initial-cell provenance. Their
+later producer and complete descendant ancestry remain unproved; point-ID size
+alone cannot establish an allocation stage. The selected region is connected
+but is not a disk: it has 113 boundary edges and two degree-four boundary
+vertices. This describes the measured subset, not a proved complete ancestry
+closure or the topology of the intended surface.
+
+Three separate failures must remain distinct:
+
+- All 88 target interval identities and endpoint payloads survive assembly
+  unchanged, but 23 of their physical edges disappear: twelve on curve 301 and
+  eleven on 468. All 88 were actual preassembly edges; only 65 are final edges.
+  Persistent metadata is not geometric constraint preservation. These 23 edges
+  are different objects from the 23 unmatched final faces above.
+- Both compiled corner points exist, yet have zero preassembly/final face
+  incidence and no target endpoint intervals. Four endpoint gaps already exist
+  before assembly. Three endpoint arcs were sampled/staged without installation;
+  the fourth remains a raw planned path after an earlier graph abort. A staged
+  target request does not identify which later chart caused the whole graph to
+  refuse. Compiled corner IDs do not prove geometric corners.
+- The larger frontier still has an exact f32-zero edge, 34402–34403, whose
+  endpoints carry other charts 299/466. Boundary point 34033 also coincides in
+  f32 with retained exterior point 34032, on charts 472/305. Interior repair
+  cannot preserve this frontier and produce an embedded replacement.
+
+Independent checks confirm the actual face-consumer scan, all source-point stars
+and recorded metadata scope. They do not fill missing later-operation ancestry.
+The endpoint records also expose whole-scene Field32 paired with one of its own
+primitive surfaces; a bounded source-regularity discriminator is being tested
+before treating those pairings as independent curves or geometric corners.
+
+[Capture receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/source-component-a-original/source-component-provenance.json),
+[execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round3-source-capture-job/execution.json),
+[focused controls](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round3-source-capture-job/focused-controls-execution.json),
+and [independent outcome decision](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round3-component-review/decision.md)
+retain the facts and the next discriminator. No E4 production repair is integrated.
+
+### Endpoint equations: local independence assumption disproved
+
+The bounded source proof now passes at both compiled endpoints, 223 and 220.
+Within each fixed world box of half-width 0.0001 mm, it proves the raw source
+relations `Field30 = A` and `Field32 = max(A, B)`, where A is the selected twisted
+extrusion branch and B the finite cylinder branch. Strict bounds establish that
+the other blend, subtraction and cap branches are inactive throughout each box.
+A Krawczyk inclusion establishes an interior A=B crease root, and the smooth
+map `(A, B)` has rank two throughout the checked neighborhood.
+
+However, `A = Field32 = 0` also contains an explicit open two-dimensional patch
+where A=0 and B<0. These equations therefore do not supply an independent
+one-dimensional carrier intersection or certify an isolated corner. This is a
+counterexample to the construction assumption, not merely a failed Newton solve.
+The conclusion concerns real equations with the actual represented source
+coefficients, not bitwise equality of native and GPU field evaluations.
+
+The initial test failed because its world-axis interval box lost correlation
+between the coordinates of the rotated witness. Its positive cylinder upper
+bound made one witness inconclusive. The amended test preserves that failure,
+the exact witness, both boxes and all tolerances; guarded exact source alignment
+permits the identity `x² + z² = u² + 64` on the same parameterized patch. Both
+patches then have a strict cylinder interior margin of at least 0.0000146954 mm.
+Actual helper controls reject mismatched centers, nonidentity represented
+transforms and tilted axes. No rounded matrix is assumed exactly orthogonal.
+
+The amended test passed in 9.401 seconds, after a 50.331-second build. This
+authorizes investigation of source-aware carrier-pair eligibility, not deletion
+of entire curves, global chart identification, or a mesh acceptance claim.
+Actual endpoint graph-abort lineage and preservation of legitimate external cuts
+and inherited seams remain necessary before integrating a construction change.
+
+[Original inconclusive proof](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round3-endpoint-proof-job/result.json),
+[passing bounded proof](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round3-endpoint-invariant-job/result.json),
+and [execution receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round3-endpoint-invariant-job/test-execution.json)
+retain both results and their source/binary provenance.
+
+The next independent comparison rejects a blanket ancestor-pair filter. For
+Stairs with radius 1 and two steps, local operand equations a=x and b=y produce
+`F=min(x,y-1/2)` near `(0,1/2)`. Although `a=F=0` contains a surface patch, its
+boundary is a real right-angle attachment that `a=b=0` misses. Four operator
+controls, plus seven existing included tests, pass. Generated chamfer carriers
+also have legitimate intersections with their descendants. A restricted
+Round/Soft enumeration candidate therefore preserves those routes, source
+registry slots and external occurrences; every unverified omission explicitly
+keeps aggregate validation incomplete. This is an isolated experiment, not an
+integrated repair.
+
+[Competing source-selection handoffs](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-source-review/B/handoff.md),
+[independent counterexample analysis](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-source-review/C/handoff.md),
+and [executed operator controls](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-source-eligibility-controls/execution.json)
+record the narrowed experiment and its limits.
+
+The candidate's seven structural controls passed. Its feature-only original-knob
+run produced 81 curves and 77 corners after 46 syntactic pair omissions, with
+29 unresolved trims still reported. The 74-stratum count is unchanged; exact
+descriptor assertions cover only strata 10, 15, 30 and 32, despite the receipt's
+broad `sourceRegistryDescriptorsMatchRetainedPacket` label. The retained old
+packet covers only twelve curves, so longer local continuations do not establish
+preservation of the complete original 924-curve graph. A pair number after
+canonicalization can also denote an external source alias; it cannot identify a
+pre-canonical omitted occurrence by itself.
+
+The separate unchanged full-model endpoint observer completed in 100.494 seconds,
+preserved all five buffers exactly, and captured both endpoints without dropped
+or capped metadata. Both actual graph refusals are
+`edge_already_present_without_admissible_overlap`: curve 469 tries to use edge
+74135–74134 in cell `[8,40,132,126]`, and curve 467 tries edge 74340–74339 in
+`[8,43,123,152]`. Each edge already has supports 10/15; each new curve has the
+alternative Field30/cylinder source description. These are shared-edge admission
+failures, not direct projection failures of curves 690/693. Removing redundant
+ancestor traces therefore does not by itself establish the necessary alias
+handling or an embedded graph.
+
+[Candidate focused and feature-only execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-structural-candidate-job/features-execution.json),
+[complete candidate feature receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-structural-candidate-job/features.json),
+[unchanged endpoint execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-endpoint-graph-job/execution.json),
+and [actual graph-refusal provenance](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round4-endpoint-graph-aborts/endpoint-graph-provenance.json)
+keep enumeration changes separate from demonstrated construction failures.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

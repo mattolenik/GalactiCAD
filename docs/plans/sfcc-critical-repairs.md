@@ -271,10 +271,15 @@ retains its 180-second TIMEOUT. **E4 is in progress**, beginning with the
 The first full native knob candidate repairs the witnessed cells but leaves
 unresolved changed defect identities and fails a concrete graph-embedding control.
 A private 31-face replacement subsequently refuses correctly: its fixed f32
-boundary retraces itself, so interior triangulation cannot repair it. The next
-bounded measurement follows the complete typed source-curve component to an
-admissible frontier before constructing another replacement. No E4 production
-repair has been integrated; E5–E6 remain pending in order.
+boundary retraces itself, so interior triangulation cannot repair it. A larger
+unchanged source-component capture exposes missing endpoint intervals, lost
+physical feature edges and incomplete later-face ancestry. A bounded proof at
+both endpoint neighborhoods then disproves independence of an ancestor-field /
+descendant-surface pair: its common zero set contains an open surface patch.
+The next competing implementations address source-aware pair eligibility and
+trace the actual endpoint graph abort, preserving legitimate external cuts and
+inherited seams. No E4 production repair has been integrated; E5–E6 remain pending
+in order.
 
 ### Baseline and non-negotiable obligations
 

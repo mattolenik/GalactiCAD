@@ -244,7 +244,12 @@ of completed repairs 1–5. Use commit `701997c` and the
 [final five-model report](../../.testresults/sdf-meshing/2026-10-24T08-17-05-970Z/report.md)
 as the recorded starting baseline. At execution time, record the actual checkout
 and any intervening changes; do not reset another contributor's work to recreate
-that revision. This section is a plan; its packages have not been executed.
+that revision. **E1 is implemented and its bounded diagnostic exit is validated**;
+see the [decision and results](../research/sfcc-reference-diagnostics-e1.md) and
+[report with recorded infrastructure recovery](../../.testresults/sdf-meshing/2026-10-24T09-14-43-401Z-postprocessing-recovery/report.md).
+All four available meshes and original bracket/housing discovery-grid references
+remain unchanged. The housing bore/crease and flange-association exits remain
+open. E2–E6 have not yet been implemented; E2 is next.
 
 ### Baseline and non-negotiable obligations
 

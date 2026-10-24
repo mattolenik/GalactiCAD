@@ -55,7 +55,7 @@ silently retrying the export at lower quality. Earlier completed artifacts remai
 Focused harness checks:
 
 ```sh
-node --import tsx --test test/acceptance/sdf-meshing/*_test.mts
+node --import tsx --test test/acceptance/sdf-meshing/*test.mts
 ```
 
 These test verdict honesty, artifact identity, duplicate-export rejection,
@@ -111,3 +111,8 @@ they need no ignored historical run directories. Run the focused harness tests
 with `node --import tsx --test test/acceptance/sdf-meshing/*test.mts` after the
 normal application build. See the
 [measurement definitions and limits](../../../docs/research/sfcc-gpu-regional-coverage.md).
+
+Normal-projection and crease-search receipts now retain nested probe endpoints,
+GPU values, refinement brackets and rejection reasons. The report distinguishes
+a positional root witness from an unresolved incident-sheet normal association.
+See the [E1 decision and validation record](../../../docs/research/sfcc-reference-diagnostics-e1.md).

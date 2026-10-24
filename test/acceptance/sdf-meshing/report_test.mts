@@ -76,3 +76,16 @@ test("regional GPU failure adds a failure while sampled pass cannot promote inco
         assert.match(report, /separate from export time/)
     }
 })
+
+test("normal-search reasons and multiple crossings remain visible in Markdown", async () => {
+    const { searchNormalBrackets, summarizeNormalSearches } = await import("./gpu-coverage.mjs")
+    const searches = await searchNormalBrackets([{ point: [0, 0, 0], normal: [1, 0, 0] }], 0.04, async points => points.map(point => ({ point, normal: [1, 0, 0], field: (point[0] - 0.006) * (point[0] - 0.012) })))
+    const meshProjection = summarizeNormalSearches(searches), r = row({ status: "incomplete" })
+    r.gpuCoverage = { status: "INCOMPLETE", coverageMs: 2, regions: [{ id: "two-sheet-control", referencePoints: 2, surfaceToMesh: { status: "SAMPLED_PASS", worst: { distance: 0 } }, meshSamples: 1, residualFailures: 0, ambiguousProjections: 0, unresolvedProjectionBudget: 0, ambiguousSheetAssociations: 1, sameSignEdges: 1, zeroEndpoints: 0, referenceDiagnostics: { meshProjection, creaseProjection: summarizeNormalSearches([]), creaseSectionReasons: {}, tangentPlaneReasons: {} } }] }
+    const report = renderReport({ runId: "x", commit: "abc" }, [r])
+    assert.match(report, /MULTIPLE_STRICT_BRACKETS_OBSERVED/)
+    assert.match(report, /Multiple crossings/)
+    assert.match(report, /533 GPU samples per line/)
+    assert.match(report, /do not select an incident sheet/)
+    assert.doesNotMatch(report, /undefined|NaN/)
+})

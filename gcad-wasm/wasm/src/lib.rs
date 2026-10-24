@@ -76,6 +76,21 @@ pub fn audit_field_intervals(scene_json: &str, regions: &[f64]) -> Result<Vec<f6
     Ok(out)
 }
 
+/// Checked terminal-exclusion diagnostic: six inputs (center/half), two bounds.
+/// Infinities preserve unsupported sides; NaN pairs indicate invalid arithmetic.
+#[wasm_bindgen]
+pub fn audit_checked_partial_intervals(scene_json: &str, regions: &[f64]) -> Result<Vec<f64>, JsError> {
+    if regions.len() % 6 != 0 { return Err(JsError::new("checked regions need six values")); }
+    let tree=build_csg_tree_from_json(scene_json).map_err(|e|JsError::new(&e))?;
+    let mut out=Vec::with_capacity(regions.len()/3);
+    for r in regions.chunks_exact(6) {
+        let (lo,hi)=tree.checked_partial_interval_over_box([r[0],r[1],r[2]],[r[3],r[4],r[5]])
+            .unwrap_or((f64::NAN,f64::NAN));
+        out.extend([lo,hi]);
+    }
+    Ok(out)
+}
+
 /// Diagnostic capture of the actual baked primitive inputs, without evaluating
 /// the field: world-to-local matrix9, scale, translation3, position3, sign,
 /// shape tag (0 sphere / 1 box), then radius/zero/zero or half extents3.

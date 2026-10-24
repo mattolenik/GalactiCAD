@@ -335,7 +335,15 @@ impl<'a> Builder<'a> {
     fn certified_empty(&self, level: u32, ix: i64, iy: i64, iz: i64) -> bool {
         let Some((c, half)) = crate::math::grid::cell_enclosure(self.lat, level, ix, iy, iz) else { return false; };
         let (lo, hi) = self.sampler.tree.interval_over_box(c, half);
-        lo > 0.0 || hi < 0.0
+        // Limit this additional rule to the lattice ceiling: earlier empty
+        // neighbors can change surface subdivision/balance. Lower-ceiling builds
+        // retain the old policy; mesh preservation remains a regression gate.
+        lo > 0.0 || hi < 0.0 || (level == self.lat.max_depth
+            // Arithmetic failure stays unresolved. This is eligibility only;
+            // the old endpoints are not premises of the checked enclosure.
+            && lo.is_finite() && hi.is_finite() && lo <= hi
+            && self.sampler.tree.checked_partial_interval_over_box(c,half)
+                .is_some_and(|(lo,hi)|lo>0. || hi<0.))
     }
 
     /// Create a leaf cell, sampling its 8 corners into the shared cache.
@@ -960,6 +968,22 @@ mod tests {
 
     fn sphere_tree() -> CsgNode {
         sdf::leaf_at(Shape::Sphere { r: 8.0 }, [0.0, 0.0, 0.0])
+    }
+
+    #[test]
+    fn terminal_exclusion_does_not_clear_legacy_arithmetic_failure() {
+        use crate::math::similarity::Similarity;
+        use crate::primitives::smin::SminMode;
+        let tiny=sdf::leaf(Shape::Cone{r:1.,h:2.},Similarity{s:2_f64.powi(-1022),..Similarity::identity()},[0.;3]);
+        let tree=CsgNode::Blend{kind:sdf::BlendKind::Smin,mode:SminMode::Round,r:0.2,n:1.,
+            children:vec![tiny,sdf::leaf_at(Shape::Sphere{r:10.},[0.;3])]};
+        let lat=make_lattice(1,3.99,3.99,-0.01,0.04);
+        let (c,h)=crate::math::grid::cell_enclosure(&lat,1,0,0,0).unwrap();
+        assert!(!tree.interval_over_box(c,h).0.is_finite());
+        assert!(tree.checked_partial_interval_over_box(c,h).unwrap().1<0.);
+        let builder=Builder{lat:&lat,sampler:Sampler::new(&tree,&lat),cells_by_level:vec![HashMap::new(),HashMap::new()],
+            internal_by_level:vec![HashSet::new(),HashSet::new()],worklist:Vec::new(),enforce_edge_balance:true};
+        assert!(!builder.certified_empty(1,0,0,0));
     }
 
     /// Wrap a bare split predicate in a (no-feature) `CellDecision` for the tests.

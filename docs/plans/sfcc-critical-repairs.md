@@ -1,6 +1,7 @@
 # SFCC critical repairs after the bracket/housing investigation
 
-Status: implementation underway, October 23, 2026. Baseline commit:
+Status: bounded implementations complete; remaining acceptance and performance
+exits are open, October 24, 2026. Baseline commit:
 `5566520` (`Add SDF meshing acceptance diagnostics`). Milestone 1's construction
 and focused native/WASM checks are implemented; see the
 [corner repair record](../research/sfcc-corner-repair.md). The
@@ -14,9 +15,10 @@ memberships. Milestone 3's bounded
 implemented: original/rotated/worker bracket and housing have zero exact invalid
 faces, with the prior junction and overlap obligations preserved. The
 [final campaign](../../.testresults/sdf-meshing/2026-10-24T06-37-24-409Z/report.md)
-reproduces the focused meshes exactly. Overall acceptance remains failed:
-bracket retains earlier chain failures, housing remains incomplete, knob and
-Mess 2 retain malformed geometry, and Mess 1 times out. Four small Mess 2
+reproduces the focused meshes exactly. At milestone 3, overall acceptance was failed:
+bracket retained earlier chain failures, housing was incomplete, knob and
+Mess 2 retained malformed geometry, and Mess 1 timed out. Milestone 4 subsequently
+made housing's independent GPU failures explicit, so its current status is FAIL. Four small Mess 2
 memberships on already failed traces remain explicitly unresolved within the
 [documented collateral limits](../research/sfcc-f32-construction-repair.md#retry-policy-controls-and-bounded-collateral-result).
 Milestone 4's [independent GPU measurement infrastructure](../research/sfcc-gpu-regional-coverage.md)
@@ -31,7 +33,21 @@ limitations, not mesher repairs or global coverage guarantees. The
 completed successfully as a harness run. All four available meshes' vertex,
 triangle and feature buffers are byte-identical to milestone 3; all four
 corruptions are detected. Overall bracket, housing, knob and Mess 2 remain
-failed, while Mess 1 retains its 180-second timeout. Milestone **5 remains pending**.
+failed, while Mess 1 retains its 180-second timeout. Milestone 5's
+[checked terminal-exclusion implementation](../research/sfcc-terminal-exclusion.md)
+is implemented: final-binary timing receipts preserve all four available
+meshes' vertex, triangle and feature buffers exactly, while unresolved counts
+fall from 59,713 to 19,263 for bracket, 17,352 to 15,185 for housing, and
+48,615 to 45,019 for knob. Mess 2 remains at 30,083. Five alternating Node/WASM
+pairs show a 14.18% lower bracket export median. Housing's raw median is
+25.44% worse amid severe host contention, so its performance exit remains
+**open/inconclusive**; one-pair collateral timings support no speed claim.
+The [final milestone 5 campaign](../../.testresults/sdf-meshing/2026-10-24T08-17-05-970Z/report.md)
+completed with all four available meshes byte-identical to milestone 4. Complete
+bracket/housing GPU regional records and all four corruption outcomes are also
+unchanged. Bracket, housing, knob and Mess 2 remain FAIL; Mess 1 retains the
+180-second TIMEOUT. Milestone 4's crease/bore/reference failures and milestone
+5's housing performance exit remain explicitly open.
 
 Evidence: [investigation](../research/sfcc-bracket-housing-investigation.md),
 [acceptance report](../../.testresults/sdf-meshing/investigated-2026-10-23/report.md),
@@ -212,6 +228,14 @@ and export time on original scenes. Ambiguous cells remain unresolved. Use the
 acceptance plan's alternating baseline/candidate repetitions for performance
 claims, with no concurrent builds or export campaigns. Mess 1's timeout remains
 a resource failure until it actually completes within the recorded budget.
+
+Milestone 5 implementation evidence: [terminal-exclusion proof and results](../research/sfcc-terminal-exclusion.md).
+The checked rule covers represented affine sphere/box/cylinder fields and
+one-sided hard/round/chamfer composition, including opaque descendants and
+nearest-pair selection. It runs only at the lattice ceiling and preserves
+legacy arithmetic-failure eligibility. The all-depth experiment was rejected
+because it changed surface tessellation. The broad performance exit remains
+partially met until housing can be measured under suitable host conditions.
 
 ## Execution and review
 

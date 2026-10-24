@@ -23,7 +23,10 @@ function fixture() {
 }
 const cube = [-25.2, -19.2, -25.2, 50.4] as const
 function checkProductionFeatureObligations(result: ReturnType<typeof export_sfcc>) {
-    const chains = JSON.parse(result.stats_json).validation.featureChains
+    const validation = JSON.parse(result.stats_json).validation
+    assert.ok(validation.unresolvedCells < 21_000,
+        "checked terminal exclusion must retain its demonstrated improvement from 59,713 unresolved cells")
+    const chains = validation.featureChains
     for (const [name,limit] of Object.entries({intervalGaps:46,disconnectedCurves:4,missingEdges:7,missingCurves:0,offCurveEdges:0,invalidMemberships:0})) {
         assert.ok(chains[name] <= limit, `production bracket ${name} regressed: ${chains[name]} > ${limit}`)
     }

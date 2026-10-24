@@ -45,6 +45,8 @@ function checkRotatedIssues(issues: ChainIssue[]) {
 }
 function check(result: ReturnType<typeof export_sfcc>, sceneJson: string, t: TestContext, parts: Uint8Array[] = [], rotated = false) {
     const stats = JSON.parse(result.stats_json)
+    if (!rotated) assert.ok(stats.validation.unresolvedCells < 16_000,
+        "checked terminal exclusion must retain its demonstrated improvement from 17,352 unresolved cells")
     assert.equal(stats.components, 1, "repairs must preserve the connected housing")
     assert.deepEqual(stats.euler, [-8], "retain the existing housing topology")
     for (const name of ["edgeIncidence", "vertexLinks", "faceSegments"]) assert.equal(stats.validation[name], "passed", name)

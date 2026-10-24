@@ -329,6 +329,11 @@ pub(crate) struct ZeroOwners<'a> {
 }
 
 impl CsgNode {
+    /// Independent partial enclosure; infinities mean unsupported valid fields.
+    /// None means invalid input/arithmetic. No legacy interval is a premise.
+    pub fn checked_partial_interval_over_box(&self,c:[f64;3],half:[f64;3])->Option<(f64,f64)> {
+        enclosure::partial(self,c,half)
+    }
     /// Original signed occurrences whose whole ancestor path may attain zero.
     /// Postorder truncation visits each node once; IDs and strata are irrelevant.
     pub(crate) fn zero_owners_over_box(

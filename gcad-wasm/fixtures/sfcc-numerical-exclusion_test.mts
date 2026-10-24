@@ -1,6 +1,7 @@
 /** Exact witness checks across the real bridge and matching WASM bounds. */
 import assert from "node:assert/strict"
 import { readFileSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { test } from "node:test"
 import { audit_field_intervals, audit_primitive_inputs, export_sfcc, initSync, sfcc_octree_begin, sfcc_octree_current_frontier, sfcc_decide_partition, sfcc_octree_finish } from "../wasm/pkg/gcad_wasm.js"
 initSync({ module: readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.meta.url)) })
@@ -58,17 +59,23 @@ test("ordinary f64 and f32 serialized rotations retain the frozen successful exp
     }
 })
 
-test("mixed opaque controls preserve legacy blend operand bounds", () => {
+test("mixed opaque controls preserve output while checked terminal exclusion reduces work", () => {
     const lines = readFileSync(new URL("../../docs/research/sfcc-step2/mixed-baseline.jsonl", import.meta.url), "utf8").trim().split("\n")
+    const frozen = JSON.parse(readFileSync(new URL("./sfcc-terminal-controls.json", import.meta.url), "utf8"))
     for (const line of lines) {
         const fixture = JSON.parse(line)
         const result = export_sfcc(JSON.stringify(fixture.scene), "{}", -4, -4, -4, 8)
         try {
             const stats = JSON.parse(result.stats_json)
-            assert.equal(stats.leaves, fixture.leaves, line)
+            assert.ok(stats.leaves <= fixture.leaves, line)
             assert.equal(stats.components, fixture.components, line)
-            assert.equal(stats.validation.unresolvedCells, fixture.unresolved, line)
+            assert.ok(stats.validation.unresolvedCells <= fixture.unresolved, line)
             assert.equal(result.ok, fixture.ok, line)
+            for (const name of ["verts", "tris", "feature_edges"] as const) {
+                const data = result[name]
+                const hash = createHash("sha256").update(new Uint8Array(data.buffer,data.byteOffset,data.byteLength)).digest("hex")
+                assert.equal(hash, frozen.cases[fixture.name].hashes[name], `${fixture.name} ${name} changed`)
+            }
         } finally { result.free() }
     }
 })

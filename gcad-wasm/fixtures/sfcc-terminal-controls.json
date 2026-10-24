@@ -1,0 +1,28 @@
+{
+  "baselineCommit": "744222d111c5e1837a59f0a1436b72b4fcb3e41f",
+  "baselineWasmSha256": "6ee9190916936bc02951e4a151ba9eb6425a8f8f0d2eb3d7e248a03ac38aa7d2",
+  "cases": {
+    "round-plus-box": {
+      "hashes": {
+        "verts": "44e595e5acc26c52d7aafe52c4b528c1d6fbfae58be33af8092fbc157c3210a1",
+        "tris": "e46dc8da88b4288440ee1e08ec578e49414fd6a9e55d1c9c5b15ccee6acac0c0",
+        "feature_edges": "e1c7150e16973e0a968f57767243c5d9fb87c2b49622099fbabb4abc4a9a2bc9"
+      },
+      "leaves": 3631,
+      "unresolved": 543,
+      "components": 2,
+      "ok": false
+    },
+    "cylinder-plus-sphere": {
+      "hashes": {
+        "verts": "b8714319dfa04cab24e0dd4dc26a7130c8673ba34923ed74852995ff507971da",
+        "tris": "de49602aa03156e3b7e2ca364a65bab322c0ef87ae64bffe0adadc90f8f0d776",
+        "feature_edges": "1777e193abfa358524702c289a836e92e8934d05931793c6be7b59f4776d8244"
+      },
+      "leaves": 2279,
+      "unresolved": 8,
+      "components": 2,
+      "ok": false
+    }
+  }
+}

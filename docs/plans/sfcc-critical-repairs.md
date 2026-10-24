@@ -286,9 +286,14 @@ localizes the new crossing to legacy surface refinement, with clean local
 predecessors in both coordinate formats. The two-guarded-pass replacement passes
 focused controls but its full-knob run times out at 180 seconds without output
 buffers. A bounded profile also times out: rebuilding is material, but embedding checks
-dominate the measured later work. The equivalent forest index passes focused
-controls; full-model execution and repeated-sign reuse remain candidate steps
-without weakening geometry guards. Source
+dominate the measured later work. The equivalent forest index and exact-sign reuse pass focused
+controls, but the combined full-knob run also times out at 180 seconds. A separately
+reviewed 360-second diagnostic completes in 288.351 seconds, exhausts the triangle
+cap and still contains 1,876 invalid f32 faces; nineteen malformed identities
+change each way. Native chord-budget failures rise, and global contact audit
+remains unresolved after its own timeout. Exact clipped testing clears the original
+local crossing witness in both coordinate formats. The next construction proposal targets
+source-certified shared arcs before graph insertion. Source
 preservation and the residual conversion/alias families remain open. No E4
 production repair has been integrated; E5–E6 remain pending in order.
 

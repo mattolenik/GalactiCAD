@@ -763,6 +763,134 @@ no geometry result and does not close the source or conversion failures.
 and [retained partial stream](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round7-guard-cost-profile-job/export.log)
 preserve the result.
 
+### Exact coplanar-work reuse candidate
+
+Three independent handoffs compared two bounded optimizations. Direct reuse
+passes the four signs already computed for each edge pair into the corresponding
+contact checks, reducing a complete traversal from 90 to 54 orientation calls.
+The selected alternative retains two local directed 3-by-3 sign tables and
+computes each entry only when requested, bounding the traversal at 18 calls.
+Both retain the original four-call first-crossing exit. The tables are discarded
+between calls; working and rounded geometry never share cached state.
+
+The independent algebra review passed 756 permutation/identity/projection
+controls. Frozen old coplanar and complete intersection functions provide the
+Rust differential oracle: the existing live reference function alone would be
+circular because it calls the changed helper. The selected candidate's five new
+controls include 21 actual saved knob contact pairs, both coordinate formats,
+short-circuit/work counts and extreme finite scales. All twelve collision/index
+and thirteen refinement tests also pass, including the real same-sweep control.
+The competing smaller candidate passes its four new and eleven collision/index
+controls, but leaves more duplicate work; it remains an unselected alternative.
+
+The first selected-candidate release-LTO test build timed out at 120 seconds
+without a compiler error. Its orphan compiler was identified and stopped after
+a brief recorded overlap with the next owned build. A separately labelled
+48.593-second test build with LTO disabled and 16 codegen units produced the
+passing test binary. Those results are not default-release timing evidence.
+Subsequent watchdogs create and terminate only the owned process group. The
+normal release example was built separately in 88.885 seconds, with SHA-256
+`538897f570393db636e4883dcbce1f362067163b2662c6eaa4a893f65f6cb531`.
+The combined full-model experiment also timed out at 180.015 seconds, without
+mesh buffers. Its child consumed 119.352 user CPU seconds and 1.475 system CPU
+seconds while host load fell from 57.48 to 36.54. This is still no geometry result
+or controlled speed comparison. The 180-second failure remains recorded; a
+separately bounded diagnostic execution is being considered to unblock the
+construction investigation without relabeling that resource failure.
+
+The review also falsifies an overly broad claim about the inherited contact
+predicate: exact orientation signs do not make floating normal-based projection
+safe at every finite scale. Explicit disjoint triangles at scales `1e-200` and
+`1e200` produce underflow/overflow in the normal and a degenerate projection,
+yielding legacy false positives. Both optimizations preserve that existing
+behavior; neither silently repairs axis selection while claiming unchanged
+admissions. These are independent counterexamples, not demonstrated causes of
+the original knob failures.
+
+[Fourth-reviewer selection](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round8-sign-review/decision.md),
+[independent algebra and limitations](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round8-sign-review/C/handoff.md),
+[selected candidate](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round8-sign-review/A/handoff.md),
+[test-profile recovery](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round8-sign-controls/A-no-lto/execution.json),
+and [normal release experiment](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round8-combined-full-knob-job/execution.json)
+retain the separate evidence boundaries.
+
+### Completed longer diagnostic and remaining failures
+
+After three independent recommendations and fourth review, one separately named
+360-second diagnostic used the exact already-built combined executable, original
+scene, settings and cube. It completed in **288.351 seconds** with zero dropped
+construction records. The earlier 180.015-second timeout remains a failed resource
+gate; this longer run is not a replacement acceptance row or a speed comparison.
+No automatic further timeout extension is planned.
+
+| Native result | Unsafe structural candidate | Guarded/forest/reuse diagnostic |
+| --- | ---: | ---: |
+| Triangles | 228,162 | 334,740 |
+| Exactly invalid working f64 faces | 0 | 0 |
+| Exactly invalid emitted f32 faces | 1,876 | 1,876 |
+| Two-position / three-position-collinear f32 failures | 1,872 / 4 | 1,872 / 4 |
+| Indexed edges whose distinct working endpoints round together | 936 | 936 |
+| Emitted feature records / physically present indexed edges | 6,036 / 6,036 | 8,788 / 8,788 |
+| Native chord-budget failures | 10,908 | 73,920 |
+
+The new triangle count exactly exhausts the shared cap of twice the 167,370-face
+pre-refinement input. The native chord count is an internal sampled diagnostic,
+not an independent Euclidean error bound; increasing triangle count also changes
+the number of tested faces. It provides no basis for claiming improved fidelity.
+Native indexed incidence and vertex-link checks pass, with one component and
+Euler characteristic two; none establishes embedded geometry or source coverage.
+
+Exact full-buffer compaction and f64-to-f32 position conversion are verified.
+Compared with the unsafe structural mesh, 1,857 malformed oriented f32 triangle
+identities remain, nineteen disappear and nineteen appear. Equal totals are not
+identity preservation or proof of new physical failure regions. All final feature
+records describe actual nonzero indexed edges with incidence two and nonzero
+parameter spans. This does **not** discharge the native validator's 618 missing
+original feature-edge obligations: an emitted-record inventory cannot account for
+obligations that were lost before emission. No runtime compiled-feature fingerprint
+is present in these buffers, so cross-run numeric chart IDs are not independently
+joined merely because the configurations match.
+
+The original exact-cube adapter refuses: 2,961 working-or-rounded AABB candidates
+and 2,958 points exceed its fixed 256/512 payload caps. The whole-mesh contact audit
+also times out at its 60-second limit. Both unresolved outcomes are retained; no
+clean global embedding is claimed. A separate reviewed selector amendment
+excludes only triangles proved empty in the exact same cube in both coordinate
+formats, before applying the unchanged caps. Its full-model replay completes in
+2.780 seconds: 2,949 occurrences are proved empty, leaving twelve faces and
+thirteen points. All 66 pairs in each representation classify as sixteen legal
+shared-index contacts and fifty no-contact pairs, with no malformed selected face
+or prohibited contact. All twelve triangles have area intersections with the
+cube. This closes the **specific previously demonstrated crossing witness**;
+it neither supplies source fidelity nor resolves the global audit timeout.
+The original broad-selection refusal remains preserved separately.
+
+Three next-family handoffs identify a specific construction direction. In the
+previously audited structural mesh, 724 collapsed indexed pairs (1,448 faces)
+associate horizontal twisted-side constraints 7/10 with field constraint 30,
+sharing cylinder 15. That is a source association, not an equivalence theorem.
+A current three-pin complete incident-star counterexample still has a noninjective
+f32 boundary, ruling out an interior-only repair with that frontier fixed. The
+proposed next milestone must certify a common source branch over the actual
+construction footprint, transport both ordered charts and construct their shared
+physical path before graph insertion. It must retain any genuinely divergent
+parts and every affected shared-face consumer. Equal coordinates alone remain
+insufficient authority to merge vertices.
+
+[Diagnostic review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-diagnostic-review/decision.md),
+[execution/buffer hashes](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-combined-diagnostic-job/execution.json),
+[exact malformed comparison](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-combined-geometry-audit/malformed-comparison.json),
+[physical-feature accounting](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-combined-geometry-audit/physical-features.json),
+[audit limits and completed checks](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-combined-geometry-audit/execution.json),
+[exact fixed-cube result](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-combined-geometry-audit/local-cube-exact-clipped.json),
+and [construction counterexample](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-construction-review/B/handoff.md),
+[fourth construction decision](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-construction-review/decision.md)
+and [coordinator scope clarification](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round9-construction-review/coordinator-scope.md)
+record the result. The next private one-arc prototype distinguishes interior branch
+identity from endpoint/third-constraint incidence, and either stages complete
+shared-face construction or refuses without mutation. No E4 runtime repair is
+ready for integration.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

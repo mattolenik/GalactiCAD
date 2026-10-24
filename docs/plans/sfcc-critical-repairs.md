@@ -281,10 +281,12 @@ native construction discriminator removes all 266 working-f64 degenerate faces,
 but leaves 1,876 emitted-f32 degenerate faces. An exact fixed-neighborhood
 comparison also proves a new local working-mesh crossing, blocking integration.
 The unchanged endpoint observer identifies actual shared-edge alias admission
-failures. Next, bounded assembly-phase snapshots locate the crossing's first
-appearance before another geometry repair; source preservation and the residual
-conversion/alias families remain open. No E4 production repair has been
-integrated; E5–E6 remain pending in order.
+failures. A subsequent twelve-phase capture reproduces all candidate buffers and
+localizes the new crossing to legacy surface refinement, with clean local
+predecessors in both coordinate formats. Next, competing repairs must guard that
+first refinement pass; source preservation and the residual conversion/alias
+families remain open. No E4 production repair has been integrated; E5–E6 remain
+pending in order.
 
 ### Baseline and non-negotiable obligations
 

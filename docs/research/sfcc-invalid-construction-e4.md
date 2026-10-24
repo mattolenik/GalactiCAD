@@ -607,6 +607,46 @@ cannot establish producer ancestry. The protected edge on face 20415 belongs to
 a generated chamfer/cutter source pair, so repairing the original native/plain
 Field alias family alone cannot be assumed to repair this separate crossing.
 
+### Crossing localized to legacy surface refinement
+
+The reviewed observer captured twelve fixed phase boundaries on the unchanged
+structural candidate. Its four helper controls passed; the export completed in
+64.736 seconds with all five buffer hashes exactly equal to the frozen candidate.
+The 333,012-byte receipt contains every selected working-or-rounded AABB match,
+with no cap, omission, missing phase or validation-counter mismatch.
+
+Exact offline intersection geometry was clipped to the original rational cube.
+The initial parser refused the receipt's redundant explicit bounds; a reviewed
+schema-only amendment verifies those bounds against the unchanged center/radius.
+Its 26 controls passed, and replay of the original capture then succeeded. No
+native rebuild, export, cube movement or geometry-predicate change was involved.
+
+| Observed phase | Local faces | Working strict crossings | Rounded strict crossings |
+| --- | ---: | ---: | ---: |
+| Cell output through coplanar/sliver flips | 4 | 0 | 0 |
+| After legacy surface refinement | 6 | 1 | 1 |
+| After guarded refinement, normal repair and final emission | 6 | 1 | 1 |
+
+There are no malformed selected faces or earlier illegal boundary/coplanar
+contacts obscuring the result in either representation. The first local crossing
+is introduced during legacy refinement. The later guarded refinement receives
+that already intersecting geometry; the sampled normal repair is not the first
+producer. The exact internal edge split or iteration has not been identified.
+
+This isolates the next implementation question: prevent unguarded projected
+subdivisions from creating an invalid embedded patch before tighter refinement
+starts. A repair must transact the complete incident edge star and its metadata;
+independently rejecting one child triangle would risk nonconforming neighbors.
+Distance-residual improvement alone does not supply that embedding guarantee.
+
+[Observer source review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round5-phase-review/decision.md),
+[actual phase capture](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round5-crossing-stages-a/phase-capture.json),
+[independent five-buffer verification](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round5-crossing-stages-job/independent-identity.json),
+[preserved initial parser refusal](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round5-crossing-stages-job/phase-classification.json),
+and [successful exact phase classification](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round5-crossing-stages-job/phase-classification-amended.json)
+retain both the causal phase evidence and its limits. No geometry repair has yet
+been integrated from this experiment.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

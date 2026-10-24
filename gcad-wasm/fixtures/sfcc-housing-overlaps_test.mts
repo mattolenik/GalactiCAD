@@ -8,11 +8,13 @@ import { load } from "js-yaml"
 import { SceneInfo } from "../../src/scene/scene.mjs"
 import { serializeSceneToBridgeJson } from "../../src/export/sfcc-rs/scene-bridge.mjs"
 import { inspectMesh } from "../../test/acceptance/sdf-meshing/diagnostics.mjs"
+import { MeshQuery, type Point, type Root } from "../../test/acceptance/sdf-meshing/gpu-coverage.mjs"
 import { saveRepairEvidence } from "./sfcc-repair-evidence.mjs"
 import { initSync, export_sfcc, sfcc_worker_prepare, sfcc_worker_merge } from "../wasm/pkg/gcad_wasm.js"
 
 initSync({ module: readFileSync(new URL("../wasm/pkg/gcad_wasm_bg.wasm", import.meta.url)) })
 const cube = [-22.45, -12.7, -22.2, 44.9] as const
+const boreReference = JSON.parse(readFileSync(new URL("./housing-main-bore-gpu.json", import.meta.url), "utf8")) as { sourceSha256: string; roots: Root[] }
 const pairs = [[3,12],[6,7],[9,10],[14,15],[17,18],[20,21],[24,25],[27,28],[30,31]] as const
 // The eleven diagnosed gaps, in each curve's own parameter chart.
 const gaps = [
@@ -25,7 +27,8 @@ const gaps = [
 ] as const
 function source() {
     const { source } = load(readFileSync(new URL("../../docs/manim/scenes/torture_housing.yaml", import.meta.url), "utf8")) as { source: string }
-    assert.equal(createHash("sha256").update(source).digest("hex"), "54964141fea0ed055f5392837c5e524f4a358e1c610f0b11a90857b8b57ad4a5")
+    assert.equal(boreReference.sourceSha256, "54964141fea0ed055f5392837c5e524f4a358e1c610f0b11a90857b8b57ad4a5")
+    assert.equal(createHash("sha256").update(source.trim()).digest("hex"), boreReference.sourceSha256, "GPU bore witnesses must match the actual YAML source")
     return serializeSceneToBridgeJson(new SceneInfo(source).root)
 }
 type ChainIssue = {curveId: number; kind: string; range: [number, number]}
@@ -45,14 +48,38 @@ function checkRotatedIssues(issues: ChainIssue[]) {
 }
 function check(result: ReturnType<typeof export_sfcc>, sceneJson: string, t: TestContext, parts: Uint8Array[] = [], rotated = false) {
     const stats = JSON.parse(result.stats_json)
+    const verts = result.verts, tris = result.tris, data = result.feature_edges
+    const audit = inspectMesh(verts, tris, data, [])
+    const mesh = new MeshQuery(verts, tris)
+    const witnesses = boreReference.roots.map((root, index) => {
+        // This exact coordinate permutation is the existing full-scene rigid
+        // rotation. The reference remains the original GPU observation.
+        const position: Point = rotated ? [-root.point[1], root.point[0], root.point[2]] : root.point
+        const uncertainty = root.width / 2 + root.allowance
+        const nearest = mesh.nearest(position)
+        return { index, referencePoint: root.point, position, uncertainty, ...nearest,
+            distanceUpperBound: nearest.distance + uncertainty,
+            strictBracket: root.bracket[0].field * root.bracket[1].field < 0 }
+    })
+    const boreCoverage = {
+        sourceSha256: boreReference.sourceSha256, reference: "Retained full-scene GPU sign brackets; rigidly transferred for the rotated case",
+        coordinateMap: rotated ? "[-y,x,z]" : "[x,y,z]", toleranceMm: 0.01,
+        tested: witnesses.length, failures: witnesses.filter(w => !(w.distanceUpperBound <= 0.01)).length,
+        worst: witnesses.reduce<typeof witnesses[number] | null>((worst, w) => !worst || w.distanceUpperBound > worst.distanceUpperBound ? w : worst, null), witnesses,
+    }
+    // Preserve the prior diagnostic keys for existing consumers. Save the raw
+    // mesh and every bore observation before topology/feature/fidelity asserts.
+    saveRepairEvidence(t.name, sceneJson, result, parts, { ...audit, boreCoverage })
     if (!rotated) assert.ok(stats.validation.unresolvedCells < 16_000,
         "checked terminal exclusion must retain its demonstrated improvement from 17,352 unresolved cells")
     assert.equal(stats.components, 1, "repairs must preserve the connected housing")
     assert.deepEqual(stats.euler, [-8], "retain the existing housing topology")
     for (const name of ["edgeIncidence", "vertexLinks", "faceSegments"]) assert.equal(stats.validation[name], "passed", name)
-    const verts = result.verts, tris = result.tris, data = result.feature_edges
-    const audit = inspectMesh(verts, tris, data, [])
-    saveRepairEvidence(t.name, sceneJson, result, parts, audit)
+    assert.equal(witnesses.length, 170, "retain every original GPU bore witness")
+    for (const witness of witnesses) {
+        assert.ok(witness.strictBracket, "retained GPU root must have strict endpoint signs")
+        assert.ok(witness.distanceUpperBound <= 0.01, `main-bore GPU witness ${witness.position} misses final float32 geometry by ${witness.distanceUpperBound} mm including allowance`)
+    }
     assert.equal(audit.defects.length, 0, "the complete housing must contain no exact invalid float32 triangles")
     if (rotated) checkRotatedIssues(stats.validation.featureChains.issues)
     else assert.equal(stats.validation.featureChains.status, "passed", "every compiled curve, including 75 and 106, must survive")
@@ -97,7 +124,7 @@ function check(result: ReturnType<typeof export_sfcc>, sceneJson: string, t: Tes
     }
     const curve75Issues = stats.validation.featureChains.issues.filter((i: {curveId:number}) => i.curveId === 75)
     t.diagnostic(JSON.stringify({components:stats.components,euler:stats.euler,triangles:tris.length/3,invalidTriangles:audit.defects.length,
-        repairedGapSpans:gaps.length,reconciledPairs:pairs.length,curve75Issues,
+        repairedGapSpans:gaps.length,reconciledPairs:pairs.length,curve75Issues,boreCoverage:{tested:boreCoverage.tested,failures:boreCoverage.failures,worst:boreCoverage.worst,coordinateMap:boreCoverage.coordinateMap},
         vertsSha256:createHash("sha256").update(new Uint8Array(verts.buffer,verts.byteOffset,verts.byteLength)).digest("hex"),
         trisSha256:createHash("sha256").update(new Uint8Array(tris.buffer,tris.byteOffset,tris.byteLength)).digest("hex"),featureChains:stats.validation.featureChains,serialRecovery:stats.serialRecovery}))
 }

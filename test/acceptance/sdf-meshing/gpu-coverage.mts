@@ -39,6 +39,7 @@ export function regionsFor(id: string, hash: string): Region[] {
             { id: "loft-chamfer-crease", center: [8.225, 4.75, 14.74], half: 0.25, spacing: 0.025, crease: [[8.3191, 4.5872, 14.8059], [8.1316, 4.9120, 14.6752]] },
             { id: "flange-rim", center: [10, 0, 19], half: 0.2, spacing: 0.025, crease: [[10, -0.12, 19], [10, 0.12, 19]] },
             { id: "internal-main-bore", center: [5.5, 0, 0], half: 0.3, spacing: 0.05 },
+            { id: "internal-main-bore-shifted", center: [5.5, 0.0125, 0.0125], half: 0.3, spacing: 0.025 },
             { id: "internal-branch-bore", center: [4, 16, 0], half: 0.3, spacing: 0.05 },
         ]
     }

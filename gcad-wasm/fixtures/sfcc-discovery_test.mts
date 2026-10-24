@@ -305,7 +305,10 @@ test("Bridge lens raw workers and aligned fallback recovery have distinct outcom
 test("WASM retains the depth-10 lens warning and near-tangent uncertainty", () => {
     const domain = [-4, -4, -4, 8] as const
     for (const [r, tuning, components, unresolved] of [
-        [10.01, { depthMax: 10 }, 4, 1017],
+        // The frozen pre-E2 binary already has the box and lens as two
+        // components with no invalid faces. Keep its unresolved warning;
+        // obsolete fragmented-output counts must not require an old defect.
+        [10.01, { depthMax: 10 }, 2, 1017],
         [10.0001, {}, 1, 168],
     ] as const) {
         const result = export_sfcc(lensScene(r), JSON.stringify(tuning), ...domain)
@@ -314,7 +317,7 @@ test("WASM retains the depth-10 lens warning and near-tangent uncertainty", () =
             assert.equal(componentBounds(result.verts, result.tris).length, components)
             assert.equal(stats.validation.unresolvedCells, unresolved)
             assert.equal(result.ok, false)
-            if (r === 10.01) assert.equal(stats.validation.invalidTriangles, 12)
+            if (r === 10.01) assert.equal(stats.validation.invalidTriangles, 0)
             else assert.equal(stats.validation.featureTrace.unresolvedDiscovery, 1)
             console.log(JSON.stringify({ fixture: r === 10.01 ? "lens-depth10" : "lens-near-tangent", stats }))
         } finally { result.free() }

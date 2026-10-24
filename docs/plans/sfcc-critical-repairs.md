@@ -248,8 +248,16 @@ that revision. **E1 is implemented and its bounded diagnostic exit is validated*
 see the [decision and results](../research/sfcc-reference-diagnostics-e1.md) and
 [report with recorded infrastructure recovery](../../.testresults/sdf-meshing/2026-10-24T09-14-43-401Z-postprocessing-recovery/report.md).
 All four available meshes and original bracket/housing discovery-grid references
-remain unchanged. The housing bore/crease and flange-association exits remain
-open. E2–E6 have not yet been implemented; E2 is next.
+remained unchanged in E1. **E2's bounded housing bore repair is now implemented
+and validated**; see the [repair, rejected candidate and final evidence](../research/sfcc-housing-bore-e2.md)
+and [five-model report](../../.testresults/sdf-meshing/2026-10-24T11-16-12-570Z/report.md).
+All 170 original and 626 fresh shifted GPU bore witnesses pass the unchanged
+0.01 mm gate. Guarded additional refinement introduces no new measured
+intersection-pair identities or malformed faces on the original collateral
+models and the declared transformed matrix. Existing invalid faces, contacts,
+feature failures and recovery remain visible; overall acceptance still fails.
+The housing crease and flange-association exits remain open. E3–E6 are next,
+starting with E3.
 
 ### Baseline and non-negotiable obligations
 

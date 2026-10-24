@@ -63,3 +63,16 @@ test("a geometric witness failure is shown separately from passing exporter chec
     assert.match(report, /Required geometric witnesses/)
     assert.match(report, /no minimum-area epsilon/)
 })
+
+test("regional GPU failure adds a failure while sampled pass cannot promote incomplete coverage", () => {
+    for (const status of ["FAIL", "SAMPLED_REGIONS_ONLY", "ERROR"]) {
+        const r = row({ status: "incomplete", unresolvedCells: 12 }, false)
+        r.gpuCoverage = { status, coverageMs: 13, regions: [] }
+        classify(r)
+        assert.equal(r.status, status === "FAIL" ? "FAIL" : "INCOMPLETE")
+        const report = renderReport({ runId: "x", commit: "abc" }, [r])
+        assert.match(report, /gpu-coverage.json/)
+        assert.match(report, /global Hausdorff/)
+        assert.match(report, /separate from export time/)
+    }
+})

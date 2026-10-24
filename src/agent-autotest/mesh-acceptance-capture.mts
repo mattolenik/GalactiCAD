@@ -7,8 +7,10 @@ import { flatFaceNormals } from "../export/crease-split.mjs"
 
 export type AcceptanceRequest = {
     kind: "meshAcceptance"
-    action: "prepare" | "export" | "restore" | "view" | "clear"
+    action: "prepare" | "export" | "restore" | "view" | "clear" | "sample"
     captureId: string
+    sourceSha256?: string
+    positions?: number[]
     request?: AgentRenderRequest
     mode?: "sdf" | "mesh" | "wire"
     camera?: AgentRenderRequest["camera"]
@@ -59,6 +61,13 @@ export class MeshAcceptanceCapture {
         if (!s || s.id !== input.captureId) throw new Error("Missing or stale acceptance capture")
         const identity = { captureId: s.id, sourceSha256: s.sourceSha256 }
         if (input.action === "clear") { this.state = undefined; return identity }
+        if (input.action === "sample") {
+            if (!s.mesh || input.sourceSha256 !== s.sourceSha256) throw new Error("GPU sampling requires a captured mesh and matching source hash")
+            if (!Array.isArray(input.positions) || !input.positions.length || input.positions.length % 3 || input.positions.length > 300000 || input.positions.some(x => !Number.isFinite(x))) throw new Error("Invalid GPU sample request")
+            const start = performance.now()
+            const samples = await this.renderer.acceptanceSamples(s.source, new Float32Array(input.positions))
+            return { ...identity, meshDigest: s.meshDigest, samples: Array.from(samples), sampleMs: performance.now() - start, evaluator: "GPU sceneSDF / IsoSampleBatch: nx,ny,nz,d" }
+        }
         if (input.action === "restore") {
             if (s.attempted) throw new Error("This capture already has an export attempt/artifact")
             const a = input.artifact

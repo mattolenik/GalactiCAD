@@ -23,7 +23,7 @@ export interface MeshDiagnostics {
     pointWitnesses: Array<{ id: string; position: number[]; tolerance: number; distance: number | null; closestPoint: number[] | null; triangle: number | null; passed: boolean }>
 }
 
-function closestPoint(p: number[], a: number[], b: number[], c: number[]): number[] {
+export function closestPoint(p: number[], a: number[], b: number[], c: number[]): number[] {
     const sub = (a: number[], b: number[]) => a.map((x, i) => x - b[i])
     const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0)
     const add = (a: number[], b: number[], t: number) => a.map((x, i) => x + t * b[i])

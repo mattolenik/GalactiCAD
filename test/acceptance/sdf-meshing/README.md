@@ -94,3 +94,20 @@ results are explicitly labeled native; it checks whether its geometry matches
 the saved WASM mesh before any attribution is interpreted. See the
 [bracket/housing investigation](../../../docs/research/sfcc-bracket-housing-investigation.md)
 for findings and the exact scope of the additional WASM checks.
+
+## Independent regional GPU checks
+
+`make acceptance-tests` also runs source-pinned GPU sign-bracket scans for the
+bracket junction and housing loft/flange/internal-bore regions. The original
+surface/feature budgets remain 0.01/0.02 mm. Each applicable case writes
+`gpu-coverage.json` (root brackets, GPU normals, triangle queries, residuals,
+projection ambiguities and crease evidence) and `gpu-corruptions.json`
+(reproducible damage to copies of the captured mesh). These checks do not certify
+global coverage or turn unresolved exports into accepted meshes. They do not
+use the SFCC CPU/native field as their reference.
+
+Offline regression tests include the checked-in GPU bracket counterexample;
+they need no ignored historical run directories. Run the focused harness tests
+with `node --import tsx --test test/acceptance/sdf-meshing/*test.mts` after the
+normal application build. See the
+[measurement definitions and limits](../../../docs/research/sfcc-gpu-regional-coverage.md).

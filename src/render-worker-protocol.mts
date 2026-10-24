@@ -254,6 +254,7 @@ export type MainToWorkerMessage =
            */
           cancelBuffer?: SharedArrayBuffer
       }
+    | { type: "acceptanceSample"; body: string; positions: Float32Array<ArrayBuffer>; requestId: number }
     | { type: "benchmark"; frameCount: number; waitForGPU: boolean; requestId?: number }
     | { type: "thumbnail"; body: string; width?: number; height?: number; requestId?: number; documentName?: string }
     | {
@@ -522,6 +523,7 @@ export interface RenderViewSettings {
 // ---------------------------------------------------------------------------
 
 export type WorkerToMainMessage =
+    | { type: "acceptanceSampleResult"; requestId: number; samples?: Float32Array<ArrayBuffer>; error?: string }
     | { type: "devLogLine"; line: string; module?: string }
     | { type: "ready" }
     | { type: "initError"; error: string }

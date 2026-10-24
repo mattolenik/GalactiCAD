@@ -151,6 +151,10 @@ self.onmessage = async (e: MessageEvent<MainToWorkerMessage>) => {
                 )
             }
             break
+        case "acceptanceSample":
+            if (core) void core.handleAcceptanceSample(msg)
+            else self.postMessage({ type: "acceptanceSampleResult", requestId: msg.requestId, error: "WebGPU not ready" })
+            break
         case "benchmark":
             if (core) {
                 flushPendingRender()

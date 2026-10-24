@@ -12,6 +12,7 @@ import { normalizeSfccTuning } from "../src/export/sfcc/sfcc-tuning.mjs"
 import { DEFAULT_SIMPLIFY_TUNING } from "../src/render-worker-protocol.mjs"
 import { CASES, viewsFor, witnessesFor } from "../test/acceptance/sdf-meshing/manifest.mjs"
 import { classify, renderReport, type CaptureRow } from "../test/acceptance/sdf-meshing/report.mjs"
+import { MeshQuery, regionsFor, runCoverage, corruptionChecks, type Point, type Sample } from "../test/acceptance/sdf-meshing/gpu-coverage.mjs"
 import { inspectMesh, diagnosticSummary } from "../test/acceptance/sdf-meshing/diagnostics.mjs"
 
 const exec = promisify(execFile)
@@ -176,11 +177,59 @@ try {
                 await json(path.join(dir, "diagnostics.json"), diagnostics)
                 row.diagnostics = diagnosticSummary(diagnostics)
                 row.diagnosticMs = performance.now() - auditStart
+                const regions = regionsFor(row.id, sourceSha256)
+                if (regions.length) {
+                    try {
+                    note("sampling independent GPU regional references")
+                    let gpuSamples = 0, gpuBatches = 0, gpuBatchMs = 0
+                    const sample = async (points: Point[]): Promise<Sample[]> => {
+                        const all: Sample[] = []
+                        for (let offset = 0; offset < points.length; offset += 20000) {
+                            const chunk = points.slice(offset, offset + 20000).map(p => p.map(Math.fround) as Point)
+                            const result = await rpc({ action: "sample", captureId, sourceSha256, positions: chunk.flat() }, 60_000)
+                            if (result.sourceSha256 !== sourceSha256 || result.meshDigest !== r.meshDigest || result.samples?.length !== chunk.length * 4 || result.samples.some((x: number) => !Number.isFinite(x))) throw new Error("Invalid/stale GPU coverage samples")
+                            gpuSamples += chunk.length; gpuBatches++; gpuBatchMs += result.sampleMs
+                            for (let i = 0; i < chunk.length; i++) all.push({ point: chunk[i], normal: result.samples.slice(i * 4, i * 4 + 3), field: result.samples[i * 4 + 3] })
+                        }
+                        return all
+                    }
+                    const coverageStart = performance.now()
+                    const query = new MeshQuery(new Float32Array(buffer("verts")), new Uint32Array(buffer("tris"))), features = new Float64Array(buffer("features"))
+                    const coverage = await runCoverage(regions, query, features, sample)
+                    coverage.coverageMs = performance.now() - coverageStart
+                    await json(path.join(dir, "gpu-coverage.json"), { ...coverage, gpuSamples, gpuBatches, gpuBatchMs, sourceSha256, meshDigest: r.meshDigest })
+                    row.gpuCoverage = { status: coverage.status, coverageMs: coverage.coverageMs, regions: coverage.regions.map(x => ({ id: x.region.id, referencePoints: x.reference.roots.length, sameSignEdges: x.reference.sameSignEdges, zeroEndpoints: x.reference.zeroEndpoints, unrefinedBrackets: x.reference.unrefinedBrackets, surfaceToMesh: x.surfaceToMesh, meshSamples: x.meshToField.samples, residualFailures: x.meshToField.residualFailures, worstResidual: x.meshToField.worstResidual, ambiguousProjections: x.meshToField.ambiguousProjections, unresolvedProjectionBudget: x.meshToField.unresolvedProjectionBudget, crease: x.crease })) }
+                    const corruptionStart = performance.now()
+                    let corruptions: Awaited<ReturnType<typeof corruptionChecks>>
+                    try {
+                        corruptions = await corruptionChecks(coverage, query, features, sample)
+                        await json(path.join(dir, "gpu-corruptions.json"), { ...corruptions, corruptionMs: performance.now() - corruptionStart, sourceSha256, meshDigest: r.meshDigest })
+                        row.gpuCoverage.corruptionChecksPassed = corruptions.passed
+                    } catch (e) {
+                        harnessError = true
+                        await json(path.join(dir, "gpu-corruptions.json"), { passed: false, error: String(e), sourceSha256, meshDigest: r.meshDigest })
+                        if (e instanceof RpcError && e.timedOut) { timeout = true; throw e }
+                        corruptions = { passed: false, checks: [] }
+                        row.gpuCoverage.error = `Corruption stage: ${String(e)}`
+                        row.reasons.push(`GPU corruption checks failed to complete: ${String(e)}`)
+                    }
+
+                    } catch (e) {
+                        harnessError = true
+                        row.gpuCoverage ??= { status: "ERROR", coverageMs: 0, regions: [] }
+                        row.gpuCoverage.error = String(e)
+                        try { await access(path.join(dir, "gpu-coverage.json")) } catch { await json(path.join(dir, "gpu-coverage.json"), { status: "ERROR", error: String(e), sourceSha256, meshDigest: r.meshDigest }) }
+                        try { await access(path.join(dir, "gpu-corruptions.json")) } catch { await json(path.join(dir, "gpu-corruptions.json"), { passed: false, error: "GPU reference unavailable" }) }
+                        row.reasons.push(`GPU coverage could not run: ${String(e)}`)
+                        note(String(e))
+                        if (e instanceof RpcError && e.timedOut) { timeout = true; throw e }
+                    }
+                }
                 note(`${r.triangles} triangles; ${r.execution.exportMs.toFixed(1)} ms; ok=${r.execution.ok}`)
                 await save()
             } catch (e) {
                 timeout = e instanceof RpcError && e.timedOut
-                exportTimeout = timeout
+                exportTimeout = timeout && !row.mesh
                 row.status = timeout ? "TIMEOUT" : /unsupported/i.test(String(e)) ? "UNSUPPORTED" : "ERROR"
                 row.reasons.push(String(e)); note(String(e))
                 if (timeout) throw e

@@ -10,6 +10,7 @@ export interface CaptureRow {
     totalMs?: number
     diagnostics?: ReturnType<typeof diagnosticSummary>
     diagnosticMs?: number
+    gpuCoverage?: { error?: string; corruptionChecksPassed?: boolean; status: string; coverageMs: number; regions: Array<Record<string, any>> }
     visualReview?: string
     investigation?: {
         summary: string[]
@@ -95,6 +96,12 @@ function detailedDiagnostics(row: CaptureRow, dir: string): string[] {
             for (const [reason, count] of Object.entries(replay.unresolvedFirstReasons).sort((a, b) => b[1] - a[1])) o.push(`| ${reason} | ${number(count)} |`)
         }
     }
+    if (row.gpuCoverage) {
+        o.push("", "### Independent GPU regional coverage", "", `[Complete brackets, samples, normals and worst locations](${dir}/gpu-coverage.json). [Deliberate geometry/metadata corruption checks](${dir}/gpu-corruptions.json): ${row.gpuCoverage.corruptionChecksPassed ? "detected" : "INCOMPLETE — inspect checks"}. Sampling/measurement overhead: ${seconds(row.gpuCoverage.coverageMs)}, separate from export time. **${row.gpuCoverage.status}**. ${row.gpuCoverage.error ? escapeMd(row.gpuCoverage.error) : ""} References come from the full GPU scene, independently of SFCC feature labels.`, "",
+            "| Region | Strict sign-bracket roots | Surface → mesh | Worst distance (mm) | Mesh samples / field failures / unresolved projections | Crease geometry / metadata | Ambiguous edges (same sign / zero endpoint) |", "| --- | ---: | --- | ---: | --- | --- | --- |")
+        for (const r of row.gpuCoverage.regions) o.push(`| ${escapeMd(r.id)} | ${r.referencePoints} | ${r.surfaceToMesh.status} | ${measurement(r.surfaceToMesh.worst?.distance)} | ${r.meshSamples} / ${r.residualFailures} / ${r.ambiguousProjections + r.unresolvedProjectionBudget} | ${r.crease?.status ?? "Not requested"} / ${r.crease?.metadataStatus ?? "N/A"} | ${r.sameSignEdges} / ${r.zeroEndpoints} |`)
+        o.push("", "Surface budget: **0.01 mm**; crease/junction feature budget: **0.02 mm** (unchanged from the original configuration). A projection displacement above the surface budget is unresolved, not proof of a nearest-surface distance violation. This finite regional audit does not establish global Hausdorff distance, tangent-sheet discovery, or general multi-sheet reconstruction. Same-sign segments are unsearched for hidden roots. Bracket widths and float32 position allowances are saved; they are not certified WGSL arithmetic bounds. Field residuals have field units, not Euclidean distance. Normal-bracket displacements are sampled upper bounds only. Crease positions use local GPU tangent-plane intersections; normal/curvature allowances are empirical. Overall unresolved status remains visible.")
+    }
     return o
 }
 
@@ -108,7 +115,7 @@ export function classify(row: CaptureRow): void {
     if (v.featureChains?.status === "failed") failed.push("featureChains")
     const witnessFailures = row.diagnostics?.pointWitnesses.filter(w => !w.passed) ?? []
     const sfccFailed = v.status === "failed" || failed.length > 0 || v.invalidTriangles > 0
-    if (sfccFailed || witnessFailures.length) {
+    if (sfccFailed || witnessFailures.length || row.gpuCoverage?.status === "FAIL") {
         row.status = "FAIL"
         if (sfccFailed) row.reasons.push(`SFCC validation failed: ${failed.join(", ") || "see raw diagnostics"}`)
     } else {
@@ -116,7 +123,8 @@ export function classify(row: CaptureRow): void {
         if (v.unresolvedCells > 0) row.reasons.push(`${v.unresolvedCells} unresolved cells`)
         if (row.mesh.execution.ok === false) row.reasons.push("Exporter returned best-effort output (ok=false)")
     }
-    row.reasons.push("Independent full-surface coverage and human visual acceptance are not established in milestone 1")
+    if (row.gpuCoverage?.status === "FAIL") row.reasons.push("Independent GPU regional coverage/crease or field-residual check failed; inspect saved references")
+    row.reasons.push("Independent full-surface coverage and human visual acceptance are not established")
     for (const w of witnessFailures) row.reasons.push(`Required geometric witness ${w.id} misses the mesh by ${measurement(w.distance)} mm (limit ${measurement(w.tolerance)} mm)`)
     if (row.views.some(v => v.error)) row.reasons.push("One or more image/compare operations failed; inspect per-view errors")
     row.reasons = [...new Set(row.reasons)]

@@ -19,7 +19,19 @@ bracket retains earlier chain failures, housing remains incomplete, knob and
 Mess 2 retain malformed geometry, and Mess 1 times out. Four small Mess 2
 memberships on already failed traces remain explicitly unresolved within the
 [documented collateral limits](../research/sfcc-f32-construction-repair.md#retry-policy-controls-and-bounded-collateral-result).
-Milestones **4 and 5 remain pending**.
+Milestone 4's [independent GPU measurement infrastructure](../research/sfcc-gpu-regional-coverage.md)
+is implemented and its targeted corruption checks detect deleted junction
+patches, bridged passages, lost labels and flattened geometry. Its full
+repaired-crease exit remains **open**: one housing loft/chamfer section fails
+an empirical incident-normal check and flange crease references remain
+ambiguous. The new measurements also expose a 0.0132767 mm main-bore surface
+miss against the unchanged 0.01 mm budget. These are retained failures and
+limitations, not mesher repairs or global coverage guarantees. The
+[final milestone 4 campaign](../../.testresults/sdf-meshing/2026-10-24T07-12-23-548Z/report.md)
+completed successfully as a harness run. All four available meshes' vertex,
+triangle and feature buffers are byte-identical to milestone 3; all four
+corruptions are detected. Overall bracket, housing, knob and Mess 2 remain
+failed, while Mess 1 retains its 180-second timeout. Milestone **5 remains pending**.
 
 Evidence: [investigation](../research/sfcc-bracket-housing-investigation.md),
 [acceptance report](../../.testresults/sdf-meshing/investigated-2026-10-23/report.md),

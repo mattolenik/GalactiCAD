@@ -266,6 +266,7 @@ export class SDFRenderer {
         }
     >()
     #pendingBenchmark = new Map<number, { resolve: (v: { totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }) => void }>()
+    #pendingAcceptanceSample = new Map<number, { resolve: (v: Float32Array<ArrayBuffer>) => void; reject: (e: unknown) => void }>()
     #pendingThumbnail = new Map<
         number,
         { resolve: (v: ImageData) => void; reject: (err: unknown) => void; skipDocumentGuard?: boolean }
@@ -813,6 +814,13 @@ export class SDFRenderer {
                 const pending = msg.requestId != null ? this.#pendingBenchmark.get(msg.requestId) : null
                 pending?.resolve(msg.result)
                 if (msg.requestId != null) this.#pendingBenchmark.delete(msg.requestId)
+                break
+            }
+            case "acceptanceSampleResult": {
+                const pending = this.#pendingAcceptanceSample.get(msg.requestId)
+                this.#pendingAcceptanceSample.delete(msg.requestId)
+                if (msg.error || !msg.samples) pending?.reject(new Error(msg.error ?? "Missing GPU samples"))
+                else pending?.resolve(msg.samples)
                 break
             }
             case "thumbnailResult": {
@@ -2571,6 +2579,18 @@ export class SDFRenderer {
         })
     }
 
+    /** Independent acceptance oracle: evaluate the currently built full scene on the GPU. */
+    async acceptanceSamples(src: string, positions: Float32Array<ArrayBuffer>): Promise<Float32Array<ArrayBuffer>> {
+        await this.#readyPromise
+        const { transpileCadSource } = await import("./cad-transpile.mjs")
+        const body = transpileCadSource(src.trim())
+        const requestId = ++this.#requestIdCounter
+        return new Promise((resolve, reject) => {
+            this.#pendingAcceptanceSample.set(requestId, { resolve, reject })
+            this.#worker.postMessage({ type: "acceptanceSample", body, positions, requestId }, [positions.buffer])
+        })
+    }
+
     async benchmark(frameCount = 3 * 60, waitForGPU = true): Promise<{ totalTime: number; averageFrameTime: number; minFrameTime: number; maxFrameTime: number; framesPerSecond: number; frameTimes: number[] }> {
         const requestId = ++this.#requestIdCounter
         const payload = this.#buildRenderPayload([this.#fullWidth || 800, this.#fullHeight || 600] as [number, number])
@@ -2812,6 +2832,8 @@ export class SDFRenderer {
         this.#pendingRenderMesh.clear()
         for (const [, { reject }] of this.#pendingThumbnail) reject(err)
         this.#pendingThumbnail.clear()
+        for (const [, { reject }] of this.#pendingAcceptanceSample) reject(err)
+        this.#pendingAcceptanceSample.clear()
         const emptyBenchmark = { totalTime: 0, averageFrameTime: 0, minFrameTime: 0, maxFrameTime: 0, framesPerSecond: 0, frameTimes: [] }
         for (const [, { resolve }] of this.#pendingBenchmark) resolve(emptyBenchmark)
         this.#pendingBenchmark.clear()

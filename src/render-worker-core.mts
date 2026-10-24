@@ -1,3 +1,4 @@
+import { AcceptanceSourceGuard } from "./agent-autotest/acceptance-source-guard.mjs"
 /**
  * Render worker core - GPU logic extracted from SDFRenderer.
  * Runs in the render worker; owns device, buffers, pipelines.
@@ -270,6 +271,9 @@ export class RenderWorkerCore {
      * its pipeline cache rebinds when `#featureGraphIsoModule` changes.
      */
     #featureGraphIsoBatch: IsoSampleBatch | null = null
+    #acceptanceIsoBatch: IsoSampleBatch | null = null
+    #acceptanceBufferEpoch = 0
+    #acceptanceSourceGuard = new AcceptanceSourceGuard()
     /** Lazy-constructed debug overlay pipeline; created on first frame. */
     #featureGraphOverlay: FeatureGraphOverlay | null = null
     // ----- Transform gizmo overlay (translate arrows + rotate rings) -----
@@ -721,7 +725,10 @@ export class RenderWorkerCore {
             // only trades curve/silhouette fidelity against per-pixel SDF cost.
             const f = tessDetailFactor && tessDetailFactor > 0 ? tessDetailFactor : 1
             setPath2DChordTol(0.01 / f, 0.0015 / f)
-            return await this.#doBuild(body)
+            const sourceEpoch = this.#acceptanceSourceGuard.buildStarted()
+            const result = await this.#doBuild(body)
+            this.#acceptanceSourceGuard.built(body, sourceEpoch, !("superseded" in result))
+            return result
         } catch (err) {
             this.#builtBody = prevBody
             this.#scene = prevScene
@@ -836,6 +843,7 @@ export class RenderWorkerCore {
      * scenes. Falls back to a full param re-pack for nodes whose slots we don't
      * recognise. */
     gizmoPreview(msg: Extract<MainToWorkerMessage, { type: "gizmoPreview" }>): void {
+        this.#acceptanceSourceGuard.invalidate()
         const drag = this.#gizmoDrag
         const node = drag ? this.#scene?.get(drag.nodeId) : null
         if (!drag || !node) return
@@ -897,6 +905,8 @@ export class RenderWorkerCore {
      * means the structure changed under us — the caller falls back to a full build.
      */
     paramPatch(msg: Extract<MainToWorkerMessage, { type: "paramPatch" }>): void {
+        this.#acceptanceSourceGuard.invalidate()
+        this.#acceptanceBufferEpoch++
         const scene = this.#scene
         const node = scene?.get(msg.nodeId)
         if (!scene || !node) return
@@ -1830,6 +1840,7 @@ export class RenderWorkerCore {
         p: PreviewParamsOut,
         dedup: boolean,
     ): void {
+        this.#acceptanceBufferEpoch++
         const q = this.#device.queue
         if (polygonVertexData && scene.totalPolygonVertices > 0) {
             const polyLen = polygonVertexData.length
@@ -2489,6 +2500,31 @@ export class RenderWorkerCore {
         if (!this.#lastRenderMsg || !this.#pipeline) return
         this.render(this.#lastRenderMsg)
         await this.#device.queue.onSubmittedWorkDone()
+    }
+
+    async handleAcceptanceSample(msg: Extract<MainToWorkerMessage, { type: "acceptanceSample" }>): Promise<void> {
+        // Hold the same lock as scene construction; use private batch buffers so
+        // background feature-graph readbacks cannot alias this oracle's output.
+        const previous = this.#buildLock
+        let release!: () => void
+        this.#buildLock = new Promise<void>(resolve => { release = resolve })
+        await previous
+        try {
+            const scene = this.#scene, epoch = this.#acceptanceBufferEpoch
+            const sourceEpoch = this.#acceptanceSourceGuard.begin(msg.body)
+            if (!scene || !this.#pipeline || this.#builtBody !== msg.body || this.#isolatedIds.length || this.#builtIsolatedIds.length) throw new Error("Acceptance sampling requires the matching built, unisolated scene")
+            if (!msg.positions.length || msg.positions.length % 3 || msg.positions.length > 300000 || msg.positions.some(x => !Number.isFinite(x))) throw new Error("Invalid acceptance sample positions")
+            this.#ensureFeatureGraphIsoModule(scene)
+            if (!this.#featureGraphIsoModule) throw new Error("Acceptance sample shader unavailable")
+            this.#acceptanceIsoBatch ??= new IsoSampleBatch(this.#helper, this.#uniformBuffers.polygonVertices, this.#uniformBuffers.faceSelection, this.#uniformBuffers.mdcSceneParams)
+            const { sdf } = await this.#acceptanceIsoBatch.run(this.#featureGraphIsoModule, msg.positions, 0.01)
+            if (this.#scene !== scene || this.#builtBody !== msg.body || this.#acceptanceBufferEpoch !== epoch || this.#isolatedIds.length || this.#builtIsolatedIds.length) throw new Error("Scene buffers changed during acceptance sampling")
+            this.#acceptanceSourceGuard.check(msg.body, sourceEpoch)
+            if (sdf.some(x => !Number.isFinite(x))) throw new Error("Nonfinite GPU acceptance sample")
+            self.postMessage({ type: "acceptanceSampleResult", requestId: msg.requestId, samples: sdf }, { transfer: [sdf.buffer] })
+        } catch (e) {
+            self.postMessage({ type: "acceptanceSampleResult", requestId: msg.requestId, error: String(e) })
+        } finally { release() }
     }
 
     async handleRenderMesh(
@@ -4593,6 +4629,8 @@ export class RenderWorkerCore {
     }
 
     writeBuffers(msg: Extract<MainToWorkerMessage, { type: "writeBuffers" }>): void {
+        if (msg.polygonVertices || msg.previewParamsF32Patch) this.#acceptanceSourceGuard.invalidate()
+        this.#acceptanceBufferEpoch++
         if (msg.faceSelection) {
             this.#device.queue.writeBuffer(this.#uniformBuffers.faceSelection, 0, msg.faceSelection)
         }

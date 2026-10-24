@@ -48,3 +48,20 @@ test("display copy preserves every triangle corner and restores a sharp normal d
     assert.deepEqual(verts, saved)
     assert.deepEqual(tris, indices)
 })
+
+test("GPU samples require the retained mesh and its pinned source, and propagate device failures", async () => {
+    let calls = 0
+    const capture = new MeshAcceptanceCapture({
+        renderMesh: async () => ({ verts: new Float32Array(24), tris: new Uint32Array([0, 1, 2]), debug: { sfcc: { execution: { ok: false }, stats: {}, validation: {} } } }),
+        acceptanceSamples: async () => { calls++; throw new Error("device lost") },
+    } as any)
+    const prepared = await capture.run({ kind: "meshAcceptance", action: "prepare", captureId: "gpu", request: { sourceBase64: btoa("return realFullModel()"), viewportWidth: 10, viewportHeight: 10, meshExport: { exporter: "sfcc-rs", simplifyOnExport: false } } as any })
+    const request = { kind: "meshAcceptance", action: "sample", captureId: "gpu", sourceSha256: prepared.sourceSha256, positions: [1, 2, 3] } as any
+    await assert.rejects(capture.run(request), /captured mesh/)
+    await capture.run({ kind: "meshAcceptance", action: "export", captureId: "gpu" })
+    await assert.rejects(capture.run({ ...request, sourceSha256: "stale" }), /matching source/)
+    await assert.rejects(capture.run({ ...request, positions: [NaN, 0, 0] }), /Invalid GPU/)
+    assert.equal(calls, 0)
+    await assert.rejects(capture.run(request), /device lost/)
+    assert.equal(calls, 1)
+})

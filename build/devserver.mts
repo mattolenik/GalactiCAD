@@ -1220,7 +1220,7 @@ function createHttpServer(
             }
             try {
                 const payload = JSON.parse(await readHttpBody(req)) as Record<string, unknown>
-                if (!payload || payload.kind !== "meshAcceptance" || !["prepare", "export", "restore", "view", "clear"].includes(String(payload.action))) throw new Error("Invalid acceptance request")
+                if (!payload || payload.kind !== "meshAcceptance" || !["prepare", "export", "restore", "view", "clear", "sample"].includes(String(payload.action))) throw new Error("Invalid acceptance request")
                 const timeout = payload.action === "export" ? 180_000 : 60_000
                 const out = await bridge.requestAgentRender(payload, timeout)
                 res.writeHead(out === null ? 504 : out.error ? 400 : 200, { "content-type": "application/json" })

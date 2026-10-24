@@ -60,6 +60,9 @@ pub struct FaceRecord {
     pub segments: Vec<FaceSegment>,
     /// Pinned feature-curve crossings routed through by `segments`.
     pub pins: Vec<FacePin>,
+    /// A carrier-paired cycle with no face-boundary crossings. Its neighboring
+    /// cell must connect incident features, never independently cap each loop.
+    pub interior_cycle: bool,
     /// Consumption counters for the S4 face audit (filled by cell meshing).
     pub consumed_fwd: Vec<u32>,
     pub consumed_rev: Vec<u32>,
@@ -736,6 +739,7 @@ fn contour_face(
         len,
         segments: Vec::new(),
         pins: Vec::new(),
+        interior_cycle: false,
         consumed_fwd: Vec::new(),
         consumed_rev: Vec::new(),
     };
@@ -813,6 +817,9 @@ fn contour_face(
     }
 
     if crossings.is_empty() {
+        if let Some(features) = opts.features {
+            interior_pin_cycle(&mut record, points, features, q, opts.root_tol, lat);
+        }
         return record;
     }
 
@@ -1001,6 +1008,111 @@ fn contour_face(
     }
 
     record
+}
+
+/// A closed face contour can have feature pins without any boundary crossings.
+/// Pair only the unique two endpoints of each incident carrier. Carrier and
+/// visibility samples are local numerical checks, not an exclusion certificate
+/// for other components on this face. Ambiguous configurations stay empty and
+/// a cell tagged with a visible corner requests refinement instead of silently
+/// succeeding. Untagged configurations retain the existing discovery limits.
+fn interior_pin_cycle(
+    record: &mut FaceRecord,
+    points: &PointTable,
+    features: &SfccFeatureSet,
+    tree: &dyn SdfQuery,
+    root_tol: f64,
+    lat: &SfccLattice,
+) -> bool {
+    use std::collections::{BTreeMap, BTreeSet};
+    if !(3..=8).contains(&record.pins.len()) { return false; }
+    let [u, v] = face_axes(record.axis);
+    let [gx, gy, gz] = crate::math::grid::unpack_point(lat, record.key);
+    let face_min = point_to_world(lat, gx, gy, gz);
+    let extent = record.len as f64 * lat.step;
+    let position = |id| [points.x(id), points.y(id), points.z(id)];
+    let mut endpoints: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for pin in &record.pins {
+        for stratum in features.curves[pin.curve_id].adjacent_strata {
+            endpoints.entry(stratum).or_default().push(pin.point_id);
+        }
+    }
+    if endpoints.values().any(|ends| ends.len() != 2 || ends[0] == ends[1]) { return false; }
+    let tolerance = root_tol.max(lat.world_size * 1e-12);
+    let mut segments = Vec::new();
+    for (sid, ends) in endpoints {
+        let carrier = &features.strata[sid];
+        let (a, b) = (position(ends[0]), position(ends[1]));
+        let d: [f64; 3] = std::array::from_fn(|k| b[k] - a[k]);
+        let length = d[u].hypot(d[v]);
+        if length <= tolerance { return false; }
+        let mut orientation = None;
+        for fraction in [0.25, 0.5, 0.75] {
+            let chord: [f64; 3] = std::array::from_fn(|k| a[k] + fraction * d[k]);
+            let mut p = chord;
+            // Newton restricted to the canonical face, using the raw derivative.
+            for _ in 0..12 {
+                let sample = carrier.raw_field(p[0], p[1], p[2]);
+                let norm2 = sample.gradient[u].powi(2) + sample.gradient[v].powi(2);
+                if !norm2.is_finite() || norm2 < 1e-16 { return false; }
+                if sample.value.abs() <= tolerance * 1e-4 { break; }
+                p[u] -= sample.value * sample.gradient[u] / norm2;
+                p[v] -= sample.value * sample.gradient[v] / norm2;
+            }
+            let displacement = (p[u] - chord[u]).hypot(p[v] - chord[v]);
+            if !displacement.is_finite() || displacement > tolerance
+                || [u, v].iter().any(|&k| p[k] <= face_min[k] || p[k] >= face_min[k] + extent)
+                || carrier.f(p[0], p[1], p[2]).abs() > tolerance * 1e-3
+                || !carrier.domain_contains(p, tolerance * 1e-3)
+                || tree.f(p).abs() > tolerance * 1e-3 {
+                return false;
+            }
+            let n = carrier.normal(p[0], p[1], p[2]);
+            // Left of a->b is (-dv,du); outward normal must point right.
+            let dot_left = -d[v] * n[u] + d[u] * n[v];
+            if dot_left.abs() <= length * 1e-6 { return false; }
+            let forward = dot_left < 0.;
+            if orientation.is_some_and(|previous| previous != forward) { return false; }
+            orientation = Some(forward);
+            let normal_length = n[u].hypot(n[v]);
+            let step = (length * 1e-3).min(tolerance * 0.1);
+            let mut inside = p;
+            let mut outside = p;
+            for k in [u, v] {
+                inside[k] -= step * n[k] / normal_length;
+                outside[k] += step * n[k] / normal_length;
+            }
+            if !(tree.f(inside) < 0. && tree.f(outside) > 0.) { return false; }
+        }
+        segments.push(if orientation == Some(true) {
+            FaceSegment { a: ends[0], b: ends[1] }
+        } else { FaceSegment { a: ends[1], b: ends[0] } });
+    }
+    let outgoing: BTreeMap<_, _> = segments.iter().map(|s| (s.a, s.b)).collect();
+    let incoming: BTreeSet<_> = segments.iter().map(|s| s.b).collect();
+    if outgoing.len() != record.pins.len() || incoming.len() != outgoing.len()
+        || outgoing.keys().any(|p| !incoming.contains(p)) { return false; }
+    let start = segments[0].a;
+    let mut current = start;
+    for i in 0..segments.len() {
+        current = outgoing[&current];
+        if current == start && i + 1 != segments.len() { return false; }
+    }
+    if current != start { return false; }
+    // Refuse crossing chords; incidence alone does not establish a simple loop.
+    for (i, edge) in segments.iter().enumerate() {
+        for other in &segments[i + 1..] {
+            if [edge.a, edge.b].iter().any(|p| *p == other.a || *p == other.b) { continue; }
+            let (a, b, c, d) = (position(edge.a), position(edge.b), position(other.a), position(other.b));
+            let orient = |a: [f64; 3], b: [f64; 3], c: [f64; 3]| super::predicates::orient2d([a[u],a[v]], [b[u],b[v]], [c[u],c[v]]);
+            if orient(a,b,c) * orient(a,b,d) <= 0 && orient(c,d,a) * orient(c,d,b) <= 0 { return false; }
+        }
+    }
+    record.consumed_fwd = vec![0; segments.len()];
+    record.consumed_rev = vec![0; segments.len()];
+    record.segments = segments;
+    record.interior_cycle = true;
+    true
 }
 
 /// Distance from a point to the segment between two PointTable points. Port of
@@ -1452,6 +1564,55 @@ mod projection_tests {
     use super::*;
     use crate::sdf::{leaf_at, Shape};
     use crate::sfcc::validation::{numerical_failures, NumericalGuard};
+
+    fn triangle_face(negative: bool) -> (CsgNode, SfccFeatureSet, PointTable, FaceRecord, SfccLattice) {
+        let polygon = [[-0.4, -0.3], [0.4, -0.3], [0., 0.4]];
+        let tree = leaf_at(Shape::Extrude {
+            verts: polygon.into_iter().flatten().collect(),
+            wind: crate::primitives::polygon2d::winding_sign(&polygon), h: 2., twist_rad: 0.,
+        }, [0.; 3]);
+        let tree = if negative { crate::sdf::negate(tree) } else { tree };
+        let features = crate::sfcc::feature_set::compile_native_features(&tree);
+        let lat = crate::math::grid::make_lattice(2, -1., -1., -1., 2.);
+        let mut record = FaceRecord { axis: 1, key: pack_point(&lat, 0, 2, 0), len: 4,
+            segments: vec![], pins: vec![], interior_cycle: false, consumed_fwd: vec![], consumed_rev: vec![] };
+        let mut points = PointTable::new();
+        for curve in &features.curves {
+            for p in curve.axis_plane_crossings(1, 0.).iter() {
+                let id = points.add(p.x, p.y, p.z, 0., 1., 0.);
+                record.pins.push(FacePin { point_id: id, curve_id: curve.id, t: p.t });
+            }
+        }
+        assert_eq!(record.pins.len(), 3);
+        (tree, features, points, record, lat)
+    }
+
+    #[test]
+    fn interior_cycle_uses_carrier_orientation_for_solid_and_cavity() {
+        for negative in [false, true] {
+            let (tree, features, points, mut face, lat) = triangle_face(negative);
+            assert!(interior_pin_cycle(&mut face, &points, &features, &tree, 0.001, &lat));
+            assert_eq!(face.segments.len(), 3);
+            let signed_area: f64 = face.segments.iter().map(|s|
+                points.z(s.a) * points.x(s.b) - points.x(s.a) * points.z(s.b)).sum();
+            assert_eq!(signed_area > 0., !negative);
+            assert_eq!(face.consumed_fwd, vec![0; 3]);
+            assert_eq!(face.consumed_rev, vec![0; 3]);
+        }
+    }
+
+    #[test]
+    fn interior_cycle_rejects_hidden_carriers_and_ambiguous_incidence() {
+        let (_, features, points, mut face, lat) = triangle_face(false);
+        let hidden = leaf_at(Shape::Sphere { r: 10. }, [0.; 3]);
+        assert!(!interior_pin_cycle(&mut face, &points, &features, &hidden, 0.001, &lat));
+        assert!(face.segments.is_empty());
+        let (tree, features, points, mut face, lat) = triangle_face(false);
+        face.pins.push(face.pins[0]);
+        assert!(!interior_pin_cycle(&mut face, &points, &features, &tree, 0.001, &lat));
+        assert!(face.segments.is_empty());
+    }
+
     #[test]
     fn midpoint_projection_respects_displacement_budget() {
         let _scope = NumericalGuard::new();

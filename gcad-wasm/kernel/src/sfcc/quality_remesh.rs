@@ -18,13 +18,27 @@ pub(crate) fn validate<T: SdfQuery + ?Sized>(
     reference: P3,
     tol: f64,
 ) -> Result<(), Rejection> {
+    validate_with_samples(tree, carrier, p, reference, tol, |_, x| Some(carrier.project(x[0], x[1], x[2])))
+}
+
+/// A modeled feature boundary uses its retained curve parameter as reference:
+/// orthogonal projection of its chord onto one carrier can leave that carrier's
+/// trimmed domain. Interior and ordinary-edge samples still use that projection.
+pub(crate) fn validate_with_samples<T: SdfQuery + ?Sized>(
+    tree: &T,
+    carrier: &Stratum,
+    p: [P3; 3],
+    reference: P3,
+    tol: f64,
+    sample_reference: impl Fn([f64; 3], P3) -> Option<P3>,
+) -> Result<(), Rejection> {
     if !q::valid_orientation(p, reference) {
         return Err(Rejection::Orientation);
     }
     for p in [p, p.map(q::rounded)] {
         for w in q::SAMPLES {
             let x = q::bary(p, w);
-            let y = carrier.project(x[0], x[1], x[2]);
+            let y = sample_reference(w, x).ok_or(Rejection::Ownership)?;
             if !y.iter().all(|v| v.is_finite()) || q::norm(q::sub(x, y)) > tol {
                 return Err(Rejection::Displacement);
             }
@@ -544,6 +558,18 @@ mod tests {
         sdf::{leaf_at, Shape},
         sfcc::feature_set::compile_native_features,
     };
+    #[test]
+    fn modeled_reference_cannot_hide_an_occluded_patch_or_relax_displacement() {
+        let tree = leaf_at(Shape::Cuboid { half: [2., 2., 1.] }, [0.;3]);
+        let features = compile_native_features(&tree);
+        let carrier = features.strata.iter().find(|s| s.f(0.,0.,1.).abs() < 1e-12 && s.normal(0.,0.,1.)[2] > 0.9).unwrap();
+        let triangle = [[-0.25,-0.25,1.],[0.25,-0.25,1.],[0.,0.25,1.]];
+        assert!(validate_with_samples(&tree, carrier, triangle, [0.,0.,1.], 0.01, |_,p| Some(p)).is_ok());
+        let hidden = leaf_at(Shape::Sphere { r: 10. }, [0.;3]);
+        assert_eq!(validate_with_samples(&hidden, carrier, triangle, [0.,0.,1.], 0.01, |_,p| Some(p)), Err(Rejection::Ownership));
+        assert_eq!(validate_with_samples(&tree, carrier, triangle, [0.,0.,1.], 0.01, |_,p| Some([p[0]+0.02,p[1],p[2]])), Err(Rejection::Displacement));
+    }
+
     fn fixture() -> (CsgNodeFixture, PointTable, Vec<usize>) {
         let tree = leaf_at(
             Shape::Cuboid {

@@ -482,6 +482,7 @@ pub(crate) fn reverify_transport(
                 len,
                 segments: Vec::new(),
                 pins: Vec::new(),
+                interior_cycle: false,
                 consumed_fwd: Vec::new(),
                 consumed_rev: Vec::new(),
             });
@@ -500,6 +501,7 @@ pub(crate) fn reverify_transport(
                 len: f.len,
                 segments: Vec::new(),
                 pins: Vec::new(),
+                interior_cycle: false,
                 consumed_fwd: Vec::new(),
                 consumed_rev: Vec::new(),
             });
@@ -2165,6 +2167,7 @@ mod tests {
         let oct = super::super::octree::rebuild_octree_from_leaves(&tree, &lat, vec![root_cell()]);
         let mut rec = FaceRecord {
             axis: 0, key: 0, len: lat.res, segments: Vec::new(), pins: Vec::new(),
+            interior_cycle: false,
             consumed_fwd: Vec::new(), consumed_rev: Vec::new(),
         };
         let points = PointTable::new();

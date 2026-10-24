@@ -97,6 +97,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Recompile only to inspect the existing feature representation; no alternate evaluator.
     let diag=(cube.size*cube.size+cube.size*cube.size+cube.size*cube.size).sqrt();
     let (features, _)=gcad_kernel::sfcc::feature_set::compile_feature_set(&tree,&gcad_kernel::tolerances::resolve_tolerances(&gcad_kernel::tuning::SfccTuning::default(),diag));
+    let mut failed_obligations=Vec::new();
+    for r in &trace.records {
+        if let Event::Unresolved { cell, failed: true } = &r.event {
+            let corner=usize::try_from(cell.feature_corner).ok().and_then(|id|features.corners.get(id));
+            let center=corner.map(|c|[c.x,c.y,c.z]);
+            let constructed:Vec<_>=trace.records.iter().filter_map(|event|{
+                if (event.export,event.round)!=(r.export,r.round){return None;}
+                match &event.event { Event::Mesh{cell:owner,kind,fallback,triangles} if CellId::from(owner)==CellId::from(cell)=>Some(json!({"kind":kind,"fallback":fallback,"triangles":triangles.len()})),_=>None }
+            }).collect();
+            let h=lattice["worldSize"].as_f64().ok_or("lattice size")?/2_f64.powi(cell.level as i32);
+            let lo=[cell.ix,cell.iy,cell.iz].map(|v|v as f64*h);
+            let lo:[f64;3]=std::array::from_fn(|k|lo[k]+lattice["origin"][k].as_f64().expect("recorded lattice origin"));
+            failed_obligations.push(json!({"export":r.export,"round":r.round,"finalRound":(r.export,r.round)==final_round,
+                "cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"degenerate":cell.degenerate,"featureCorner":cell.feature_corner,"featureCurve":cell.feature_curve,
+                "boxMin":lo,"boxMax":lo.map(|v|v+h),"cornerPosition":center,"cornerField":center.map(|p|tree.f(p)),
+                "strictInterior":center.map(|p|(0..3).all(|k|p[k]>lo[k]&&p[k]<lo[k]+h)),
+                "minimumFaceDistance":center.map(|p|(0..3).map(|k|(p[k]-lo[k]).min(lo[k]+h-p[k])).fold(f64::INFINITY,f64::min)),
+                "cornerCurveEnds":corner.map(|c|&c.curve_ends),"cornerStrata":corner.map(|c|&c.strata),"construction":constructed,
+                "firstReason":decisions.get(&(r.export,r.round,CellId::from(cell))).map(|v|v.0)}));
+        }
+    }
+    std::fs::write(output.join("failed-obligations.json"),serde_json::to_vec_pretty(&json!({"backend":"native diagnostic replay","dropped":trace.dropped,"cells":failed_obligations}))?)?;
     let mut issues=Vec::new();
     for issue in stats["validation"]["featureChains"]["issues"].as_array().ok_or("saved feature issues missing")? {
         let id=issue["curveId"].as_u64().ok_or("curve ID")? as usize;

@@ -292,8 +292,12 @@ reviewed 360-second diagnostic completes in 288.351 seconds, exhausts the triang
 cap and still contains 1,876 invalid f32 faces; nineteen malformed identities
 change each way. Native chord-budget failures rise, and global contact audit
 remains unresolved after its own timeout. Exact clipped testing clears the original
-local crossing witness in both coordinate formats. The next construction proposal targets
-source-certified shared arcs before graph insertion. Source
+local crossing witness in both coordinate formats. Three isolated shared-arc
+prototypes now pass their focused controls, but all retain source/closure refusals;
+none demonstrates a reconstructed full arc. The first-interval discriminator
+identifies lost profile correlation in the box enclosure. The next candidates
+separate correlated branch certification from checks on every consumed numerical
+event, retaining existing tolerances and refusal behavior. Source
 preservation and the residual conversion/alias families remain open. No E4
 production repair has been integrated; E5–E6 remain pending in order.
 

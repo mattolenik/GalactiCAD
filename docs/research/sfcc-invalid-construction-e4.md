@@ -891,6 +891,86 @@ identity from endpoint/third-constraint incidence, and either stages complete
 shared-face construction or refuses without mutation. No E4 runtime repair is
 ready for integration.
 
+### Three executable shared-arc prototypes: focused results
+
+The next competition produced actual isolated Rust prototypes, with all ordinary
+production meshing hooks left unchanged. Their focused controls rebuild the
+complete original knob feature graph and reproduce fingerprint
+`9875508341830920921`; the small empty-consumer fixtures are negative API controls,
+not replacement acceptance models.
+
+| Candidate | Implemented scope | Executed result |
+| --- | --- | --- |
+| A | Fixed-sign helical-branch planner and private point/face staging plus cell reconstruction entry | Three focused controls pass after documented compile/fixture corrections; the actual full-arc plan refuses chart 20's first interval `[0,1]`, so private cell reconstruction is not reached. |
+| B | Whole-footprint carrier proof and immutable discovery of actual pregraph consumers | Two focused controls pass; the whole source restriction remains unproved and missing consumer context refuses. No triangles proposed. |
+| C | Independent source/chart inspection and nonpublishing refusal entry | Three focused controls pass; local source restrictions pass, while the whole envelope, transport guard and missing continuation/junction evidence retain explicit refusals. |
+
+A's author stopped at an agent usage limit before a completed handoff. The
+coordinator preserved its as-found source, corrected one borrowed integer
+argument, and then diagnosed a failed fixture assertion with independent review.
+The fixture used lattice face `gz=127` for the unchanged saved pair 34177/34176,
+although exact-bit joins place both points in the final cells on either side of
+`gz=128`. The recorded lattice establishes the correct face coordinate
+`-0.007238803216301548`; no fitted coordinate or tolerance adjustment was used.
+After this fixture-only correction, the actual pin certificate passes. Both
+original failures remain preserved. None of these results establishes successful
+shared-arc reconstruction, endpoint validity or publication readiness.
+
+The conservative whole-box refusal does not prove the actual arcs diverge.
+Conversely, successful pointwise checks cannot authorize the complete component.
+The fourth review selects a small discriminator for A's first failed interval,
+separating source-branch geometry, conservative numerical-projection bounds and
+checked transport of consumed events. It does not add a requirement to prove
+Newton convergence for every real parameter or solve universal feature discovery.
+All current tolerances, source obligations, endpoint constraints and refusal
+behavior remain unchanged.
+
+[Fourth review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round10-shared-arc-controls/decision.md),
+[A's corrected execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round10-shared-arc-controls/A-fixture-fix-run/execution.json),
+[authoritative face-coordinate derivation](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round10-shared-arc-controls/A-face-coordinate-provenance.json),
+[B's proof/refusal receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round10-shared-arc-controls/B/proof-receipt.json),
+and [C's independent inspection](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round10-shared-arc-controls/C/proof-receipt.json)
+retain the results. Tests use the separately labelled non-LTO/codegen16 diagnostic
+profile; no new release-WASM or full-mesh result is inferred.
+
+### First-interval discriminator: loss of correlation
+
+The observation-only discriminator passes and reproduces A's unchanged refusal.
+For chart 20's first interval `[0,1]`, the existing restriction traversal stops
+after twenty boxes at depth six. The terminal box passes the competitor test
+(lower bound 1.86609 mm against radius 1.4 mm), but fails the profile restriction.
+It encloses untwisted coordinates `u=[7.07248,7.68065]`,
+`v=[7.86150,8.54984]`, which include points unrelated to the selected source curve.
+
+The checked helical branch instead has
+`u=[7.255342858886819,7.255342858886825]`, `v=8`, with fixed positive sign.
+Its intrinsic profile restriction and the reported transverse inverse check pass.
+Under explicitly checked same-axis, identity-frame, positive-lathe/radius guards,
+rotational symmetry lets the existing lathe bound evaluate the fixed cylinder
+radius over the entire recorded tube-height interval. That branch-only lower
+bound is 1.7299592761499476 mm, more than 0.329959 mm beyond the blend radius.
+It is **not** a bound for every point in the numerical projection box.
+
+This identifies loss of profile correlation in the current proof strategy;
+it does not demonstrate source-curve divergence. Ten existing native chart queries
+also produce consistent local values, but those observations are not a continuous
+proof or independent SDF reference. The source subdivision budget remains
+127 boxes per invocation, and no certificate or meshing admission was changed.
+
+The reviewed next implementation separates a correlated source-branch certificate
+from consumed-event validation. Each used numerical point must still pass its
+original containment and typed source/domain checks, a conservative distance bound
+to that same helix at its height, and strict own-chart transport under the existing
+numerical allowance. Unsupported pieces, endpoints or transport retain named
+refusals; arbitrary off-curve bounding-box points gain no authority.
+
+[Executed discriminator](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round11-first-piece/execution/proof-receipt.json),
+[build/test receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round11-first-piece/execution/execution.json),
+[frozen source review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round11-first-piece/decision.md),
+and [outcome review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round11-first-piece/outcome.md)
+record the scope and limitations. No full export or production integration follows
+from this discriminator.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

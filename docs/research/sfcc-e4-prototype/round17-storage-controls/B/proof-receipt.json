@@ -1,0 +1,147 @@
+{
+  "allocationLayoutPremise": "audited local Rust1.99 std/hashbrown0.17.1; with_capacity(len), group width<=16, 7/8 load; allocator bookkeeping/granularity not counted",
+  "allocatorOrRssMeasurement": false,
+  "checkedOverflowRejected": true,
+  "controlledIndexCloneContentAndSourceIdentityPreserved": true,
+  "exactCombinedBoundaryBytes": 67108864,
+  "fingerprint": "9875508341830920921",
+  "historicalStagedBytes": null,
+  "indexRebuildPreservesHashBuilders": true,
+  "labelledStagingEnvelopes": [
+    {
+      "accepted": true,
+      "combined": 320505,
+      "historicalFitClaim": false,
+      "ownedCloneLayoutUpper": 320505,
+      "stagingEnvelope": 0
+    },
+    {
+      "accepted": true,
+      "combined": 17097721,
+      "historicalFitClaim": false,
+      "ownedCloneLayoutUpper": 320505,
+      "stagingEnvelope": 16777216
+    },
+    {
+      "accepted": true,
+      "combined": 33874937,
+      "historicalFitClaim": false,
+      "ownedCloneLayoutUpper": 320505,
+      "stagingEnvelope": 33554432
+    },
+    {
+      "accepted": true,
+      "combined": 67108864,
+      "historicalFitClaim": false,
+      "ownedCloneLayoutUpper": 320505,
+      "stagingEnvelope": 66788359
+    },
+    {
+      "accepted": false,
+      "combined": 67108865,
+      "historicalFitClaim": false,
+      "ownedCloneLayoutUpper": 320505,
+      "stagingEnvelope": 66788360
+    }
+  ],
+  "ledger": {
+    "allocations": [
+      0,
+      3,
+      0,
+      81,
+      65,
+      65,
+      167,
+      130,
+      204,
+      75,
+      75,
+      391,
+      41
+    ],
+    "bytes": [
+      336,
+      54920,
+      0,
+      30936,
+      60840,
+      28872,
+      4704,
+      3392,
+      23072,
+      1608,
+      2560,
+      108649,
+      616
+    ],
+    "shared_compound_handles": 35,
+    "shared_partner_handles": 299,
+    "shared_root_handles": 299
+  },
+  "ledgerCategories": [
+    "rootInlineIncludingTraceAndIndexHeaders",
+    "outerVectorElements",
+    "unresolvedPathElements",
+    "curveIndexPolylineElements",
+    "tracedBoxPayload",
+    "tracedSampleElements",
+    "fieldPathElements",
+    "branchOverridePathElements",
+    "domainVectorElements",
+    "cornerStratumElements",
+    "cornerEndElements",
+    "rebuiltIndexBucketAndControlLayouts",
+    "indexCornerVectorElements"
+  ],
+  "legacyHeuristic": [
+    {
+      "actualHistoricalStagedBytesKnown": false,
+      "emittedTextPrefixBytes": 1044926,
+      "firstCrossingComponent": "curves",
+      "initialWeightedBytes": 234512,
+      "measurementOfAllocation": false,
+      "multiplier": 64,
+      "oldIndexReservation": 234176,
+      "refused": true,
+      "rootInlineBytes": 336,
+      "stagedBytesEnvelope": 0,
+      "weightedBytesAtStop": 67109776
+    },
+    {
+      "actualHistoricalStagedBytesKnown": false,
+      "emittedTextPrefixBytes": 782768,
+      "firstCrossingComponent": "curves",
+      "initialWeightedBytes": 17011728,
+      "measurementOfAllocation": false,
+      "multiplier": 64,
+      "oldIndexReservation": 234176,
+      "refused": true,
+      "rootInlineBytes": 336,
+      "stagedBytesEnvelope": 16777216,
+      "weightedBytesAtStop": 67108880
+    },
+    {
+      "actualHistoricalStagedBytesKnown": false,
+      "emittedTextPrefixBytes": 520625,
+      "firstCrossingComponent": "curves",
+      "initialWeightedBytes": 33788944,
+      "measurementOfAllocation": false,
+      "multiplier": 64,
+      "oldIndexReservation": 234176,
+      "refused": true,
+      "rootInlineBytes": 336,
+      "stagedBytesEnvelope": 33554432,
+      "weightedBytesAtStop": 67108944
+    }
+  ],
+  "oneByteOverRejected": true,
+  "ordinaryCloneContentAndSourceIdentityPreserved": true,
+  "ownedRequestedLayoutUpperBytes": 320505,
+  "publicationReady": false,
+  "scope": "feature-only ownership/accounting discriminator; no octree/private meshing or full export",
+  "sharedHandleInlineBytesAlreadyIncluded": true,
+  "sharedPayloadExpandedBytesCharged": 0,
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "traceDiagnosticsInlineCopy": true
+}

@@ -1,0 +1,176 @@
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -460,12 +460,16 @@
+             needed.len().to_string(),
+         ));
+     }
+-    let staged_items:usize=required.iter().map(|&(axis,key,_)|faces[axis][&key].segments.len()+faces[axis][&key].pins.len()).sum();
+-    let point_key_bytes:usize=needed.iter().map(|&id|match live.key_at(id){PointKey::Str(s)=>s.len(),_=>0}).sum();
+-    // Reserve generous per-entry overhead for private point/face/maps alongside
+-    // the helper's bounded cache. Source-view storage is checked separately.
+-    let staged_bytes=staged_items.saturating_mul(512).saturating_add(needed.len()*1024).saturating_add(point_key_bytes*4).saturating_add(16384*1024+128*4096);
+-    if staged_bytes>64*1024*1024 {return Err(fail(features,ids,"private_byte_cap",staged_bytes.to_string()));}
++    let staging=super::private_storage_observation::staging(
++        required.iter().map(|&(axis,key,len)|{let r=&faces[axis][&key];(axis,key,len,r.segments.len(),r.pins.len())}),
++        needed.iter().map(|&id|(id,match live.key_at(id){PointKey::Str(s)=>s.len(),_=>0})),
++        needed.len(),"actual live required faces/needed points; historical Round16 staging remains unknown",
++    );
++    let staged_bytes=staging.staged_bytes;let allowed=staging.allowed;
++    let reason=if staging.failure.as_ref().is_some_and(|f|f.arithmetic.operation=="64MiB_cap"){"private_byte_cap"}else{"private_byte_overflow"};
++    super::private_storage_observation::record_staging(staging);
++    if !allowed{return Err(fail(features,ids,reason,"checked caller staging refused; exact inputs, terms and failure retained in typed storage observation"));}
++    let staged_bytes=staged_bytes.ok_or_else(||fail(features,ids,"private_byte_overflow","missing checked staging total"))?;
+     let mut private = PointTable::new();
+     let mut map = BTreeMap::new();
+     let mut original_bindings = Vec::new();
+@@ -666,6 +670,7 @@
+             std::slice::from_ref(cell),
+         );
+         if !result.failed_cells.is_empty() || result.feature_cell_fallbacks != 0 {
++            super::private_arc_a::note_private_mesher_failure(oct,&staged,cell,&private,&result);
+             graph_failed = true;
+             break;
+         }
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -227,10 +227,11 @@
+ /// Reserve the connected owned Clone graph together with the actual caller's
+ /// staging amount, recording the exact structural ledger before any refusal.
+ pub(crate) fn reserve_source_view(f:&SfccFeatureSet,already:usize)->Result<(), &'static str>{
++    super::private_storage_observation::prepare_source();
+     let report=super::source_storage_a::inspect(f,already,"actual caller staged_bytes; not inferred from face count");
+-    #[cfg(feature="serde")]
+-    DIAGNOSTIC.with(|s|{if let Some(v)=s.borrow_mut().as_mut(){v["sourceStorageReservation"]=serde_json::json!(&report);}});
+-    if report.allowed{Ok(())}else{Err("64MiB combined owned-source/staging reservation refused; exact ledger in sourceStorageReservation")}
++    let allowed=report.allowed;
++    super::private_storage_observation::record_source(report);
++    if allowed{Ok(())}else{Err("64MiB combined owned-source/staging reservation refused; typed ledger retained for receipt extraction")}
+ }
+ 
+ #[cfg(test)]
+@@ -419,3 +420,36 @@
+     #[cfg(not(feature = "serde"))]
+     let _ = cell;
+ }
++
++/// Failure-only diagnostic, bounded separately from the native source ledger.
++/// This is available staged state AFTER mesh_cells_subset returned, not a full
++/// pre-call snapshot or retained-outside geometry/contact certificate.
++pub(crate) fn note_private_mesher_failure(
++    oct:&super::octree::SfccOctree,faces:&[std::collections::HashMap<i64,super::face_contour::FaceRecord>;3],
++    cell:&super::octree::SfccCell,points:&super::point_table::PointTable,result:&super::cell_mesh::CellMeshResult,
++){
++    #[cfg(feature="serde")]
++    DIAGNOSTIC.with(|state|{
++        if state.borrow().is_none(){return;}
++        use serde_json::json;
++        let used=super::shared_arc_plan::cell_faces(oct,faces,cell);let mut entries_left=512usize;let mut ids=std::collections::BTreeSet::new();let mut records=Vec::new();let mut truncated=used.len()>24;
++        for &(axis,key,len) in used.iter().take(24){
++            let r=&faces[axis][&key];
++            let segments:Vec<_>=r.segments.iter().take(entries_left).map(|s|[s.a,s.b]).collect();entries_left-=segments.len();
++            let pins:Vec<_>=r.pins.iter().take(entries_left).map(|p|json!({"pointId":p.point_id,"chart":p.curve_id,"parameterBits":p.t.to_bits()})).collect();entries_left-=pins.len();
++            for id in segments.iter().flatten().copied().chain(r.pins.iter().take(pins.len()).map(|p|p.point_id)){if ids.len()<512||ids.contains(&id){ids.insert(id);}else{truncated=true;}}
++            truncated|=segments.len()!=r.segments.len()||pins.len()!=r.pins.len()||r.consumed_fwd.len()>512||r.consumed_rev.len()>512;
++            records.push(json!({"face":[axis as i64,key,len],"segmentCount":r.segments.len(),"pinCount":r.pins.len(),"segments":segments,"pins":pins,"consumedForwardPrefix":r.consumed_fwd.iter().take(512).copied().collect::<Vec<_>>(),"consumedReversePrefix":r.consumed_rev.iter().take(512).copied().collect::<Vec<_>>()}));
++        }
++        let payloads:Vec<_>=ids.into_iter().map(|id|{
++            if id>=points.count(){return json!({"id":id,"invalidPointBinding":true});}
++            let key=match points.key_at(id){super::point_table::PointKey::Num(k)=>json!({"kind":"numeric","value":k}),super::point_table::PointKey::Str(k)=>json!({"kind":"string","prefix":k.chars().take(64).collect::<String>(),"byteLength":k.len(),"prefixTruncated":k.chars().nth(64).is_some()}),super::point_table::PointKey::Unkeyed=>json!({"kind":"unkeyed"})};
++            json!({"id":id,"positionBits":[points.x(id).to_bits(),points.y(id).to_bits(),points.z(id).to_bits()],"normalBits":[points.nx(id).to_bits(),points.ny(id).to_bits(),points.nz(id).to_bits()],"key":key})
++        }).collect();
++        let cells=|cells:&[super::octree::SfccCell]|cells.iter().take(256).map(|c|[c.level as i64,c.ix,c.iy,c.iz]).collect::<Vec<_>>();
++        let mut evidence=json!({"scope":"after failed private mesh return; available staged boundary state only","cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"failedCellCount":result.failed_cells.len(),"failedCellsPrefix":cells(&result.failed_cells),"featureCellFallbackCount":result.feature_cell_fallbacks,"fallbackCellCount":result.fallback_cells.len(),"fallbackCellsPrefix":cells(&result.fallback_cells),"returnedTriangleCount":result.tris.len()/3,"multiLoopCellCount":result.multi_loop_cells,"edgeCellCount":result.edge_cells,"cornerCellCount":result.corner_cells,"privatePointCount":points.count(),"pointIdSpace":"private staged PointTable","faces":records,"points":payloads,"truncated":truncated||result.failed_cells.len()>256||result.fallback_cells.len()>256,"diagnosticLimits":{"faces":24,"totalSegmentPinEntries":512,"points":512,"keyPrefixCharacters":64,"counterEntriesPerFace":512,"bytes":524288},"nativeLedger16KiBClaimApplies":false});
++        if serde_json::to_vec(&evidence).map_or(true,|v|v.len()>512*1024){evidence=json!({"cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"failedCellCount":result.failed_cells.len(),"featureCellFallbackCount":result.feature_cell_fallbacks,"fallbackCellCount":result.fallback_cells.len(),"returnedTriangleCount":result.tris.len()/3,"privatePointCount":points.count(),"detailRefusal":"bounded_mesher_failure_diagnostic_byte_cap"});}
++        if let Some(report)=state.borrow_mut().as_mut(){report["privateMesherFailure"]=evidence;}
++    });
++    #[cfg(not(feature="serde"))] let _=(oct,faces,cell,points,result);
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
+@@ -191,7 +191,8 @@
+         .expect("root-owned diagnostic receipt path required");
+     let before = live_digest(faces, live);
+     let inventory = inventory(oct, faces, live, [20, 33]);
+-    let mut report = json!({"candidate":"A-integrated-typed-face-root","stage":"SERIAL_ROUND0_AFTER_CONTOUR_ALL_FACES_BEFORE_MESH_ALL_CELLS","nativeAttempt":0,"adaptiveRound":0,"branch":"Serial","sourceManifestSha256":std::env::var("SFCC_PRIVATE_A_SOURCE_MANIFEST_SHA256").ok(),"sourceConfigSha256":fixture["sourceConfigSha256"],"requestedSceneJson":fixture["sceneJson"],"requestedCube":fixture["cube"],"requestedTuning":fixture["tuning"],"effectiveNativeTuning":effective_tuning(tuning),"unconsumedTsOnlyOptions":["jitterRetries","failurePolicy","faceSnapEpsFraction","ambiguityResolution","creaseAngleDeg","debugOutput","profile"],"effectiveCubeBits":[cube.min_x.to_bits(),cube.min_y.to_bits(),cube.min_z.to_bits(),cube.size.to_bits()],"liveLattice":{"maxDepth":oct.lat.max_depth,"resolution":oct.lat.res,"span":oct.lat.span,"originBits":[oct.lat.origin_x.to_bits(),oct.lat.origin_y.to_bits(),oct.lat.origin_z.to_bits()],"sizeBits":oct.lat.world_size.to_bits(),"stepBits":oct.lat.step.to_bits()},"fingerprint":f.fingerprint().to_string(),"originalCounts":{"curves":f.curves.len(),"corners":f.corners.len(),"strata":f.strata.len(),"leaves":oct.leaves.len(),"faces":faces.iter().map(HashMap::len).sum::<usize>(),"points":live.count(),"segments":faces.iter().flat_map(|fs|fs.values()).map(|r|r.segments.len()).sum::<usize>(),"pins":faces.iter().flat_map(|fs|fs.values()).map(|r|r.pins.len()).sum::<usize>()},"originalCharts":f.curves.iter().map(|c|json!({"id":c.id,"rangeBits":[c.t_min.to_bits(),c.t_max.to_bits()],"cornerEnds":[c.corner_start,c.corner_end],"strata":c.adjacent_strata,"polylineBits":c.index_polyline.iter().map(|x|x.to_bits()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"liveDigestBefore":before,"consumerInventory":match &inventory{Ok(v)=>v.clone(),Err(e)=>json!({"status":"refused","reason":e})},"publicationReady":false,"finalExportClosure":false,"productionAcceptance":false});
++    let mut report = json!({"candidate":"A-integrated-owned-storage","stage":"SERIAL_ROUND0_AFTER_CONTOUR_ALL_FACES_BEFORE_MESH_ALL_CELLS","nativeAttempt":0,"adaptiveRound":0,"branch":"Serial","sourceManifestSha256":std::env::var("SFCC_PRIVATE_A_SOURCE_MANIFEST_SHA256").ok(),"sourceConfigSha256":fixture["sourceConfigSha256"],"requestedSceneJson":fixture["sceneJson"],"requestedCube":fixture["cube"],"requestedTuning":fixture["tuning"],"effectiveNativeTuning":effective_tuning(tuning),"unconsumedTsOnlyOptions":["jitterRetries","failurePolicy","faceSnapEpsFraction","ambiguityResolution","creaseAngleDeg","debugOutput","profile"],"effectiveCubeBits":[cube.min_x.to_bits(),cube.min_y.to_bits(),cube.min_z.to_bits(),cube.size.to_bits()],"liveLattice":{"maxDepth":oct.lat.max_depth,"resolution":oct.lat.res,"span":oct.lat.span,"originBits":[oct.lat.origin_x.to_bits(),oct.lat.origin_y.to_bits(),oct.lat.origin_z.to_bits()],"sizeBits":oct.lat.world_size.to_bits(),"stepBits":oct.lat.step.to_bits()},"fingerprint":f.fingerprint().to_string(),"originalCounts":{"curves":f.curves.len(),"corners":f.corners.len(),"strata":f.strata.len(),"leaves":oct.leaves.len(),"faces":faces.iter().map(HashMap::len).sum::<usize>(),"points":live.count(),"segments":faces.iter().flat_map(|fs|fs.values()).map(|r|r.segments.len()).sum::<usize>(),"pins":faces.iter().flat_map(|fs|fs.values()).map(|r|r.pins.len()).sum::<usize>()},"originalCharts":f.curves.iter().map(|c|json!({"id":c.id,"rangeBits":[c.t_min.to_bits(),c.t_max.to_bits()],"cornerEnds":[c.corner_start,c.corner_end],"strata":c.adjacent_strata,"polylineBits":c.index_polyline.iter().map(|x|x.to_bits()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"liveDigestBefore":before,"consumerInventory":match &inventory{Ok(v)=>v.clone(),Err(e)=>json!({"status":"refused","reason":e})},"publicationReady":false,"finalExportClosure":false,"productionAcceptance":false});
++    let storage_scope=crate::sfcc::private_storage_observation::begin();
+     DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"finalChargedQueries":0})));
+     report["outcome"] = if f.fingerprint() != 9875508341830920921 {
+         json!({"kind":"refusal","reason":"fresh_fingerprint_mismatch"})
+@@ -216,13 +217,20 @@
+     report["admissionAndQueryEvidence"] = DIAGNOSTIC
+         .with(|s| s.borrow_mut().take())
+         .unwrap_or(Value::Null);
++    // Resource JSON is materialized only after private construction returned.
++    // Its diagnostic tree/serialization is outside the16KiB native-ledger bound.
++    report["storageReservation"]=json!(storage_scope.take());
++    report["nativeResourceObservationBound"]=json!({"bytes":crate::sfcc::private_storage_observation::NATIVE_STORAGE_BOUND,"reservedBytes":crate::sfcc::source_storage_a::LEDGER_RESERVATION,"scope":"native resource report/row storage only; JSON receipt materialization is separate"});
+     report["finalChargedQueries"]=report["admissionAndQueryEvidence"]["finalChargedQueries"].clone();
+     report["liveDigestAfter"] = json!(live_digest(faces, live));
+     report["liveStatePreserved"] = json!(report["liveDigestBefore"] == report["liveDigestAfter"]);
+     report["stoppedBeforeProductionCellMeshingAndPostassembly"] = json!(true);
+     let bytes = serde_json::to_vec_pretty(&report).expect("diagnostic serialization");
+     if bytes.len() > 64 * 1024 * 1024 {
+-        std::fs::write(path,b"{\"outcome\":{\"kind\":\"refusal\",\"reason\":\"receipt_64MiB_cap\"},\"publicationReady\":false}").expect("receipt write");
++        let compact=json!({"stage":report["stage"],"sourceConfigSha256":report["sourceConfigSha256"],"fingerprint":report["fingerprint"],"outcome":{"kind":"refusal","reason":"receipt_64MiB_cap"},"privateOutcomeKind":report["outcome"]["kind"],"privateRefusal":report["outcome"]["refusal"],"storageReservation":report["storageReservation"].take(),"nativeResourceObservationBound":report["nativeResourceObservationBound"],"finalChargedQueries":report["finalChargedQueries"],"liveStatePreserved":report["liveStatePreserved"],"liveDigestBefore":report["liveDigestBefore"],"liveDigestAfter":report["liveDigestAfter"],"stoppedBeforeProductionCellMeshingAndPostassembly":true,"finalExportClosure":false,"publicationReady":false});
++        let compact_bytes=serde_json::to_vec_pretty(&compact).expect("compact resource receipt");
++        assert!(compact_bytes.len()<=64*1024*1024,"bounded compact receipt");
++        std::fs::write(path,compact_bytes).expect("receipt write");
+     } else {
+         std::fs::write(path, bytes).expect("receipt write");
+     }
+--- a/gcad-wasm/kernel/src/sfcc/source_storage_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/source_storage_a.rs
+@@ -5,7 +5,8 @@
+ use std::mem::{align_of, size_of};
+ 
+ pub(crate) const LIMIT: usize = 64 * 1024 * 1024;
+-const LEDGER_RESERVATION: usize = 16 * 1024;
++pub(crate) const LEDGER_RESERVATION: usize = 16 * 1024;
++pub(crate) const MAX_ROWS: usize = 32;
+ #[derive(Clone, Debug)]
+ #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+ pub(crate) struct Failure {
+@@ -55,7 +56,7 @@
+ impl Ledger {
+     pub(crate) fn new() -> Self {
+         Self {
+-            rows: Vec::new(),
++            rows: Vec::with_capacity(MAX_ROWS),
+             owned_reservation: 0,
+         }
+     }
+@@ -63,12 +64,12 @@
+         if let Some(i) = self.rows.iter().position(|r| r.category == category) {
+             return Ok(&mut self.rows[i]);
+         }
+-        if self.rows.len() >= 32 {
++        if self.rows.len() >= MAX_ROWS {
+             return Err(Failure {
+                 category,
+                 operation: "ledger_category_cap",
+                 lhs: self.rows.len(),
+-                rhs: 32,
++                rhs: MAX_ROWS,
+             });
+         }
+         self.rows.push(Row {
+@@ -194,6 +195,8 @@
+     pub staged_semantics: &'static str,
+     pub feature_inline_bytes: usize,
+     pub accounting_overhead_bytes: usize,
++    pub native_report_storage_bound: usize,
++    pub native_row_capacity: usize,
+     pub ledger: Ledger,
+     pub combined_bytes: Option<usize>,
+     pub complete: bool,
+@@ -229,7 +232,8 @@
+             rhs: LIMIT,
+         });
+     }
+-    Report{staged_bytes:staged,staged_semantics,feature_inline_bytes:size_of::<SfccFeatureSet>(),accounting_overhead_bytes:LEDGER_RESERVATION,ledger,combined_bytes,complete,allowed:failure.is_none(),failure,cap:LIMIT,scope:"owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS"}
++    let native_row_capacity = ledger.rows.capacity();
++    Report{native_report_storage_bound:super::private_storage_observation::NATIVE_STORAGE_BOUND,native_row_capacity,staged_bytes:staged,staged_semantics,feature_inline_bytes:size_of::<SfccFeatureSet>(),accounting_overhead_bytes:LEDGER_RESERVATION,ledger,combined_bytes,complete,allowed:failure.is_none(),failure,cap:LIMIT,scope:"owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS"}
+ }
+ 
+ #[cfg(all(test, feature = "serde"))]

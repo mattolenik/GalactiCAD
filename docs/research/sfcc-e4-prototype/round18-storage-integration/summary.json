@@ -1,0 +1,811 @@
+{
+  "sourceManifestSha256": "8c97f0128e78532368f2764c4e20671166c4dc7490cd00d09f432284e2c7ba02",
+  "outcome": {
+    "kind": "refusal",
+    "refusal": {
+      "detail": "whole component discarded; no pin-only publication",
+      "originals": [
+        {
+          "corners": [
+            26,
+            27
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            26,
+            27
+          ],
+          "id": 33,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "private_graph_refused"
+    }
+  },
+  "finalChargedQueries": 9950,
+  "liveDigestBefore": "5f3600b1ef212fb0",
+  "liveDigestAfter": "5f3600b1ef212fb0",
+  "liveStatePreserved": true,
+  "productionAcceptance": false,
+  "publicationReady": false,
+  "finalExportClosure": false,
+  "storageReservation": {
+    "source": {
+      "accounting_overhead_bytes": 16384,
+      "allowed": true,
+      "cap": 67108864,
+      "combined_bytes": 19865723,
+      "complete": true,
+      "failure": null,
+      "feature_inline_bytes": 344,
+      "ledger": {
+        "owned_reservation": 930359,
+        "rows": [
+          {
+            "alignment": 8,
+            "allocations": 1,
+            "category": "features.curves",
+            "elements": 128,
+            "layout_bytes": 25600,
+            "reserved_bytes": 51335,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 81,
+            "category": "curve.index_polyline",
+            "elements": 3867,
+            "layout_bytes": 30936,
+            "reserved_bytes": 72807,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 65,
+            "category": "curve.traced_box",
+            "elements": 65,
+            "layout_bytes": 60840,
+            "reserved_bytes": 130455,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 65,
+            "category": "curve.traced_samples",
+            "elements": 3609,
+            "layout_bytes": 28872,
+            "reserved_bytes": 66519,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 204,
+            "category": "stratum.domains",
+            "elements": 210,
+            "layout_bytes": 23520,
+            "reserved_bytes": 74580,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 0,
+            "allocations": 0,
+            "category": "shared.source_root_handle",
+            "elements": 0,
+            "layout_bytes": 0,
+            "reserved_bytes": 0,
+            "shared_handle_inline_bytes": 2392,
+            "shared_handles": 299,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 0,
+            "allocations": 0,
+            "category": "shared.partners_handle",
+            "elements": 0,
+            "layout_bytes": 0,
+            "reserved_bytes": 0,
+            "shared_handle_inline_bytes": 4784,
+            "shared_handles": 299,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 167,
+            "category": "field.path",
+            "elements": 588,
+            "layout_bytes": 4704,
+            "reserved_bytes": 31953,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 0,
+            "allocations": 0,
+            "category": "shared.compound_handle",
+            "elements": 0,
+            "layout_bytes": 0,
+            "reserved_bytes": 0,
+            "shared_handle_inline_bytes": 280,
+            "shared_handles": 35,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 130,
+            "category": "field.override_path",
+            "elements": 424,
+            "layout_bytes": 3392,
+            "reserved_bytes": 24334,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 1,
+            "category": "features.corners",
+            "elements": 77,
+            "layout_bytes": 6160,
+            "reserved_bytes": 12455,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 75,
+            "category": "corner.strata",
+            "elements": 300,
+            "layout_bytes": 2400,
+            "reserved_bytes": 14925,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 75,
+            "category": "corner.curve_ends",
+            "elements": 364,
+            "layout_bytes": 5824,
+            "reserved_bytes": 21773,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 8,
+            "allocations": 1,
+            "category": "features.strata",
+            "elements": 120,
+            "layout_bytes": 52800,
+            "reserved_bytes": 105735,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          },
+          {
+            "alignment": 16,
+            "allocations": 1,
+            "category": "index.curve_cells",
+            "elements": 65618,
+            "layout_bytes": 65618,
+            "reserved_bytes": 131379,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 898,
+            "table_capacity_sum": 448,
+            "table_element_size": 72
+          },
+          {
+            "alignment": 16,
+            "allocations": 389,
+            "category": "index.curve_cell_sets",
+            "elements": 58376,
+            "layout_bytes": 58376,
+            "reserved_bytes": 172379,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 3720,
+            "table_capacity_sum": 1471,
+            "table_element_size": 8
+          },
+          {
+            "alignment": 16,
+            "allocations": 1,
+            "category": "index.corner_cells",
+            "elements": 5650,
+            "layout_bytes": 5650,
+            "reserved_bytes": 11443,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 114,
+            "table_capacity_sum": 56,
+            "table_element_size": 48
+          },
+          {
+            "alignment": 8,
+            "allocations": 41,
+            "category": "index.corner_cell_vectors",
+            "elements": 172,
+            "layout_bytes": 1376,
+            "reserved_bytes": 8287,
+            "shared_handle_inline_bytes": 0,
+            "shared_handles": 0,
+            "table_bucket_upper_sum": 0,
+            "table_capacity_sum": 0,
+            "table_element_size": null
+          }
+        ]
+      },
+      "native_report_storage_bound": 9455,
+      "native_row_capacity": 32,
+      "scope": "owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS",
+      "staged_bytes": 18918636,
+      "staged_semantics": "actual caller staged_bytes; not inferred from face count"
+    },
+    "staging": {
+      "allowed": true,
+      "cap": 67108864,
+      "failure": null,
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 1421,
+      "key_bytes_prefix": 11451,
+      "needed_point_count": 824,
+      "point_key_bytes": 11451,
+      "scope": "actual live required faces/needed points; historical Round16 staging remains unknown",
+      "staged_bytes": 18918636,
+      "staged_items": 1421,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 727552,
+        "key_bytes_times_4": 45804,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 843776
+      }
+    }
+  },
+  "nativeResourceObservationBound": {
+    "bytes": 9455,
+    "reservedBytes": 16384,
+    "scope": "native resource report/row storage only; JSON receipt materialization is separate"
+  },
+  "execution": [
+    {
+      "step": "build",
+      "command": [
+        "/opt/homebrew/bin/cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "/tmp/sfcc-e4-storage-integrated/gcad-wasm/Cargo.toml",
+        "-p",
+        "gcad-kernel",
+        "--offline",
+        "--release",
+        "--features",
+        "serde,sfcc-profile",
+        "--lib",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "capSeconds": 120,
+      "elapsedSeconds": 22.873768666991964,
+      "exitCode": 0,
+      "timedOut": false,
+      "loadBefore": [
+        7.5810546875,
+        7.91796875,
+        7.90869140625
+      ],
+      "loadAfter": [
+        17.77734375,
+        10.09228515625,
+        8.68115234375
+      ],
+      "childUserSeconds": 63.084905,
+      "childSystemSeconds": 3.737609
+    },
+    {
+      "step": "focused-0",
+      "command": [
+        "/tmp/sfcc-e4-storage-integrated-native-A/release/deps/gcad_kernel-7fd0b240f918a2b8",
+        "correlated_",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "capSeconds": 59.9999908329919,
+      "elapsedSeconds": 5.831627124920487,
+      "exitCode": 0,
+      "timedOut": false,
+      "loadBefore": [
+        17.77734375,
+        10.09228515625,
+        8.68115234375
+      ],
+      "loadAfter": [
+        17.39453125,
+        10.14013671875,
+        8.7060546875
+      ],
+      "childUserSeconds": 5.2717150000000075,
+      "childSystemSeconds": 0.05042100000000005
+    },
+    {
+      "step": "private-original-scene",
+      "command": [
+        "/tmp/sfcc-e4-storage-integrated-native-A/release/deps/gcad_kernel-7fd0b240f918a2b8",
+        "private_a_original_knob_serial_round0_diagnostic",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "capSeconds": 120,
+      "elapsedSeconds": 23.603532333974726,
+      "exitCode": 0,
+      "timedOut": false,
+      "loadBefore": [
+        17.39453125,
+        10.14013671875,
+        8.7060546875
+      ],
+      "loadAfter": [
+        13.58642578125,
+        9.83642578125,
+        8.6376953125
+      ],
+      "childUserSeconds": 22.508713,
+      "childSystemSeconds": 0.19017699999999982
+    }
+  ],
+  "typedFaceCertificateCount": 198,
+  "activePrivateCell": [
+    7,
+    36,
+    79,
+    29
+  ],
+  "generatedQueryCount": 46,
+  "privateMesherFailure": {
+    "cell": [
+      7,
+      36,
+      79,
+      29
+    ],
+    "cornerCellCount": 1,
+    "diagnosticLimits": {
+      "bytes": 524288,
+      "counterEntriesPerFace": 512,
+      "faces": 24,
+      "keyPrefixCharacters": 64,
+      "points": 512,
+      "totalSegmentPinEntries": 512
+    },
+    "edgeCellCount": 0,
+    "faces": [
+      {
+        "consumedForwardPrefix": [
+          0
+        ],
+        "consumedReversePrefix": [
+          1
+        ],
+        "face": [
+          0,
+          4928290,
+          1
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 1,
+        "segments": [
+          [
+            625,
+            624
+          ]
+        ]
+      },
+      {
+        "consumedForwardPrefix": [
+          0
+        ],
+        "consumedReversePrefix": [
+          1
+        ],
+        "face": [
+          0,
+          4928291,
+          1
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 1,
+        "segments": [
+          [
+            623,
+            625
+          ]
+        ]
+      },
+      {
+        "consumedForwardPrefix": [
+          0
+        ],
+        "consumedReversePrefix": [
+          1
+        ],
+        "face": [
+          0,
+          4928547,
+          1
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 1,
+        "segments": [
+          [
+            624,
+            61
+          ]
+        ]
+      },
+      {
+        "consumedForwardPrefix": [],
+        "consumedReversePrefix": [],
+        "face": [
+          0,
+          4928548,
+          1
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 0,
+        "segments": []
+      },
+      {
+        "consumedForwardPrefix": [],
+        "consumedReversePrefix": [],
+        "face": [
+          1,
+          4862241,
+          1
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 0,
+        "segments": []
+      },
+      {
+        "consumedForwardPrefix": [
+          1,
+          1
+        ],
+        "consumedReversePrefix": [
+          0,
+          0
+        ],
+        "face": [
+          1,
+          4796193,
+          1
+        ],
+        "pinCount": 1,
+        "pins": [
+          {
+            "chart": 20,
+            "parameterBits": 4629354576626184382,
+            "pointId": 620
+          }
+        ],
+        "segmentCount": 2,
+        "segments": [
+          [
+            618,
+            620
+          ],
+          [
+            620,
+            62
+          ]
+        ]
+      },
+      {
+        "consumedForwardPrefix": [
+          1
+        ],
+        "consumedReversePrefix": [
+          0
+        ],
+        "face": [
+          1,
+          4862242,
+          1
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 1,
+        "segments": [
+          [
+            623,
+            618
+          ]
+        ]
+      },
+      {
+        "consumedForwardPrefix": [
+          0
+        ],
+        "consumedReversePrefix": [
+          1
+        ],
+        "face": [
+          1,
+          4796706,
+          2
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 1,
+        "segments": [
+          [
+            61,
+            60
+          ]
+        ]
+      },
+      {
+        "consumedForwardPrefix": [],
+        "consumedReversePrefix": [],
+        "face": [
+          2,
+          4796192,
+          2
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 0,
+        "segments": []
+      },
+      {
+        "consumedForwardPrefix": [
+          0
+        ],
+        "consumedReversePrefix": [
+          1
+        ],
+        "face": [
+          2,
+          4796194,
+          2
+        ],
+        "pinCount": 0,
+        "pins": [],
+        "segmentCount": 1,
+        "segments": [
+          [
+            60,
+            62
+          ]
+        ]
+      }
+    ],
+    "failedCellCount": 0,
+    "failedCellsPrefix": [],
+    "fallbackCellCount": 1,
+    "fallbackCellsPrefix": [
+      [
+        7,
+        36,
+        79,
+        29
+      ]
+    ],
+    "featureCellFallbackCount": 1,
+    "multiLoopCellCount": 0,
+    "nativeLedger16KiBClaimApplies": false,
+    "pointIdSpace": "private staged PointTable",
+    "points": [
+      {
+        "id": 60,
+        "key": {
+          "kind": "numeric",
+          "value": 38373664
+        },
+        "normalBits": [
+          13827217991777992939,
+          4592590953164866071,
+          13828474787073173243
+        ],
+        "positionBits": [
+          13842751769709849480,
+          4613718385637093944,
+          13844261084448722281
+        ]
+      },
+      {
+        "id": 61,
+        "key": {
+          "kind": "numeric",
+          "value": 39430434
+        },
+        "normalBits": [
+          13827054302560189338,
+          4592590888582537471,
+          13828605611700051302
+        ],
+        "positionBits": [
+          13842529683530917502,
+          4613718385637093944,
+          13844349830395601052
+        ]
+      },
+      {
+        "id": 62,
+        "key": {
+          "kind": "numeric",
+          "value": 38369552
+        },
+        "normalBits": [
+          13827262028539734253,
+          9223372036854775808,
+          13828509369427439871
+        ],
+        "positionBits": [
+          13842773002999129416,
+          4613165990995299280,
+          13844261084448722281
+        ]
+      },
+      {
+        "id": 618,
+        "key": {
+          "kind": "numeric",
+          "value": 38897938
+        },
+        "normalBits": [
+          4582880936626880047,
+          13829586140781797498,
+          13825156613636131447
+        ],
+        "positionBits": [
+          13842667782191366168,
+          4613165990995299280,
+          13844283961523297927
+        ]
+      },
+      {
+        "id": 620,
+        "key": {
+          "byteLength": 29,
+          "kind": "string",
+          "prefix": "F1:4796193:20:30.771328397547",
+          "prefixTruncated": false
+        },
+        "normalBits": [
+          13823715617484906545,
+          13826477017977902023,
+          13828307309969647266
+        ],
+        "positionBits": [
+          13842713753579935202,
+          4613165990995299355,
+          13844285240665718834
+        ]
+      },
+      {
+        "id": 623,
+        "key": {
+          "kind": "numeric",
+          "value": 39426330
+        },
+        "normalBits": [
+          4582980085476890974,
+          13829557715074202603,
+          13825267967741169273
+        ],
+        "positionBits": [
+          13842529683530917502,
+          4613165990995299280,
+          13844280118960823781
+        ]
+      },
+      {
+        "id": 624,
+        "key": {
+          "kind": "numeric",
+          "value": 39428378
+        },
+        "normalBits": [
+          13827076310680639054,
+          4587171156652215810,
+          13828644243456587064
+        ],
+        "positionBits": [
+          13842529683530917502,
+          4613442188316196608,
+          13844356873610752832
+        ]
+      },
+      {
+        "id": 625,
+        "key": {
+          "kind": "numeric",
+          "value": 39426329
+        },
+        "normalBits": [
+          4584509825627748939,
+          13829582043903091243,
+          13825166537138228789
+        ],
+        "positionBits": [
+          13842529683530917502,
+          4613267942014966591,
+          13844330133778946614
+        ]
+      }
+    ],
+    "privatePointCount": 634,
+    "returnedTriangleCount": 8,
+    "scope": "after failed private mesh return; available staged boundary state only",
+    "truncated": false
+  },
+  "privateReceiptSha256": "6e890a6e87147c743d274a30b64c3227a1fa286c6d954ad586b5cfd51e18c37a",
+  "mainRuntimeChanged": false
+}

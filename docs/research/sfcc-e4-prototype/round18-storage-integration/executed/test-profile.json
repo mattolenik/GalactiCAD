@@ -1,0 +1,8 @@
+{
+  "lto": false,
+  "codegenUnits": 16,
+  "scope": "Private original-scene diagnostic; no live publication or full-export acceptance claim",
+  "receiptVariable": "SFCC_PRIVATE_A_RECEIPT",
+  "source": "/tmp/sfcc-e4-storage-integrated",
+  "filter": "correlated_"
+}

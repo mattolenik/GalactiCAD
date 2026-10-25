@@ -1,0 +1,93 @@
+{
+  "boundaryOverflowControls": true,
+  "capacityCounterexample": {
+    "actualCloneAllocations": 1,
+    "actualCloneRequestedBytes": 147464,
+    "capacityTimes64": 0,
+    "erasedLength": 0,
+    "hasher": "identity; adversarial algebra/data-structure control, not original SFCC index",
+    "initialCapacity": 14336,
+    "remainingCapacity": 0
+  },
+  "categoryOrder": [
+    "curvesInlineVector",
+    "indexPolyline",
+    "tracedBox",
+    "tracedSamples",
+    "cornersInlineVector",
+    "cornerStrata",
+    "cornerEnds",
+    "strataInlineVector",
+    "domainFieldRefs",
+    "fieldPaths",
+    "branchPaths",
+    "unresolvedOuter",
+    "unresolvedPaths",
+    "featureInlineIncludingCopyDiagnostics",
+    "indexCornerLists"
+  ],
+  "fingerprint": "9875508341830920921",
+  "historicalCombinedFit": null,
+  "historicalStagingBytes": null,
+  "measuredFixedFixtureClone": {
+    "allocationCalls": 1297,
+    "reallocations": 0,
+    "requestedAllocationBytes": 271936,
+    "requestedDeallocationBytes": 0,
+    "scope": "native fixed fixture only, not allocator RSS or universal bound"
+  },
+  "oldHeuristicZeroStagingProbe": {
+    "emittedTextBytes": 1044926,
+    "featureInline": 336,
+    "historicalStaging": null,
+    "indexReservation": 234176,
+    "initial": 234512,
+    "interpretation": "old Debug-prefix policy, not allocation",
+    "lastComponent": "curves",
+    "refused": true,
+    "suppliedStaging": 0,
+    "weightedCounter": 67109776,
+    "writerCalls": 386813
+  },
+  "ownedContentAndIndexPreserved": true,
+  "ownedLedger": {
+    "bytes": [
+      16200,
+      30936,
+      60840,
+      28872,
+      6160,
+      1608,
+      2560,
+      32560,
+      23072,
+      4704,
+      3392,
+      0,
+      0,
+      336,
+      616
+    ],
+    "hash_capacity_sum": 1975,
+    "hash_logical_entry_bytes": 35960,
+    "opaque_hash_tables": 392,
+    "owned_allocations": 906,
+    "shared_compounds": 35,
+    "shared_partners": 299,
+    "shared_roots": 299
+  },
+  "productionGuard": "unchanged Debug guard still enforced",
+  "scope": "feature-only ownership/allocator falsifier, no geometry or new admission",
+  "sharedRootAndCompoundPayloadsPreserved": true,
+  "universalReplacementAdmission": "REFUSED: opaque raw hash backing and actual diagnostic/staging input require a justified bound",
+  "zeroInputStagingLowerEnvelopeOnly": {
+    "helper_reservation": 17301504,
+    "item_reservation": 0,
+    "items": 0,
+    "key_bytes": 0,
+    "key_reservation": 0,
+    "point_reservation": 0,
+    "points": 0,
+    "total": 17301504
+  }
+}

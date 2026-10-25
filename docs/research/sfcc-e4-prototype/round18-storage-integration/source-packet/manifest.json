@@ -1,0 +1,246 @@
+{
+  "integration": "Selected Round17 A with checked live staging and bounded typed observation",
+  "base": "/tmp/sfcc-e4-storage-a",
+  "baseManifestSha256": "b01147c613b48c4cc6b18fee07905d906c0318a6dc891674cf238c701c27641b",
+  "root": "/tmp/sfcc-e4-storage-integrated",
+  "changed": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_storage_observation.rs",
+      "sha256": "c28e3c6e8a97d90b84ee39ea6e3352f3a374cd14e7fb720f758a26a98ea1312c",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_storage_observation_tests.rs",
+      "sha256": "560697b191dc867021d53b70603b3ad2da8d1f88c452f8dfc8e00d462346418c",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "sha256": "ce285f08aa60d20b13b5a208163da5a7bba129ea60be9cda8dfb506e47a0426f",
+      "baseSha256": "fc8ab7c6881ea522233ddcb383b7bc92e896ebfdbc8cad140ab093e7175cd585"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a_tests.rs",
+      "sha256": "11d93972f6960527cebeae243c7d1685b46a161d6ea4594b960ad16ea4d18c6b",
+      "baseSha256": "6fad5fc4bc4b8c82d16dbdad176bf8e6c2ed11458fb36e7c9f8832568270d860"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "sha256": "145d1f3bdad8acd80ac8de711bf40805469646d012a81365edb4158d27173e83",
+      "baseSha256": "dbe2a35b284d96ac0615ec1111e9729c11bf9bc8a9cc2a8ba8c0313446c05a86"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs",
+      "sha256": "f52ed5d8a96a9a97b48619d27313506385ede4afda2a187fc376fe011d595658",
+      "baseSha256": "96a430714f3ddfbf157945a207d07d82554d276dc353157e4ff3684b5b937ecc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+      "sha256": "b2bd83f3038afa041e4e86732a7dfd4ae513fff40f27f3526e1514e958ff70da",
+      "baseSha256": "120af8c47c728641e4ea5f2eef78f197ecf20cb26c6a95193c9fe63070b7b78d"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/mod.rs",
+      "sha256": "03b0577394d676aa9c5944c6d448fea75c4666d489a579ae61f40acced2a0362",
+      "baseSha256": "45873ab7efcca0cfc740b2df11437e04d5d30ecb3059974f801a470361f8e75a"
+    }
+  ],
+  "protected": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_set.rs",
+      "sha256": "00c2d6d254abf4c6173c87ca6424d51a4158fc16da053300f018dd925e7104e3"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+      "sha256": "bf6cdc12884cad8e240a0c3dae5f34425d6ae30a5cefbc4562203a916b8b3d24"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "0629c7774b9e964a14b1d842d89905b79193b044819f94d61824f3617d4dab8a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/spatial_index.rs",
+      "sha256": "4d9e9a8bfc8ef71c794b2b17369dc8816e87a3c95974488fb07e1032a7f7ef9d"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_twisted_proof.rs",
+      "sha256": "f3a300801f1dfcf1f6316f68456c06aa927ebc1cc0d9f127a85c66045dfb4a04"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/typed_face_root.rs",
+      "sha256": "6b5449f627f1241417a3da7d90acb517bc06a65a37ccbeb7b57ea2d2d21d5c74"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/typed_face_root_tests.rs",
+      "sha256": "c337a9614d0d700f7b260446ac418ca60c342b0a9f4c3edf8996f0ff120686e5"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_branch_c.rs",
+      "sha256": "8f4688e61a024cf1ec2938a5f2481c82e4dcf520fa51b24d50dc63d083f91864"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_branch_c_tests.rs",
+      "sha256": "38ff70483fbf860bb5b37e4b6e2471dddb19fa888d275fada44069a068f19a83"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs",
+      "sha256": "69837e492c5d19d2a44b59312939caee5df5b5b3e26ddeda02d3b38cd9b1f331"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_transport_a_tests.rs",
+      "sha256": "773c60da25568bcc7388abac9efe27bcbd47b2bb603e57cd516b2d8f971e7548"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_correlated_gate_c.rs",
+      "sha256": "02bf9a6cc773e4794944f86140a36a1685e3f46902209e716bf503df2ef0dd1f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a_tests.rs",
+      "sha256": "690aacea79b73223a0c66b72391bda3c2dbc9782c8d8d64872e0ba21a6bc28b1"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/pipeline.rs",
+      "sha256": "5b324c58449c158bc2257f3860ce9d8314b9855aa2290d5f90dc08b8f3ae6a10"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/face_contour.rs",
+      "sha256": "0dbe4197e759ff719b8a866f4e3bb75580df9c6dc2ca05e7aac624b9618f09f7"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "0c7ef4a126c2833ba5c139b558749c4be490a5e5571334e10e0ded3e8e70f6cc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/newton.rs",
+      "sha256": "3d0326d2bc18c1f1e880875fbcd4e54bc08a613a329d076ffb8abf1b3ccd4d2f"
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/shared-arc-full-knob.json",
+      "sha256": "b5aaa791fc88c94a0753d8429d167d79c48d3a257b09228d9d71ed0160f9a082"
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/storage-a-round16-refusal.json",
+      "sha256": "ff894391158465c9c92f3d4ec85e5d39f4bde31c3ac493d51a1f318724fbe77d"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "0fee9cec68b7c9222a23f4bc57f46e97062ffafa46c3536a17e78b82fc8e2f8b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sdf.rs",
+      "sha256": "27b93efde99b42cf0a2fa13b54ce90e12f2e9624ebe2504a52942cc986734a9e"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/tolerances.rs",
+      "sha256": "fb75477635d5f3a9c884e494b3f356b17eb88eaee2893c55e42ee8c2de8ec119"
+    },
+    {
+      "path": "storage-evidence/std-ownership-provenance.json",
+      "sha256": "9edb3b667b3fb0272f50269979858e21bac379c90f384069a44d2d766de8c89a"
+    }
+  ],
+  "protectedFunctions": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "fn add(",
+      "sha256": "0c6d648f86f8a4764f0396619ce88abb93bd9eab0b1b2ab02b13f0ea4294d8ec"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "fn mul(",
+      "sha256": "9d8235d8c7c5584f6f9a8d9a528e014397bbe8a2545376f3e0a49cd89982a013"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "pub(crate) fn allocation(",
+      "sha256": "74b2ea0f09bb2c0bbef1b8b5b57df553173f57fdc2b28ba1d2eba7410fe339f5"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "pub(crate) fn vector<",
+      "sha256": "c18229152d02c1349c9dc874edf8931407cb933fc71a550b27f6b81a622a49ce"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "pub(crate) fn boxed<",
+      "sha256": "41b9bc482b67f79e0502d3086c2289383a12854c867a2b50f220580bd633a1f9"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "pub(crate) fn inline_copy<",
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "pub(crate) fn shared<",
+      "sha256": "51cfbd08971fe8b96039c785984b8c2021c998f7070fedb442c854d728a65511"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "function": "pub(crate) fn table<",
+      "sha256": "07c11a60b3c2d602be6881c37cdbac84c964df80fbbbe82efe0c3ac207d73b2a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "function": "pub(crate) fn admit<",
+      "sha256": "c713bdf33300a6efc263831ad540f72a62e6e3b6c14bb89028f53d7c38495f66"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "function": "pub(crate) fn checked_pair(",
+      "sha256": "72a0a3c0670813dd3872c9ae7a359c7826bc5721869628cc01acc8c48924543b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "function": "pub(crate) fn check_other_point(",
+      "sha256": "b640fe32766d9e86a20178fdda037e95d92bbd13b4a9bbb1c15e05c41f4e664c"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "function": "pub(crate) fn legacy_reserve_source_view_a(",
+      "sha256": "1080c5c370aa997dcfddda2160226d9d6c3a68d35396fc42a7106d269bf6f30c"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "function": "pub(crate) fn begin(transport",
+      "sha256": "a03810cda698ddbf5fbffcdab568c5b3da38bbc2b6be8403717713ab5762eb36"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "function": "pub(crate) fn before_query(",
+      "sha256": "084d72d9e4a54ac67bbb30ee9d1ad97e56db66a602e3fb06d593c53a7a93839b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "function": "pub(crate) fn after_query(",
+      "sha256": "2eade51cb21ddd07b0d2ef75d7998e66045658bbfd0344c87193fc4babe574c5"
+    }
+  ],
+  "verifiedExceptions": {
+    "shared_arc_plan": "only checked staging replacement and one failure-only read-only result observation; restoring these reproduces exact original file",
+    "source_storage_a_tests": "function-name prefix only; original test body unchanged",
+    "ledger": "same32-category ceiling; preallocated row capacity and explicit native-layout metadata/compile-time bound",
+    "ordinaryClone": "features.clone and existing index removal/history behavior unchanged"
+  },
+  "evidence": [
+    {
+      "path": "storage-integrated-evidence/handoff.md",
+      "sha256": "52eed5e3e72c4f5a2d1d83ce4b177410dc272c6f9e0942d16caf251a039a2808"
+    },
+    {
+      "path": "storage-integrated-evidence/candidate.patch",
+      "sha256": "eb6159ad25d5ffadd7cc09e00633e889592b18032546404c29db0c3617f58d48"
+    },
+    {
+      "path": "storage-integrated-evidence/protected-method-diffs.patch",
+      "sha256": "1e65d35eb19ffab1767c343ce4be1d59ba9dddc889603d827b878fa6676e269b"
+    }
+  ],
+  "focusedFilter": "correlated_",
+  "expectedFocusedTests": 6,
+  "newReceiptEnv": "SFCC_STORAGE_INTEGRATED_RECEIPT",
+  "fullFilter": "private_a_original_knob_serial_round0_diagnostic",
+  "fullReceiptEnv": "SFCC_PRIVATE_A_RECEIPT",
+  "authorValidation": "standalone rustfmt, static comparisons/hash/LF only; no cargo/native/feature/geometry jobs",
+  "historicalRound16StagedBytes": null
+}

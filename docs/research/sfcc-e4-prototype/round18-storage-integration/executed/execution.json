@@ -1,0 +1,87 @@
+[
+  {
+    "step": "build",
+    "command": [
+      "/opt/homebrew/bin/cargo",
+      "test",
+      "--locked",
+      "--manifest-path",
+      "/tmp/sfcc-e4-storage-integrated/gcad-wasm/Cargo.toml",
+      "-p",
+      "gcad-kernel",
+      "--offline",
+      "--release",
+      "--features",
+      "serde,sfcc-profile",
+      "--lib",
+      "--no-run",
+      "--message-format=json"
+    ],
+    "capSeconds": 120,
+    "elapsedSeconds": 22.873768666991964,
+    "exitCode": 0,
+    "timedOut": false,
+    "loadBefore": [
+      7.5810546875,
+      7.91796875,
+      7.90869140625
+    ],
+    "loadAfter": [
+      17.77734375,
+      10.09228515625,
+      8.68115234375
+    ],
+    "childUserSeconds": 63.084905,
+    "childSystemSeconds": 3.737609
+  },
+  {
+    "step": "focused-0",
+    "command": [
+      "/tmp/sfcc-e4-storage-integrated-native-A/release/deps/gcad_kernel-7fd0b240f918a2b8",
+      "correlated_",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "capSeconds": 59.9999908329919,
+    "elapsedSeconds": 5.831627124920487,
+    "exitCode": 0,
+    "timedOut": false,
+    "loadBefore": [
+      17.77734375,
+      10.09228515625,
+      8.68115234375
+    ],
+    "loadAfter": [
+      17.39453125,
+      10.14013671875,
+      8.7060546875
+    ],
+    "childUserSeconds": 5.2717150000000075,
+    "childSystemSeconds": 0.05042100000000005
+  },
+  {
+    "step": "private-original-scene",
+    "command": [
+      "/tmp/sfcc-e4-storage-integrated-native-A/release/deps/gcad_kernel-7fd0b240f918a2b8",
+      "private_a_original_knob_serial_round0_diagnostic",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "capSeconds": 120,
+    "elapsedSeconds": 23.603532333974726,
+    "exitCode": 0,
+    "timedOut": false,
+    "loadBefore": [
+      17.39453125,
+      10.14013671875,
+      8.7060546875
+    ],
+    "loadAfter": [
+      13.58642578125,
+      9.83642578125,
+      8.6376953125
+    ],
+    "childUserSeconds": 22.508713,
+    "childSystemSeconds": 0.19017699999999982
+  }
+]

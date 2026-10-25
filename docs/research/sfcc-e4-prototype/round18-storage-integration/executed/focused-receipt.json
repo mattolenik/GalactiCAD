@@ -1,0 +1,23 @@
+{
+  "admissionReservedQueries": 78,
+  "candidate": "A",
+  "chargedQueriesIncludingGeneratedReservation": 3288,
+  "controls": {
+    "actualFailedQueryRetained": true,
+    "aliasRepeat": true,
+    "aliasReverse": true,
+    "directPointToOwnQuery": true,
+    "missingAdmission": true,
+    "missingEndpoints": true,
+    "physicalRepeat": true,
+    "physicalReverse": true
+  },
+  "endpoints": 2,
+  "fingerprint": "9875508341830920921",
+  "originalEvents": 64,
+  "pieces": 62,
+  "publicationReady": false,
+  "scope": "feature-only explicit admission and both complete output-sequence controls",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "unchangedTransportAndSourceNegatives": "run correlated_transport_a_full_inventory_and_controls and correlated_selected_binding_and_failed_transport_controls separately"
+}

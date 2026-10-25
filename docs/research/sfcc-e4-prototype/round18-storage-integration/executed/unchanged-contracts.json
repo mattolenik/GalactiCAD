@@ -1,0 +1,20 @@
+{
+  "gcad-wasm/kernel/src/sfcc/feature_curves.rs": {
+    "sha256": "bf6cdc12884cad8e240a0c3dae5f34425d6ae30a5cefbc4562203a916b8b3d24",
+    "exception": "Root-reviewed appended ownership methods; full prior geometry/query file remains exact prefix, inverse/projector unchanged",
+    "originalSha256": "78e174b8db2a998ed878306b8f313d594586e407c69786de3105ac9a39cc5d6c"
+  },
+  "gcad-wasm/kernel/src/sfcc/newton.rs": {
+    "byteIdenticalToFrozenC": true,
+    "sha256": "3d0326d2bc18c1f1e880875fbcd4e54bc08a613a329d076ffb8abf1b3ccd4d2f"
+  },
+  "gcad-wasm/kernel/src/primitives/smin.rs": {
+    "byteIdenticalToFrozenC": true,
+    "sha256": "3f4e4329ec2f25534d3d5d10ea9030a692edd1fcd1e9c15fe9449cd9ba7c2711"
+  },
+  "gcad-wasm/kernel/src/sfcc/shared_twisted_proof.rs": {
+    "sha256": "f3a300801f1dfcf1f6316f68456c06aa927ebc1cc0d9f127a85c66045dfb4a04",
+    "exception": "Reviewed factoring of original Krawczyk root-image calculation plus typed-face certificate declaration; old boolean/same-bin semantics retained",
+    "originalSha256": "17ee0f3c476d46bd38587c6be92f862c573e4b469211c0d476ebf0537f7a0386"
+  }
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "step": "build",
+    "command": [
+      "/opt/homebrew/bin/cargo",
+      "test",
+      "--locked",
+      "--manifest-path",
+      "/tmp/sfcc-e4-storage-c/gcad-wasm/Cargo.toml",
+      "-p",
+      "gcad-kernel",
+      "--offline",
+      "--release",
+      "--features",
+      "serde,sfcc-profile",
+      "--lib",
+      "--no-run",
+      "--message-format=json"
+    ],
+    "capSeconds": 120,
+    "elapsedSeconds": 20.238089584046975,
+    "exitCode": 0,
+    "timedOut": false,
+    "loadBefore": [
+      5.86572265625,
+      7.29931640625,
+      7.77587890625
+    ],
+    "loadAfter": [
+      13.97265625,
+      9.044921875,
+      8.39013671875
+    ],
+    "childUserSeconds": 61.469195,
+    "childSystemSeconds": 2.488822
+  },
+  {
+    "step": "storage",
+    "command": [
+      "/tmp/sfcc-e4-storage-native-C/release/deps/gcad_kernel-7fd0b240f918a2b8",
+      "storage_c_owned_clone_and_capacity_counterexample",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "capSeconds": 60,
+    "elapsedSeconds": 1.4871930830413476,
+    "exitCode": 0,
+    "timedOut": false,
+    "loadBefore": [
+      13.97265625,
+      9.044921875,
+      8.39013671875
+    ],
+    "loadAfter": [
+      12.93359375,
+      8.9111328125,
+      8.3466796875
+    ],
+    "childUserSeconds": 1.0134299999999996,
+    "childSystemSeconds": 0.011852999999999891
+  }
+]

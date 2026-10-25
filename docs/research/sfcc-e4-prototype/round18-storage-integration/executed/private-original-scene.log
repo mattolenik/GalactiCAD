@@ -1,0 +1,6 @@
+
+running 1 test
+test sfcc::private_arc_a::tests::private_a_original_knob_serial_round0_diagnostic ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 313 filtered out; finished in 23.60s
+

@@ -310,9 +310,17 @@ of both rounding cells, with direct bounds to both unchanged pins. Fourth review
 selects one private-A integration of that typed-face certificate. Its fresh
 original-scene run passes all 198 face certificates and 396 direct pin-to-root
 bounds, then refuses a conservative source-view memory reservation before private
-cell meshing. The next bounded check replaces debug-text estimates with justified
-owned-storage accounting under the same cap. The general projector remains
-unchanged. Source preservation and the residual
+cell meshing. Three competing storage audits pass; fourth review selects ordinary
+Clone with audited owned-storage bounds and insertion-only index history. Its
+checked-staging integration admits 19,865,723 bytes under the unchanged 64 MiB cap,
+passes six focused tests and preserves all face certificates. The original-scene
+private run then refuses the feature graph at cell `[7,36,79,29]`, discarding the
+entire replacement and preserving the live state. The next bounded discriminator
+must identify the exact internal graph predicate and terminal endpoint incidence;
+the current post-return snapshot cannot establish that cause. The
+[archived experimental overlay and executed evidence](../research/sfcc-e4-prototype/README.md)
+reproduce the selected source against E3 without integrating it. The general
+projector remains unchanged. Source preservation and the residual
 conversion/alias families remain open. No E4
 production repair has been integrated; E5–E6 remain pending in order.
 

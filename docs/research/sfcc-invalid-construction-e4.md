@@ -1218,6 +1218,75 @@ and [all face certificates and new refusal](../../.testresults/sfcc-critical-rep
 retain the evidence. The mathematical face gate is validated in this original
 native context; complete mesh construction and production acceptance remain open.
 
+
+### Owned-storage audit and integrated private construction
+
+Round 17 compares three independent approaches under the unchanged 64 MiB cap.
+A walks clone-owned storage and retains ordinary `Clone`; B rebuilds the private
+index to make its capacity explicit; C measures the original clone and challenges
+the proposed bounds. All focused controls pass. C's original-clone observation is
+271,936 requested allocation bytes, not process RSS. A separate tombstone control
+shows that an empty hash table reporting capacity zero can still clone 147,464
+bytes: public capacity alone cannot bound arbitrary hash-table clone storage.
+
+Fourth review selects A with an explicit insertion-only history premise and
+refusal after removals. Shared immutable source payloads remain shared; owned
+vectors, boxes, paths, domains and index backing are counted. This is tied to the
+audited Rust 1.99.0/hashbrown 0.17.1 representation. The selected integration
+adds checked actual staging terms and bounded typed ledger retention, deferring
+JSON expansion until after the constructor. The previous Debug-text estimate
+is replaced without increasing the cap or changing geometry tolerances.
+
+The integrated build and six focused tests pass. One preparation-inclusive
+original-scene diagnostic completes in 23.604 seconds and records:
+
+| Gate or observation | Result |
+| --- | --- |
+| Typed-face certificates / retained pin bounds | 198 / 396; identical to Round 16 |
+| Selected leaves / required faces | 199 / 1,001; unchanged inventory |
+| Actual staged reservation | 18,918,636 bytes |
+| Source-owned / inline / native ledger reservation | 930,359 / 344 / 16,384 bytes |
+| Combined reservation | **19,865,723 bytes**, below 67,108,864 |
+| Generated query attempts | 46, all successful and validated before refusal |
+| Final charged queries | 9,950 of 16,384 |
+| Private outcome | **`private_graph_refused`**, cell `[7,36,79,29]` |
+| Live digest before and after | `5f3600b1ef212fb0` |
+
+The staging inputs are 1,421 segment-plus-pin entries, 824 required points and
+11,451 key bytes. The unchanged formula is `items*512 + points*1024 + keys*4 +
+16384*1024 + 128*4096`. This is a new actual reservation measurement; the missing
+Round 16 staging value remains unknown. The ledger's explicit native layout bound
+is 9,455 bytes within its 16,384-byte allowance. Broader diagnostic JSON and allocator
+RSS are separate costs, not covered by that native layout claim.
+
+The constructor reaches the second selected cell. Its feature graph fails; a
+corner fan returns eight triangles but retains the feature-fallback flag. The
+private caller rejects the whole component before accepting those triangles.
+The captured local state has ten staged faces, eight boundary segments, one
+physical-chart-20 pin and no truncation. It is **post-return**, not a complete
+pre-call replay fixture. The 46 query attempts are cumulative across the private
+run, not all attributable to this cell.
+
+Terminal corner 27 originally lists charts 20/33; removing duplicate chart 33
+leaves only 20. A path ending at an interior degree-one vertex would violate the
+feature graph's adjacency requirement. This is a concrete hypothesis, **not the
+recorded executed rejection**: the receipt lacks the exact failed branch and
+complete internal adjacency. The next bounded discriminator must identify that
+predicate and its source/endpoint incidence before changing construction. Keep
+face certificates, storage policy, original constraints and first-failure handling
+fixed. No fallback fan, invented continuation or relaxed geometry is authorized
+by this result.
+
+[Archived prototype and reproduction instructions](sfcc-e4-prototype/README.md),
+[three-agent comparison and fourth decision](sfcc-e4-prototype/round17-storage-controls/decision.md),
+[independent integration review](sfcc-e4-prototype/round18-storage-integration/decision.md),
+[execution summary](sfcc-e4-prototype/round18-storage-integration/summary.json), and
+[full original-scene receipt](sfcc-e4-prototype/round18-storage-integration/executed/private-receipt.json)
+preserve the selected source and evidence in the repository. The flat patch
+reproduces all 36 changed files against E3 byte-for-byte. It is an isolated native
+prototype; production runtime remains E3. Complete component geometry, contacts,
+links, metadata and final export closure remain downstream and unvalidated.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

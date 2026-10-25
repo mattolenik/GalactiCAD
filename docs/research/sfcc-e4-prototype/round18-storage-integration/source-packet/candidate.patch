@@ -1,0 +1,735 @@
+--- a/gcad-wasm/kernel/src/sfcc/private_storage_observation.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_storage_observation.rs
+@@ -0,0 +1,304 @@
++//! Checked live staging terms and bounded native resource observations.
++//! JSON materialization belongs to the existing post-constructor diagnostic.
++use super::source_storage_a::{Failure, Ledger, Report, LIMIT, MAX_ROWS};
++use std::{
++    cell::RefCell,
++    mem::{align_of, size_of},
++};
++
++#[derive(Clone, Copy, Debug)]
++#[cfg_attr(feature = "serde", derive(serde::Serialize))]
++pub(crate) enum Input {
++    PointCount(usize),
++    Face {
++        axis: usize,
++        key: i64,
++        length: i64,
++        segments: usize,
++        pins: usize,
++    },
++    PointKey {
++        point: usize,
++        bytes: usize,
++    },
++    Formula,
++}
++#[derive(Debug)]
++#[cfg_attr(feature = "serde", derive(serde::Serialize))]
++pub(crate) struct StagingFailure {
++    pub arithmetic: Failure,
++    pub input: Input,
++}
++#[derive(Debug, Default)]
++#[cfg_attr(feature = "serde", derive(serde::Serialize))]
++pub(crate) struct Terms {
++    pub items_times_512: Option<usize>,
++    pub points_times_1024: Option<usize>,
++    pub key_bytes_times_4: Option<usize>,
++    pub helper_16384_times_1024: Option<usize>,
++    pub pieces_128_times_4096: Option<usize>,
++}
++#[derive(Debug)]
++#[cfg_attr(feature = "serde", derive(serde::Serialize))]
++pub(crate) struct StagingReport {
++    pub staged_items: Option<usize>,
++    pub needed_point_count: usize,
++    pub point_key_bytes: Option<usize>,
++    pub items_prefix: usize,
++    pub key_bytes_prefix: usize,
++    pub terms: Terms,
++    pub fixed_helper_bytes: Option<usize>,
++    pub staged_bytes: Option<usize>,
++    pub cap: usize,
++    pub allowed: bool,
++    pub failure: Option<StagingFailure>,
++    pub scope: &'static str,
++    pub historical_round16_staged_bytes: Option<usize>,
++}
++impl StagingReport {
++    fn fail(
++        &mut self,
++        category: &'static str,
++        operation: &'static str,
++        lhs: usize,
++        rhs: usize,
++        input: Input,
++    ) {
++        if self.failure.is_none() {
++            self.failure = Some(StagingFailure {
++                arithmetic: Failure {
++                    category,
++                    operation,
++                    lhs,
++                    rhs,
++                },
++                input,
++            });
++        }
++    }
++    fn product(
++        &mut self,
++        category: &'static str,
++        n: usize,
++        factor: usize,
++        input: Input,
++    ) -> Option<usize> {
++        let value = n.checked_mul(factor);
++        if value.is_none() {
++            self.fail(category, "checked_mul_overflow", n, factor, input);
++        }
++        value
++    }
++}
++/// Inputs are borrowed counts/keys from the live required faces/needed points.
++/// Synthetic controls use this SAME checked path and label their input scope.
++pub(crate) fn staging(
++    faces: impl IntoIterator<Item = (usize, i64, i64, usize, usize)>,
++    keys: impl IntoIterator<Item = (usize, usize)>,
++    points: usize,
++    scope: &'static str,
++) -> StagingReport {
++    let mut out = StagingReport {
++        staged_items: None,
++        needed_point_count: points,
++        point_key_bytes: None,
++        items_prefix: 0,
++        key_bytes_prefix: 0,
++        terms: Terms::default(),
++        fixed_helper_bytes: None,
++        staged_bytes: None,
++        cap: LIMIT,
++        allowed: false,
++        failure: None,
++        scope,
++        historical_round16_staged_bytes: None,
++    };
++    out.terms.points_times_1024 =
++        out.product("staging.points", points, 1024, Input::PointCount(points));
++    out.terms.helper_16384_times_1024 = out.product("staging.helper", 16384, 1024, Input::Formula);
++    out.terms.pieces_128_times_4096 = out.product("staging.pieces", 128, 4096, Input::Formula);
++    out.fixed_helper_bytes = out
++        .terms
++        .helper_16384_times_1024
++        .zip(out.terms.pieces_128_times_4096)
++        .and_then(|(a, b)| a.checked_add(b));
++    if out.fixed_helper_bytes.is_none() {
++        out.fail(
++            "staging.fixed_helper",
++            "checked_add_overflow",
++            out.terms.helper_16384_times_1024.unwrap_or(0),
++            out.terms.pieces_128_times_4096.unwrap_or(0),
++            Input::Formula,
++        );
++    }
++    let mut items_complete = true;
++    for (axis, key, length, segments, pins) in faces {
++        let input = Input::Face {
++            axis,
++            key,
++            length,
++            segments,
++            pins,
++        };
++        let Some(next) = out.items_prefix.checked_add(segments) else {
++            out.fail(
++                "staging.segment_sum",
++                "checked_add_overflow",
++                out.items_prefix,
++                segments,
++                input,
++            );
++            items_complete = false;
++            break;
++        };
++        out.items_prefix = next;
++        let Some(next) = out.items_prefix.checked_add(pins) else {
++            out.fail(
++                "staging.pin_sum",
++                "checked_add_overflow",
++                out.items_prefix,
++                pins,
++                input,
++            );
++            items_complete = false;
++            break;
++        };
++        out.items_prefix = next;
++    }
++    if items_complete {
++        out.staged_items = Some(out.items_prefix);
++        out.terms.items_times_512 =
++            out.product("staging.items", out.items_prefix, 512, Input::Formula);
++    }
++    let mut keys_complete = true;
++    for (point, bytes) in keys {
++        let Some(next) = out.key_bytes_prefix.checked_add(bytes) else {
++            out.fail(
++                "staging.key_sum",
++                "checked_add_overflow",
++                out.key_bytes_prefix,
++                bytes,
++                Input::PointKey { point, bytes },
++            );
++            keys_complete = false;
++            break;
++        };
++        out.key_bytes_prefix = next;
++    }
++    if keys_complete {
++        out.point_key_bytes = Some(out.key_bytes_prefix);
++        out.terms.key_bytes_times_4 =
++            out.product("staging.key_bytes", out.key_bytes_prefix, 4, Input::Formula);
++    }
++    let terms = [
++        out.terms.items_times_512,
++        out.terms.points_times_1024,
++        out.terms.key_bytes_times_4,
++        out.terms.helper_16384_times_1024,
++        out.terms.pieces_128_times_4096,
++    ];
++    let mut sum = Some(0usize);
++    for term in terms {
++        sum = match (sum, term) {
++            (Some(a), Some(b)) => match a.checked_add(b) {
++                Some(v) => Some(v),
++                None => {
++                    out.fail(
++                        "staging.combined",
++                        "checked_add_overflow",
++                        a,
++                        b,
++                        Input::Formula,
++                    );
++                    None
++                }
++            },
++            _ => None,
++        };
++    }
++    out.staged_bytes = sum;
++    if let Some(total) = sum {
++        if total > LIMIT {
++            out.fail("staging", "64MiB_cap", total, LIMIT, Input::Formula);
++        }
++    }
++    out.allowed = out.failure.is_none() && sum.is_some();
++    out
++}
++
++#[derive(Debug, Default)]
++#[cfg_attr(feature = "serde", derive(serde::Serialize))]
++pub(crate) struct Observation {
++    pub staging: Option<StagingReport>,
++    pub source: Option<Report>,
++}
++// One preallocated row buffer, with the SAME layout headroom policy as A.
++// Inline allowance covers retained state plus builder/caller move locations,
++// two row temporaries and error temporaries. No JSON tree is covered here.
++pub(crate) const NATIVE_STORAGE_BOUND: usize =
++    2 * MAX_ROWS * size_of::<super::source_storage_a::Row>()
++        + 128
++        + align_of::<super::source_storage_a::Row>()
++        - 1
++        + size_of::<RefCell<Option<Observation>>>()
++        + 3 * size_of::<Report>()
++        + 3 * size_of::<StagingReport>()
++        + 2 * size_of::<Ledger>()
++        + 2 * size_of::<super::source_storage_a::Row>()
++        + 2 * size_of::<Failure>()
++        + size_of::<[Option<usize>; 5]>()
++        + size_of::<Terms>()
++        + size_of::<Input>()
++        + size_of::<StagingFailure>();
++const _: () = assert!(NATIVE_STORAGE_BOUND <= super::source_storage_a::LEDGER_RESERVATION);
++thread_local! {static OBSERVATION:RefCell<Option<Observation>>=const{RefCell::new(None)};}
++pub(crate) struct Scope;
++pub(crate) fn begin() -> Scope {
++    OBSERVATION.with(|s| {
++        let mut state = s.borrow_mut();
++        assert!(state.is_none(), "nested native storage observation");
++        *state = Some(Observation::default());
++    });
++    Scope
++}
++impl Scope {
++    pub(crate) fn take(self) -> Observation {
++        OBSERVATION
++            .with(|s| s.borrow_mut().take())
++            .unwrap_or_default()
++    }
++}
++impl Drop for Scope {
++    fn drop(&mut self) {
++        OBSERVATION.with(|s| {
++            s.borrow_mut().take();
++        });
++    }
++}
++pub(crate) fn record_staging(report: StagingReport) {
++    OBSERVATION.with(|s| {
++        if let Some(v) = s.borrow_mut().as_mut() {
++            v.staging = Some(report);
++        }
++    });
++}
++/// Drop a previous ledger before constructing another, so repeated focused
++/// probes do not hold two row buffers under one native-storage reservation.
++pub(crate) fn prepare_source() {
++    OBSERVATION.with(|s| {
++        if let Some(v) = s.borrow_mut().as_mut() {
++            v.source.take();
++        }
++    });
++}
++pub(crate) fn record_source(report: Report) {
++    OBSERVATION.with(|s| {
++        if let Some(v) = s.borrow_mut().as_mut() {
++            v.source = Some(report);
++        }
++    });
++}
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "private_storage_observation_tests.rs"]
++mod tests;
+--- a/gcad-wasm/kernel/src/sfcc/private_storage_observation_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_storage_observation_tests.rs
+@@ -0,0 +1,230 @@
++use super::*;
++use crate::sfcc::{feature_set::SfccFeatureSet, source_storage_a, spatial_index::SfccSpatialIndex};
++use serde_json::{json, Value};
++fn empty_source() -> SfccFeatureSet {
++    SfccFeatureSet {
++        unresolved_branch_paths: Vec::new(),
++        trace_diagnostics: Default::default(),
++        curves: Vec::new(),
++        corners: Vec::new(),
++        index: SfccSpatialIndex::new(1.),
++        strata: Vec::new(),
++        run_id: 0,
++    }
++}
++fn example() -> StagingReport {
++    staging(
++        [(0, 12, 1, 10, 2), (1, 13, 2, 4, 3)],
++        [(4, 100), (5, 7)],
++        3,
++        "synthetic count-only staging control; no geometry claim",
++    )
++}
++fn extract(scope: Scope) -> Value {
++    let observation = scope.take();
++    let result = json!(observation);
++    drop(observation);
++    assert!(OBSERVATION.with(|s| s.borrow().is_none()));
++    result
++}
++#[test]
++fn correlated_storage_staging_and_typed_lifecycle_controls() {
++    let valid = example();
++    assert!(valid.allowed);
++    assert_eq!(valid.staged_items, Some(19));
++    assert_eq!(valid.needed_point_count, 3);
++    assert_eq!(valid.point_key_bytes, Some(107));
++    assert_eq!(valid.fixed_helper_bytes, Some(17301504));
++    assert_eq!(valid.staged_bytes, Some(17314732));
++    assert!(valid.historical_round16_staged_bytes.is_none());
++    let segments = staging(
++        [(0, 1, 1, usize::MAX, 0), (1, 2, 1, 1, 0)],
++        [],
++        0,
++        "synthetic segment sum overflow",
++    );
++    assert_eq!(
++        segments.failure.as_ref().unwrap().arithmetic.category,
++        "staging.segment_sum"
++    );
++    assert_eq!(segments.items_prefix, usize::MAX);
++    assert!(segments.staged_items.is_none());
++    let pins = staging(
++        [(0, 1, 1, usize::MAX, 1)],
++        [],
++        0,
++        "synthetic pin sum overflow",
++    );
++    assert_eq!(
++        pins.failure.as_ref().unwrap().arithmetic.category,
++        "staging.pin_sum"
++    );
++    let keys = staging(
++        [],
++        [(2, usize::MAX), (3, 1)],
++        0,
++        "synthetic key sum overflow",
++    );
++    assert_eq!(
++        keys.failure.as_ref().unwrap().arithmetic.category,
++        "staging.key_sum"
++    );
++    assert_eq!(keys.key_bytes_prefix, usize::MAX);
++    assert!(keys.point_key_bytes.is_none());
++    let item_product = staging(
++        [(0, 1, 1, usize::MAX / 512 + 1, 0)],
++        [],
++        0,
++        "synthetic items product overflow",
++    );
++    assert_eq!(
++        item_product.failure.as_ref().unwrap().arithmetic.category,
++        "staging.items"
++    );
++    let point_product = staging([], [], usize::MAX, "synthetic points product overflow");
++    assert_eq!(
++        point_product.failure.as_ref().unwrap().arithmetic.category,
++        "staging.points"
++    );
++    let key_product = staging(
++        [],
++        [(0, usize::MAX / 4 + 1)],
++        0,
++        "synthetic key product overflow",
++    );
++    assert_eq!(
++        key_product.failure.as_ref().unwrap().arithmetic.category,
++        "staging.key_bytes"
++    );
++    let combined = staging(
++        [(0, 1, 1, usize::MAX / 512, 0)],
++        [],
++        0,
++        "synthetic combined staging overflow",
++    );
++    assert_eq!(
++        combined.failure.as_ref().unwrap().arithmetic.category,
++        "staging.combined"
++    );
++    assert!(combined.staged_bytes.is_none());
++    let exact_items = (LIMIT - 17301504) / 512;
++    let at_cap = staging(
++        [(0, 1, 1, exact_items, 0)],
++        [],
++        0,
++        "synthetic exact staging cap",
++    );
++    assert!(at_cap.allowed);
++    assert_eq!(at_cap.staged_bytes, Some(LIMIT));
++    let over_cap = staging(
++        [(0, 1, 1, exact_items + 1, 0)],
++        [],
++        0,
++        "synthetic staging over cap",
++    );
++    assert!(!over_cap.allowed);
++    assert_eq!(
++        over_cap.failure.as_ref().unwrap().arithmetic.operation,
++        "64MiB_cap"
++    );
++    let arithmetic = json!({"valid":valid,"segmentSumOverflow":segments,"pinSumOverflow":pins,"keySumOverflow":keys,"itemsProductOverflow":item_product,"pointsProductOverflow":point_product,"keyProductOverflow":key_product,"combinedOverflow":combined,"exactStagingCap":at_cap,"overStagingCap":over_cap});
++    let source = empty_source();
++    let source_cost =
++        source_storage_a::inspect(&source, 0, "synthetic empty source; no scene query")
++            .combined_bytes
++            .unwrap();
++    let scope = begin();
++    let exact_staging = LIMIT - source_cost;
++    assert_eq!((exact_staging - 17301504) % 4, 0);
++    let boundary_staging = staging(
++        [],
++        [(0, (exact_staging - 17301504) / 4)],
++        0,
++        "synthetic exact combined boundary from the unchanged staging formula",
++    );
++    assert_eq!(boundary_staging.staged_bytes, Some(exact_staging));
++    record_staging(boundary_staging);
++    assert!(crate::sfcc::private_arc_a::reserve_source_view(&source, exact_staging).is_ok());
++    OBSERVATION.with(|s| {
++        let state = s.borrow();
++        let report = state.as_ref().unwrap().source.as_ref().unwrap();
++        assert!(report.allowed);
++        assert_eq!(report.combined_bytes, Some(LIMIT));
++        assert_eq!(report.ledger.rows.capacity(), MAX_ROWS);
++        assert_eq!(report.native_report_storage_bound, NATIVE_STORAGE_BOUND);
++        assert!(report.native_report_storage_bound <= report.accounting_overhead_bytes);
++    });
++    let retained_success = extract(scope);
++    assert_eq!(
++        retained_success["staging"]["staged_bytes"],
++        retained_success["source"]["staged_bytes"]
++    );
++    let scope = begin();
++    let refusal = staging(
++        [(0, 1, 1, usize::MAX, 1)],
++        [],
++        0,
++        "synthetic pre-source staging refusal",
++    );
++    record_staging(refusal);
++    let staging_refusal = extract(scope);
++    assert!(staging_refusal["source"].is_null());
++    assert_eq!(staging_refusal["staging"]["allowed"], false);
++    let scope = begin();
++    // Direct source-guard +1 byte control; staging formula has4-byte granularity,
++    // so no incompatible fabricated staging-term report is attached to this case.
++    assert!(
++        crate::sfcc::private_arc_a::reserve_source_view(&source, LIMIT - source_cost + 1).is_err()
++    );
++    let retained_refusal = extract(scope);
++    assert_eq!(
++        retained_refusal["source"]["combined_bytes"],
++        json!(LIMIT + 1)
++    );
++    assert_eq!(retained_refusal["source"]["allowed"], false);
++    let scope = begin();
++    assert!(crate::sfcc::private_arc_a::reserve_source_view(&source, 0).is_ok());
++    assert!(crate::sfcc::private_arc_a::reserve_source_view(&source, usize::MAX).is_err());
++    let replacement = extract(scope);
++    assert_eq!(
++        replacement["source"]["failure"]["operation"],
++        "checked_add_overflow"
++    );
++    assert_eq!(replacement["source"]["allowed"], false);
++    assert!(replacement["staging"].is_null());
++    {
++        let _abandoned = begin();
++        record_staging(example());
++        assert!(crate::sfcc::private_arc_a::reserve_source_view(&source, 0).is_ok());
++    }
++    assert!(OBSERVATION.with(|s| s.borrow().is_none()));
++    let clean = extract(begin());
++    assert!(clean["source"].is_null() && clean["staging"].is_null());
++    let mut ledger = Ledger::new();
++    let capacity = ledger.rows.capacity();
++    assert_eq!(capacity, MAX_ROWS);
++    let labels = [
++        "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13",
++        "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26",
++        "r27", "r28", "r29", "r30", "r31",
++    ];
++    for label in labels {
++        ledger.allocation(label, 1, 8, 8).unwrap();
++        assert_eq!(ledger.rows.capacity(), capacity);
++    }
++    assert_eq!(
++        ledger.allocation("row33", 1, 8, 8).unwrap_err().operation,
++        "ledger_category_cap"
++    );
++    assert_eq!(ledger.rows.capacity(), capacity);
++    assert!(NATIVE_STORAGE_BOUND <= source_storage_a::LEDGER_RESERVATION);
++    let receipt = json!({"scope":"focused checked staging and native typed-resource lifecycle; all counts/source here synthetic, no geometry execution","arithmetic":arithmetic,"typedLifecycle":{"success":retained_success,"stagingFailureBeforeSource":staging_refusal,"sourceOneByteOver":retained_refusal,"replacementOverflow":replacement,"afterAbandonedScope":clean,"takeClearsState":true,"dropClearsState":true,"newSourceDropsPriorLedgerBeforeInspect":true,"jsonExpansionOnlyAfterTake":true},"nativeStorage":{"rowSize":size_of::<source_storage_a::Row>(),"rowAlignment":align_of::<source_storage_a::Row>(),"maximumRows":MAX_ROWS,"observedCapacity":capacity,"rowBufferNeverGrew":true,"reportSize":size_of::<Report>(),"stagingReportSize":size_of::<StagingReport>(),"observationCellSize":size_of::<RefCell<Option<Observation>>>(),"ledgerSize":size_of::<Ledger>(),"failureSize":size_of::<Failure>(),"termArraySize":size_of::<[Option<usize>;5]>(),"termsSize":size_of::<Terms>(),"inputSize":size_of::<Input>(),"stagingFailureSize":size_of::<StagingFailure>(),"bound":NATIVE_STORAGE_BOUND,"unchangedReservation":source_storage_a::LEDGER_RESERVATION,"boundScope":"one native report/state/row-buffer with explicit temporary layouts; excludes JSON trees, serialization, unrelated diagnostics and RSS"},"historicalRound16StagedBytes":Value::Null,"publicationReady":false});
++    let bytes = serde_json::to_vec_pretty(&receipt).unwrap();
++    assert!(bytes.len() <= LIMIT);
++    std::fs::write(
++        std::env::var("SFCC_STORAGE_INTEGRATED_RECEIPT")
++            .expect("fresh integrated staging/lifecycle receipt"),
++        bytes,
++    )
++    .unwrap();
++}
+--- a/gcad-wasm/kernel/src/sfcc/source_storage_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/source_storage_a.rs
+@@ -5,7 +5,8 @@
+ use std::mem::{align_of, size_of};
+ 
+ pub(crate) const LIMIT: usize = 64 * 1024 * 1024;
+-const LEDGER_RESERVATION: usize = 16 * 1024;
++pub(crate) const LEDGER_RESERVATION: usize = 16 * 1024;
++pub(crate) const MAX_ROWS: usize = 32;
+ #[derive(Clone, Debug)]
+ #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+ pub(crate) struct Failure {
+@@ -55,7 +56,7 @@
+ impl Ledger {
+     pub(crate) fn new() -> Self {
+         Self {
+-            rows: Vec::new(),
++            rows: Vec::with_capacity(MAX_ROWS),
+             owned_reservation: 0,
+         }
+     }
+@@ -63,12 +64,12 @@
+         if let Some(i) = self.rows.iter().position(|r| r.category == category) {
+             return Ok(&mut self.rows[i]);
+         }
+-        if self.rows.len() >= 32 {
++        if self.rows.len() >= MAX_ROWS {
+             return Err(Failure {
+                 category,
+                 operation: "ledger_category_cap",
+                 lhs: self.rows.len(),
+-                rhs: 32,
++                rhs: MAX_ROWS,
+             });
+         }
+         self.rows.push(Row {
+@@ -194,6 +195,8 @@
+     pub staged_semantics: &'static str,
+     pub feature_inline_bytes: usize,
+     pub accounting_overhead_bytes: usize,
++    pub native_report_storage_bound: usize,
++    pub native_row_capacity: usize,
+     pub ledger: Ledger,
+     pub combined_bytes: Option<usize>,
+     pub complete: bool,
+@@ -229,7 +232,8 @@
+             rhs: LIMIT,
+         });
+     }
+-    Report{staged_bytes:staged,staged_semantics,feature_inline_bytes:size_of::<SfccFeatureSet>(),accounting_overhead_bytes:LEDGER_RESERVATION,ledger,combined_bytes,complete,allowed:failure.is_none(),failure,cap:LIMIT,scope:"owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS"}
++    let native_row_capacity = ledger.rows.capacity();
++    Report{native_report_storage_bound:super::private_storage_observation::NATIVE_STORAGE_BOUND,native_row_capacity,staged_bytes:staged,staged_semantics,feature_inline_bytes:size_of::<SfccFeatureSet>(),accounting_overhead_bytes:LEDGER_RESERVATION,ledger,combined_bytes,complete,allowed:failure.is_none(),failure,cap:LIMIT,scope:"owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS"}
+ }
+ 
+ #[cfg(all(test, feature = "serde"))]
+--- a/gcad-wasm/kernel/src/sfcc/source_storage_a_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/source_storage_a_tests.rs
+@@ -77,7 +77,7 @@
+         })
+ }
+ #[test]
+-fn source_storage_a_feature_only_witness() {
++fn correlated_source_storage_a_feature_only_witness() {
+     let config: Value =
+         serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
+     let prior: Value = serde_json::from_str(include_str!(
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -227,10 +227,11 @@
+ /// Reserve the connected owned Clone graph together with the actual caller's
+ /// staging amount, recording the exact structural ledger before any refusal.
+ pub(crate) fn reserve_source_view(f:&SfccFeatureSet,already:usize)->Result<(), &'static str>{
++    super::private_storage_observation::prepare_source();
+     let report=super::source_storage_a::inspect(f,already,"actual caller staged_bytes; not inferred from face count");
+-    #[cfg(feature="serde")]
+-    DIAGNOSTIC.with(|s|{if let Some(v)=s.borrow_mut().as_mut(){v["sourceStorageReservation"]=serde_json::json!(&report);}});
+-    if report.allowed{Ok(())}else{Err("64MiB combined owned-source/staging reservation refused; exact ledger in sourceStorageReservation")}
++    let allowed=report.allowed;
++    super::private_storage_observation::record_source(report);
++    if allowed{Ok(())}else{Err("64MiB combined owned-source/staging reservation refused; typed ledger retained for receipt extraction")}
+ }
+ 
+ #[cfg(test)]
+@@ -419,3 +420,36 @@
+     #[cfg(not(feature = "serde"))]
+     let _ = cell;
+ }
++
++/// Failure-only diagnostic, bounded separately from the native source ledger.
++/// This is available staged state AFTER mesh_cells_subset returned, not a full
++/// pre-call snapshot or retained-outside geometry/contact certificate.
++pub(crate) fn note_private_mesher_failure(
++    oct:&super::octree::SfccOctree,faces:&[std::collections::HashMap<i64,super::face_contour::FaceRecord>;3],
++    cell:&super::octree::SfccCell,points:&super::point_table::PointTable,result:&super::cell_mesh::CellMeshResult,
++){
++    #[cfg(feature="serde")]
++    DIAGNOSTIC.with(|state|{
++        if state.borrow().is_none(){return;}
++        use serde_json::json;
++        let used=super::shared_arc_plan::cell_faces(oct,faces,cell);let mut entries_left=512usize;let mut ids=std::collections::BTreeSet::new();let mut records=Vec::new();let mut truncated=used.len()>24;
++        for &(axis,key,len) in used.iter().take(24){
++            let r=&faces[axis][&key];
++            let segments:Vec<_>=r.segments.iter().take(entries_left).map(|s|[s.a,s.b]).collect();entries_left-=segments.len();
++            let pins:Vec<_>=r.pins.iter().take(entries_left).map(|p|json!({"pointId":p.point_id,"chart":p.curve_id,"parameterBits":p.t.to_bits()})).collect();entries_left-=pins.len();
++            for id in segments.iter().flatten().copied().chain(r.pins.iter().take(pins.len()).map(|p|p.point_id)){if ids.len()<512||ids.contains(&id){ids.insert(id);}else{truncated=true;}}
++            truncated|=segments.len()!=r.segments.len()||pins.len()!=r.pins.len()||r.consumed_fwd.len()>512||r.consumed_rev.len()>512;
++            records.push(json!({"face":[axis as i64,key,len],"segmentCount":r.segments.len(),"pinCount":r.pins.len(),"segments":segments,"pins":pins,"consumedForwardPrefix":r.consumed_fwd.iter().take(512).copied().collect::<Vec<_>>(),"consumedReversePrefix":r.consumed_rev.iter().take(512).copied().collect::<Vec<_>>()}));
++        }
++        let payloads:Vec<_>=ids.into_iter().map(|id|{
++            if id>=points.count(){return json!({"id":id,"invalidPointBinding":true});}
++            let key=match points.key_at(id){super::point_table::PointKey::Num(k)=>json!({"kind":"numeric","value":k}),super::point_table::PointKey::Str(k)=>json!({"kind":"string","prefix":k.chars().take(64).collect::<String>(),"byteLength":k.len(),"prefixTruncated":k.chars().nth(64).is_some()}),super::point_table::PointKey::Unkeyed=>json!({"kind":"unkeyed"})};
++            json!({"id":id,"positionBits":[points.x(id).to_bits(),points.y(id).to_bits(),points.z(id).to_bits()],"normalBits":[points.nx(id).to_bits(),points.ny(id).to_bits(),points.nz(id).to_bits()],"key":key})
++        }).collect();
++        let cells=|cells:&[super::octree::SfccCell]|cells.iter().take(256).map(|c|[c.level as i64,c.ix,c.iy,c.iz]).collect::<Vec<_>>();
++        let mut evidence=json!({"scope":"after failed private mesh return; available staged boundary state only","cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"failedCellCount":result.failed_cells.len(),"failedCellsPrefix":cells(&result.failed_cells),"featureCellFallbackCount":result.feature_cell_fallbacks,"fallbackCellCount":result.fallback_cells.len(),"fallbackCellsPrefix":cells(&result.fallback_cells),"returnedTriangleCount":result.tris.len()/3,"multiLoopCellCount":result.multi_loop_cells,"edgeCellCount":result.edge_cells,"cornerCellCount":result.corner_cells,"privatePointCount":points.count(),"pointIdSpace":"private staged PointTable","faces":records,"points":payloads,"truncated":truncated||result.failed_cells.len()>256||result.fallback_cells.len()>256,"diagnosticLimits":{"faces":24,"totalSegmentPinEntries":512,"points":512,"keyPrefixCharacters":64,"counterEntriesPerFace":512,"bytes":524288},"nativeLedger16KiBClaimApplies":false});
++        if serde_json::to_vec(&evidence).map_or(true,|v|v.len()>512*1024){evidence=json!({"cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"failedCellCount":result.failed_cells.len(),"featureCellFallbackCount":result.feature_cell_fallbacks,"fallbackCellCount":result.fallback_cells.len(),"returnedTriangleCount":result.tris.len()/3,"privatePointCount":points.count(),"detailRefusal":"bounded_mesher_failure_diagnostic_byte_cap"});}
++        if let Some(report)=state.borrow_mut().as_mut(){report["privateMesherFailure"]=evidence;}
++    });
++    #[cfg(not(feature="serde"))] let _=(oct,faces,cell,points,result);
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
+@@ -191,7 +191,8 @@
+         .expect("root-owned diagnostic receipt path required");
+     let before = live_digest(faces, live);
+     let inventory = inventory(oct, faces, live, [20, 33]);
+-    let mut report = json!({"candidate":"A-integrated-typed-face-root","stage":"SERIAL_ROUND0_AFTER_CONTOUR_ALL_FACES_BEFORE_MESH_ALL_CELLS","nativeAttempt":0,"adaptiveRound":0,"branch":"Serial","sourceManifestSha256":std::env::var("SFCC_PRIVATE_A_SOURCE_MANIFEST_SHA256").ok(),"sourceConfigSha256":fixture["sourceConfigSha256"],"requestedSceneJson":fixture["sceneJson"],"requestedCube":fixture["cube"],"requestedTuning":fixture["tuning"],"effectiveNativeTuning":effective_tuning(tuning),"unconsumedTsOnlyOptions":["jitterRetries","failurePolicy","faceSnapEpsFraction","ambiguityResolution","creaseAngleDeg","debugOutput","profile"],"effectiveCubeBits":[cube.min_x.to_bits(),cube.min_y.to_bits(),cube.min_z.to_bits(),cube.size.to_bits()],"liveLattice":{"maxDepth":oct.lat.max_depth,"resolution":oct.lat.res,"span":oct.lat.span,"originBits":[oct.lat.origin_x.to_bits(),oct.lat.origin_y.to_bits(),oct.lat.origin_z.to_bits()],"sizeBits":oct.lat.world_size.to_bits(),"stepBits":oct.lat.step.to_bits()},"fingerprint":f.fingerprint().to_string(),"originalCounts":{"curves":f.curves.len(),"corners":f.corners.len(),"strata":f.strata.len(),"leaves":oct.leaves.len(),"faces":faces.iter().map(HashMap::len).sum::<usize>(),"points":live.count(),"segments":faces.iter().flat_map(|fs|fs.values()).map(|r|r.segments.len()).sum::<usize>(),"pins":faces.iter().flat_map(|fs|fs.values()).map(|r|r.pins.len()).sum::<usize>()},"originalCharts":f.curves.iter().map(|c|json!({"id":c.id,"rangeBits":[c.t_min.to_bits(),c.t_max.to_bits()],"cornerEnds":[c.corner_start,c.corner_end],"strata":c.adjacent_strata,"polylineBits":c.index_polyline.iter().map(|x|x.to_bits()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"liveDigestBefore":before,"consumerInventory":match &inventory{Ok(v)=>v.clone(),Err(e)=>json!({"status":"refused","reason":e})},"publicationReady":false,"finalExportClosure":false,"productionAcceptance":false});
++    let mut report = json!({"candidate":"A-integrated-owned-storage","stage":"SERIAL_ROUND0_AFTER_CONTOUR_ALL_FACES_BEFORE_MESH_ALL_CELLS","nativeAttempt":0,"adaptiveRound":0,"branch":"Serial","sourceManifestSha256":std::env::var("SFCC_PRIVATE_A_SOURCE_MANIFEST_SHA256").ok(),"sourceConfigSha256":fixture["sourceConfigSha256"],"requestedSceneJson":fixture["sceneJson"],"requestedCube":fixture["cube"],"requestedTuning":fixture["tuning"],"effectiveNativeTuning":effective_tuning(tuning),"unconsumedTsOnlyOptions":["jitterRetries","failurePolicy","faceSnapEpsFraction","ambiguityResolution","creaseAngleDeg","debugOutput","profile"],"effectiveCubeBits":[cube.min_x.to_bits(),cube.min_y.to_bits(),cube.min_z.to_bits(),cube.size.to_bits()],"liveLattice":{"maxDepth":oct.lat.max_depth,"resolution":oct.lat.res,"span":oct.lat.span,"originBits":[oct.lat.origin_x.to_bits(),oct.lat.origin_y.to_bits(),oct.lat.origin_z.to_bits()],"sizeBits":oct.lat.world_size.to_bits(),"stepBits":oct.lat.step.to_bits()},"fingerprint":f.fingerprint().to_string(),"originalCounts":{"curves":f.curves.len(),"corners":f.corners.len(),"strata":f.strata.len(),"leaves":oct.leaves.len(),"faces":faces.iter().map(HashMap::len).sum::<usize>(),"points":live.count(),"segments":faces.iter().flat_map(|fs|fs.values()).map(|r|r.segments.len()).sum::<usize>(),"pins":faces.iter().flat_map(|fs|fs.values()).map(|r|r.pins.len()).sum::<usize>()},"originalCharts":f.curves.iter().map(|c|json!({"id":c.id,"rangeBits":[c.t_min.to_bits(),c.t_max.to_bits()],"cornerEnds":[c.corner_start,c.corner_end],"strata":c.adjacent_strata,"polylineBits":c.index_polyline.iter().map(|x|x.to_bits()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"liveDigestBefore":before,"consumerInventory":match &inventory{Ok(v)=>v.clone(),Err(e)=>json!({"status":"refused","reason":e})},"publicationReady":false,"finalExportClosure":false,"productionAcceptance":false});
++    let storage_scope=crate::sfcc::private_storage_observation::begin();
+     DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"finalChargedQueries":0})));
+     report["outcome"] = if f.fingerprint() != 9875508341830920921 {
+         json!({"kind":"refusal","reason":"fresh_fingerprint_mismatch"})
+@@ -216,13 +217,20 @@
+     report["admissionAndQueryEvidence"] = DIAGNOSTIC
+         .with(|s| s.borrow_mut().take())
+         .unwrap_or(Value::Null);
++    // Resource JSON is materialized only after private construction returned.
++    // Its diagnostic tree/serialization is outside the16KiB native-ledger bound.
++    report["storageReservation"]=json!(storage_scope.take());
++    report["nativeResourceObservationBound"]=json!({"bytes":crate::sfcc::private_storage_observation::NATIVE_STORAGE_BOUND,"reservedBytes":crate::sfcc::source_storage_a::LEDGER_RESERVATION,"scope":"native resource report/row storage only; JSON receipt materialization is separate"});
+     report["finalChargedQueries"]=report["admissionAndQueryEvidence"]["finalChargedQueries"].clone();
+     report["liveDigestAfter"] = json!(live_digest(faces, live));
+     report["liveStatePreserved"] = json!(report["liveDigestBefore"] == report["liveDigestAfter"]);
+     report["stoppedBeforeProductionCellMeshingAndPostassembly"] = json!(true);
+     let bytes = serde_json::to_vec_pretty(&report).expect("diagnostic serialization");
+     if bytes.len() > 64 * 1024 * 1024 {
+-        std::fs::write(path,b"{\"outcome\":{\"kind\":\"refusal\",\"reason\":\"receipt_64MiB_cap\"},\"publicationReady\":false}").expect("receipt write");
++        let compact=json!({"stage":report["stage"],"sourceConfigSha256":report["sourceConfigSha256"],"fingerprint":report["fingerprint"],"outcome":{"kind":"refusal","reason":"receipt_64MiB_cap"},"privateOutcomeKind":report["outcome"]["kind"],"privateRefusal":report["outcome"]["refusal"],"storageReservation":report["storageReservation"].take(),"nativeResourceObservationBound":report["nativeResourceObservationBound"],"finalChargedQueries":report["finalChargedQueries"],"liveStatePreserved":report["liveStatePreserved"],"liveDigestBefore":report["liveDigestBefore"],"liveDigestAfter":report["liveDigestAfter"],"stoppedBeforeProductionCellMeshingAndPostassembly":true,"finalExportClosure":false,"publicationReady":false});
++        let compact_bytes=serde_json::to_vec_pretty(&compact).expect("compact resource receipt");
++        assert!(compact_bytes.len()<=64*1024*1024,"bounded compact receipt");
++        std::fs::write(path,compact_bytes).expect("receipt write");
+     } else {
+         std::fs::write(path, bytes).expect("receipt write");
+     }
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -460,12 +460,16 @@
+             needed.len().to_string(),
+         ));
+     }
+-    let staged_items:usize=required.iter().map(|&(axis,key,_)|faces[axis][&key].segments.len()+faces[axis][&key].pins.len()).sum();
+-    let point_key_bytes:usize=needed.iter().map(|&id|match live.key_at(id){PointKey::Str(s)=>s.len(),_=>0}).sum();
+-    // Reserve generous per-entry overhead for private point/face/maps alongside
+-    // the helper's bounded cache. Source-view storage is checked separately.
+-    let staged_bytes=staged_items.saturating_mul(512).saturating_add(needed.len()*1024).saturating_add(point_key_bytes*4).saturating_add(16384*1024+128*4096);
+-    if staged_bytes>64*1024*1024 {return Err(fail(features,ids,"private_byte_cap",staged_bytes.to_string()));}
++    let staging=super::private_storage_observation::staging(
++        required.iter().map(|&(axis,key,len)|{let r=&faces[axis][&key];(axis,key,len,r.segments.len(),r.pins.len())}),
++        needed.iter().map(|&id|(id,match live.key_at(id){PointKey::Str(s)=>s.len(),_=>0})),
++        needed.len(),"actual live required faces/needed points; historical Round16 staging remains unknown",
++    );
++    let staged_bytes=staging.staged_bytes;let allowed=staging.allowed;
++    let reason=if staging.failure.as_ref().is_some_and(|f|f.arithmetic.operation=="64MiB_cap"){"private_byte_cap"}else{"private_byte_overflow"};
++    super::private_storage_observation::record_staging(staging);
++    if !allowed{return Err(fail(features,ids,reason,"checked caller staging refused; exact inputs, terms and failure retained in typed storage observation"));}
++    let staged_bytes=staged_bytes.ok_or_else(||fail(features,ids,"private_byte_overflow","missing checked staging total"))?;
+     let mut private = PointTable::new();
+     let mut map = BTreeMap::new();
+     let mut original_bindings = Vec::new();
+@@ -666,6 +670,7 @@
+             std::slice::from_ref(cell),
+         );
+         if !result.failed_cells.is_empty() || result.feature_cell_fallbacks != 0 {
++            super::private_arc_a::note_private_mesher_failure(oct,&staged,cell,&private,&result);
+             graph_failed = true;
+             break;
+         }
+--- a/gcad-wasm/kernel/src/sfcc/mod.rs
++++ b/gcad-wasm/kernel/src/sfcc/mod.rs
+@@ -70,3 +70,5 @@
+ pub(crate) mod private_arc_a;
+ 
+ pub(crate) mod source_storage_a;
++
++pub(crate) mod private_storage_observation;

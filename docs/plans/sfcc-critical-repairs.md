@@ -304,9 +304,15 @@ point-pair replay; fourth review selects bisection. Three private experiments no
 capture the full knob's actual pregraph context and agree on all 199 affected
 leaves, 198 affected faces and 396 typed pins, but all refuse before constructing
 a mesh. The selected next base exposes a float32-bin equality precondition that
-rejects a saved pin pair before geometric uniqueness is attempted. A local
-source-bound face-root discriminator is next; points and tolerances stay fixed.
-The general projector remains unchanged. Source preservation and the residual
+rejects a saved pin pair before geometric uniqueness is attempted. Three local
+source-bound discriminators now certify a unique existing ideal root on the hull
+of both rounding cells, with direct bounds to both unchanged pins. Fourth review
+selects one private-A integration of that typed-face certificate. Its fresh
+original-scene run passes all 198 face certificates and 396 direct pin-to-root
+bounds, then refuses a conservative source-view memory reservation before private
+cell meshing. The next bounded check replaces debug-text estimates with justified
+owned-storage accounting under the same cap. The general projector remains
+unchanged. Source preservation and the residual
 conversion/alias families remain open. No E4
 production repair has been integrated; E5–E6 remain pending in order.
 

@@ -1129,6 +1129,95 @@ and [C's retained-constraint refusal](../../.testresults/sfcc-critical-repairs/e
 retain the complete evidence. No live or production geometry changes, and no
 private/full export follows from a harness PASS alone.
 
+### Adjacent rounding cells: local existence and uniqueness pass
+
+All three independent saved-face experiments pass the previously skipped
+mathematical gates. The literal hull of the two rounding-cell face domains fits
+inside the original minimal face. The unchanged source restriction succeeds in
+one box, the uniform inverse bound succeeds for the **actual face axis**, and
+strict root inclusion succeeds. The old same-bin helper still refuses. Neither
+saved point, parameter, source coefficient nor numerical allowance changes.
+
+This establishes one unique ideal root in that local hull. For the represented
+radial and twisted-side equations, one fixed numerical preconditioner bounds
+`I-CJ` below one in the infinity norm throughout the convex planar domain.
+The resulting contraction gives at most one root; strict Krawczyk-image inclusion
+gives existence and encloses that root. An inverse for another axis, pointwise
+regularity, or an enclosure merely containing the numerical pins would not suffice.
+The wrong-plane/shifted-domain controls retain invertibility but fail existence;
+separately scoped multiple-root controls reject uniform inversion.
+
+An exact rational replay bounds each unchanged numerical pin to **every point**
+of the recorded root enclosure: at most approximately `5.026533242e-13` mm for
+the physical pin and `1.969250151e-9` mm for the alias pin, both below the unchanged
+`3.79665537e-7` mm allowance. Both pins remain slightly off the exact face plane,
+and their float32 bins remain different. This is a source-bound root association,
+not equality of their numerical representations or permission to publish a weld.
+
+Fourth review selects one narrow private-A integration: reuse the original
+root-image calculation, bind the live typed face and admitted source/branch,
+validate the literal hull and actual-axis proof, and require both direct
+pin-to-root-image bounds. Keep the old helper as a negative reference and retain
+all downstream component checks. The integrated helper must pass fresh focused
+controls before one bounded original-scene private run; a local proof pass is not
+a constructed mesh.
+
+The integration also preserves the actual face-contour rectangle convention:
+mapped minimum plus `len*step`. Directly mapping the far grid corner gives slightly
+different binary64 upper bounds (38/3 ULPs on this witness). Both tested hulls fit
+inside both rectangles, so this does not change the observed local result.
+
+[Fourth mathematical review and integration contract](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round15-face-root-controls/decision.md),
+[three executed checks](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round15-face-root-controls/executed-summary.json),
+[recorded source/inverse/root stages](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round15-face-root-controls/A/proof-receipt.json),
+[exact point-to-root-enclosure bounds](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round15-face-root-controls/A/root-image-replay.json),
+and [independent domain/pair replay](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round15-face-root-controls/B/root-domain-replay.json)
+retain the evidence. These are feature-only diagnostic tests of one saved face;
+no octree, private mesh or full export was rerun in this discriminator.
+
+### Integrated face-root gate: all 198 affected faces pass
+
+The selected private integration passes all four focused control tests and the
+fresh original-scene diagnostic. It now certifies **all 198 affected faces and
+396 retained pin-to-root associations**, across axes 0/1/2 as 43/42/113. The
+complete inventory exactly matches the previous 199-leaf component. Independent
+exact rational replay validates every recorded point-to-root-image bound; the
+largest reported bound is about 0.02104 of the unchanged allowance.
+
+The new gate uses the actual minimum-plus-extent face rectangle, literal hull,
+same successful admission identity and immutable source, admitted branch,
+unchanged source restrictions, actual-axis inverse and strict root enclosure.
+It also retains the old stricter `min(curve_eps)` domain/residual checks. The
+original boolean root test and same-bin helper retain their behavior; the inverse,
+projector and source equations remain unchanged. This replaces the private face
+admission condition with a source-bound geometric certificate, while retaining
+the physical pin coordinates and all subsequent component guards.
+
+The constructor advances through face-pair checks, required-pin checks and private
+boundary staging, then refuses **`private_source_view_byte_cap` before cloning the
+source view or meshing private cells**. Final charged queries are 7,801, below
+16,384, and the live digest remains `5f3600b1ef212fb0` before and after. No triangle,
+generated-event, contact or complete-link audit has run. The 22.853-second full
+job is a successful diagnostic capture, not a successful replacement mesh.
+
+The remaining reservation streams Debug output for the feature data and charges
+64 times each text fragment's size, plus existing staging and index allowances.
+Shared immutable source graphs expand repeatedly in that text even when their
+clone shares storage. The refusal is therefore a conservative accounting result,
+not an allocation failure or demonstrated memory requirement. Its receipt lacks
+the original staging contribution and the separate source terms, so actual fit
+within 64 MiB cannot yet be claimed. The next bounded resource check must account
+for every owned clone allocation while distinguishing shared immutable payload;
+it must retain the same combined cap and expose the full ledger on refusal.
+
+[Integrated fourth review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round16-face-root-integration/decision.md),
+[execution and outcome summary](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round16-face-root-integration/summary.json),
+[integrated source handoff](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round16-face-root-integration/A-packet/handoff.md),
+[focused integrated controls](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round16-face-root-integration/A/integrated-face-receipt.json),
+and [all face certificates and new refusal](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round16-face-root-integration/A/private-receipt.json)
+retain the evidence. The mathematical face gate is validated in this original
+native context; complete mesh construction and production acceptance remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

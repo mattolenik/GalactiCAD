@@ -300,11 +300,14 @@ source/event layer passes all 62 original piece certificates and 64 original
 knot/endpoint events, but complete transport refuses. Exact arithmetic confirms
 the first inverse-parameter miss is about 33 times the unchanged allowance.
 All three bounded inverse helpers pass complete ordered transport and exact
-point-pair replay; fourth review selects bisection. The next isolated private
-experiment must explicitly retain source/endpoint admission, check both output
-parameter lists and all generated events, and use the full knob's actual pregraph
-context. The general projector remains unchanged. Source preservation and the
-residual conversion/alias families remain open. No E4
+point-pair replay; fourth review selects bisection. Three private experiments now
+capture the full knob's actual pregraph context and agree on all 199 affected
+leaves, 198 affected faces and 396 typed pins, but all refuse before constructing
+a mesh. The selected next base exposes a float32-bin equality precondition that
+rejects a saved pin pair before geometric uniqueness is attempted. A local
+source-bound face-root discriminator is next; points and tolerances stay fixed.
+The general projector remains unchanged. Source preservation and the residual
+conversion/alias families remain open. No E4
 production repair has been integrated; E5–E6 remain pending in order.
 
 ### Baseline and non-negotiable obligations

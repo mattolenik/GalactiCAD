@@ -1069,6 +1069,66 @@ and [independent exact replay](../../.testresults/sfcc-critical-repairs/e4-inval
 retain the selected implementation and its limits. E4 acceptance, source
 preservation, global contacts and the full-export resource exit remain open.
 
+### First complete-consumer experiments: construction still refuses
+
+The three independent implementations now reach the original full knob's actual
+native Serial attempt-0, round-0 barrier after face contouring and before live cell
+triangulation. Their complete inventories agree exactly: **199 affected leaves,
+198 affected canonical faces, 1,001 required faces and 396 target typed pins**.
+Each affected face has two distinct opposite-side consumers. All final focused
+campaigns and diagnostic harnesses pass; **none constructs a private mesh**.
+
+| Candidate | Original-scene diagnostic | Actual outcome before private meshing |
+| --- | ---: | --- |
+| A, retained only as the next experimental base | 19.245 s | Face-root guard refuses unequal float32 coordinate bins before attempting its geometric proof. |
+| B after syntax-only fix | 19.188 s | Direct actual-point association exceeds the unchanged allowance; the saved failure needs mapped-output evidence to distinguish round-trip error. |
+| C after type/comparison-only fixes | 18.829 s | Prototype refuses a retained third-chart pin, chart 42 at point 4082. This is its limited admission scope, not a geometric disproof. |
+
+The recorded times are individual diagnostic observations, not speed comparisons.
+B's original JSON-macro compile error, C's array-type compile error, and C's
+pre-pipeline comparison of JSON `2.0` against `2` are retained separately. Their
+fixes do not change scene options or construction algorithms. Native-only controls
+such as the absent TS retry wrapper are explicitly distinguished: requested
+`jitterRetries=3` and `failurePolicy=partial` remain recorded but unconsumed.
+
+A now performs explicit successful source/endpoint admission and both output-list
+checks, retains the original alias witness when available, and includes a bounded
+observer for failed/discarded curve queries inside the private mesher. Removing
+that diagnostic wrapper restores the base query file byte-for-byte; the numerical
+query body and inverse/projector algorithms are unchanged. The observer and later
+geometry audits were not reached in the full-input run. Its saved 1,240-query count
+covers admission, not later pin validation. A's live state digest is unchanged
+before and after refusal. Complete consumer enumeration is established; complete
+mesh consumption, closure, contacts and metadata preservation are not.
+
+A's exact failed face is `[0,2875935,1]`. Its two numerical pin positions differ by
+approximately `1.968750763e-9` mm, yet their y coordinates round to adjacent float32
+values. Exact arithmetic places the rounding boundary `24100469/67108864` strictly
+between them. The old `quantized_face_root` returns immediately on unequal float32
+triples, before invoking `certify` or its existence/uniqueness test. Its reported
+`face_root_not_unique` reason therefore does **not** establish non-uniqueness.
+No different-root conclusion follows from this refusal.
+
+Fourth review rejects all three as construction repairs and retains A only for a
+local correction. The next bounded feature-only discriminator must attempt a
+source-bound enclosure of both rounding-cell face boxes on the exact typed face
+plane, verify its relation to the actual minimal-face rectangle, and separately
+report source, branch, axis-inverse and root-inclusion outcomes. Both original
+points/parameters, direct query checks and numerical allowance stay unchanged.
+An enclosure merely containing the points is insufficient; deleting the guard,
+welding nearby positions or perturbing coordinates is not authorized by this
+result. A successful ideal-root proof would still leave representative selection
+and complete geometry/frontier/contact audits to perform.
+
+[Fourth decision](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round14-private-controls/decision.md),
+[execution comparison](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round14-private-controls/executed-summary.json),
+[A's actual context/refusal](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round14-private-controls/A/private-receipt.json),
+[exact rounding-boundary replay](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round14-private-controls/A/exact-f32-refusal-replay.json),
+[B's direct-association refusal](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round14-private-controls/B-fix1/private-receipt.json),
+and [C's retained-constraint refusal](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round14-private-controls/C-fix2/private-receipt.json)
+retain the complete evidence. No live or production geometry changes, and no
+private/full export follows from a harness PASS alone.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

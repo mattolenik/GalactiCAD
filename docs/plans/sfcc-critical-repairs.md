@@ -295,10 +295,16 @@ remains unresolved after its own timeout. Exact clipped testing clears the origi
 local crossing witness in both coordinate formats. Three isolated shared-arc
 prototypes now pass their focused controls, but all retain source/closure refusals;
 none demonstrates a reconstructed full arc. The first-interval discriminator
-identifies lost profile correlation in the box enclosure. The next candidates
-separate correlated branch certification from checks on every consumed numerical
-event, retaining existing tolerances and refusal behavior. Source
-preservation and the residual conversion/alias families remain open. No E4
+identifies lost profile correlation in the box enclosure. The selected correlated
+source/event layer passes all 62 original piece certificates and 64 original
+knot/endpoint events, but complete transport refuses. Exact arithmetic confirms
+the first inverse-parameter miss is about 33 times the unchanged allowance.
+All three bounded inverse helpers pass complete ordered transport and exact
+point-pair replay; fourth review selects bisection. The next isolated private
+experiment must explicitly retain source/endpoint admission, check both output
+parameter lists and all generated events, and use the full knob's actual pregraph
+context. The general projector remains unchanged. Source preservation and the
+residual conversion/alias families remain open. No E4
 production repair has been integrated; E5–E6 remain pending in order.
 
 ### Baseline and non-negotiable obligations

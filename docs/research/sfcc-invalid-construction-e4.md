@@ -971,6 +971,104 @@ and [outcome review](../../.testresults/sfcc-critical-repairs/e4-invalid-constru
 record the scope and limitations. No full export or production integration follows
 from this discriminator.
 
+### Correlated source/event checks and the inverse-parameter failure
+
+The three isolated candidates pass their focused native controls. Fourth review
+selects C's separate supporting-branch and consumed-event layer, with B's narrow
+same-immutable-root cylinder check and exact rederivation of the fixed-sign
+intrinsic coordinate. The combined source passes its fresh focused controls.
+All 62 original chart pieces certify; all 64 original knot/endpoint events pass
+their actual query, container, source/domain and branch-distance checks. This is
+supporting-branch and listed-event evidence, not full-scene exposure or a
+reconstructed mesh. The old whole-box proof and private construction remain
+unchanged, and these new certificate types cannot authorize that construction.
+
+Complete two-chart transport still refuses. The first failed correspondence
+requests chart 20's point at parameter `1` on chart 33. The existing inverse
+returns parameter approximately `0.37416436048850976`, producing a separation of
+`1.2537468633902062e-5` mm against the unchanged `3.796655370190979e-7` mm allowance.
+An independent exact-dyadic replay of the saved binary64 point bits confirms a
+strictly positive squared excess: the squared-distance ratio is about 1090.48.
+Both own-chart outputs pass their source and consumed-event gates. The existing
+inverse estimates the parameter from a sampled endpoint chord and queries that
+parameter once; it does not refine the inverse to the requested spatial accuracy.
+This observed failure therefore identifies inaccurate parameter transport, rather
+than demonstrating different supporting branches.
+
+The reviewed next milestone compares three bounded inverse helpers scoped to
+these immutable certified charts. Each may use height to guide its local search,
+but final acceptance needs a conservative full 3D distance check, unchanged
+allowance, every consumed-event gate, strict ordering in both directions and
+retained exact endpoint parameters. Limits are 64 new checked queries per mapping,
+16,384 total helper evaluations including cache fill/rechecks, and 64 iterations
+per request, retaining the existing 128-piece/2048-event/64 MiB ceilings. Query
+failure, exhausted budget, cancellation, ambiguity and stagnation refuse. No
+sampled monotonicity, ideal-helix point substitution or tolerance increase can
+stand in for the actual chart output. The general inverse and production mesher
+remain unchanged. Private construction awaits the fourth review of executed
+transport results.
+
+[Fourth source/event review](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round12-correlated-controls/decision.md),
+[selected build/test execution](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round12-correlated-controls/selected/execution.json),
+[complete inventory and failed correspondence](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round12-correlated-controls/selected/proof-receipt.json),
+[exact distance replay](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round12-correlated-controls/selected/exact-transport-replay.json),
+and [bounded transport contract](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round12-correlated-controls/transport-milestone.md)
+retain the evidence. These are diagnostic-profile feature tests; no production
+runtime, release-WASM or full-mesh acceptance result changes.
+
+### Bounded inverse transport: all three alternatives pass
+
+Three independent helpers now pass complete transport of the original 62-piece,
+64-event inventory. All use actual checked chart queries and the unchanged
+`3.796655370190979e-7` mm allowance. Exact-dyadic replay validates every retained
+point-pair comparison and outward distance bound. Both directions preserve strict
+parameter order and exact endpoint parameter bits. The old chord-inverse witness
+still fails and remains a regression control.
+
+| Candidate | Search | Complete original events | Checked helper work | Maximum new queries per mapping |
+| --- | --- | ---: | ---: | ---: |
+| A, selected | Height-guided bisection | 64/64 | 1,162 | 20 |
+| B | Safeguarded interpolation/midpoint | 64/64 | 1,037 including 128 fresh output rechecks | 18 |
+| C | Local 3D-distance search | 64/64 | 1,628 plus 14 reserved endpoint queries | 28 |
+
+These work counts have different admission/recheck scopes and are not timing
+rankings. Each full inventory has 192 final triplet comparisons; the archived
+replay counts also include candidate-specific mapping and repaired-witness pairs.
+All builds and focused tests pass within their declared diagnostic 120/60-second
+caps. A executes actual exhaustion of the fixed 64-query request and 16,384-query
+total limits. B/C exercise real lower-limit exhaustion and label that narrower
+scope. Actual failed queries, cancellation, wrong-source/off-branch points,
+non-strict ordering, ambiguous guidance and stagnation retain refusals.
+
+Fourth review selects A as the smallest sufficient helper. Its executed test
+pairs it with the selected full source/endpoint inspector; the helper alone does
+not establish connected-height coverage or all retained-corner/outgoing-source
+conditions. Before private reconstruction, an explicit successful admission stage
+must reuse those checks on the same immutable source and charge their query work.
+The old inspector's eventual transport refusal is not an admission token. The
+adapter must enforce both physical and alias output sequences, and validate every
+existing face pin and newly generated event, including direct point-to-own-query
+and all original/physical/alias distance obligations. No tolerance accumulation,
+refusal-string bypass or fabricated old plan is allowed.
+
+The next isolated experiment uses the original full knob at the actual named
+pipeline barrier after face contouring and before cell triangulation. It must
+retain live immutable octree/face/point provenance, exact typed face roots, both
+actual shared-face consumers, endpoint/frontier/interval metadata, and matching
+working/rounded geometry evidence. It stops before costly postassembly refinement
+under a separate 120-second preparation-and-private-construction watchdog. Existing
+component ceilings remain unchanged. Missing retained-outside contact or metadata
+evidence remains a publication block. This transport milestone does not alter
+production code or repair the remaining malformed emitted faces.
+
+[Fourth decision and private-experiment contract](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round13-transport-controls/decision.md),
+[executed comparison](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round13-transport-controls/executed-summary.json),
+[selected A handoff](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round13-transport-controls/A-packet/handoff.md),
+[A's complete receipt](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round13-transport-controls/A/proof-receipt.json),
+and [independent exact replay](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/round13-transport-controls/A/root-exact-replay.json)
+retain the selected implementation and its limits. E4 acceptance, source
+preservation, global contacts and the full-export resource exit remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

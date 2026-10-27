@@ -47,7 +47,10 @@ export async function exportStlAscii(solidName: string, handle: FileSystemFileHa
     await writable.close()
 }
 
-export async function exportStlBinary(solidName: string, handle: FileSystemFileHandle, verts: Float32Array<ArrayBuffer>, tris: Uint32Array<ArrayBuffer>) {
+/** Serialize the mesh as a binary STL (80-byte header, u32 triangle count, 50 bytes
+ *  per triangle). Pure — shared by the FileSystemFileHandle writer and the
+ *  anchor-download fallback for browsers without `showSaveFilePicker`. */
+export function stlBinaryBytes(solidName: string, verts: Float32Array<ArrayBuffer>, tris: Uint32Array<ArrayBuffer>): ArrayBuffer {
     const stride = SIZEOF_VERTEX / 4 // floats per vertex
 
     const triCount = Math.floor(tris.length / 3)
@@ -113,6 +116,11 @@ export async function exportStlBinary(solidName: string, handle: FileSystemFileH
         off += 50
     }
 
+    return buf
+}
+
+export async function exportStlBinary(solidName: string, handle: FileSystemFileHandle, verts: Float32Array<ArrayBuffer>, tris: Uint32Array<ArrayBuffer>) {
+    const buf = stlBinaryBytes(solidName, verts, tris)
     const writable = await handle.createWritable()
     await writable.write(buf)
     await writable.close()

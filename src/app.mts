@@ -19,7 +19,7 @@ import { getShapePalette, PALETTE_SIZE } from "./colorPalette.mjs"
 import { getSelectionStylesForTheme } from "./selectionStyles.mjs"
 import type { CameraSettings, EditorSettings, ThemeMode } from "./storage/settings.mjs"
 import type { MeshData } from "./export/export.mjs"
-import { exportStlBinary } from "./export/stl.mjs"
+import { exportStlBinary, stlBinaryBytes } from "./export/stl.mjs"
 import { SettingsManager } from "./storage/settings.mjs"
 import { CadHighlighter, SHAPE_ICON_CLASS, type HighlightRange, type ShapeIndicator } from "./highlighting/cad-highlighter.mjs"
 import { CodeEditor } from "./editor/codemirror-editor.mjs"
@@ -1649,6 +1649,12 @@ class App {
             this.#scheduleMeshUpdate(m.doc.toString())
         }
 
+        // "Save STL" exports the current mesh via the same path as the toolbar
+        // Export button (cache hit when the mesh matches the scene + tuning).
+        devTools.onSaveStlRequest = () => {
+            void this.#exportStl(devTools)
+        }
+
         devTools.syncDebugLogModulesFromSettings(this.#settings.getDebugLogModules())
         devTools.onDebugLogModulesChange = () => {
             applyDebugLogModules(this.#settings.getDebugLogModules())
@@ -1967,14 +1973,25 @@ class App {
     }
 
     async #wireExportButton(exportBtn: import("./components/toolbar.mjs").ToolbarButton, devTools: DevToolsPanel) {
-        exportBtn.onClick = async () => {
-            const { StatusDialog } = await import("./components/status-dialog.mjs")
-            let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
+        exportBtn.onClick = () => this.#exportStl(devTools)
+    }
 
-            try {
-                const documentName = this.#tabs.active!
-                const src = this.editor.getValue()
-                const handle = await window.showSaveFilePicker({
+    /** Export the current mesh to a binary STL. Shared by the toolbar Export button
+     *  and the dev-tools "Save STL" button. Uses the cached mesh when it matches the
+     *  current scene + tuning; otherwise re-renders it. Uses the File System Access
+     *  picker when available and falls back to a Blob anchor download (Safari et al.
+     *  have no `window.showSaveFilePicker`). */
+    async #exportStl(devTools: DevToolsPanel) {
+        const { StatusDialog } = await import("./components/status-dialog.mjs")
+        let statusDialog: import("./components/status-dialog.mjs").StatusDialog | null = null
+
+        try {
+            const documentName = this.#tabs.active!
+            const src = this.editor.getValue()
+            const hasPicker = typeof window.showSaveFilePicker === "function"
+            let handle: FileSystemFileHandle | null = null
+            if (hasPicker) {
+                handle = await window.showSaveFilePicker({
                     suggestedName: documentName,
                     startIn: "desktop",
                     types: [
@@ -1985,31 +2002,45 @@ class App {
                     ],
                     excludeAcceptAllOption: false,
                 })
-                const wantKey = this.#meshCacheKey(src, documentName, devTools)
-                const mesh =
-                    this.#meshViewerEnabled
-                    && this.#cachedMeshForExport
-                    && this.#cachedMeshForExportKey === wantKey
-                        ? this.#cachedMeshForExport
-                        : await this.renderer.renderMesh(src, documentName, this.#meshRenderOptionsForExport(devTools))
-                await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
-
-                statusDialog = new StatusDialog("Export successful")
-                await statusDialog.show()
-            } catch (err) {
-                if (`${err}`.includes("AbortError")) {
-                    return
-                }
-                if (`${err}`.includes("cancelled")) {
-                    statusDialog = new StatusDialog("Export cancelled")
-                    await statusDialog.show()
-                    return
-                }
-
-                const errorMsg = err instanceof Error ? err.message : String(err)
-                statusDialog = new StatusDialog(`Export failed: ${errorMsg}`)
-                await statusDialog.show()
             }
+            const wantKey = this.#meshCacheKey(src, documentName, devTools)
+            const mesh =
+                this.#meshViewerEnabled
+                && this.#cachedMeshForExport
+                && this.#cachedMeshForExportKey === wantKey
+                    ? this.#cachedMeshForExport
+                    : await this.renderer.renderMesh(src, documentName, this.#meshRenderOptionsForExport(devTools))
+
+            if (handle) {
+                await exportStlBinary(documentName, handle, mesh.verts, mesh.tris)
+            } else {
+                const bytes = stlBinaryBytes(documentName, mesh.verts, mesh.tris)
+                const fileName = `${documentName.replace(/\.gcad$/i, "")}.stl`
+                const url = URL.createObjectURL(new Blob([bytes], { type: "model/stl" }))
+                const a = document.createElement("a")
+                a.href = url
+                a.download = fileName
+                a.click()
+                // Revoking immediately can cancel the in-flight download in some
+                // browsers (notably Safari — the main no-picker case); wait it out.
+                setTimeout(() => URL.revokeObjectURL(url), 10_000)
+            }
+
+            statusDialog = new StatusDialog("Export successful")
+            await statusDialog.show()
+        } catch (err) {
+            if (`${err}`.includes("AbortError")) {
+                return
+            }
+            if (`${err}`.includes("cancelled")) {
+                statusDialog = new StatusDialog("Export cancelled")
+                await statusDialog.show()
+                return
+            }
+
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            statusDialog = new StatusDialog(`Export failed: ${errorMsg}`)
+            await statusDialog.show()
         }
     }
 

@@ -79,6 +79,9 @@ export class DevToolsPanel extends HTMLElement {
     /** Manual mesh re-export request (the "Re-export mesh" button). Mesh export no
      * longer auto-runs on scene edits or tuning changes — this is the only trigger. */
     onReExportRequest?: () => void
+    /** Save the current mesh to an STL file (the "Save STL" button). Re-uses the
+     * mesh cache; re-renders the mesh first when the cache is stale. */
+    onSaveStlRequest?: () => void
     onIsoSimplicialTuningChange?: (tuning: IsoSimplicialTuning) => void
     onMeshViewerOverlayChange?: (settings: GlobalSettings["meshViewer"]) => void
     /** Shared "render normals" lighting mode toggled from the mesh-export dev-tools panel. */
@@ -419,10 +422,18 @@ export class DevToolsPanel extends HTMLElement {
             "Mesh export no longer runs automatically on scene edits or tuning changes."
         reExportButton.addEventListener("click", () => this.onReExportRequest?.())
 
+        const saveStlButton = document.createElement("button")
+        saveStlButton.textContent = "Save STL"
+        saveStlButton.title =
+            "Export the current mesh to a binary STL file. Uses the cached mesh when it " +
+            "matches the current scene + tuning; otherwise re-renders it first."
+        saveStlButton.addEventListener("click", () => this.onSaveStlRequest?.())
+
         const meshExportSection = mkSection(
             "Mesh export",
             DEVTOOLS_COLLAPSE.panelMeshExport,
             reExportButton,
+            saveStlButton,
             this.#exporterSelect,
             mkNested("MDC mesh export", DEVTOOLS_COLLAPSE.panelMeshExportMdc, this.#mdcExportSection),
             mkNested("SHREC export", DEVTOOLS_COLLAPSE.panelMeshExportShrec, this.#shrecExportSection),

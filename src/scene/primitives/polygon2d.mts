@@ -293,7 +293,11 @@ export class Polygon2D extends Node {
 
     override build() {
         super.build()
-        this.bufferOffset = this.scene.allocPolygonVertices(this.vertices.length)
+        // Idempotent: the same Polygon2D instance may appear in multiple loft
+        // sections (reused wall/rim slices); allocate its shared-buffer region once.
+        if (this.bufferOffset < 0) {
+            this.bufferOffset = this.scene.allocPolygonVertices(this.vertices.length)
+        }
     }
 
     /** Per-vertex outward shading normals (computed once; `vertices` is immutable

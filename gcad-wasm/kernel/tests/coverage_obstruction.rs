@@ -64,7 +64,7 @@ fn actual_inputs(tree: &gcad_kernel::sdf::CsgNode) -> Vec<Value> {
                     visit(child, rows);
                 }
             }
-            CsgNode::Blend { .. } => unreachable!(),
+            CsgNode::Blend { .. } | CsgNode::Taper { .. } => unreachable!(),
         }
     }
     visit(tree, &mut rows);

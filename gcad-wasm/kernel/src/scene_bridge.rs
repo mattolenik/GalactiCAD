@@ -164,6 +164,19 @@ pub enum BridgeNode {
         sz: f64,
         arg: Box<BridgeNode>,
     },
+    /// Taper domain warp (`taper(ratio, height, node)` in the scene source):
+    /// scales XZ linearly with y — 1 at y=0, `ratio` at y=`height`, clamped
+    /// outside — acting in the frame accumulated at this node. The child walk
+    /// continues with the SAME baked similarity (leaves stay world-frame);
+    /// leaves under the warp are marked so feature compilation suppresses
+    /// their analytic carriers (field-only meshing under the warp).
+    Taper {
+        #[cfg_attr(feature = "serde", serde(default))]
+        node_id: i64,
+        ratio: f64,
+        height: f64,
+        arg: Box<BridgeNode>,
+    },
 
     // --- booleans ------------------------------------------------------------
     Union {
@@ -216,6 +229,7 @@ impl BridgeNode {
             | BridgeNode::Translate { node_id, .. }
             | BridgeNode::Rotate { node_id, .. }
             | BridgeNode::Scale { node_id, .. }
+            | BridgeNode::Taper { node_id, .. }
             | BridgeNode::Union { node_id, .. }
             | BridgeNode::Subtract { node_id, .. }
             | BridgeNode::Intersect { node_id, .. } => *node_id,
@@ -234,6 +248,7 @@ impl BridgeNode {
             BridgeNode::Translate { .. } => "translate",
             BridgeNode::Rotate { .. } => "rotate",
             BridgeNode::Scale { .. } => "scale",
+            BridgeNode::Taper { .. } => "taper",
             BridgeNode::Union { .. } => "union",
             BridgeNode::Subtract { .. } => "subtract",
             BridgeNode::Intersect { .. } => "intersect",
@@ -267,6 +282,19 @@ fn blend_mode_of(mode: Option<BridgeBlendMode>, union_family: bool) -> SminMode 
     }
 }
 
+/// Warp context accumulated down the walk: set once a Taper is crossed. A
+/// ratio-1 taper is the identity and leaves it untouched (carriers stay exact).
+#[derive(Clone, Copy)]
+struct WarpCtx {
+    warped: bool,
+    /// Product of `max(1, ratio)` over crossed tapers (leaf AABB inflation).
+    scale: f64,
+}
+
+impl WarpCtx {
+    const NONE: WarpCtx = WarpCtx { warped: false, scale: 1.0 };
+}
+
 struct WalkState {
     unsupported: Vec<UnsupportedNode>,
 }
@@ -283,32 +311,38 @@ impl WalkState {
 }
 
 /// A leaf at a baked similarity. Strata are attached in a later pass (left-to-right
-/// traversal of the built tree), so this only records shape/sim/pos.
-fn make_leaf(shape: Shape, sim: Similarity, pos: [f64; 3]) -> CsgNode {
-    sdf::leaf(shape, sim, pos)
+/// traversal of the built tree), so this only records shape/sim/pos (plus the
+/// accumulated warp context for feature suppression).
+fn make_leaf(shape: Shape, sim: Similarity, pos: [f64; 3], warp: WarpCtx) -> CsgNode {
+    let mut node = sdf::leaf(shape, sim, pos);
+    if let CsgNode::Leaf(l) = &mut node {
+        l.warped = warp.warped;
+        l.warp_scale = warp.scale;
+    }
+    node
 }
 
 /// Build operands in their ordinary orientation. Only subtraction complements
 /// its completed RHS; rewriting during traversal would apply De Morgan twice.
 /// Blend radii use the same accumulated world-space scale as their leaf fields.
-fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<CsgNode> {
+fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity, warp: WarpCtx) -> Option<CsgNode> {
     match node {
         // --- primitives ------------------------------------------------------
-        BridgeNode::Box { pos, half, .. } => Some(make_leaf(Shape::Cuboid { half: *half }, sim, *pos)),
-        BridgeNode::Sphere { pos, r, .. } => Some(make_leaf(Shape::Sphere { r: *r }, sim, *pos)),
+        BridgeNode::Box { pos, half, .. } => Some(make_leaf(Shape::Cuboid { half: *half }, sim, *pos, warp)),
+        BridgeNode::Sphere { pos, r, .. } => Some(make_leaf(Shape::Sphere { r: *r }, sim, *pos, warp)),
         BridgeNode::Cylinder { pos, r, h, fillet_top, fillet_bottom, chamfer_top, chamfer_bottom, .. } => {
             if *fillet_top != 0.0 || *fillet_bottom != 0.0 || *chamfer_top != 0.0 || *chamfer_bottom != 0.0 {
                 return state.reject(node, "cylinder fillet/chamfer (needs a torus carrier — v1.5)");
             }
-            Some(make_leaf(Shape::Cylinder { r: *r, h: *h }, sim, *pos))
+            Some(make_leaf(Shape::Cylinder { r: *r, h: *h }, sim, *pos, warp))
         }
-        BridgeNode::Cone { pos, r, h, .. } => Some(make_leaf(Shape::Cone { r: *r, h: *h }, sim, *pos)),
+        BridgeNode::Cone { pos, r, h, .. } => Some(make_leaf(Shape::Cone { r: *r, h: *h }, sim, *pos, warp)),
         BridgeNode::Extrude { pos, verts, h, twist_degrees, .. } => {
             let twist_rad = twist_degrees * std::f64::consts::PI / 180.0;
             let wind = winding_sign(verts);
             // Flatten to [x0,z0,x1,z1,…] (the Shape::Extrude layout).
             let flat: Vec<f64> = verts.iter().flat_map(|v| [v[0], v[1]]).collect();
-            Some(make_leaf(Shape::Extrude { verts: flat, wind, h: *h, twist_rad }, sim, *pos))
+            Some(make_leaf(Shape::Extrude { verts: flat, wind, h: *h, twist_rad }, sim, *pos, warp))
         }
         BridgeNode::Loft { pos, profiles, h, .. } => {
             if profiles.is_empty() {
@@ -323,7 +357,7 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
             let profs: Vec<Vec<f64>> =
                 profiles.iter().map(|pr| pr.iter().flat_map(|v| [v[0], v[1]]).collect()).collect();
             let winds: Vec<f64> = profiles.iter().map(|pr| winding_sign(pr)).collect();
-            Some(make_leaf(Shape::Loft { profs, winds, h: *h }, sim, *pos))
+            Some(make_leaf(Shape::Loft { profs, winds, h: *h }, sim, *pos, warp))
         }
         BridgeNode::Lathe { pos, verts, .. } => {
             for &[r, _] in verts {
@@ -341,17 +375,17 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
             if !edges.iter().any(|e| e.kind != LatheEdgeKind::None) {
                 return state.reject(node, "degenerate lathe profile (every edge on the revolution axis)");
             }
-            Some(make_leaf(Shape::Lathe { edges }, sim, *pos))
+            Some(make_leaf(Shape::Lathe { edges }, sim, *pos, warp))
         }
 
         // --- transforms ------------------------------------------------------
         BridgeNode::Translate { d, arg, .. } => {
             let child = Similarity::from_translation(d[0], d[1], d[2]);
-            walk(state, arg, Similarity::compose(&sim, &child))
+            walk(state, arg, Similarity::compose(&sim, &child), warp)
         }
         BridgeNode::Rotate { fwd, arg, .. } => {
             let child = Similarity::from_rotation_wgsl_fwd(fwd);
-            walk(state, arg, Similarity::compose(&sim, &child))
+            walk(state, arg, Similarity::compose(&sim, &child), warp)
         }
         BridgeNode::Scale { sx, sy, sz, arg, .. } => {
             if sx != sy || sy != sz {
@@ -364,12 +398,31 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
                 return state.reject(node, format!("negative/zero scale ({sx})"));
             }
             let child = Similarity::from_uniform_scale(*sx);
-            walk(state, arg, Similarity::compose(&sim, &child))
+            walk(state, arg, Similarity::compose(&sim, &child), warp)
+        }
+        // The warp acts in `sim`'s frame; the child walk continues with the
+        // same similarity so leaves stay world-frame. Ratio must stay positive
+        // (a taper crossing zero width has no regular field).
+        BridgeNode::Taper { ratio, height, arg, .. } => {
+            #[allow(clippy::neg_cmp_op_on_partial_ord)]
+            if !(ratio.is_finite() && *ratio > 0.0) {
+                return state.reject(node, format!("taper ratio must be finite and positive (got {ratio})"));
+            }
+            #[allow(clippy::neg_cmp_op_on_partial_ord)]
+            if !(height.is_finite() && *height > 0.0) {
+                return state.reject(node, format!("taper height must be finite and positive (got {height})"));
+            }
+            let warp = WarpCtx {
+                warped: warp.warped || *ratio != 1.0,
+                scale: warp.scale * ratio.max(1.0),
+            };
+            let child = walk(state, arg, sim, warp)?;
+            Some(CsgNode::Taper { ratio: *ratio, height: *height, sim, child: Box::new(child) })
         }
 
         // --- booleans (one completed-subtree complement for subtraction) -----
         BridgeNode::Union { children, radius, mode, n, .. } => {
-            let kids: Vec<CsgNode> = children.iter().filter_map(|c| walk(state, c, sim)).collect();
+            let kids: Vec<CsgNode> = children.iter().filter_map(|c| walk(state, c, sim, warp)).collect();
             if kids.len() != children.len() {
                 // A child failed; the error is already recorded — propagate None.
                 return None;
@@ -395,9 +448,9 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
             }
         }
         BridgeNode::Subtract { lh, rh, radius, mode, n, .. } => {
-            let l = walk(state, lh, sim);
+            let l = walk(state, lh, sim, warp);
             // A − B = max(A, −B), with B built without polarity rewriting.
-            let r = walk(state, rh, sim);
+            let r = walk(state, rh, sim, warp);
             let (l, r) = match (l, r) {
                 (Some(l), Some(r)) => (l, r),
                 (Some(only), None) | (None, Some(only)) => {
@@ -430,8 +483,8 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
             }
         }
         BridgeNode::Intersect { lh, rh, radius, mode, n, .. } => {
-            let l = walk(state, lh, sim);
-            let r = walk(state, rh, sim);
+            let l = walk(state, lh, sim, warp);
+            let r = walk(state, rh, sim, warp);
             let (l, r) = match (l, r) {
                 (Some(l), Some(r)) => (l, r),
                 (Some(only), None) | (None, Some(only)) => {
@@ -460,7 +513,9 @@ fn walk(state: &mut WalkState, node: &BridgeNode, sim: Similarity) -> Option<Csg
 }
 
 /// Columns and ColumnsI are not complement duals. Keep this rejection at the
-/// boundary so user input cannot reach the native negate assertion.
+/// boundary so user input cannot reach the native negate assertion. A taper
+/// warp commutes with complementation (its correction is positive), so it is
+/// transparent here.
 fn complement_supported(node: &CsgNode) -> bool {
     match node {
         CsgNode::Leaf(_) => true,
@@ -469,6 +524,7 @@ fn complement_supported(node: &CsgNode) -> bool {
             !matches!(mode, SminMode::Columns | SminMode::ColumnsI)
                 && children.iter().all(complement_supported)
         }
+        CsgNode::Taper { child, .. } => complement_supported(child),
     }
 }
 
@@ -494,6 +550,8 @@ fn attach_strata(node: &mut CsgNode, leaf_index: &mut usize, first_id: &mut usiz
                 attach_strata(c, leaf_index, first_id);
             }
         }
+        // build_leaf_strata already returns an empty list for warped leaves.
+        CsgNode::Taper { child, .. } => attach_strata(child, leaf_index, first_id),
     }
 }
 
@@ -503,7 +561,7 @@ fn attach_strata(node: &mut CsgNode, leaf_index: &mut usize, first_id: &mut usiz
 /// every offending node (mirroring `SfccUnsupportedError`).
 pub fn build_csg_tree(root: &BridgeNode) -> Result<CsgNode, SceneBridgeError> {
     let mut state = WalkState { unsupported: Vec::new() };
-    let csg = walk(&mut state, root, Similarity::identity());
+    let csg = walk(&mut state, root, Similarity::identity(), WarpCtx::NONE);
     if !state.unsupported.is_empty() {
         return Err(SceneBridgeError { unsupported: state.unsupported });
     }
@@ -612,6 +670,103 @@ mod tests {
         assert_eq!(err.unsupported.len(), 1);
         assert!(err.unsupported[0].reason.contains("non-uniform scale"));
         assert_eq!(err.unsupported[0].shape_type, "scale");
+    }
+
+    #[test]
+    fn taper_warps_the_child_and_marks_its_leaves() {
+        let scene = BridgeNode::Taper {
+            node_id: 1,
+            ratio: 0.5,
+            height: 10.0,
+            arg: Box::new(BridgeNode::Sphere { node_id: 0, pos: [0.0, 5.0, 0.0], r: 2.0 }),
+        };
+        let tree = build_csg_tree(&scene).unwrap();
+        match &tree {
+            CsgNode::Taper { ratio, height, child, .. } => {
+                assert_eq!((*ratio, *height), (0.5, 10.0));
+                let CsgNode::Leaf(l) = child.as_ref() else { panic!("leaf under warp") };
+                assert!(l.warped);
+                assert_eq!(l.warp_scale, 1.0, "narrowing warp needs no AABB inflation");
+                assert!(l.strata.is_empty(), "warped leaves get no carriers");
+            }
+            _ => panic!("expected a taper node"),
+        }
+        // Surface: at y=5 the sphere's radius-2 surface shrinks to 1.5.
+        assert!(tree.f([1.5, 5.0, 0.0]).abs() < 1e-12);
+        assert!(tree.f([1.6, 5.0, 0.0]) > 0.0);
+        // Below the band the warp is the identity.
+        assert!((tree.f([2.0, -3.0, 0.0]) - (2.0f64.hypot(8.0) - 2.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn taper_rejects_degenerate_parameters() {
+        for (ratio, height) in [(0.0, 10.0), (-0.5, 10.0), (f64::NAN, 10.0), (0.5, 0.0), (0.5, -1.0)] {
+            let scene = BridgeNode::Taper {
+                node_id: 1,
+                ratio,
+                height,
+                arg: Box::new(BridgeNode::Sphere { node_id: 0, pos: [0.0; 3], r: 1.0 }),
+            };
+            let err = build_csg_tree(&scene).unwrap_err();
+            assert_eq!(err.unsupported.len(), 1, "ratio {ratio}, height {height}");
+            assert!(err.unsupported[0].reason.contains("taper"));
+            assert_eq!(err.unsupported[0].shape_type, "taper");
+        }
+    }
+
+    #[test]
+    fn taper_under_a_rotate_acts_in_the_rotated_frame() {
+        // rz=90°: the baked similarity maps taper-local +y to world −x (the
+        // transpose convention pinned by `rotate_uses_wgsl_fwd_transpose`).
+        // Sphere r=1 at the origin: the taper scales its local XZ with y.
+        let fwd = [0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let scene = BridgeNode::Rotate {
+            node_id: 1,
+            fwd,
+            arg: Box::new(BridgeNode::Taper {
+                node_id: 2,
+                ratio: 2.0,
+                height: 10.0,
+                arg: Box::new(BridgeNode::Sphere { node_id: 0, pos: [0.0, 0.0, 0.0], r: 1.0 }),
+            }),
+        };
+        let tree = build_csg_tree(&scene).unwrap();
+        // Taper-local (0, 0.5, 0) sits inside the sphere (value −0.5; widening
+        // warp keeps correction 1) and maps to world (−0.5, 0, 0).
+        assert!((tree.f([-0.5, 0.0, 0.0]) + 0.5).abs() < 1e-12);
+        // Surface at local (a, 0.5, 0) where sqrt((a/s)² + 0.25) = 1 with
+        // s = 1.05 → a = 0.866·1.05 ≈ 0.9093 → world (−0.5, 0.9093, 0).
+        let a = (1.0f64 - 0.25).sqrt() * 1.05;
+        assert!(tree.f([-0.5, a, 0.0]).abs() < 1e-12);
+        assert!(tree.f([-0.5, a + 0.1, 0.0]) > 0.0);
+        // Below the band (local y < 0 ⇒ world +x): untapered sphere, radius 1.
+        assert!((tree.f([2.0, 0.0, 0.0]) - 1.0).abs() < 1e-12);
+        assert!((tree.f([0.5, 0.0, 0.0]) + 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn taper_over_a_subtract_keeps_complement_semantics() {
+        let scene = BridgeNode::Taper {
+            node_id: 2,
+            ratio: 0.5,
+            height: 10.0,
+            arg: Box::new(BridgeNode::Subtract {
+                node_id: 3,
+                lh: Box::new(BridgeNode::Box { node_id: 0, pos: [0.0, 5.0, 0.0], half: [2.0, 5.0, 2.0] }),
+                rh: Box::new(BridgeNode::Sphere { node_id: 1, pos: [0.0, 5.0, 0.0], r: 1.0 }),
+                radius: 0.0,
+                mode: None,
+                n: None,
+            }),
+        };
+        let tree = build_csg_tree(&scene).unwrap();
+        // At y=5 the warp scales XZ by 0.75: the carve opens to world radius
+        // 0.75 and the box walls sit at |xz| = 1.5. Solid ring 0.75 < |xz| < 1.5.
+        assert!(tree.f([0.0, 5.0, 0.0]) > 0.0, "center removed");
+        assert!(tree.f([0.5, 5.0, 0.0]) > 0.0, "still inside the carve");
+        assert!((tree.f([0.75, 5.0, 0.0])).abs() < 1e-12, "carve boundary");
+        assert!(tree.f([1.0, 5.0, 0.0]) < 0.0, "solid wall");
+        assert!(tree.f([1.6, 5.0, 0.0]) > 0.0, "outside the tapered box");
     }
 
     #[test]

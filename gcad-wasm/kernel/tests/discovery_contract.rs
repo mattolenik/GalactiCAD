@@ -231,6 +231,10 @@ fn co_scaled_scene_cube_padding_and_geometric_tolerances_keep_the_hidden_cell_un
                             transform(t, sim)
                         }
                     }
+                    CsgNode::Taper { sim: warp_sim, child, .. } => {
+                        *warp_sim = Similarity::compose(&sim, warp_sim);
+                        transform(child, sim)
+                    }
                 }
             }
             let sim = Similarity {

@@ -29,6 +29,7 @@ use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{
     build_octree, CellDecision, OctreeBuildOptions, ResumableOctreeBuild, SfccCell,
     SfccOctree,
+    Sheet,
 };
 use crate::sfcc::point_table::{PointKey, PointTable};
 use crate::sfcc::refine_criteria::{
@@ -79,6 +80,13 @@ pub struct PipelineTuning {
     pub project_max_iters: u32,
     pub re_refine_max_rounds: u32,
     pub check_vertex_links: bool,
+    /// Post-pass edge-collapse decimation: allowed surface deviation (mm); 0 = off.
+    pub decimate_tol_mm: f64,
+    /// Multi-sheet cells: a featureless cell keeps several smooth sheets, resolved
+    /// on its edges at the finest lattice spacing, instead of splitting below the
+    /// wall thickness (docs/feat/sfcc/multi-sheet-cells.md). Off keeps the
+    /// fixture-pinned refinement of the empty shell.
+    pub multi_sheet_cells: bool,
     // Feature-path knobs (M4c-2).
     pub tangential_epsilon: f64,
     pub feature_query_inflate: f64,
@@ -117,6 +125,8 @@ impl Default for PipelineTuning {
             project_max_iters: 8,
             re_refine_max_rounds: 2,
             check_vertex_links: true,
+            decimate_tol_mm: 0.0,
+            multi_sheet_cells: false,
             tangential_epsilon: 0.05,
             feature_query_inflate: 0.25,
             curve_chord_tol_mm: 0.02,
@@ -493,6 +503,10 @@ pub(crate) struct PipelineContext<'a> {
     max_depth: u32,
     total_size: f64,
     tree: &'a CsgNode,
+    /// [`PipelineTuning::multi_sheet_cells`] and the sheet floor (the level at which
+    /// a straddling same-sign featureless cell stops refining the empty shell).
+    multi_sheet: bool,
+    sheet_floor: u32,
     /// Coarse-region pruned views, keyed by `OCTREE_PRUNE_LEVEL` ancestor and reused
     /// across every leaf under that ancestor — amortizes the `O(tree²)` `prune_to_box`
     /// build (the cost that sank the per-cell Lever 1). Lazy. Mirrors the coarse contour
@@ -579,7 +593,7 @@ impl<'a> PipelineContext<'a> {
             // Only a cell containing the corner may fan from it. Claiming a
             // nearby external corner at the depth ceiling creates overlapping
             // fans and four-way edges when neighboring cells make the same claim.
-            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None };
         }
         if forced_split(forced, cell, lat, self.total_size) {
             #[cfg(feature = "sfcc-profile")]
@@ -587,7 +601,7 @@ impl<'a> PipelineContext<'a> {
             // Forced split discards the cell (tags unused below max_depth; a
             // degenerate forced cell at max_depth carried no cls tags in the serial
             // path either, so keep them unset).
-            return CellDecision { split: true, feature_curve: -1, feature_corner: -1 };
+            return CellDecision { split: true, feature_curve: -1, feature_corner: -1, sheet: Sheet::None };
         }
         // Coarse-region prune: one pruned view per OCTREE_PRUNE_LEVEL ancestor, reused
         // across all leaves under it — every certificate eval (center f + per-stratum /
@@ -618,23 +632,32 @@ impl<'a> PipelineContext<'a> {
         if discovery_guard(self.tree, &probe).needs_split() {
             #[cfg(feature = "sfcc-profile")]
             super::diagnosis::decision(cell, "discovery", true, cls.curve, cls.corner);
-            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None };
         }
         if cls.corner >= 0 {
             #[cfg(feature = "sfcc-profile")]
             super::diagnosis::decision(cell, "corner_exemption", false, cls.curve, cls.corner);
             // Corner features exempt sampled smoothness, but never discovery.
-            return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
+            return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None };
         }
         if cls.curve >= 0 && !has_corner_sign_change(&probe) {
             #[cfg(feature = "sfcc-profile")]
             super::diagnosis::decision(cell, "feature_without_root_corner_sign_change", true, cls.curve, cls.corner);
-            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None };
+        }
+        if self.multi_sheet && cls.curve < 0 && cls.corner < 0 {
+            if let Some((split, sheet)) = super::refine_criteria::sheet_decision(
+                q, lat, sample, &probe, cell, self.smooth_opts.normal_variation_cos, self.sheet_floor,
+            ) {
+                #[cfg(feature = "sfcc-profile")]
+                super::diagnosis::decision(cell, "sheet_decision", split, -1, -1);
+                return CellDecision { split, feature_curve: -1, feature_corner: -1, sheet };
+            }
         }
         let split = needs_split_smooth_after_discovery(q, &probe, &self.smooth_opts, self.grad_bound, self.has_blend);
         #[cfg(feature = "sfcc-profile")]
         super::diagnosis::decision(cell, if split { "smooth_rejection" } else { "smooth_pass" }, split, cls.curve, cls.corner);
-        CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
+        CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None }
     }
 
     /// Build the tagged octree (round 0, empty forced markers) using this context's
@@ -651,6 +674,7 @@ impl<'a> PipelineContext<'a> {
                 depth_min: tuning.depth_min,
                 depth_max: self.max_depth,
                 enforce_edge_balance: tuning.enforce_edge_balance,
+                multi_sheet_cells: tuning.multi_sheet_cells,
             },
             |cell, sampler| self.decide_cell(cell, &|gx, gy, gz| sampler.sample_at(gx, gy, gz), &forced),
         )
@@ -698,6 +722,7 @@ impl<'a> PipelineContext<'a> {
             depth_min: tuning.depth_min,
             depth_max: self.max_depth,
             enforce_edge_balance: tuning.enforce_edge_balance,
+            multi_sheet_cells: tuning.multi_sheet_cells,
         };
         ResumableOctreeBuild::begin(self.tree, &self.lat, &opts)
     }
@@ -759,8 +784,10 @@ pub(crate) fn build_pipeline_context<'a>(
     let jx = (std::f64::consts::SQRT_2 - 1.0) * 0.25 * step;
     let jy = (3.0f64.sqrt() - 1.0) * 0.25 * step;
     let jz = (5.0f64.sqrt() - 2.0) * 0.25 * step;
+    // The lattice runs SHEET_EXTRA_DEPTH levels past the refinement ceiling so a
+    // ceiling cell hiding a sub-step sheet can still split (octree.rs).
     let lat: SfccLattice = make_lattice(
-        tuning.depth_max,
+        (tuning.depth_max + crate::sfcc::octree::SHEET_EXTRA_DEPTH).min(crate::tuning::SFCC_MAX_DEPTH),
         cube.min_x - pad - jx,
         cube.min_y - pad - jy,
         cube.min_z - pad - jz,
@@ -804,6 +831,7 @@ pub(crate) fn build_pipeline_context<'a>(
             1.0 // ≥1 disables (iii-d)
         },
         normal_variation_analytic: tuning.normal_variation_analytic,
+        orientation_cone: tuning.multi_sheet_cells,
     };
     let feature_opts = FeatureCriteriaOptions {
         feature_query_inflate: tuning.feature_query_inflate,
@@ -822,6 +850,8 @@ pub(crate) fn build_pipeline_context<'a>(
         max_depth,
         total_size,
         tree,
+        multi_sheet: tuning.multi_sheet_cells,
+        sheet_floor: max_depth.saturating_sub(crate::sfcc::octree::SHEET_EXTRA_DEPTH).max(tuning.depth_min),
         coarse: std::cell::RefCell::new(std::collections::HashMap::new()),
         classifications: std::cell::RefCell::new(HashMap::new()),
     }
@@ -1243,6 +1273,7 @@ fn run_sfcc_pipeline_impl(
             depth_min: tuning.depth_min,
             depth_max: max_depth,
             enforce_edge_balance: tuning.enforce_edge_balance,
+            multi_sheet_cells: tuning.multi_sheet_cells,
         };
         // The full feature-aware needsSplit, mirroring runSfccPipeline. Delegates
         // to `ctx.decide_cell` — the SINGLE source of truth shared with the worker
@@ -1331,7 +1362,7 @@ fn run_sfcc_pipeline_impl(
         points = PointTable::new();
         let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
         let fc_opts =
-            FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
+            FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull, multi_sheet: tuning.multi_sheet_cells };
         let cm_opts = CellMeshOptions {
             surface_tol: tuning.surface_tol_mm,
             interior_vertex_mode: tuning.interior_vertex_mode,
@@ -1485,7 +1516,12 @@ fn run_sfcc_pipeline_impl(
     // earlier cell mesher fail. Re-running the same edit cannot restore it.
     let withdrawn=super::local_coverage::failed_cells(&points).iter().filter(|c|
         !c.degenerate&&!cell_result.failed_cells.iter().any(|old|old.level==c.level&&old.key==c.key)).count();
-    let (verts, out_tris) = points.build_mesh(&refined);
+    let (mut verts, mut out_tris) = points.build_mesh(&refined);
+    if tuning.decimate_tol_mm > 0.0 {
+        emit(4, "Decimating");
+    }
+    let decimation = super::decimate::decimate(tree, &mut verts, &mut out_tris, tuning.decimate_tol_mm);
+    if crate::sfcc::cancel::is_cancelled() { return cancelled_pipeline_result(); }
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
     let stats = SfccStats {
@@ -1537,7 +1573,7 @@ fn run_sfcc_pipeline_impl(
     emit(SFCC_PHASE_COUNT, "Done");
 
     SfccPipelineResult {
-        feature_edges: points.compacted_curve_edges(&refined),
+        feature_edges: super::decimate::remap_curve_edges(points.compacted_curve_edges(&refined), &decimation.remap),
         verts,
         tris: out_tris,
         stats,
@@ -1636,7 +1672,7 @@ mod recovery_cache_tests {
 
         let oct = crate::sfcc::octree::build_octree_feature_aware(
             &tree, &ctx.lat,
-            OctreeBuildOptions { depth_min: 1, depth_max: 1, enforce_edge_balance: false },
+            OctreeBuildOptions { depth_min: 1, depth_max: 1, enforce_edge_balance: false, multi_sheet_cells: false },
             &ctx.features, &ctx.feature_opts, &ctx.smooth_opts,
         );
         let leaf = oct.leaves.iter().find(|c| c.ix == 0 && c.iy == 0 && c.iz == 0).unwrap();

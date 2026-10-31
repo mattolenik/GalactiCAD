@@ -134,6 +134,7 @@ fn collect_leaves<'a>(node: &'a CsgNode, out: &mut Vec<&'a Leaf>) {
                 collect_leaves(c, out);
             }
         }
+        CsgNode::Taper { child, .. } => collect_leaves(child, out),
     }
 }
 
@@ -867,6 +868,12 @@ fn build_sphere_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64) 
 /// `compile_native_features` and the seam tree view ([`crate::sfcc::tree`]) so
 /// stratum ids agree across both. Extrude/Loft/Lathe strata are M4c+.
 pub fn build_leaf_strata(leaf: &Leaf, leaf_index: usize, first_id: usize) -> Vec<Stratum> {
+    // A taper warp sits above this leaf: the analytic carriers below describe
+    // the UNWARPED child surface and would misguide projection/tracing. Mesh
+    // such regions by field refinement only (see docs/feat/sfcc/taper.md).
+    if leaf.warped {
+        return Vec::new();
+    }
     match &leaf.shape {
         Shape::Cuboid { half } => build_box_strata(leaf, leaf_index, first_id, *half),
         Shape::Sphere { r } => build_sphere_strata(leaf, leaf_index, first_id, *r),
@@ -1473,6 +1480,40 @@ pub fn compile_native_features(root: &CsgNode) -> SfccFeatureSet {
 
     for (leaf_index, leaf) in leaves.iter().enumerate() {
         let first_id = all_strata.len();
+        // Taper-covered leaf: no analytic strata/curves (the carriers describe
+        // the unwarped child surface). Track the diagonal (inflated by the
+        // warp bound) so relative tolerances stay sane; the surface meshes by
+        // field refinement.
+        if leaf.warped {
+            if let Shape::Cuboid { half } = &leaf.shape {
+                let half = *half;
+                let [cx, cy, cz] = leaf.pos;
+                let [hx, hy, hz] = half;
+                let mut corner_pos = [[0.0f64; 3]; 8];
+                for (i, cp) in corner_pos.iter_mut().enumerate() {
+                    *cp = leaf.sim.apply_point(
+                        cx + if i & 1 != 0 { hx } else { -hx },
+                        cy + if i & 2 != 0 { hy } else { -hy },
+                        cz + if i & 4 != 0 { hz } else { -hz },
+                    );
+                }
+                // Each warped corner moves by at most (k−1)·diag, so a pair
+                // stretches by at most (2k−1)· its unwarped distance.
+                let factor = (2.0 * leaf.warp_scale - 1.0).max(1.0);
+                for a in 0..8 {
+                    for b in (a + 1)..8 {
+                        let d = (corner_pos[a][0] - corner_pos[b][0])
+                            .hypot(corner_pos[a][1] - corner_pos[b][1])
+                            .hypot(corner_pos[a][2] - corner_pos[b][2])
+                            * factor;
+                        if d > diag {
+                            diag = d;
+                        }
+                    }
+                }
+            }
+            continue;
+        }
         match &leaf.shape {
             Shape::Cuboid { half } => {
                 let half = *half;

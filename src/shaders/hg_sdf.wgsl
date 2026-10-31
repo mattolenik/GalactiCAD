@@ -2426,7 +2426,18 @@ fn sdfTaperFast(r: FastSDFResult, p: vec3f, ratio: f32, height: f32) -> FastSDFR
     // Only correct when s < 1 (narrowing taper overestimates).
     // When s >= 1 (widening), the SDF is conservative or exact.
     let correction = min(s, 1.0);
-    return sdfFast(r.d * correction, r.g / correction, r.safeStepMul);
+    // The warp Jacobian J = d(q)/d(p) also couples y into XZ inside the taper
+    // band (dq.x/dy = -p.x * ds/dy / s^2, same for z), so the composite field's
+    // Lipschitz constant is sigma_max(J) >= 1 even for widening tapers. Bound it
+    // via the induced norms (sigma_max <= sqrt(||J||_inf * ||J||_1)) and shrink
+    // the march-step multiplier accordingly, or full-size child steps overshoot
+    // the surface and burn iterations recovering.
+    let bandDelta = select(0.0, abs(ratio - 1.0), p.y > 0.0 && p.y < height);
+    let delta = bandDelta / (s * s * height);
+    let rowInf = max(1.0, 1.0 / s + delta * max(abs(p.x), abs(p.z)));
+    let colOne = 1.0 + delta * (abs(p.x) + abs(p.z));
+    let sig = sqrt(rowInf * colOne);
+    return sdfFast(r.d * correction, r.g / correction, r.safeStepMul / max(sig, 1.0));
 }
 
 // Taper Ex: convert the child's q-space gradient to world space at p.

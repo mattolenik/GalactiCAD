@@ -18,6 +18,7 @@ fn prepared(mut tree: CsgNode) -> CsgNode {
             }
             CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter_mut().for_each(|c| walk(c, li, fi)),
             CsgNode::Blend { children, .. } => children.iter_mut().for_each(|c| walk(c, li, fi)),
+            CsgNode::Taper { child, .. } => walk(child, li, fi),
         }
     }
     let (mut li, mut fi) = (0usize, 0usize);

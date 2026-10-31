@@ -14,6 +14,7 @@
 
 #![cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 
+use crate::math::similarity::Similarity;
 use crate::primitives::smin::SminMode;
 use crate::sdf::{BlendKind, CsgNode, Leaf, Pruned, Shape};
 use super::field_branches::{sample_blend, sample_leaf, FieldSample};
@@ -189,6 +190,7 @@ enum View<'a, N> {
     Min(&'a [N]),
     Max(&'a [N]),
     Blend { kind: BlendKind, mode: SminMode, r: f64, n: f64, children: &'a [N] },
+    Taper { sim: &'a Similarity, ratio: f64, height: f64, child: &'a N },
 }
 
 trait SimdNode: Sized {
@@ -204,6 +206,9 @@ impl SimdNode for CsgNode {
             CsgNode::Blend { kind, mode, r, n, children } => {
                 View::Blend { kind: *kind, mode: *mode, r: *r, n: *n, children }
             }
+            CsgNode::Taper { ratio, height, sim, child } => {
+                View::Taper { sim, ratio: *ratio, height: *height, child }
+            }
         }
     }
 }
@@ -216,6 +221,9 @@ impl SimdNode for Pruned<'_> {
             Pruned::Max(c) => View::Max(c),
             Pruned::Blend { kind, mode, r, n, children } => {
                 View::Blend { kind: *kind, mode: *mode, r: *r, n: *n, children }
+            }
+            Pruned::Taper { ratio, height, sim, child } => {
+                View::Taper { sim, ratio: *ratio, height: *height, child }
             }
         }
     }
@@ -296,6 +304,29 @@ fn grad_x2<N: SimdNode>(node: &N, p0: [f64; 3], p1: [f64; 3]) -> GradX2 {
             let a = blend(a0, b0);
             let b = blend(a1, b1);
             (f64x2(a.value, b.value), std::array::from_fn(|k| f64x2(a.gradient[k], b.gradient[k])))
+        }
+        View::Taper { sim, ratio, height, child } => {
+            // Warp each lane's point, recurse, then compose per lane with the
+            // shared scalar taper differential (same lane-compose pattern as
+            // the blend arm above). Note: `view()` returns an owned View, so
+            // ratio/height bind by value (this module builds for wasm only —
+            // native checks don't compile it; `make build` is the gate).
+            let (q0, s0) = crate::sdf::taper::warp_point(sim, ratio, height, p0);
+            let (q1, s1) = crate::sdf::taper::warp_point(sim, ratio, height, p1);
+            let (a0, a1) = unpack(grad_x2(child, q0, q1));
+            let compose = |p: [f64; 3], s: f64, a: (f64, [f64; 3])| {
+                super::field_branches::compose_taper_sample(
+                    sim,
+                    ratio,
+                    height,
+                    p,
+                    s,
+                    FieldSample { value: a.0, gradient: a.1 },
+                )
+            };
+            let c0 = compose(p0, s0, a0);
+            let c1 = compose(p1, s1, a1);
+            (f64x2(c0.value, c1.value), std::array::from_fn(|k| f64x2(c0.gradient[k], c1.gradient[k])))
         }
     }
 }

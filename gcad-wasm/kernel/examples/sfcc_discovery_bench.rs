@@ -28,6 +28,7 @@ fn prepared(mut t: CsgNode) -> CsgNode {
                     attach(c, first)
                 }
             }
+            CsgNode::Taper { child, .. } => attach(child, first),
         }
     }
     t.assign_leaf_indices();

@@ -22,6 +22,7 @@ fn prepared(mut tree: CsgNode) -> CsgNode {
                 *leaf_index += 1;
                 leaf.strata = strata;
             }
+            CsgNode::Taper { child, .. } => attach(child, leaf_index, first_id),
             CsgNode::Min(children) | CsgNode::Max(children) | CsgNode::Blend { children, .. } => {
                 children
                     .iter_mut()

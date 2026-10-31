@@ -91,11 +91,14 @@ pub struct FaceContourOptions<'a> {
     /// Root-interval zero exclusion in `recovered_crossings_for`; supported hard
     /// sphere/box fields use checked bounds, other families retain legacy estimates.
     pub recovery_cull: bool,
+    /// Multi-sheet cells (docs/feat/sfcc/multi-sheet-cells.md): faces with four or
+    /// more untagged crossings pair them by agreeing field normals.
+    pub multi_sheet: bool,
 }
 
 impl Default for FaceContourOptions<'_> {
     fn default() -> Self {
-        FaceContourOptions { root_tol: 0.0, features: None, recovery_cull: true }
+        FaceContourOptions { root_tol: 0.0, features: None, recovery_cull: true, multi_sheet: false }
     }
 }
 
@@ -949,6 +952,42 @@ fn contour_face(
         }
     }
 
+    // Multi-sheet faces: a thin wall crossing the face gives four crossings whose
+    // run-rule pairing depends on the face centre landing inside the wall. Pair
+    // instead by repeatedly taking the boundary-adjacent enter/exit pair whose
+    // field normals agree best (a wall's two faces point opposite ways). Adjacent
+    // removal keeps the pairing non-crossing for any number of sheets.
+    if opts.multi_sheet && n >= 4 && node_stratum.is_empty() {
+        let normal = |id: usize| [points.nx(id), points.ny(id), points.nz(id)];
+        let mut alive: Vec<usize> = (0..n).collect();
+        while alive.len() >= 2 {
+            let m = alive.len();
+            let mut best = (f64::NEG_INFINITY, usize::MAX);
+            for k in 0..m {
+                let (i, j) = (alive[k], alive[(k + 1) % m]);
+                if crossings[i].enter == crossings[j].enter {
+                    continue;
+                }
+                let (a, b) = (normal(crossings[i].id), normal(crossings[j].id));
+                let score = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+                if score > best.0 {
+                    best = (score, k);
+                }
+            }
+            if best.1 == usize::MAX {
+                break; // not alternating: leave the rest to the run rule
+            }
+            let k = best.1;
+            let (i, j) = (alive[k], alive[(k + 1) % m]);
+            let (exit, enter) = if crossings[i].enter { (j, i) } else { (i, j) };
+            matched_enter[enter] = true;
+            partner_of.insert(exit, crossings[enter].id);
+            let (hi, lo) = if k + 1 == m { (k, 0) } else { (k + 1, k) };
+            alive.remove(hi);
+            alive.remove(lo);
+        }
+    }
+
     // Pass 2: everything else pairs by the run rule, over still-unmatched enters.
     // (Index-coupled: `partner_of`/`matched_enter` are keyed by crossing index.)
     #[allow(clippy::needless_range_loop)]
@@ -1076,7 +1115,158 @@ fn contour_face(
         }
     }
 
+    if opts.multi_sheet && record.pins.is_empty() && !record.interior_cycle && node_stratum.is_empty() {
+        split_at_creases(&mut record, q, points, lat, [gx, gy, gz], opts.root_tol);
+    }
+
     record
+}
+
+/// Untagged creases (a faceted loft, a tapered polygon): when the tangent planes
+/// at a segment's two crossings meet on the surface inside the face, the segment
+/// bends there. Route it through that point so the face polyline follows the
+/// crease and `triangulate_loop` can cut the cell along it. A segment that
+/// crosses several creases is halved at a surface point, keeping the halves
+/// only if one of them finds a crease. On a smooth surface the tangent planes
+/// meet off the surface and nothing changes.
+fn split_at_creases(
+    record: &mut FaceRecord,
+    q: &dyn SdfQuery,
+    points: &mut PointTable,
+    lat: &SfccLattice,
+    g: [i64; 3],
+    root_tol: f64,
+) {
+    let min_w = point_to_world(lat, g[0], g[1], g[2]);
+    let face = Face { axis: record.axis, uv: face_axes(record.axis), min_w, ext: record.len as f64 * lat.step, snap: 0.05 * lat.step, q, tol: root_tol * 8.0 };
+    let mut i = 0;
+    while i < record.segments.len() {
+        let FaceSegment { a, b } = record.segments[i];
+        let at = |id: usize| ([points.x(id), points.y(id), points.z(id)], [points.nx(id), points.ny(id), points.nz(id)]);
+        let (mut bends, mut tagged) = (Vec::new(), Vec::new());
+        let ends = ((at(a).0, at(a).1, "A".to_string()), (at(b).0, at(b).1, "B".to_string()));
+        face.bends(ends.0, ends.1, 3, &mut String::new(), &mut bends, &mut tagged);
+        let prefix = format!("{}:{}:{}:{}", record.axis, record.key, point_merge_token(points, a), point_merge_token(points, b));
+        for (label, id) in [("A", a), ("B", b)] {
+            if tagged.iter().any(|t| t == label) {
+                points.creases.insert(id);
+            }
+        }
+        let mut prev = a;
+        for (crease, path, p, n) in bends {
+            let crease = crease || tagged.iter().any(|t| *t == format!("m{path}"));
+            let kind = if crease { "crease" } else { "bend" };
+            let id = points.get_or_create_str(&format!("{kind}:{prefix}:{path}"), || [p[0], p[1], p[2], n[0], n[1], n[2]]);
+            if crease {
+                points.creases.insert(id);
+            }
+            record.segments[i] = FaceSegment { a: prev, b: id };
+            record.segments.insert(i + 1, FaceSegment { a: id, b });
+            record.consumed_fwd.push(0);
+            record.consumed_rev.push(0);
+            prev = id;
+            i += 1;
+        }
+        i += 1;
+    }
+}
+
+struct Face<'a> {
+    axis: usize,
+    uv: [usize; 2],
+    min_w: [f64; 3],
+    ext: f64,
+    /// A crease this close to a segment end runs through that end.
+    snap: f64,
+    q: &'a dyn SdfQuery,
+    tol: f64,
+}
+
+type Bend = (bool, String, [f64; 3], [f64; 3]);
+/// Position, normal, label: "A" / "B" for the segment ends, "m<path>" for a midpoint.
+type End = ([f64; 3], [f64; 3], String);
+
+impl Face<'_> {
+    fn inside(&self, p: [f64; 3]) -> bool {
+        self.uv.iter().all(|&k| p[k] > self.min_w[k] && p[k] < self.min_w[k] + self.ext)
+    }
+
+    /// Interior points of the face polyline from `a` to `b`, in order: crease
+    /// points and the surface midpoints that separate them. A crease that
+    /// passes through an end (within `snap`) tags that end instead.
+    fn bends(&self, a: End, b: End, depth: u32, path: &mut String, out: &mut Vec<Bend>, tagged: &mut Vec<String>) {
+        let [u, v] = self.uv;
+        let ((pa, na, _), (pb, nb, _)) = (&a, &b);
+        let (pa, na, pb, nb) = (*pa, *na, *pb, *nb);
+        // In-face lines n·(x − p) = 0 with x[axis] fixed: solve for (x_u, x_v).
+        let (la, lb) = (na[u].hypot(na[v]), nb[u].hypot(nb[v]));
+        let det = na[u] * nb[v] - na[v] * nb[u];
+        if !(la > 1e-12 && lb > 1e-12 && det.abs() >= la * lb * 0.0175) {
+            return; // parallel within ~1°
+        }
+        let ra = na[u] * pa[u] + na[v] * pa[v];
+        let rb = nb[u] * pb[u] + nb[v] * pb[v];
+        let mut c = pa;
+        c[u] = (ra * nb[v] - rb * na[v]) / det;
+        c[v] = (na[u] * rb - nb[u] * ra) / det;
+        let (du, dv) = (pb[u] - pa[u], pb[v] - pa[v]);
+        let t = ((c[u] - pa[u]) * du + (c[v] - pa[v]) * dv) / (du * du + dv * dv);
+        if self.q.f(c).abs() <= self.tol {
+            let dist = |p: [f64; 3]| (c[u] - p[u]).hypot(c[v] - p[v]);
+            if dist(pa) <= self.snap || dist(pb) <= self.snap {
+                tagged.push(if dist(pa) <= dist(pb) { a.2 } else { b.2 });
+                return;
+            }
+            // A corner just past the face boundary (the crease runs along a
+            // lattice edge): pin it to the boundary.
+            let mut cc = c;
+            for k in [u, v] {
+                cc[k] = c[k].clamp(self.min_w[k], self.min_w[k] + self.ext);
+            }
+            if dist(cc) <= self.snap && t > 0.0 && t < 1.0 && self.q.f(cc).abs() <= self.tol {
+                out.push((true, path.clone(), cc, self.q.grad(cc).1));
+                return;
+            }
+        }
+        if depth == 0 {
+            return;
+        }
+        // Midpoint Newton-projected within the face plane.
+        let mut m: [f64; 3] = std::array::from_fn(|k| 0.5 * (pa[k] + pb[k]));
+        for _ in 0..12 {
+            let s = self.q.field_sample(m);
+            let g2 = s.gradient[u].powi(2) + s.gradient[v].powi(2);
+            if !(s.value.is_finite() && g2.is_finite() && g2 > 1e-20) || s.value.abs() <= self.tol * 0.125 {
+                break;
+            }
+            m[u] -= s.value * s.gradient[u] / g2;
+            m[v] -= s.value * s.gradient[v] / g2;
+        }
+        if !(self.inside(m) && self.q.f(m).abs() <= self.tol) {
+            return;
+        }
+        debug_assert_eq!(m[self.axis], pa[self.axis]);
+        let mid: End = (m, self.q.grad(m).1, format!("m{path}"));
+        let (start, tags) = (out.len(), tagged.len());
+        path.push('l');
+        self.bends(a, mid.clone(), depth - 1, path, out, tagged);
+        path.pop();
+        let left = out.len();
+        path.push('r');
+        let mut right = Vec::new();
+        self.bends(mid.clone(), b, depth - 1, path, &mut right, tagged);
+        path.pop();
+        if left == start && right.is_empty() && tagged.len() == tags {
+            return;
+        }
+        out.push((false, path.clone(), mid.0, mid.1));
+        out.extend(right);
+    }
+}
+
+/// Face points made by [`split_at_creases`].
+pub(crate) fn is_crease_point(points: &PointTable, id: usize) -> bool {
+    points.creases.contains(&id)
 }
 
 /// A closed face contour can have feature pins without any boundary crossings.

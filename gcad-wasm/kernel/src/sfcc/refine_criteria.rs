@@ -98,6 +98,172 @@ pub fn make_probe<F: Fn(i64, i64, i64) -> f64, T: SdfQuery + ?Sized>(
         whole_cell_box: crate::math::grid::cell_enclosure(lat,level,ix,iy,iz) }
 }
 
+/// Multi-sheet detection for a FEATURELESS cell (docs/feat/sfcc/multi-sheet-cells.md).
+/// Walks the twelve edges at the finest lattice spacing. `None` means the
+/// ordinary criteria decide (a single sheet seen by the corners, or nothing
+/// finer to look at); `Some((split, verdict))` is final.
+pub(crate) fn sheet_decision<T: SdfQuery + ?Sized, S: Fn(i64, i64, i64) -> f64>(
+    tree: &T,
+    lat: &SfccLattice,
+    sample: &S,
+    probe: &RefineProbe,
+    cell: &crate::sfcc::octree::SfccCell,
+    min_cos: f64,
+    sheet_floor: u32,
+) -> Option<(bool, crate::sfcc::octree::Sheet)> {
+    use crate::sfcc::octree::Sheet;
+    let stride = stride_at_level(lat, cell.level);
+    if stride < 2 {
+        return None;
+    }
+    let corner_sign_change = has_corner_sign_change(probe);
+    let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
+    // Every sign change along the edges: cell-relative lattice position (the
+    // sub-segment midpoint, so never a cell corner) and world position.
+    let mut crossings: Vec<([f64; 3], [f64; 3])> = Vec::new();
+    let mut multi = false;
+    for axis in 0..3 {
+        let (b, c) = ((axis + 1) % 3, (axis + 2) % 3);
+        for ob in 0..2i64 {
+            for oc in 0..2i64 {
+                let mut g = base;
+                g[b] += ob * stride;
+                g[c] += oc * stride;
+                let mut prev = sample(g[0], g[1], g[2]) < 0.0;
+                let mut count = 0u32;
+                for k in 1..=stride {
+                    let mut h = g;
+                    h[axis] += k;
+                    let neg = sample(h[0], h[1], h[2]) < 0.0;
+                    if neg != prev {
+                        count += 1;
+                        let mut m = g;
+                        m[axis] += k - 1;
+                        let w0 = point_to_world(lat, m[0], m[1], m[2]);
+                        let w1 = point_to_world(lat, h[0], h[1], h[2]);
+                        let mut rel = [0.0; 3];
+                        rel[axis] = k as f64 - 0.5;
+                        rel[b] = (ob * stride) as f64;
+                        rel[c] = (oc * stride) as f64;
+                        crossings.push((rel, [(w0[0] + w1[0]) * 0.5, (w0[1] + w1[1]) * 0.5, (w0[2] + w1[2]) * 0.5]));
+                    }
+                    prev = neg;
+                }
+                if count >= 2 {
+                    multi = true;
+                }
+            }
+        }
+    }
+    if crossings.is_empty() {
+        if corner_sign_change {
+            return None;
+        }
+        // Same-sign corners, nothing on the edges: the straddle rule, stopped at
+        // the sheet floor once the child corners agree with the corners too.
+        let Some((c, h)) = probe.whole_cell_box() else { return Some((true, Sheet::None)); };
+        let (lo, hi) = tree.interval_over_box(c, h);
+        if lo > 0.0 || hi < 0.0 {
+            return Some((false, Sheet::None));
+        }
+        if cell.level < sheet_floor {
+            #[cfg(feature = "sfcc-profile")]
+            super::diagnosis::reason("same_sign_root_interval", None);
+            return Some((true, Sheet::None));
+        }
+        let half = stride / 2;
+        let corner_neg = probe.f[0] < 0.0;
+        for dx in 0..3i64 {
+            for dy in 0..3i64 {
+                for dz in 0..3i64 {
+                    let g = [base[0] + dx * half, base[1] + dy * half, base[2] + dz * half];
+                    if (sample(g[0], g[1], g[2]) < 0.0) != corner_neg {
+                        return Some((true, Sheet::None));
+                    }
+                }
+            }
+        }
+        return Some((false, Sheet::Unresolved));
+    }
+    if corner_sign_change && !multi {
+        return None;
+    }
+    // Several sheets: keep the cell only if they are near-parallel (orientation
+    // cone: a wall's two faces point opposite ways) and every one passes through:
+    // on each face the crossings must pair, the way face contouring pairs them,
+    // into same-facing pairs. A forced opposite-facing pair means a sheet ends
+    // inside the cell (a rim top too narrow for any edge to hit): split like any
+    // curved cell.
+    let mut normals: Vec<[f64; 3]> = Vec::with_capacity(crossings.len());
+    for (_, p) in &crossings {
+        let (_, g) = tree.grad(*p);
+        let l = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+        if !(l >= 1e-12 && l.is_finite()) {
+            return Some((true, Sheet::None));
+        }
+        normals.push([g[0] / l, g[1] / l, g[2] / l]);
+    }
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let cone_fails = min_cos < 1.0
+        && normals.iter().enumerate().any(|(i, a)| normals[i + 1..].iter().any(|b| dot(*a, *b).abs() < min_cos));
+    if cone_fails || !faces_pair_same_facing(&crossings, &normals, stride as f64) {
+        #[cfg(feature = "sfcc-profile")]
+        super::diagnosis::reason("sheet_junction", None);
+        return Some((true, Sheet::None));
+    }
+    Some((false, Sheet::Keep))
+}
+
+/// Per cell face, walk the boundary crossings in cyclic order and pair adjacent
+/// ones greedily by agreeing normal (the contouring rule in `contour_face`).
+/// False when some face is forced into an opposite-facing pair.
+fn faces_pair_same_facing(crossings: &[([f64; 3], [f64; 3])], normals: &[[f64; 3]], size: f64) -> bool {
+    for a in 0..3 {
+        let (u, v) = ((a + 1) % 3, (a + 2) % 3);
+        for side in [0.0, size] {
+            // Perimeter parameter of the in-face position (u, v) ∈ [0, size]².
+            let mut walk: Vec<(f64, usize)> = Vec::new();
+            for (i, (rel, _)) in crossings.iter().enumerate() {
+                if rel[a] != side {
+                    continue;
+                }
+                let (pu, pv) = (rel[u], rel[v]);
+                let t = if pv == 0.0 {
+                    pu
+                } else if pu == size {
+                    size + pv
+                } else if pv == size {
+                    3.0 * size - pu
+                } else {
+                    4.0 * size - pv
+                };
+                walk.push((t, i));
+            }
+            walk.sort_by(|x, y| x.0.total_cmp(&y.0));
+            let mut alive: Vec<usize> = walk.iter().map(|w| w.1).collect();
+            while alive.len() >= 2 {
+                let m = alive.len();
+                let mut best = (f64::NEG_INFINITY, 0usize);
+                for k in 0..m {
+                    let (x, y) = (normals[alive[k]], normals[alive[(k + 1) % m]]);
+                    let d = x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+                    if d > best.0 {
+                        best = (d, k);
+                    }
+                }
+                if best.0 < 0.0 {
+                    return false;
+                }
+                let k = best.1;
+                let (hi, lo) = if k + 1 == m { (k, 0) } else { (k + 1, k) };
+                alive.remove(hi);
+                alive.remove(lo);
+            }
+        }
+    }
+    true
+}
+
 /// Any corner sign change ⇒ the cell touches the surface. Port of `hasCornerSignChange`.
 pub fn has_corner_sign_change(probe: &RefineProbe) -> bool {
     let first = probe.f[0] < 0.0;
@@ -287,6 +453,9 @@ fn retained_corner_signs(root: &CsgNode, signs: &[(&Leaf, u8)], next: &mut usize
             result
         }
         CsgNode::Blend { .. } => None,
+        // The warp preserves signs, so retained leaf corner bits pass through
+        // unchanged (mirrors Min/Max transparency for the sign algebra).
+        CsgNode::Taper { child, .. } => retained_corner_signs(child, signs, next),
     }
 }
 
@@ -379,7 +548,9 @@ pub fn stratum_edge_crossings_ok(stratum: &Stratum, probe: &RefineProbe) -> bool
 /// (iii-d) blend-region curvature: max pairwise deviation of the TREE's own ∇f
 /// over near-surface probe points. Port of `treeNormalVariationOk`. Only used
 /// where `active_strata` is empty (the blend band).
-pub fn tree_normal_variation_ok<T: SdfQuery + ?Sized>(tree: &T, probe: &RefineProbe, min_cos: f64, grad_bound: f64) -> bool {
+/// `orientation`: compare |n·n'| (multi-sheet mode), so the two opposite-facing
+/// sides of a thin wall sampled in one cell do not read as curvature.
+pub fn tree_normal_variation_ok<T: SdfQuery + ?Sized>(tree: &T, probe: &RefineProbe, min_cos: f64, grad_bound: f64, orientation: bool) -> bool {
     let reach = SQRT_3 * probe.cell_size * grad_bound;
     let mut idx = [0usize; 9];
     let mut m = 0usize;
@@ -391,7 +562,7 @@ pub fn tree_normal_variation_ok<T: SdfQuery + ?Sized>(tree: &T, probe: &RefinePr
     }
     let mut ns = [0.0f64; 27];
     let k = cone_normals_via_pairs(tree, probe, &idx[..m], &mut ns);
-    pairwise_cos_ok(&ns, k, min_cos)
+    pairwise_cos_ok(&ns, k, min_cos, orientation)
 }
 
 /// Push the normalized tree-∇f normals for `idx` probe points into `ns`, returning the
@@ -455,15 +626,15 @@ pub fn tree_blend_band_normal_variation_ok<T: SdfQuery + ?Sized>(
     }
     let mut ns = [0.0f64; 27];
     let k = cone_normals_via_pairs(tree, probe, &idx[..m], &mut ns);
-    pairwise_cos_ok(&ns, k, min_cos)
+    pairwise_cos_ok(&ns, k, min_cos, false)
 }
 
 /// Shared pairwise-dot gate over the first `k` unit normals in a flat buffer.
-fn pairwise_cos_ok(ns: &[f64; 27], k: usize, min_cos: f64) -> bool {
+fn pairwise_cos_ok(ns: &[f64; 27], k: usize, min_cos: f64, orientation: bool) -> bool {
     for i in 0..k {
         for j in (i + 1)..k {
             let dot = ns[i * 3] * ns[j * 3] + ns[i * 3 + 1] * ns[j * 3 + 1] + ns[i * 3 + 2] * ns[j * 3 + 2];
-            if dot < min_cos {
+            if (if orientation { dot.abs() } else { dot }) < min_cos {
                 return false;
             }
         }
@@ -482,6 +653,9 @@ pub struct SmoothCriteriaOptions {
     /// A cell edge is not a certified surface-path length, so this is not an
     /// interval normal-cone certificate. Unsupported carriers use sampled normals.
     pub normal_variation_analytic: bool,
+    /// Multi-sheet mode: the sampled tree-normal cone of carrier-less cells
+    /// compares orientation (see [`tree_normal_variation_ok`]).
+    pub orientation_cone: bool,
 }
 
 /// Discovery followed by P3 criteria: `tree` must be the original full root.
@@ -519,10 +693,22 @@ pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
     let strata = active_strata(tree, probe, grad_bound);
     if strata.is_empty() {
         // No analytic owner: sample the tree's near-surface normal variation.
-        if opts.blend_normal_variation_cos >= 1.0 {
+        // Blend bands use the blend cone, which `blendCurvatureRefine: false`
+        // switches off. A warped region (leaves under a taper) has no carriers
+        // by design, so that switch must not strip its only criterion: it falls
+        // back to the regular cone, or its curved walls mesh at whatever coarse
+        // level first showed a sign change.
+        let mut min_cos = opts.blend_normal_variation_cos;
+        if min_cos >= 1.0 {
+            let c = [probe.pts[24], probe.pts[25], probe.pts[26]];
+            if tree.active_owners_at(c, 0.0).iter().any(|o| o.leaf.warped) {
+                min_cos = opts.normal_variation_cos;
+            }
+        }
+        if min_cos >= 1.0 {
             return false; // (iii-d) disabled
         }
-        let split = !tree_normal_variation_ok(tree, probe, opts.blend_normal_variation_cos, grad_bound);
+        let split = !tree_normal_variation_ok(tree, probe, min_cos, grad_bound, opts.orientation_cone);
         if split { #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("no_owner_tree_normal_variation", None); }
         return split;
     }
@@ -556,7 +742,7 @@ pub(crate) fn needs_split_smooth_after_discovery<T: SdfQuery + ?Sized>(
     // apex/merge region the adaptive subdivision a curved surface should get.
     if opts.normal_variation_cos < 1.0
         && strata.iter().any(|st| matches!(st.kind, CarrierKind::LoftSide))
-        && !tree_normal_variation_ok(tree, probe, opts.normal_variation_cos, grad_bound)
+        && !tree_normal_variation_ok(tree, probe, opts.normal_variation_cos, grad_bound, false)
     {
         #[cfg(feature = "sfcc-profile")] super::diagnosis::reason("loft_tree_normal_variation", None);
         return true;
@@ -805,6 +991,7 @@ mod discovery_tests {
         normal_variation_cos: -1.0,
         blend_normal_variation_cos: 1.0,
         normal_variation_analytic: false,
+        orientation_cone: false,
     };
 
     #[test]
@@ -1110,6 +1297,7 @@ mod discovery_tests {
             normal_variation_cos: -1.,
             blend_normal_variation_cos: 1.,
             normal_variation_analytic: false,
+            orientation_cone: false,
         };
         for t in [
             center_winner,

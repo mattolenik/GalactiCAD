@@ -39,6 +39,7 @@ fn attach_strata(node: &mut CsgNode, leaf_index: &mut usize, first_id: &mut usiz
                 attach_strata(c, leaf_index, first_id);
             }
         }
+        CsgNode::Taper { child, .. } => attach_strata(child, leaf_index, first_id),
     }
 }
 
@@ -160,6 +161,7 @@ fn run_parity(name: &str, tree: CsgNode) {
         normal_variation_cos: fix.normal_variation_cos,
         blend_normal_variation_cos: fix.blend_normal_variation_cos,
         normal_variation_analytic: false,
+        orientation_cone: false,
     };
 
     let oct = build_octree_feature_aware(
@@ -169,6 +171,7 @@ fn run_parity(name: &str, tree: CsgNode) {
             depth_min: fix.depth_min,
             depth_max: fix.depth_max,
             enforce_edge_balance: fix.enforce_edge_balance,
+            multi_sheet_cells: false,
         },
         &features,
         &feature_opts,

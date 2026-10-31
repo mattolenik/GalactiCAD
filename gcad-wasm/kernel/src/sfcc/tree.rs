@@ -145,6 +145,7 @@ fn collect_leaves<'a>(node: &'a CsgNode, out: &mut Vec<&'a Leaf>) {
                 collect_leaves(c, out);
             }
         }
+        CsgNode::Taper { child, .. } => collect_leaves(child, out),
     }
 }
 
@@ -170,6 +171,9 @@ fn visit_seam(
                 ch.iter().map(|c| visit_seam(c, map, leaf_count, leaf_index_of)).collect();
             // Hard combiner: displacement 0 (matrix already zero).
             child_sets.into_iter().flatten().collect()
+        }
+        CsgNode::Taper { child, .. } => {
+            visit_seam(child, map, leaf_count, leaf_index_of)
         }
         CsgNode::Blend { mode, r, n, .. } => {
             let children = match node {
@@ -215,7 +219,19 @@ pub fn build_tree<'a>(
         let strata_end = first_id + leaf_strata.len();
         strata.extend(leaf_strata);
         let (c, h) = local_aabb_box(&leaf.shape, leaf.pos);
-        leaves.push(LeafView { aabb: world_aabb_of_local_box(leaf, c, h), strata_start, strata_end });
+        let mut aabb = world_aabb_of_local_box(leaf, c, h);
+        if leaf.warp_scale > 1.0 {
+            // Ancestor taper warps displace the surface by at most
+            // (k−1)·ρ from the unwarped box (ρ = its half-diagonal); a
+            // uniform slack is a direction-agnostic superset.
+            let slack = (leaf.warp_scale - 1.0)
+                * (aabb[3] - aabb[0]).hypot(aabb[4] - aabb[1]).hypot(aabb[5] - aabb[2]);
+            for k in 0..3 {
+                aabb[k] -= slack;
+                aabb[k + 3] += slack;
+            }
+        }
+        leaves.push(LeafView { aabb, strata_start, strata_end });
     }
 
     // Map each leaf reference to its traversal index (by pointer identity in the

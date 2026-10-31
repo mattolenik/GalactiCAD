@@ -58,6 +58,10 @@ export interface SfccTuning {
     // --- Geometry tolerances ------------------------------------------------
     /** Surface accuracy anchor (mm): max |f| at emitted vertices. */
     surfaceTolMm: number
+    /** Post-pass decimation (sfcc-rs): allowed surface deviation in mm; 0 = off. Default 0.05. */
+    decimateTolMm: number
+    /** Multi-sheet cells (sfcc-rs): keep thin walls in coarse cells, resolved on fine edges. */
+    multiSheetCells: boolean
     /** Max chord deviation (mm) of in-cell feature polylines from the analytic curve. */
     curveChordTolMm: number
     /** Flank-probe offset for seam trimming, in multiples of surfaceTolMm. */
@@ -141,6 +145,8 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     featureQueryInflate: 0.25,
 
     surfaceTolMm: 0.01,
+    decimateTolMm: 0.05,
+    multiSheetCells: true,
     curveChordTolMm: 0.02,
     probeDeltaFactor: 10,
     minDihedralDeg: 15,
@@ -204,6 +210,8 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         featureQueryInflate: num(o.featureQueryInflate, d.featureQueryInflate, 0, 4),
 
         surfaceTolMm: num(o.surfaceTolMm, d.surfaceTolMm, 1e-6, 10),
+        decimateTolMm: num(o.decimateTolMm, d.decimateTolMm, 0, 10),
+        multiSheetCells: bool(o.multiSheetCells, d.multiSheetCells),
         curveChordTolMm: num(o.curveChordTolMm, d.curveChordTolMm, 1e-6, 10),
         probeDeltaFactor: num(o.probeDeltaFactor, d.probeDeltaFactor, 1, 1000),
         minDihedralDeg: num(o.minDihedralDeg, d.minDihedralDeg, 0, 90),

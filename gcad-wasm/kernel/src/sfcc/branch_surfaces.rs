@@ -381,6 +381,23 @@ pub(crate) fn append_branch_pairs(
                 let (c, h) = super::tree::local_aabb_box(&l.shape, l.pos);
                 super::tree::world_aabb_of_local_box(l, c, h)
             }
+            // The warp displaces points by at most (k−1)·ρ from the child's
+            // box (ρ = its half-diagonal); inflating every axis by that slack
+            // is a direction-agnostic superset (spatial gating only).
+            CsgNode::Taper { ratio, child, .. } => {
+                let b = bounds(child);
+                let k = ratio.max(1.0);
+                let slack = (k - 1.0)
+                    * ((b[3] - b[0]).hypot(b[4] - b[1]).hypot(b[5] - b[2]));
+                [
+                    b[0] - slack,
+                    b[1] - slack,
+                    b[2] - slack,
+                    b[3] + slack,
+                    b[4] + slack,
+                    b[5] + slack,
+                ]
+            }
             CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => {
                 let mut b = [
                     f64::INFINITY,

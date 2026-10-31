@@ -271,7 +271,11 @@ export class Loft extends Node {
         if (N === 2) {
             const f0 = this.profiles[0].wgslFuncName
             const f1 = this.profiles[1].wgslFuncName
-            return `    let d_profile = mix(${f0}(p.xz), ${f1}(p.xz), t);`
+            // Identity blend (same instance twice): the field is exactly the 2D
+            // profile SDF -> 1-Lipschitz and conservative, so full-size march
+            // steps are safe there.
+            const smul = this.profiles[0] === this.profiles[1] ? "1.0" : "0.8"
+            return `    let smul = ${smul};\n    let d_profile = mix(${f0}(p.xz), ${f1}(p.xz), t);`
         }
 
         const numSegments = N - 1
@@ -279,15 +283,25 @@ export class Loft extends Node {
         code += `    let si = min(u32(seg), ${(numSegments - 1)}u);\n`
         code += `    let localT = seg - f32(si);\n`
         code += `    var dA: f32; var dB: f32;\n`
+        code += `    var smul: f32 = 0.8;\n`
         for (let i = 0; i < numSegments; i++) {
             const fA = this.profiles[i].wgslFuncName
             const fB = this.profiles[i + 1].wgslFuncName
+            // Identical profile instance on both ends of the segment (reused
+            // slices, e.g. a loft's wall zone): one evaluation suffices — the
+            // mix is the identity. Halves the per-step polygon cost there, and
+            // the field is exactly the 2D profile SDF (constant in t), hence
+            // 1-Lipschitz and conservative -> full-size march steps are safe.
+            const identical = fA === fB
+            const calls = identical
+                ? `dA = ${fA}(p.xz); dB = dA; smul = 1.0;`
+                : `dA = ${fA}(p.xz); dB = ${fB}(p.xz);`
             if (i === 0) {
-                code += `    if (si == 0u) { dA = ${fA}(p.xz); dB = ${fB}(p.xz); }\n`
+                code += `    if (si == 0u) { ${calls} }\n`
             } else if (i === numSegments - 1) {
-                code += `    else { dA = ${fA}(p.xz); dB = ${fB}(p.xz); }\n`
+                code += `    else { ${calls} }\n`
             } else {
-                code += `    else if (si == ${i}u) { dA = ${fA}(p.xz); dB = ${fB}(p.xz); }\n`
+                code += `    else if (si == ${i}u) { ${calls} }\n`
             }
         }
         code += `    let d_profile = mix(dA, dB, localT);`
@@ -307,9 +321,9 @@ fn ${this.wgslExFuncName}(p: vec3f, id: u32) -> SDFResult {
     let eps = 0.001;
     // FD on the profile-only field, not max(profile, cap), so the side normal stays
     // continuous across the side/cap seam (the max would otherwise step the y derivative).
-    let gx = ${this.wgslProfileFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
-    let gy = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, eps, 0.0));
-    let gz = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    let gx = ${this.wgslProfileFieldFuncName}(p + vec3f(eps, 0.0, 0.0)).x - ${this.wgslProfileFieldFuncName}(p - vec3f(eps, 0.0, 0.0)).x;
+    let gy = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, eps, 0.0)).x - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, eps, 0.0)).x;
+    let gz = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, 0.0, eps)).x - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, 0.0, eps)).x;
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
@@ -479,9 +493,9 @@ fn ${this.wgslMidFuncName}(p: vec3f) -> SDFResultMid {
     let eps = 0.001;
     // FD on the profile-only field, not max(profile, cap), so the side normal stays
     // continuous across the side/cap seam (the max would otherwise step the y derivative).
-    let gx = ${this.wgslProfileFieldFuncName}(p + vec3f(eps, 0.0, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(eps, 0.0, 0.0));
-    let gy = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, eps, 0.0)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, eps, 0.0));
-    let gz = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, 0.0, eps)) - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, 0.0, eps));
+    let gx = ${this.wgslProfileFieldFuncName}(p + vec3f(eps, 0.0, 0.0)).x - ${this.wgslProfileFieldFuncName}(p - vec3f(eps, 0.0, 0.0)).x;
+    let gy = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, eps, 0.0)).x - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, eps, 0.0)).x;
+    let gz = ${this.wgslProfileFieldFuncName}(p + vec3f(0.0, 0.0, eps)).x - ${this.wgslProfileFieldFuncName}(p - vec3f(0.0, 0.0, eps)).x;
     let nSide = safeNormalize(vec3f(gx, gy, gz), vec3f(1.0, 0.0, 0.0));
     let nCap = vec3f(0.0, sgn(capY), 0.0);
     let n = select(nCap, nSide, onSide);
@@ -609,23 +623,27 @@ ${sideFeatureBlock}
         const capYOff = capDragOrF32Wgsl(this.paramOffset + 4, this.previewF32Slot + 1)
 
         return `
-fn ${this.wgslProfileFieldFuncName}(p: vec3f) -> f32 {
+fn ${this.wgslProfileFieldFuncName}(p: vec3f) -> vec2f {
     let h = ${capH};
     let capY = p.y - ${capYOff};
     let t = clamp((capY + h) / (2.0 * h), 0.0, 1.0);
 ${fieldBody}
-    return d_profile;
+    return vec2f(d_profile, smul);
 }
 
 fn ${this.wgslFieldFuncName}(p: vec3f) -> f32 {
     let h = ${capH};
     let capY = p.y - ${capYOff};
     let dCap = abs(capY) - h;
-    return max(${this.wgslProfileFieldFuncName}(p), dCap);
+    return max(${this.wgslProfileFieldFuncName}(p).x, dCap);
 }
 
 fn ${this.wgslFastFuncName}(p: vec3f) -> FastSDFResult {
-    return sdfFast(${this.wgslFieldFuncName}(p), 0.8, 0.8);
+    let pr = ${this.wgslProfileFieldFuncName}(p);
+    let h = ${capH};
+    let capY = p.y - ${capYOff};
+    let dCap = abs(capY) - h;
+    return sdfFast(max(pr.x, dCap), 0.8, pr.y);
 }
 `
     }

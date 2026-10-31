@@ -2599,6 +2599,7 @@ mod tests {
                 root_tol: 0.001 * oct.lat.step,
                 features: Some(&ctx.features),
                 recovery_cull: true,
+                multi_sheet: false,
             },
         );
         let opts = super::super::cell_mesh::CellMeshOptions {
@@ -2728,6 +2729,7 @@ mod tests {
                 root_tol: 0.001 * oct.lat.step,
                 features: Some(&ctx.features),
                 recovery_cull: true,
+                multi_sheet: false,
             },
         );
         let opts = super::super::cell_mesh::CellMeshOptions {

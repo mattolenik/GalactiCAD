@@ -11,6 +11,7 @@
 
 pub(crate) mod enclosure;
 use enclosure::{invalid_interval, valid_interval};
+pub(crate) mod taper;
 use crate::math::similarity::Similarity;
 use crate::primitives::shapes;
 use crate::primitives::smin::{smin, smin_columns_interval, SminMode};
@@ -57,7 +58,7 @@ impl Shape {
 }
 
 /// A primitive leaf: `f = sign · s · shape((Rᵀ(p − t)/s) − pos)`.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Leaf {
     /// −1 under an odd number of subtract right-hand ancestors.
     pub sign: f64,
@@ -71,6 +72,40 @@ pub struct Leaf {
     /// bridge / strata compilation attaches them; the M3a parity scenes build
     /// them via [`leaf_with_strata`].
     pub strata: Vec<Stratum>,
+    /// True when a taper warp sits above this leaf. Strata and native feature
+    /// curves are suppressed: the analytic carriers describe the UNWARPED
+    /// child surface and would actively misguide feature tracing. Such
+    /// regions mesh by field refinement only (correct, not feature-conforming).
+    pub warped: bool,
+    /// Conservative world-AABB inflation from ancestor taper warps: the
+    /// product of each warp's `max(1, ratio)`. 1.0 when unwarped (a pure
+    /// narrowing warp needs no inflation — the image stays inside the box).
+    pub warp_scale: f64,
+    /// Memoized [`Leaf::valid_parameters`]: a loft's check scans every profile
+    /// float (7 k on the bowl sample) and every interval query asked for it.
+    pub params_valid: std::sync::OnceLock<bool>,
+    /// Memoized [`Leaf::polygons_valid`] (the checked-enclosure well-formedness
+    /// predicate), for the same reason.
+    pub polygons_valid: std::sync::OnceLock<bool>,
+}
+
+/// Clones start with empty memos: `Leaf { shape: …, ..leaf.clone() }` may change
+/// the parameters the cached predicates were computed from.
+impl Clone for Leaf {
+    fn clone(&self) -> Self {
+        Leaf {
+            sign: self.sign,
+            sim: self.sim,
+            pos: self.pos,
+            shape: self.shape.clone(),
+            index: self.index,
+            strata: self.strata.clone(),
+            warped: self.warped,
+            warp_scale: self.warp_scale,
+            params_valid: Default::default(),
+            polygons_valid: Default::default(),
+        }
+    }
 }
 
 impl Leaf {
@@ -221,6 +256,29 @@ impl Leaf {
         })
     }
     fn valid_parameters(&self) -> bool {
+        *self.params_valid.get_or_init(|| self.compute_valid_parameters())
+    }
+    /// Checked-enclosure well-formedness: no repeated consecutive polygon
+    /// vertices (extrude, every loft profile); lathe edges of positive length
+    /// with at least one real surface edge. True for the other shapes.
+    pub(crate) fn polygons_valid(&self) -> bool {
+        *self.polygons_valid.get_or_init(|| {
+            let polygon_valid = |p: &[f64]| {
+                (0..p.len() / 2).all(|i| {
+                    let j = (i + 1) % (p.len() / 2);
+                    p[2 * i] != p[2 * j] || p[2 * i + 1] != p[2 * j + 1]
+                })
+            };
+            match &self.shape {
+                Shape::Extrude { verts, .. } => polygon_valid(verts),
+                Shape::Loft { profs, .. } => profs.iter().all(|p| polygon_valid(p)),
+                Shape::Lathe { edges } => !(edges.iter().any(|e| e.len <= 0.)
+                    || edges.iter().all(|e| e.kind == crate::primitives::shapes::LatheEdgeKind::None)),
+                _ => true,
+            }
+        })
+    }
+    fn compute_valid_parameters(&self) -> bool {
         let finite = |v: &f64| v.is_finite();
         if !matches!(self.sign, -1.0 | 1.0) || !self.sim.s.is_finite() || self.sim.s <= 0.0
             || !self.pos.iter().chain(&self.sim.t).chain(&self.sim.r).all(finite) {
@@ -268,24 +326,51 @@ impl Leaf {
                 Some((1.0 + k * rho * (k * rho)).sqrt())
             }
             Shape::Loft { profs, winds, h } => {
-                // Prismatic lofts (all profiles identical) are 1-Lipschitz.
-                let prismatic = profs.iter().all(|p| p == &profs[0]);
-                if prismatic {
-                    return None;
-                }
+                // No whole-loft prismatic scan here: it compared every profile
+                // on every interval query (114 × 64 floats on the bowl sample,
+                // most of a 16 µs bound). The segment-local loop below already
+                // returns the exact 1-Lipschitz answer wherever the profiles
+                // around the ball are identical, which covers the prismatic case.
                 let m = profs.len();
                 let seg_h = (2.0 * h) / (m as f64 - 1.0);
+                if !(seg_h > 0.0) {
+                    return Some(1.0);
+                }
                 let l = self.sim.inv_apply_point(c[0], c[1], c[2]);
                 let rl = r / self.sim.s;
                 let qx = l[0] - self.pos[0];
                 let qz = l[2] - self.pos[2];
-                let d_vals: Vec<f64> =
-                    (0..m).map(|i| crate::primitives::polygon2d::polygon_dist_2d(&profs[i], winds[i], qx, qz).d).collect();
+                // SEGMENT-LOCAL bound: only the segments whose y-range
+                // intersects the query ball contribute slope — the field at a
+                // point in the ball only ever blends that point's own segment
+                // pair. (The previous all-pairs max charged the whole loft's
+                // morph at every query, which a tall mostly-prismatic loft
+                // paid everywhere.) Identical consecutive profiles contribute
+                // EXACTLY zero: their distance-difference field is identically
+                // zero, so the ±2·rl in-ball slack does not apply to them.
+                let local_y = l[1] - self.pos[1];
+                let seg_f = ((local_y + h) / (2.0 * h) * (m as f64 - 1.0)).clamp(0.0, (m - 2) as f64);
+                let seg = seg_f.floor() as usize;
+                let span = (rl / seg_h).ceil() as usize + 1;
+                let lo = seg.saturating_sub(span);
+                let hi = (seg + span + 1).min(m - 1); // exclusive profile index
                 let mut max_diff = 0.0f64;
-                for i in 0..(m - 1) {
-                    max_diff = max_diff.max((d_vals[i + 1] - d_vals[i]).abs());
+                for i in lo..hi {
+                    let diff = if profs[i] == profs[i + 1] {
+                        0.0
+                    } else {
+                        let a = crate::primitives::polygon2d::polygon_dist_2d(&profs[i], winds[i], qx, qz).d;
+                        let b = crate::primitives::polygon2d::polygon_dist_2d(&profs[i + 1], winds[i + 1], qx, qz).d;
+                        (b - a).abs() + 2.0 * rl
+                    };
+                    max_diff = max_diff.max(diff);
                 }
-                let slope = (max_diff + 2.0 * rl) / seg_h;
+                if max_diff == 0.0 {
+                    // Locally prismatic (identical profiles throughout the
+                    // ball's segment tube): exactly 1-Lipschitz here.
+                    return None;
+                }
+                let slope = max_diff / seg_h;
                 Some((1.0 + slope * slope).sqrt())
             }
             _ => None,
@@ -310,6 +395,18 @@ pub enum CsgNode {
         r: f64,
         n: f64,
         children: Vec<CsgNode>,
+    },
+    /// Taper domain warp (`taper(ratio, height, child)` in the scene source):
+    /// scales the child's XZ linearly with y in `sim`'s frame. See
+    /// [`taper`] (the module) for the exact field contract. The child keeps
+    /// world-frame leaves (the walk continues with the same baked similarity);
+    /// leaves under a warp carry `Leaf::warped` so feature compilation
+    /// suppresses their analytic carriers.
+    Taper {
+        ratio: f64,
+        height: f64,
+        sim: Similarity,
+        child: Box<CsgNode>,
     },
 }
 
@@ -405,6 +502,28 @@ impl CsgNode {
                 entries.push(ZeroOwner::Opaque);
                 crate::sfcc::perf::maximum(27, entries.len());
                 (f64::NEG_INFINITY, f64::INFINITY)
+            }
+            // The warp preserves sign (correction > 0) and maps boxes to
+            // conservative child-space hulls, so the child's interval over the
+            // image box — scaled back — is this node's enclosure. The child's
+            // Primitive entries are collapsed to ONE Opaque though: discovery's
+            // corner-sign algebra probes leaf fields at WORLD points, which is
+            // meaningless under a warp (leaf(corner) ≠ warped contribution).
+            // Opaque only forfeits that guard's sign theorems, never soundness.
+            Self::Taper { ratio, height, sim, child } => {
+                let Some(map) = taper::map_box(sim, *ratio, *height, c, half) else {
+                    return Err(Indeterminate);
+                };
+                let start = entries.len();
+                let (lo, hi) =
+                    child.collect_zero_owners(map.c, map.half, entries, previous)?;
+                entries.truncate(start);
+                entries.push(ZeroOwner::Opaque);
+                crate::sfcc::perf::maximum(27, entries.len());
+                // The memo now caches intervals over the IMAGE box; a later
+                // sibling outside the warp must not reuse them.
+                *previous = None;
+                taper::scale_interval((lo, hi), map.corr_lo, map.corr_hi)
             }
         };
         if lo > 0.0 || hi < 0.0 {
@@ -530,6 +649,9 @@ impl CsgNode {
             Self::Min(ch) | Self::Max(ch) => !ch.is_empty() && ch.iter().all(Self::valid_parameters),
             Self::Blend { r, n, children, .. } => r.is_finite() && *r > 0. && n.is_finite()
                 && children.len() >= 2 && children.iter().all(Self::valid_parameters),
+            Self::Taper { ratio, height, child, .. } => ratio.is_finite() && *ratio > 0.0
+                && height.is_finite() && *height > 0.0
+                && child.valid_parameters(),
         }
     }
 
@@ -549,6 +671,14 @@ impl CsgNode {
                 let sgn = if *kind == BlendKind::Smax { -1.0 } else { 1.0 };
                 let (va, vb) = nearest_pair(children, sgn, scalar);
                 sgn * smin(*mode, va, vb, *r, *n)
+            }
+            // The warp moves the sample point, so the caller's per-point child
+            // cache cannot serve it — evaluate the child at q directly. (Note:
+            // `child.f(q)`, not a fresh `f_with_children` closure — an in-arm
+            // closure would monomorphize infinitely through nested tapers.)
+            CsgNode::Taper { ratio, height, sim, child } => {
+                let (q, s) = taper::warp_point(sim, *ratio, *height, p);
+                child.f(q) * s.min(1.0)
             }
         }
     }
@@ -629,6 +759,9 @@ impl CsgNode {
                     blend_interval(*kind, *mode, *br, *n, &los, &his)
                 }
             }
+            // The warp's certification is box-shaped; use the ball's bounding
+            // cube through the box mapping (a conservative superset).
+            CsgNode::Taper { .. } => self.interval_over_box(c, [r; 3]),
         }
     }
 
@@ -653,6 +786,14 @@ impl CsgNode {
                     else { lo = lo.max(iv.0); hi = hi.max(iv.1); }
                 }
                 (lo, hi)
+            }
+            Self::Taper { ratio, height, sim, child } => {
+                let Some(map) = taper::map_box(sim, *ratio, *height, c, half) else {
+                    return invalid_interval();
+                };
+                let iv = child.interval_over_box(map.c, map.half);
+                if !valid_interval(iv) { return invalid_interval(); }
+                taper::scale_interval(iv, map.corr_lo, map.corr_hi)
             }
             _ => self.interval_over_ball(c, half[0].hypot(half[1]).hypot(half[2])),
         }
@@ -711,6 +852,19 @@ impl CsgNode {
                 }
                 value
             }
+            // Owners are collected in the warped child frame; their `d` values
+            // are scaled back so they stay consistent with the tree's field
+            // (the correction multiplies every child identically at p).
+            CsgNode::Taper { ratio, height, sim, child } => {
+                let (q, s) = taper::warp_point(sim, *ratio, *height, p);
+                let corr = s.min(1.0);
+                let start = out.len();
+                let v = child.collect_owners(q, tol, out);
+                for owner in &mut out[start..] {
+                    owner.d *= corr;
+                }
+                v * corr
+            }
         }
     }
 
@@ -727,6 +881,13 @@ impl CsgNode {
                     m *= SQRT_2;
                 }
                 m
+            }
+            // The warp's Jacobian scales XZ derivatives by 1/s; on the surface
+            // (where the bound's reach bands matter) the off-surface ∇c term
+            // vanishes with the value, so the 1/s factor dominates. Generous by
+            // construction — the bound only widens refinement bands.
+            CsgNode::Taper { ratio, child, .. } => {
+                child.grad_bound() * (1.0 / ratio.min(1.0)).max(1.0)
             }
         }
     }
@@ -747,6 +908,7 @@ impl CsgNode {
             CsgNode::Leaf(_) => false,
             CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter().any(|c| c.has_blend()),
             CsgNode::Blend { .. } => true,
+            CsgNode::Taper { child, .. } => child.has_blend(),
         }
     }
 
@@ -774,6 +936,7 @@ impl CsgNode {
                     c.assign_leaf_indices_from(next);
                 }
             }
+            CsgNode::Taper { child, .. } => child.assign_leaf_indices_from(next),
         }
     }
 
@@ -784,6 +947,7 @@ impl CsgNode {
             CsgNode::Leaf(_) => 1,
             CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter().map(|c| c.leaf_count()).sum(),
             CsgNode::Blend { children, .. } => children.iter().map(|c| c.leaf_count()).sum(),
+            CsgNode::Taper { child, .. } => child.leaf_count(),
         }
     }
 
@@ -838,6 +1002,7 @@ pub enum Pruned<'a> {
     Min(Vec<Pruned<'a>>),
     Max(Vec<Pruned<'a>>),
     Blend { kind: BlendKind, mode: SminMode, r: f64, n: f64, children: Vec<Pruned<'a>> },
+    Taper { ratio: f64, height: f64, sim: Similarity, child: Box<Pruned<'a>> },
 }
 
 impl<'a> Pruned<'a> {
@@ -854,6 +1019,12 @@ impl<'a> Pruned<'a> {
                 n: *n,
                 children: children.iter().map(Pruned::wrap).collect(),
             },
+            CsgNode::Taper { ratio, height, sim, child } => Pruned::Taper {
+                ratio: *ratio,
+                height: *height,
+                sim: *sim,
+                child: Box::new(Pruned::wrap(child)),
+            },
         }
     }
 
@@ -862,6 +1033,7 @@ impl<'a> Pruned<'a> {
             Pruned::Leaf(_) => 1,
             Pruned::Min(ch) | Pruned::Max(ch) => ch.iter().map(|c| c.leaf_count()).sum(),
             Pruned::Blend { children, .. } => children.iter().map(|c| c.leaf_count()).sum(),
+            Pruned::Taper { child, .. } => child.leaf_count(),
         }
     }
 
@@ -889,6 +1061,10 @@ impl<'a> Pruned<'a> {
                     }
                 }
                 sgn * smin(*mode, va, vb, *r, *n)
+            }
+            Pruned::Taper { ratio, height, sim, child } => {
+                let (q, s) = taper::warp_point(sim, *ratio, *height, p);
+                child.f(q) * s.min(1.0)
             }
         }
     }
@@ -957,6 +1133,8 @@ impl<'a> Pruned<'a> {
                     blend_interval(*kind, *mode, *br, *n, &los, &his)
                 }
             }
+            // Box-shaped certification over the ball's bounding cube.
+            Pruned::Taper { .. } => self.interval_over_box(c, [r; 3]),
         }
     }
 
@@ -978,6 +1156,14 @@ impl<'a> Pruned<'a> {
                     else { lo = lo.max(iv.0); hi = hi.max(iv.1); }
                 }
                 (lo, hi)
+            }
+            Self::Taper { ratio, height, sim, child } => {
+                let Some(map) = taper::map_box(sim, *ratio, *height, c, half) else {
+                    return invalid_interval();
+                };
+                let iv = child.interval_over_box(map.c, map.half);
+                if !valid_interval(iv) { return invalid_interval(); }
+                taper::scale_interval(iv, map.corr_lo, map.corr_hi)
             }
             _ => self.interval_over_ball(c, half[0].hypot(half[1]).hypot(half[2])),
         }
@@ -1048,6 +1234,16 @@ impl<'a> Pruned<'a> {
                 }
                 value
             }
+            Pruned::Taper { ratio, height, sim, child } => {
+                let (q, s) = taper::warp_point(sim, *ratio, *height, p);
+                let corr = s.min(1.0);
+                let start = out.len();
+                let v = child.collect_owners(q, tol, out);
+                for owner in &mut out[start..] {
+                    owner.d *= corr;
+                }
+                v * corr
+            }
         }
     }
 
@@ -1056,6 +1252,7 @@ impl<'a> Pruned<'a> {
             Self::Leaf(l) => matches!(l.shape, Shape::Sphere { .. } | Shape::Cuboid { .. }),
             Self::Min(ch) | Self::Max(ch) => ch.iter().all(Self::supported_hard),
             Self::Blend { .. } => false,
+            Self::Taper { .. } => false,
         }
     }
 
@@ -1066,6 +1263,12 @@ impl<'a> Pruned<'a> {
             Self::Max(ch) => Self::Max(ch.iter().map(Self::retained).collect()),
             Self::Blend { kind, mode, r, n, children } => Self::Blend {
                 kind: *kind, mode: *mode, r: *r, n: *n, children: children.iter().map(Self::retained).collect(),
+            },
+            Self::Taper { ratio, height, sim, child } => Self::Taper {
+                ratio: *ratio,
+                height: *height,
+                sim: *sim,
+                child: Box::new(child.retained()),
             },
         }
     }
@@ -1133,6 +1336,18 @@ impl<'a> Pruned<'a> {
                     if kept.len() < min_keep { children.iter().map(|x| x.prune_to_ball(c, r, false)).collect() } else { kept };
                 Pruned::Blend { kind: *kind, mode: *mode, r: *br, n: *n, children }
             }
+            // Prune the child against the warp IMAGE of the ball (a superset of
+            // every point this wrapper will ever query), then re-wrap. A failed
+            // box mapping keeps the full subtree — always sound.
+            Pruned::Taper { ratio, height, sim, child } => Pruned::Taper {
+                ratio: *ratio,
+                height: *height,
+                sim: *sim,
+                child: Box::new(match taper::map_box(sim, *ratio, *height, c, [r; 3]) {
+                    Some(map) => child.prune_to_box(map.c, map.half),
+                    None => child.retained(),
+                }),
+            },
         }
     }
 }
@@ -1219,7 +1434,7 @@ pub struct ActiveOwner<'a> {
 
 /// A leaf under a baked similarity at a local position (no strata attached).
 pub fn leaf(shape: Shape, sim: Similarity, pos: [f64; 3]) -> CsgNode {
-    CsgNode::Leaf(Leaf { sign: 1.0, sim, pos, shape, index: 0, strata: Vec::new() })
+    CsgNode::Leaf(Leaf { sign: 1.0, sim, pos, shape, index: 0, strata: Vec::new(), warped: false, warp_scale: 1.0, params_valid: Default::default(), polygons_valid: Default::default() })
 }
 
 /// An untransformed leaf at a world position (identity similarity).
@@ -1230,7 +1445,14 @@ pub fn leaf_at(shape: Shape, pos: [f64; 3]) -> CsgNode {
 /// A leaf with its smooth analytic strata attached. Used by the M3a octree
 /// parity scenes (the full scene-bridge strata compilation is M4).
 pub fn leaf_with_strata(shape: Shape, sim: Similarity, pos: [f64; 3], strata: Vec<Stratum>) -> CsgNode {
-    CsgNode::Leaf(Leaf { sign: 1.0, sim, pos, shape, index: 0, strata })
+    CsgNode::Leaf(Leaf { sign: 1.0, sim, pos, shape, index: 0, strata, warped: false, warp_scale: 1.0, params_valid: Default::default(), polygons_valid: Default::default() })
+}
+
+/// A taper warp over `child`, acting in `sim`'s frame. The scene bridge is the
+/// production constructor (it threads `warped`/`warp_scale` into the leaves);
+/// tests use this for direct tree building.
+pub fn taper(ratio: f64, height: f64, sim: Similarity, child: CsgNode) -> CsgNode {
+    CsgNode::Taper { ratio, height, sim, child: Box::new(child) }
 }
 
 pub fn union(children: Vec<CsgNode>) -> CsgNode {
@@ -1292,6 +1514,11 @@ pub fn negate(node: CsgNode) -> CsgNode {
             let flipped = if kind == BlendKind::Smin { BlendKind::Smax } else { BlendKind::Smin };
             CsgNode::Blend { kind: flipped, mode, r, n, children: children.into_iter().map(negate).collect() }
         }
+        // The correction is positive and child-independent, so it commutes
+        // with negation exactly: taper(−f) = −taper(f).
+        CsgNode::Taper { ratio, height, sim, child } => {
+            CsgNode::Taper { ratio, height, sim, child: Box::new(negate(*child)) }
+        }
     }
 }
 
@@ -1324,6 +1551,207 @@ mod tests {
             assert!(!p.same_discovery_primitive(&q));
         }
         assert!(cases.iter().all(|other| !base.same_discovery_primitive(other)));
+    }
+
+    #[test]
+    fn loft_lipschitz_is_segment_local_and_still_encloses() {
+        use super::{leaf_at, Shape};
+        use crate::primitives::polygon2d::winding_sign;
+        // Square → larger square morph for the bottom third; identical
+        // (largest) squares for the top two thirds — the bowl's shape family.
+        let sq = |w: f64| -> Vec<[f64; 2]> {
+            vec![[-w, -w], [w, -w], [w, w], [-w, w]]
+        };
+        let mut profs = Vec::new();
+        let mut winds = Vec::new();
+        for i in 0..30 {
+            let t = i as f64 / 29.0;
+            let w = if t < 0.3 { 1.0 + t } else { 1.3 };
+            let p = sq(w);
+            winds.push(winding_sign(&p));
+            profs.push(p.iter().flat_map(|v| [v[0], v[1]]).collect::<Vec<f64>>());
+        }
+        let leaf = leaf_at(Shape::Loft { profs, winds, h: 3.0 }, [0.0, 0.0, 0.0]);
+        let CsgNode::Leaf(l) = &leaf else { unreachable!() };
+        // Prismatic zone (y well above the morph, small ball): locally 1-Lipschitz.
+        assert!(l.local_lipschitz([0.5, 2.0, 0.5], 0.2).is_none(), "prismatic tube must be exact");
+        // Morph zone (t < 0.3 ⇒ y < −1.2): a genuine bound > 1. For this
+        // ball the ±2rl slack dominates (old all-pairs bound here: ≈4.5).
+        let lip = l.local_lipschitz([0.5, -2.0, 0.5], 0.3).expect("morph zone is >1-Lipschitz");
+        assert!(lip > 1.0 && lip < 4.5, "reasonable local bound, got {lip}");
+        // SOUNDNESS: the leaf interval — which composes this bound — must
+        // enclose sampled field values over random boxes in both zones.
+        for (c, half) in [
+            ([0.2, 2.2, 0.1], [0.4; 3]),
+            ([0.0, -2.2, 0.0], [0.5; 3]),
+            ([1.6, 1.5, -1.2], [0.8; 3]),
+            ([0.3, -2.6, 0.6], [0.6; 3]),
+        ] {
+            let iv = leaf.interval_over_box(c, half);
+            assert!(iv.0 <= iv.1, "valid interval at {c:?}");
+            for i in 0..4 {
+                for j in 0..4 {
+                    for k in 0..4 {
+                        let t = |v: usize| v as f64 / 3.0 * 2.0 - 1.0;
+                        let p = [
+                            c[0] + t(i) * half[0],
+                            c[1] + t(j) * half[1],
+                            c[2] + t(k) * half[2],
+                        ];
+                        let v = leaf.f(p);
+                        assert!(
+                            v >= iv.0 - 1e-9 && v <= iv.1 + 1e-9,
+                            "field {v} outside {iv:?} at {p:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn taper_field_warps_the_child_and_corrects_the_value() {
+        use super::{leaf_at, taper, Shape, Similarity};
+        // Identity warp above a sphere: F(p) = child(taperPoint(p))·min(s,1).
+        let tree = taper(0.5, 10.0, Similarity::identity(), leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 5.0, 0.0]));
+        for p in [
+            [0.0, 5.0, 0.0],        // sphere center region: inside
+            [1.4, 5.0, 0.0],        // inside the shrunken surface
+            [1.6, 5.0, 0.0],        // outside (s = 0.75, surface at 1.5)
+            [0.0, -3.0, 0.0],       // below the band: untapered
+            [2.5, -3.0, 0.0],       // outside below the band (surface at 2.0)
+        ] {
+            let local_y: f64 = p[1];
+            let s = 1.0 + (0.5 - 1.0) * (local_y / 10.0).clamp(0.0, 1.0);
+            let q = [p[0] / s, p[1], p[2] / s];
+            let child = leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 5.0, 0.0]);
+            let expect = child.f(q) * s.min(1.0);
+            assert!((tree.f(p) - expect).abs() < 1e-12, "at {p:?}: {} vs {expect}", tree.f(p));
+        }
+        // A ratio-1 taper is the identity.
+        let id = taper(1.0, 10.0, Similarity::identity(), leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 5.0, 0.0]));
+        let plain = leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 5.0, 0.0]);
+        for p in [[0.0, 5.0, 0.0], [3.0, 1.0, -2.0], [0.0, 30.0, 1.0]] {
+            assert!((id.f(p) - plain.f(p)).abs() < 1e-15);
+        }
+    }
+
+    #[test]
+    fn taper_intervals_enclose_the_sampled_field() {
+        use super::{leaf_at, taper, Shape, Similarity};
+        let sim = Similarity::compose(
+            &Similarity::from_translation(1.0, -2.0, 3.0),
+            &Similarity::from_rotation_wgsl_fwd(&[0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
+        );
+        for &(ratio, height) in &[(0.4, 7.0), (2.2, 7.0)] {
+            let tree = taper(
+                ratio,
+                height,
+                sim,
+                super::union(vec![
+                    leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 3.0, 0.0]),
+                    leaf_at(Shape::Cuboid { half: [1.0, 2.0, 1.0] }, [1.0, 0.0, -1.0]),
+                ]),
+            );
+            for (c, half) in [
+                ([0.5, 1.0, 0.5], [1.5; 3]),
+                ([2.0, 6.0, -2.0], [2.0, 3.0, 1.0]),
+                ([-4.0, 0.0, 4.0], [0.8; 3]),
+            ] {
+                let (lo, hi) = tree.interval_over_box(c, half);
+                assert!(lo <= hi, "invalid interval");
+                for i in 0..4 {
+                    for j in 0..4 {
+                        for k in 0..4 {
+                            let t = |v: usize| (v as f64 / 3.0) * 2.0 - 1.0;
+                            let p = [c[0] + t(i) * half[0], c[1] + t(j) * half[1], c[2] + t(k) * half[2]];
+                            let v = tree.f(p);
+                            assert!(
+                                v >= lo - 1e-9 && v <= hi + 1e-9,
+                                "field {v} outside [{lo},{hi}] at {p:?} (ratio {ratio})"
+                            );
+                        }
+                    }
+                }
+                // The checked enclosure also covers the samples.
+                if let Some((plo, phi)) = tree.checked_partial_interval_over_box(c, half) {
+                    assert!(plo <= phi);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn taper_commutes_with_negation_and_hard_booleans() {
+        use super::{leaf_at, taper, union, Shape, Similarity};
+        let mk = |flip: bool| {
+            let child = union(vec![
+                leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 4.0, 0.0]),
+                leaf_at(Shape::Cuboid { half: [1.0, 1.0, 1.0] }, [1.0, 1.0, 0.0]),
+            ]);
+            let inner = if flip { super::negate(child) } else { child };
+            taper(0.6, 8.0, Similarity::identity(), inner)
+        };
+        let a = mk(false);
+        let b = super::negate(mk(true));
+        for p in [[0.0, 4.0, 0.0], [2.0, 2.0, 1.0], [-1.0, 0.5, 0.0], [0.0, 20.0, 0.0]] {
+            assert!((a.f(p) - b.f(p)).abs() < 1e-12, "at {p:?}: {} vs {}", a.f(p), b.f(p));
+        }
+        // Hard union distributes exactly through the warp.
+        let t_union = taper(0.6, 8.0, Similarity::identity(), union(vec![
+            leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 4.0, 0.0]),
+            leaf_at(Shape::Sphere { r: 1.5 }, [3.0, 2.0, 0.0]),
+        ]));
+        let u_taper = union(vec![
+            taper(0.6, 8.0, Similarity::identity(), leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 4.0, 0.0])),
+            taper(0.6, 8.0, Similarity::identity(), leaf_at(Shape::Sphere { r: 1.5 }, [3.0, 2.0, 0.0])),
+        ]);
+        for p in [[0.0, 4.0, 0.0], [3.0, 2.0, 0.0], [1.5, 3.0, 1.0], [0.0, 30.0, 0.0]] {
+            assert!((t_union.f(p) - u_taper.f(p)).abs() < 1e-12, "at {p:?}");
+        }
+    }
+
+    #[test]
+    fn taper_pruned_view_matches_the_full_tree() {
+        use super::{leaf_at, taper, Shape, Similarity};
+        let tree = taper(
+            0.5,
+            10.0,
+            Similarity::identity(),
+            super::union(vec![
+                leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 5.0, 0.0]),
+                leaf_at(Shape::Cuboid { half: [1.0, 3.0, 1.0] }, [2.0, 4.0, 0.0]),
+            ]),
+        );
+        let pruned = tree.prune_to_box([1.0, 4.0, 0.0], [4.0; 3]);
+        assert_eq!(pruned.leaf_count(), tree.leaf_count());
+        for p in [[1.0, 4.0, 0.0], [0.0, 5.0, 1.5], [3.0, 8.0, -1.0], [0.5, 2.0, 0.5]] {
+            assert_eq!(pruned.f(p), tree.f(p));
+            let full = crate::sfcc::field_branches::sample_tree(&tree, p);
+            let view = crate::sfcc::field_branches::sample_pruned(&pruned, p);
+            assert_eq!(full.value.to_bits(), view.value.to_bits());
+            assert_eq!(full.gradient.map(f64::to_bits), view.gradient.map(f64::to_bits));
+        }
+    }
+
+    #[test]
+    fn taper_owner_distances_scale_with_the_correction() {
+        use super::{leaf_at, taper, Shape, Similarity};
+        let tree = taper(0.5, 10.0, Similarity::identity(), leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 5.0, 0.0]));
+        // On the warped surface (radius 1.5 at y=5): the owner reports ~0 and the
+        // tree agrees; off-surface both carry the same correction factor.
+        let on = [1.5, 5.0, 0.0];
+        let owners = tree.active_owners_at(on, 0.0);
+        assert_eq!(owners.len(), 1);
+        assert!(owners[0].d.abs() < 1e-12);
+        assert!(tree.f(on).abs() < 1e-12);
+        // Below the band the warp is identity: owner d equals the plain field.
+        let below = [3.0, -2.0, 0.0];
+        let owners = tree.active_owners_at(below, 0.0);
+        let plain = leaf_at(Shape::Sphere { r: 2.0 }, [0.0, 5.0, 0.0]);
+        assert_eq!(owners.len(), 1);
+        assert!((owners[0].d - plain.f(below)).abs() < 1e-15);
+        assert!((tree.f(below) - plain.f(below)).abs() < 1e-15);
     }
 
     #[test]

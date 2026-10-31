@@ -223,3 +223,57 @@ Validation for this report is the release benchmark build, completed scene/confi
 ## Implementation follow-up — September 10, 2026
 
 The [performance implementation results](plans/sfcc-performance-improvements-results.md) record exact-output-preserving changes to winner selection, exact predicates, query reuse, patch preparation and recovery caches. In the isolated native comparison, default housing/bracket exports improve by 26.9%/28.0%; all-quality exports are 2.87×/2.77× faster. WASM output equivalence passes and the matched sequence's maximum linear memory falls 3.3%. Some native process peak-memory measurements exceed the proposed budget; the results retain those exceptions and the allocator investigation. The historical measurements above remain unchanged.
+
+## Implementation follow-up — October 30, 2026 (loft field costs)
+
+Measured on the exact bowl sample (two 114-section lofts under a taper,
+`gcad-wasm/fixtures/bowl-taper.json`, native release, single thread; the
+browser's wasm agrees within 5%). The per-call micro-benchmark is
+`kernel/tests/bowl_cost.rs` (`--ignored --nocapture`); the per-phase work
+counters come from `kernel/tests/bowl_exact.rs` built with `--features
+sfcc-profile` (deltas of `perf::snapshot()` at every progress mark).
+
+| Call near the surface | Before | After |
+|---|---|---|
+| `f` | 1.14 µs | 1.15 µs |
+| `grad` | 2.29 µs | 2.30 µs |
+| `interval_over_box` (level-9 cell) | 16.3 µs | 2.0 µs |
+| `checked_partial_interval_over_box` | 12.6 µs | 0.08 µs |
+| `prune_to_box` (level 5) | 9.4 µs | 2.2 µs |
+
+**Cause.** Every interval query re-validated the leaf's parameters:
+`Leaf::valid_parameters` scans every float of every loft profile (7.3 k on the
+bowl), it ran twice per leaf interval (`interval_over_box` and again in
+`legacy_interval_over_ball`), and the checked enclosure additionally re-ran a
+repeated-vertex scan over every profile before returning an unbounded interval
+for a loft anyway. Extrude and lathe leaves pay the same scans in proportion to
+their vertex counts. The octree's empty culling, the same-sign straddle
+criterion and the discovery traversal are all interval-bound, so this was most
+of the octree phase.
+
+**Fix.** Both predicates are memoized on the leaf (`Leaf::params_valid`,
+`Leaf::polygons_valid`, `std::sync::OnceLock`); `Leaf::clone` starts with empty
+memos so `Leaf { shape: …, ..leaf.clone() }` cannot inherit a stale answer. The
+per-query whole-loft prismatic scan in `local_lipschitz` was dropped as well
+(the segment-local loop already yields the exact 1-Lipschitz answer where the
+neighbouring profiles are identical). Output is unchanged: identical triangle
+counts, Euler characteristics and probe results on the bowl at depths 7 and 8.
+
+| Bowl export | Before | After | Phases after (ms) |
+|---|---|---|---|
+| depth 7 (1.19 M tris) | 117 s | 71.5 s | octree 40.6 (decide 23.7, apply 16.7), contour 20.8, cell mesh 2.0, assemble 7.6 |
+| depth 8 (1.42 M tris) | 246–252 s | 82.4 s | octree 55.3 (decide 30.5, apply 24.6), contour 19.5, cell mesh 1.6, assemble 5.5 |
+
+**What the budget is now.** Counters are per tree node (the bowl tree has four:
+taper, max, two leaves), so at depth 8 the octree phase spends about 19 M
+top-level field values and 6 M gradients on 1.3 M decisions — roughly 14 values
+and 5 gradients per cell: the probe centre, the sheet witness's child-level
+samples, the new corner samples of each split, and the sampled normal cone. The
+contour phase spends ~2.4 M values and 0.7 M gradients (Illinois roots converge
+in ~10 evaluations). There is no single remaining hotspot; the next levers, in
+order, are the ones already listed for the bowl in docs/feat/sfcc/taper.md:
+the partitioned decision session (decide + contour are per-cell pure, ~60% of
+the time), carrying child emptiness in decisions so apply stops re-evaluating
+intervals, and a gradient cache keyed by lattice point for the normal cone (the
+eight corner gradients are shared by up to eight cells).
+

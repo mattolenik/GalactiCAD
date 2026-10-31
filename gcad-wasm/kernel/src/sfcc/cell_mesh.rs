@@ -575,6 +575,95 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
     out_tris: &mut Vec<usize>,
 ) {
     let m = loop_pts.len();
+    // Two face crease points whose chord lies on the surface: the crease crosses
+    // the cell along that chord. Cut there so no triangle bridges the crease.
+    let creases: Vec<usize> =
+        (0..m).filter(|&i| super::face_contour::is_crease_point(points, loop_pts[i])).collect();
+    for (k, &i) in creases.iter().enumerate() {
+        for &j in &creases[k + 1..] {
+            if j - i < 2 || i + m - j < 2 {
+                continue;
+            }
+            let (a, b) = (q::pos(points, loop_pts[i]), q::pos(points, loop_pts[j]));
+            // Both on one cell face: the chord runs along the face polyline.
+            let eps = (cell_box[3] - cell_box[0]) * 1e-9;
+            let on_face = |p: [f64; 3], k: usize, s: f64| (p[k] - s).abs() <= eps;
+            if (0..3).any(|k| [cell_box[k], cell_box[k + 3]].iter().any(|&s| on_face(a, k, s) && on_face(b, k, s))) {
+                continue;
+            }
+            let on_surface = [0.25, 0.5, 0.75].iter().all(|&t| {
+                tree.f(std::array::from_fn(|c| a[c] + t * (b[c] - a[c]))).abs() <= o.surface_tol
+            });
+            if on_surface {
+                let other: Vec<usize> = loop_pts[j..].iter().chain(&loop_pts[..=i]).copied().collect();
+                let mut cut = Vec::new();
+                triangulate_loop(&loop_pts[i..=j], tree, points, cell_box, o, &mut cut);
+                triangulate_loop(&other, tree, points, cell_box, o, &mut cut);
+                // A crease point pinned near a cell edge can still fold the cut;
+                // then keep the uncut triangulation.
+                if faces_field(&cut, tree, points) {
+                    out_tris.extend(cut);
+                    return;
+                }
+            }
+        }
+    }
+    // Creases meeting inside the cell (a facet corner): no chord cuts it, but the
+    // loop's tangent planes meet at the corner. Fan from there.
+    if creases.len() >= 2 {
+        // Every fan triangle must face the way one of its loop points does (the
+        // corner sees the whole loop), or the fan would fold.
+        let star = |c: [f64; 3]| {
+            (0..m).all(|i| {
+                let (a, b) = (loop_pts[i], loop_pts[(i + 1) % m]);
+                let (pa, pb) = (q::pos(points, a), q::pos(points, b));
+                let (u, v) = (q::sub(pa, c), q::sub(pb, c));
+                let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+                let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+                l > 0.0 && [a, b].iter().any(|&id| {
+                    let g = [points.nx(id), points.ny(id), points.nz(id)];
+                    let lg = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+                    (n[0] * g[0] + n[1] * g[1] + n[2] * g[2]) >= 0.9 * l * lg
+                })
+            })
+        };
+        if let Some(c) = facet_corner(loop_pts, tree, points, cell_box, o.surface_tol).filter(|&c| star(c)) {
+            let (_, g) = tree.grad(c);
+            let id = points.add(c[0], c[1], c[2], g[0], g[1], g[2]);
+            let fan: Vec<usize> = (0..m).flat_map(|i| [id, loop_pts[i], loop_pts[(i + 1) % m]]).collect();
+            if faces_field(&fan, tree, points) {
+                out_tris.extend(fan);
+                return;
+            }
+        }
+    }
+    if creases.is_empty() {
+        return triangulate_disk(loop_pts, tree, points, cell_box, o, out_tris);
+    }
+    // An uncut crease loop is skewed (a pinned point sits on a cell edge): the
+    // projected-centroid fan can fold where a loop-vertex fan does not.
+    let mut tris = Vec::new();
+    triangulate_disk(loop_pts, tree, points, cell_box, o, &mut tris);
+    if !faces_field(&tris, tree, points) {
+        let fan = |k: usize| -> Vec<usize> {
+            (1..m - 1).flat_map(|i| [loop_pts[k], loop_pts[(k + i) % m], loop_pts[(k + i + 1) % m]]).collect()
+        };
+        if let Some(f) = (0..m).map(fan).find(|f| faces_field(f, tree, points)) {
+            tris = f;
+        }
+    }
+    out_tris.extend(tris);
+}
+
+fn triangulate_disk<T: SdfQuery + ?Sized>(
+    loop_pts: &[usize],
+    tree: &T,
+    points: &mut PointTable,
+    cell_box: &[f64; 6],
+    o: &CellMeshOptions,
+    out_tris: &mut Vec<usize>,
+) {
+    let m = loop_pts.len();
     if o.quality_triangulation && m >= 3 {
         // Only accept known carriers here. Unknown field charts retain the
         // baseline route until connected branch ownership can be established.
@@ -732,6 +821,60 @@ fn triangulate_loop<T: SdfQuery + ?Sized>(
     for i in 0..m {
         out_tris.extend_from_slice(&[c, loop_pts[i], loop_pts[(i + 1) % m]]);
     }
+}
+
+/// No triangle faces against the field gradient at its centroid.
+fn faces_field<T: SdfQuery + ?Sized>(tris: &[usize], tree: &T, points: &PointTable) -> bool {
+    tris.chunks_exact(3).all(|t| {
+        let p = [t[0], t[1], t[2]].map(|id| q::pos(points, id));
+        let n = q::normal(p);
+        let (_, g) = tree.grad(std::array::from_fn(|k| (p[0][k] + p[1][k] + p[2][k]) / 3.0));
+        n[0] * g[0] + n[1] * g[1] + n[2] * g[2] >= 0.0
+    })
+}
+
+/// Least-squares meet of the loop points' tangent planes, when they pin a single
+/// point (three independent facets) that lies on the surface inside the cell.
+fn facet_corner<T: SdfQuery + ?Sized>(
+    loop_pts: &[usize],
+    tree: &T,
+    points: &PointTable,
+    cell_box: &[f64; 6],
+    surface_tol: f64,
+) -> Option<[f64; 3]> {
+    let (mut a, mut r) = ([[0.0f64; 3]; 3], [0.0f64; 3]);
+    for &id in loop_pts {
+        let n = [points.nx(id), points.ny(id), points.nz(id)];
+        let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if !(l > 1e-12) {
+            return None;
+        }
+        let n = n.map(|x| x / l);
+        let d = n[0] * points.x(id) + n[1] * points.y(id) + n[2] * points.z(id);
+        for i in 0..3 {
+            for j in 0..3 {
+                a[i][j] += n[i] * n[j];
+            }
+            r[i] += n[i] * d;
+        }
+    }
+    let det = |m: [[f64; 3]; 3]| {
+        m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+            + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    };
+    let d = det(a);
+    let scale = (a[0][0] + a[1][1] + a[2][2]) / 3.0;
+    if !(d.abs() > 1e-9 * scale * scale * scale) {
+        return None; // the planes share a line (one crease) or a plane
+    }
+    let c: [f64; 3] = std::array::from_fn(|k| {
+        let mut m = a;
+        for i in 0..3 {
+            m[i][k] = r[i];
+        }
+        det(m) / d
+    });
+    (in_box(cell_box, c[0], c[1], c[2], 0.0) && tree.f(c).abs() <= surface_tol).then_some(c)
 }
 
 /// Fan apex choice: the loop vertex maximizing the worst ear quality

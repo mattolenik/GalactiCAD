@@ -85,6 +85,7 @@ fn bracket() -> CsgNode {
                     attach(child, first)
                 }
             }
+            CsgNode::Taper { child, .. } => attach(child, first),
         }
     }
     attach(&mut tree, &mut 0);

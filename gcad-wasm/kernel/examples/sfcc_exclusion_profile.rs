@@ -28,6 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 children,
                 ..
             } => (format!("{kind:?}/{mode:?}"), Some(children)),
+            CsgNode::Taper { .. } => ("Taper".into(), None),
         };
         let iv = node.interval_over_box(c, h);
         let ball = node.interval_over_ball(c, h[0].hypot(h[1]).hypot(h[2]));

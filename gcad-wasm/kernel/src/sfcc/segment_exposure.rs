@@ -14,6 +14,9 @@ fn hard_boxes(node: &CsgNode) -> bool {
         CsgNode::Leaf(leaf) => matches!(leaf.shape, Shape::Cuboid { .. }),
         CsgNode::Min(children) | CsgNode::Max(children) => children.iter().all(hard_boxes),
         CsgNode::Blend { .. } => false,
+        // A warped box's faces are no longer the analytic planes this module
+        // reasons about; fall back to the generic path.
+        CsgNode::Taper { .. } => false,
     }
 }
 
@@ -71,7 +74,7 @@ fn occupied(node: &CsgNode, faces: &mut impl Iterator<Item = Option<bool>>) -> O
         }
         CsgNode::Min(children) => (children, true),
         CsgNode::Max(children) => (children, false),
-        CsgNode::Blend { .. } => return None,
+        CsgNode::Blend { .. } | CsgNode::Taper { .. } => return None,
     };
     let mut inside = Some(!union);
     for child in children {

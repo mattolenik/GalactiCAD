@@ -134,6 +134,21 @@ pub struct CellDecision {
     pub split: bool,
     pub feature_curve: i64,
     pub feature_corner: i64,
+    /// Multi-sheet verdict (docs/feat/sfcc/multi-sheet-cells.md).
+    pub sheet: Sheet,
+}
+
+/// What the fine-edge sheet detection concluded about a featureless cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sheet {
+    /// Not examined, or an ordinary single-sheet cell: the regular criteria rule.
+    None,
+    /// Several smooth sheets cross the cell: keep it, seed its edges, report it.
+    Keep,
+    /// Same-sign corners, nothing on the edges or the child corners, interval
+    /// straddling: keep it unresolved at the sheet floor instead of refining the
+    /// empty shell down to the ceiling.
+    Unresolved,
 }
 
 /// Decide every frontier cell (the ~67% `classifyCellFeatures` hot path), producing
@@ -155,6 +170,10 @@ pub struct OctreeBuildOptions {
     pub depth_min: u32,
     pub depth_max: u32,
     pub enforce_edge_balance: bool,
+    /// Multi-sheet cells (docs/feat/sfcc/multi-sheet-cells.md): unresolved
+    /// featureless leaves get their twelve edges seeded at the finest lattice
+    /// spacing so face contouring resolves the sheets they hide.
+    pub multi_sheet_cells: bool,
 }
 
 /// Per-round wall-clock split of the refinement loop (only populated under
@@ -293,6 +312,48 @@ pub fn rebuild_octree_from_leaves<'a>(
     SfccOctree { lat: *lat, cells_by_level, internal_by_level, leaves, degenerate_cells, profile: None, sampler }
 }
 
+/// Whether an unresolved leaf carries fine edge samples in multi-sheet mode:
+/// featureless, and with lattice points strictly inside its edges.
+pub(crate) fn sheet_edges_wanted(lat: &SfccLattice, cell: &SfccCell) -> bool {
+    cell.degenerate && cell.feature_curve < 0 && cell.feature_corner < 0 && cell.level < lat.max_depth
+}
+
+/// Sample every finest-lattice point on the cell's twelve edges into the shared
+/// cache, so the face walk (midpoint bisection over existing keys) sees each
+/// sub-edge and contours every sheet crossing it.
+fn seed_sheet_edges(sampler: &Sampler, lat: &SfccLattice, cell: &SfccCell) {
+    let stride = stride_at_level(lat, cell.level);
+    let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
+    for axis in 0..3 {
+        let (b, c) = ((axis + 1) % 3, (axis + 2) % 3);
+        for ob in 0..2i64 {
+            for oc in 0..2i64 {
+                let mut g = base;
+                g[b] += ob * stride;
+                g[c] += oc * stride;
+                for k in 1..stride {
+                    let mut h = g;
+                    h[axis] += k;
+                    sampler.sample_at(h[0], h[1], h[2]);
+                }
+            }
+        }
+    }
+}
+
+impl<'a> SfccOctree<'a> {
+    /// Worker-side counterpart of the serial build's seeding: re-seed the fine
+    /// edge samples of every unresolved featureless leaf (multi-sheet mode only;
+    /// the serial build seeded exactly this set when it tagged them).
+    pub fn seed_unresolved_sheet_edges(&self) {
+        for cell in &self.leaves {
+            if sheet_edges_wanted(&self.lat, cell) {
+                seed_sheet_edges(&self.sampler, &self.lat, cell);
+            }
+        }
+    }
+}
+
 /// Lever 1 hard-tree leaf threshold, retained for a future (cheaper) prune gate.
 /// The shipping gate ([`crate::sdf::lever1_should_prune`]) is OFF by default because
 /// the measured integration was net-negative; this constant is the leaf count a
@@ -321,6 +382,18 @@ const EDGE_NEIGHBORS: [[i64; 3]; 12] = [
 /// Mutable build state, split out so the helper methods can take `&mut self`
 /// while `Sampler`'s interior mutability lets the criteria callback read the
 /// shared cache.
+/// Extra octree levels a cell may take past the tuning `depth_max` when its
+/// corner lattice cannot see a surface its interior samples prove is there: a
+/// sheet thinner than the lattice step threading between corner planes (the
+/// bowl sample's 0.6 mm wall on a 0.7 mm step) leaves every corner outside
+/// while the cell center is inside. Kept degenerate, such a cell contours
+/// nothing and the sheet comes out as a band of holes; two more levels halve
+/// the step twice so sheets down to a quarter step become visible. The
+/// pipeline builds its lattice this much deeper than `depth_max` so these cells
+/// have room to split (see [`Builder::interior_sign_witness`]). Featureless
+/// cells only: a cell tagged with a curve or corner keeps the ceiling.
+pub const SHEET_EXTRA_DEPTH: u32 = 2;
+
 struct Builder<'a> {
     lat: &'a SfccLattice,
     sampler: Sampler<'a>,
@@ -328,6 +401,10 @@ struct Builder<'a> {
     internal_by_level: Vec<HashSet<i64>>,
     worklist: Vec<(u32, i64)>,
     enforce_edge_balance: bool,
+    /// The tuning ceiling: cells at or past it only split on the sheet witness.
+    depth_max: u32,
+    /// [`OctreeBuildOptions::multi_sheet_cells`].
+    multi_sheet: bool,
 }
 
 impl<'a> Builder<'a> {
@@ -335,10 +412,10 @@ impl<'a> Builder<'a> {
     fn certified_empty(&self, level: u32, ix: i64, iy: i64, iz: i64) -> bool {
         let Some((c, half)) = crate::math::grid::cell_enclosure(self.lat, level, ix, iy, iz) else { return false; };
         let (lo, hi) = self.sampler.tree.interval_over_box(c, half);
-        // Limit this additional rule to the lattice ceiling: earlier empty
+        // Limit this additional rule to the refinement ceiling: earlier empty
         // neighbors can change surface subdivision/balance. Lower-ceiling builds
         // retain the old policy; mesh preservation remains a regression gate.
-        lo > 0.0 || hi < 0.0 || (level == self.lat.max_depth
+        lo > 0.0 || hi < 0.0 || (level >= self.depth_max
             // Arithmetic failure stays unresolved. This is eligibility only;
             // the old endpoints are not premises of the checked enclosure.
             && lo.is_finite() && hi.is_finite() && lo <= hi
@@ -462,15 +539,32 @@ impl<'a> Builder<'a> {
             c.feature_curve = dec.feature_curve;
             c.feature_corner = dec.feature_corner;
         }
+        let featureless = dec.feature_curve < 0 && dec.feature_corner < 0;
+        // Multi-sheet verdicts (docs/feat/sfcc/multi-sheet-cells.md): a kept
+        // multi-sheet cell and a floor-stopped straddling cell are both reported
+        // as unresolved; in multi-sheet mode every unresolved featureless leaf
+        // below the lattice floor carries fine edge samples (workers re-seed the
+        // same set from the tags, see `seed_unresolved_sheet_edges`).
+        if matches!(dec.sheet, Sheet::Keep | Sheet::Unresolved) {
+            self.mark_unresolved(level, key);
+            return;
+        }
         if !dec.split {
             return;
         }
-        if cell.level >= depth_max {
+        // Sheet refinement is for featureless cells only: a cell carrying a
+        // curve/corner tag keeps the ceiling so its pin and corner certificates
+        // stay consistent with its neighbors' (refining one past them pinched
+        // the bracket's rib junction into a non-manifold vertex).
+        let sheet = || {
+            featureless
+                && cell.level < self.lat.max_depth
+                && self.interior_sign_witness(cell)
+        };
+        if cell.level >= depth_max && !sheet() {
             #[cfg(feature = "sfcc-profile")]
             super::diagnosis::push(super::diagnosis::Event::Octree { cell: cell.into(), kind: "depth_ceiling_unresolved" });
-            if let Some(c) = self.cells_by_level[level as usize].get_mut(&key) {
-                c.degenerate = true;
-            }
+            self.mark_unresolved(level, key);
             return;
         }
         // Re-read the (tag-stamped) live cell so split carries the tags.
@@ -478,6 +572,73 @@ impl<'a> Builder<'a> {
         #[cfg(feature = "sfcc-profile")]
         super::diagnosis::push(super::diagnosis::Event::Split { cell: (&live).into(), balance: false });
         self.split(live);
+    }
+
+    /// Tag a leaf unresolved (meshed best-effort, reported); in multi-sheet mode a
+    /// featureless one below the lattice floor also gets its fine edge samples.
+    fn mark_unresolved(&mut self, level: u32, key: i64) {
+        let Some(c) = self.cells_by_level[level as usize].get_mut(&key) else { return; };
+        c.degenerate = true;
+        let cell = *c;
+        if self.multi_sheet && sheet_edges_wanted(self.lat, &cell) {
+            seed_sheet_edges(&self.sampler, self.lat, &cell);
+        }
+    }
+
+    /// A ceiling cell hiding a sub-step sheet: an edge midpoint, face center, or
+    /// cell center whose sign differs from ALL the corners around it (the edge's
+    /// two endpoints, the face's four corners, the eight corners). Face
+    /// contouring only sees corner signs, so such a sheet either contours
+    /// nothing (every corner outside: a hole) or, where it is visible on some
+    /// corners but threads an edge invisibly, gets its two sides joined into a
+    /// slit. Such a cell is split further instead of being kept degenerate.
+    fn interior_sign_witness(&self, cell: &SfccCell) -> bool {
+        let stride = stride_at_level(self.lat, cell.level);
+        let corner: [bool; 8] = std::array::from_fn(|c| {
+            self.sampler.sample_at(
+                (cell.ix + (c & 1) as i64) * stride,
+                (cell.iy + ((c >> 1) & 1) as i64) * stride,
+                (cell.iz + ((c >> 2) & 1) as i64) * stride,
+            ) < 0.0
+        });
+        let aabb = cell_aabb(self.lat, cell.level, cell.ix, cell.iy, cell.iz);
+        let tree = self.sampler.tree;
+        let coord = |axis: usize, u: usize| if u == 0 { aabb[axis] } else { aabb[axis + 3] };
+        let mid = |axis: usize| 0.5 * (aabb[axis] + aabb[axis + 3]);
+        // Edges: vary along `a`, the other two axes pinned at lo/hi.
+        for a in 0..3 {
+            let (b, c) = ((a + 1) % 3, (a + 2) % 3);
+            for ub in 0..2 {
+                for uc in 0..2 {
+                    let s0 = corner[(ub << b) | (uc << c)];
+                    if s0 != corner[(1 << a) | (ub << b) | (uc << c)] {
+                        continue;
+                    }
+                    let mut q = [0.0; 3];
+                    q[a] = mid(a);
+                    q[b] = coord(b, ub);
+                    q[c] = coord(c, uc);
+                    if (tree.f(q) < 0.0) != s0 {
+                        return true;
+                    }
+                }
+            }
+        }
+        // Faces: axis `a` pinned at lo/hi.
+        for a in 0..3 {
+            for ua in 0..2 {
+                let s0 = corner[ua << a];
+                if (0..8).any(|i| (i >> a) & 1 == ua && corner[i] != s0) {
+                    continue;
+                }
+                let mut q = [mid(0), mid(1), mid(2)];
+                q[a] = coord(a, ua);
+                if (tree.f(q) < 0.0) != s0 {
+                    return true;
+                }
+            }
+        }
+        corner.iter().all(|&s| s == corner[0]) && (tree.f([mid(0), mid(1), mid(2)]) < 0.0) != corner[0]
     }
 
     /// Collect + deterministically sort the leaves and assemble the [`SfccOctree`]
@@ -590,6 +751,8 @@ where
         internal_by_level: (0..=lat.max_depth).map(|_| HashSet::new()).collect(),
         worklist: Vec::new(),
         enforce_edge_balance: opts.enforce_edge_balance,
+        depth_max: opts.depth_max,
+        multi_sheet: opts.multi_sheet_cells,
     };
 
     // --- initial descent to depth_min ---------------------------------------
@@ -686,6 +849,7 @@ pub(crate) struct ResumableOctreeBuild {
     worklist: Vec<(u32, i64)>,
     enforce_edge_balance: bool,
     depth_max: u32,
+    multi_sheet: bool,
     current_frontier: Vec<SfccCell>,
 }
 
@@ -706,6 +870,7 @@ impl ResumableOctreeBuild {
             worklist: Vec::new(),
             enforce_edge_balance: opts.enforce_edge_balance,
             depth_max: opts.depth_max,
+            multi_sheet: opts.multi_sheet_cells,
             current_frontier: Vec::new(),
         };
         let depth_min = opts.depth_min;
@@ -753,6 +918,8 @@ impl ResumableOctreeBuild {
             internal_by_level: std::mem::take(&mut self.internal_by_level),
             worklist: std::mem::take(&mut self.worklist),
             enforce_edge_balance: self.enforce_edge_balance,
+            depth_max: self.depth_max,
+            multi_sheet: self.multi_sheet,
         };
         b.finalize(None)
     }
@@ -779,6 +946,8 @@ impl ResumableOctreeBuild {
             internal_by_level: std::mem::take(&mut self.internal_by_level),
             worklist: std::mem::take(&mut self.worklist),
             enforce_edge_balance: self.enforce_edge_balance,
+            depth_max: self.depth_max,
+            multi_sheet: self.multi_sheet,
         };
         let r = f(&mut b);
         let (samples, cells, internal, worklist) = b.into_state();
@@ -796,8 +965,8 @@ pub fn build_uniform_octree<'a>(tree: &'a CsgNode, lat: &'a SfccLattice, leaf_de
     build_octree(
         tree,
         lat,
-        OctreeBuildOptions { depth_min: leaf_depth, depth_max: leaf_depth, enforce_edge_balance: true },
-        |_cell: &SfccCell, _sampler: &SampleView<'_>| CellDecision { split: false, feature_curve: -1, feature_corner: -1 },
+        OctreeBuildOptions { depth_min: leaf_depth, depth_max: leaf_depth, enforce_edge_balance: true, multi_sheet_cells: false },
+        |_cell: &SfccCell, _sampler: &SampleView<'_>| CellDecision { split: false, feature_curve: -1, feature_corner: -1, sheet: Sheet::None },
     )
 }
 
@@ -918,7 +1087,7 @@ pub fn build_octree_feature_aware<'a>(
                     feature_corner = best_corner;
                 }
             }
-            return CellDecision { split: true, feature_curve: cls.curve, feature_corner };
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner, sheet: Sheet::None };
         }
         // (forcedSplit markers are empty at round 0 — omitted.)
         // The certificate evals (center f + per-stratum / blend-band ∇f + owner queries)
@@ -943,20 +1112,20 @@ pub fn build_octree_feature_aware<'a>(
             cell.iz,
         );
         if discovery_guard(tree, &probe).needs_split() {
-            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None };
         }
         if cls.corner >= 0 {
             // Corner features exempt sampled smoothness, but never discovery.
-            return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner };
+            return CellDecision { split: false, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None };
         }
         // A feature in a cell whose corners don't see a sign change is invisible to
         // face contouring — keep splitting. Classify FIRST so depthMax leaves carry
         // the tag for the pin + per-stratum recovery machinery.
         if cls.curve >= 0 && !has_corner_sign_change(&probe) {
-            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner };
+            return CellDecision { split: true, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None };
         }
         let split = needs_split_smooth_after_discovery(q, &probe, smooth_opts, grad_bound, has_blend);
-        CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner }
+        CellDecision { split, feature_curve: cls.curve, feature_corner: cls.corner, sheet: Sheet::None }
     })
 }
 
@@ -982,13 +1151,13 @@ mod tests {
         assert!(!tree.interval_over_box(c,h).0.is_finite());
         assert!(tree.checked_partial_interval_over_box(c,h).unwrap().1<0.);
         let builder=Builder{lat:&lat,sampler:Sampler::new(&tree,&lat),cells_by_level:vec![HashMap::new(),HashMap::new()],
-            internal_by_level:vec![HashSet::new(),HashSet::new()],worklist:Vec::new(),enforce_edge_balance:true};
+            internal_by_level:vec![HashSet::new(),HashSet::new()],worklist:Vec::new(),enforce_edge_balance:true,depth_max:1,multi_sheet:false};
         assert!(!builder.certified_empty(1,0,0,0));
     }
 
     /// Wrap a bare split predicate in a (no-feature) `CellDecision` for the tests.
     fn split_dec(split: bool) -> CellDecision {
-        CellDecision { split, feature_curve: -1, feature_corner: -1 }
+        CellDecision { split, feature_curve: -1, feature_corner: -1, sheet: Sheet::None }
     }
 
     #[test]
@@ -1016,7 +1185,7 @@ mod tests {
         let oct = build_octree(
             &tree,
             &lat,
-            OctreeBuildOptions { depth_min: 2, depth_max: 5, enforce_edge_balance: true },
+            OctreeBuildOptions { depth_min: 2, depth_max: 5, enforce_edge_balance: true, multi_sheet_cells: false },
             |cell, sampler| {
                 if cell.level >= 4 {
                     return split_dec(false);
@@ -1056,7 +1225,7 @@ mod tests {
         let oct = build_octree(
             &tree,
             &lat,
-            OctreeBuildOptions { depth_min: 2, depth_max: 6, enforce_edge_balance: true },
+            OctreeBuildOptions { depth_min: 2, depth_max: 6, enforce_edge_balance: true, multi_sheet_cells: false },
             |cell, sampler| {
                 if cell.level >= 5 {
                     return split_dec(false);

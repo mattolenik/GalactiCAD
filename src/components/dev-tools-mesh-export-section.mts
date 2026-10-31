@@ -1077,6 +1077,7 @@ const SFCC_RANGE_KNOBS: {
         | "creaseAngleDeg"
         | "normalVariationDeg"
         | "blendCurvatureDeg"
+        | "decimateTolMm"
     label: string
     min: number
     max: number
@@ -1091,6 +1092,7 @@ const SFCC_RANGE_KNOBS: {
     { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1, int: true },
     { key: "normalVariationDeg", label: "Surface curvature °", min: 1, max: 90, step: 1, int: true },
     { key: "blendCurvatureDeg", label: "Blend curvature °", min: 1, max: 90, step: 1, int: true },
+    { key: "decimateTolMm", label: "Decimate tol (mm, 0 = off)", min: 0, max: 0.5, step: 0.005 },
 ]
 
 const SFCC_BOOL_KNOBS: {
@@ -1099,6 +1101,7 @@ const SFCC_BOOL_KNOBS: {
         | "blendCurvatureRefine"
         | "normalVariationAnalytic"
         | "checkVertexLinks"
+        | "multiSheetCells"
         | "debugOutput"
     label: string
 }[] = [
@@ -1106,6 +1109,7 @@ const SFCC_BOOL_KNOBS: {
     { key: "blendCurvatureRefine", label: "Blend curvature refine" },
     { key: "normalVariationAnalytic", label: "Carrier curvature heuristic (sfcc-rs)" },
     { key: "checkVertexLinks", label: "Vertex-link audit" },
+    { key: "multiSheetCells", label: "Multi-sheet cells (thin walls)" },
     { key: "debugOutput", label: "Debug overlays" },
 ]
 

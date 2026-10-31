@@ -11,7 +11,7 @@ use gcad_kernel::math::grid::make_lattice;
 use gcad_kernel::math::similarity::Similarity;
 use gcad_kernel::sdf::{self, CsgNode, Shape};
 use gcad_kernel::sfcc::face_contour::{contour_all_faces, FaceContourOptions};
-use gcad_kernel::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions};
+use gcad_kernel::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions, Sheet};
 use gcad_kernel::sfcc::point_table::PointTable;
 use gcad_kernel::sfcc::refine_criteria::{make_probe, needs_split_smooth, SmoothCriteriaOptions};
 use gcad_kernel::strata::{Stratum, StratumIdentity};
@@ -218,6 +218,7 @@ fn run_parity(name: &str, tree: CsgNode) {
         normal_variation_cos: fix.normal_variation_cos,
         blend_normal_variation_cos: fix.blend_normal_variation_cos,
         normal_variation_analytic: false,
+        orientation_cone: false,
     };
 
     let oct = build_octree(
@@ -227,12 +228,13 @@ fn run_parity(name: &str, tree: CsgNode) {
             depth_min: fix.depth_min,
             depth_max: fix.depth_max,
             enforce_edge_balance: fix.enforce_edge_balance,
+            multi_sheet_cells: false,
         },
         |cell, sampler| {
             let probe =
                 make_probe(&lat, &tree, |gx, gy, gz| sampler.sample_at(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
             let split = needs_split_smooth(&tree, &probe, &smooth_opts, grad_bound, has_blend);
-            CellDecision { split, feature_curve: -1, feature_corner: -1 }
+            CellDecision { split, feature_curve: -1, feature_corner: -1, sheet: Sheet::None }
         },
     );
 
@@ -335,11 +337,12 @@ fn contour_sphere_drift_is_sub_ulp_scale() {
         normal_variation_cos: fix.normal_variation_cos,
         blend_normal_variation_cos: fix.blend_normal_variation_cos,
         normal_variation_analytic: false,
+        orientation_cone: false,
     };
-    let oct = build_octree(&tree, &lat, OctreeBuildOptions { depth_min: fix.depth_min, depth_max: fix.depth_max, enforce_edge_balance: fix.enforce_edge_balance }, |cell, sampler| {
+    let oct = build_octree(&tree, &lat, OctreeBuildOptions { depth_min: fix.depth_min, depth_max: fix.depth_max, enforce_edge_balance: fix.enforce_edge_balance, multi_sheet_cells: false }, |cell, sampler| {
         let probe = make_probe(&lat, &tree, |gx, gy, gz| sampler.sample_at(gx, gy, gz), cell.level, cell.ix, cell.iy, cell.iz);
         let split = needs_split_smooth(&tree, &probe, &smooth_opts, grad_bound, has_blend);
-        CellDecision { split, feature_curve: -1, feature_corner: -1 }
+        CellDecision { split, feature_curve: -1, feature_corner: -1, sheet: Sheet::None }
     });
     let mut points = PointTable::new();
     let result = contour_all_faces(&oct, &tree, &mut points, &FaceContourOptions { root_tol: fix.root_tol, ..FaceContourOptions::default() });

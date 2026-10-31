@@ -20,6 +20,7 @@ fn attach_strata(node: &mut CsgNode, leaf_index: &mut usize, first_id: &mut usiz
         }
         CsgNode::Min(ch) | CsgNode::Max(ch) => ch.iter_mut().for_each(|c| attach_strata(c, leaf_index, first_id)),
         CsgNode::Blend { children, .. } => children.iter_mut().for_each(|c| attach_strata(c, leaf_index, first_id)),
+        CsgNode::Taper { child, .. } => attach_strata(child, leaf_index, first_id),
     }
 }
 

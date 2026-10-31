@@ -5,7 +5,7 @@ use gcad_kernel::math::{
     similarity::Similarity,
 };
 use gcad_kernel::sdf::{self, CsgNode, Shape};
-use gcad_kernel::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions};
+use gcad_kernel::sfcc::octree::{build_octree, CellDecision, OctreeBuildOptions, Sheet};
 
 fn contains_zero(iv: (f64, f64)) {
     assert!(!(iv.0 > 0. || iv.1 < 0.), "false exclusion: {iv:?}");
@@ -119,11 +119,13 @@ fn initial_child_and_balance_culls_keep_known_zero_at_insufficient_depth() {
                     depth_min,
                     depth_max: 3,
                     enforce_edge_balance: true,
+                    multi_sheet_cells: false,
                 },
                 |_, _| CellDecision {
                     split: true,
                     feature_curve: -1,
                     feature_corner: -1,
+                    sheet: Sheet::None,
                 },
             );
             for p in [[1., 0., 0.], [-1., 0., 0.], [0., 1., 0.], [0., 0., -1.]] {
@@ -223,11 +225,13 @@ fn approximate_matrix_zero_survives_the_actual_initial_and_child_culls() {
                 depth_min,
                 depth_max: 3,
                 enforce_edge_balance: true,
+                multi_sheet_cells: false,
             },
             |_, _| CellDecision {
                 split: true,
                 feature_curve: -1,
                 feature_corner: -1,
+                sheet: Sheet::None,
             },
         );
         assert!(
@@ -434,6 +438,7 @@ fn subnormal_step_rounding_cannot_remove_the_requested_root_domain() {
             depth_min: 0,
             depth_max: 0,
             enforce_edge_balance: true,
+            multi_sheet_cells: false,
         },
         |cell, samples| {
             let probe = make_probe(
@@ -449,6 +454,7 @@ fn subnormal_step_rounding_cannot_remove_the_requested_root_domain() {
                 split: discovery_guard(&tree, &probe).needs_split(),
                 feature_curve: -1,
                 feature_corner: -1,
+                sheet: Sheet::None,
             }
         },
     );

@@ -73,6 +73,33 @@ pub fn append_chamfer_carriers(tree: &mut SfccTree<'_>) -> Vec<(usize, [f64; 6])
                 }
                 *leaf += 1;
             }
+            // A warp subtree contributes ONE field patch whose FieldRef ends AT
+            // the warp (sampling it runs the correct warped field). Leaves and
+            // blends inside get no analytic patches/carriers — their unwarped
+            // carriers would misguide tracing; the region meshes by refinement.
+            CsgNode::Taper { child: warp_child, .. } => {
+                fn consume_leaves(n: &CsgNode, leaf: &mut usize) {
+                    match n {
+                        CsgNode::Leaf(_) => *leaf += 1,
+                        CsgNode::Min(ch) | CsgNode::Max(ch) => {
+                            ch.iter().for_each(|c| consume_leaves(c, leaf))
+                        }
+                        CsgNode::Blend { children, .. } => {
+                            children.iter().for_each(|c| consume_leaves(c, leaf))
+                        }
+                        CsgNode::Taper { child, .. } => consume_leaves(child, leaf),
+                    }
+                }
+                let first = *leaf;
+                consume_leaves(warp_child, leaf);
+                for k in first..*leaf {
+                    let aabb = tree.leaves[k].aabb;
+                    for b in 0..3 {
+                        bounds[b] = bounds[b].min(aabb[b]);
+                        bounds[b + 3] = bounds[b + 3].max(aabb[b + 3]);
+                    }
+                }
+            }
             CsgNode::Min(children) | CsgNode::Max(children) | CsgNode::Blend { children, .. } => {
                 let operands: Vec<_> = children
                     .iter()

@@ -1,6 +1,7 @@
 //! Analytic field contract for feature extraction. Field magnitudes are retained
 //! through composition; normalization belongs to the linear solver, not the field.
 
+use crate::math::similarity::Similarity;
 use crate::primitives::{polygon2d::polygon_dist_2d, smin::SminMode};
 use crate::sdf::{BlendKind, CsgNode, Leaf, Shape};
 
@@ -65,6 +66,9 @@ impl FieldRef {
             node = match node {
                 CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => &c[i],
                 CsgNode::Leaf(_) => unreachable!("field path descends through leaf"),
+                // Producers never route field paths through a warp (warped
+                // leaves have no strata/patches to reference).
+                CsgNode::Taper { .. } => unreachable!("field path descends through taper"),
             };
         }
         node
@@ -125,6 +129,7 @@ impl FieldRef {
                         &c[self.path[step]]
                     }
                     CsgNode::Leaf(_) => unreachable!("field path descends through leaf"),
+                    CsgNode::Taper { .. } => unreachable!("field path descends through taper"),
                 };
             }
         }
@@ -360,6 +365,12 @@ fn sample_tree_using<'a>(node: &'a CsgNode, p: [f64; 3], query: &mut impl Evalua
             let child = winner(children, |child| query.scalar(child, p), is_min);
             query.raw(child, p)
         }
+        CsgNode::Taper { ratio, height, sim, child } => {
+            // The child is sampled at the warped point, outside the caller's
+            // per-point cache (which is keyed at p) — plain recursion.
+            let (q, s) = crate::sdf::taper::warp_point(sim, *ratio, *height, p);
+            compose_taper_sample(sim, *ratio, *height, p, s, sample_tree(child, q))
+        }
         CsgNode::Blend { kind, mode, r, n, children } => {
             let sign = if *kind == BlendKind::Smin { 1. } else { -1. };
             let mut pair = [0, 1];
@@ -395,6 +406,10 @@ fn sample_tree_using<'a>(node: &'a CsgNode, p: [f64; 3], query: &mut impl Evalua
 pub fn sample_pruned(node: &crate::sdf::Pruned<'_>, p: [f64; 3]) -> FieldSample {
     match node {
         crate::sdf::Pruned::Leaf(l) => sample_leaf(l, p),
+        crate::sdf::Pruned::Taper { ratio, height, sim, child } => {
+            let (q, s) = crate::sdf::taper::warp_point(sim, *ratio, *height, p);
+            compose_taper_sample(sim, *ratio, *height, p, s, sample_pruned(child, q))
+        }
         crate::sdf::Pruned::Min(children) | crate::sdf::Pruned::Max(children) => {
             let is_min = matches!(node, crate::sdf::Pruned::Min(_));
             let child = winner(children, |child| child.f(p), is_min);
@@ -428,6 +443,37 @@ pub fn sample_pruned(node: &crate::sdf::Pruned<'_>, p: [f64; 3]) -> FieldSample 
             .scale(sign)
         }
     }
+}
+
+/// Compose a child [`FieldSample`] (taken at the warped point) through the
+/// taper warp back to the world query point `p`. The f64 port of
+/// `sdfTaperNormal`'s gradient math: value scaled by `min(s,1)`; the child
+/// gradient rotated into the taper frame, pushed through the Jacobian
+/// transpose (XZ by 1/s, plus the `nyCross` chain-rule term), corrected-value
+/// derivative added (`d·dc/dy`), and rotated back to world.
+pub(crate) fn compose_taper_sample(
+    sim: &Similarity,
+    ratio: f64,
+    height: f64,
+    p: [f64; 3],
+    s: f64,
+    inner: FieldSample,
+) -> FieldSample {
+    let corr = s.min(1.0);
+    let local = sim.inv_apply_point(p[0], p[1], p[2]);
+    let g_l = sim.inv_rotate_vector(inner.gradient[0], inner.gradient[1], inner.gradient[2]);
+    let dsdy = crate::sdf::taper::dsdy_at(local[1], ratio, height);
+    // d(corr)/dy is dsdy while corr tracks s (s < 1), else 0 (corr pinned at 1).
+    let dcdy = if s < 1.0 { dsdy } else { 0.0 };
+    let ny_cross = -(local[0] * g_l[0] + local[2] * g_l[2]) / (s * s) * dsdy;
+    let d_local = inner.value / sim.s;
+    let g_final_local = [
+        corr * g_l[0] / s,
+        corr * (g_l[1] + ny_cross) + d_local * dcdy,
+        corr * g_l[2] / s,
+    ];
+    let gradient = sim.rotate_vector(g_final_local[0], g_final_local[1], g_final_local[2]);
+    FieldSample { value: corr * inner.value, gradient }
 }
 
 pub(crate) fn sample_leaf(l: &Leaf, p: [f64; 3]) -> FieldSample {
@@ -592,6 +638,56 @@ mod tests {
     }
 
     #[test]
+    fn taper_derivatives_match_the_scalar_field_through_warps_and_blends() {
+        use crate::math::similarity::Similarity;
+        use crate::sdf::{leaf_at, taper, union, Shape};
+        let sim = Similarity::compose(
+            &Similarity::from_translation(0.5, -0.25, 1.0),
+            &Similarity::from_rotation_wgsl_fwd(&[0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
+        );
+        for (ratio, height) in [(0.45, 6.0), (1.9, 5.0)] {
+            let inner = CsgNode::Blend {
+                mode: SminMode::Round,
+                kind: BlendKind::Smin,
+                r: 0.7,
+                n: 3.,
+                children: vec![
+                    leaf_at(Shape::Sphere { r: 2. }, [0., 3., 0.]),
+                    leaf_at(Shape::Cuboid { half: [1.2, 2.0, 0.8] }, [1., 1., -1.]),
+                ],
+            };
+            let tree = taper(ratio, height, sim, union(vec![inner, leaf_at(Shape::Sphere { r: 1.4 }, [2., 2., 1.])]));
+            for i in 0..24 {
+                let p = [
+                    0.3 + i as f64 * 0.09,
+                    0.2 + i as f64 * 0.21,
+                    -0.4 + i as f64 * 0.13,
+                ];
+                let sample = sample_tree(&tree, p);
+                assert!((sample.value - tree.f(p)).abs() < 1e-12);
+                let pruned = tree.prune_to_box(p, [0.01; 3]);
+                let regional = sample_pruned(&pruned, p);
+                assert_eq!(sample.value, regional.value);
+                assert_eq!(sample.gradient, regional.gradient);
+                assert_eq!(tree.grad(p).1, sample.normalized_equation().unwrap().gradient);
+                for k in 0..3 {
+                    let (mut a, mut b) = (p, p);
+                    a[k] -= 1e-6;
+                    b[k] += 1e-6;
+                    let numerical = (tree.f(b) - tree.f(a)) / 2e-6;
+                    // The derivative is one-sided exactly at the clamp planes
+                    // y ∈ {0, height}; sample around them with a loose band.
+                    assert!(
+                        (numerical - sample.gradient[k]).abs() < 1e-5,
+                        "ratio {ratio} at {p:?}, axis {k}: {} vs {numerical}",
+                        sample.gradient[k]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn equation_scaling_preserves_residual_and_direction() {
         for scale in [0.01, 1., 100.] {
             let a = FieldSample { value: 2. * scale, gradient: [3. * scale, 4. * scale, 0.] }
@@ -619,6 +715,10 @@ mod tests {
 fn reference_sample_tree(node: &CsgNode, p: [f64; 3]) -> FieldSample {
     match node {
         CsgNode::Leaf(l) => sample_leaf(l, p),
+        CsgNode::Taper { ratio, height, sim, child } => {
+            let (q, s) = crate::sdf::taper::warp_point(sim, *ratio, *height, p);
+            compose_taper_sample(sim, *ratio, *height, p, s, reference_sample_tree(child, q))
+        }
         CsgNode::Min(children) | CsgNode::Max(children) => {
             let is_min = matches!(node, CsgNode::Min(_));
             let child = children
@@ -676,6 +776,10 @@ fn reference_sample_tree(node: &CsgNode, p: [f64; 3]) -> FieldSample {
 fn reference_sample_pruned(node: &crate::sdf::Pruned<'_>, p: [f64; 3]) -> FieldSample {
     match node {
         crate::sdf::Pruned::Leaf(l) => sample_leaf(l, p),
+        crate::sdf::Pruned::Taper { ratio, height, sim, child } => {
+            let (q, s) = crate::sdf::taper::warp_point(sim, *ratio, *height, p);
+            compose_taper_sample(sim, *ratio, *height, p, s, reference_sample_pruned(child, q))
+        }
         crate::sdf::Pruned::Min(children) | crate::sdf::Pruned::Max(children) => {
             let is_min = matches!(node, crate::sdf::Pruned::Min(_));
             let child = children
@@ -842,6 +946,7 @@ impl FieldRef {
                         &c[self.path[step]]
                     }
                     CsgNode::Leaf(_) => unreachable!("field path descends through leaf"),
+                    CsgNode::Taper { .. } => unreachable!("field path descends through taper"),
                 };
             }
         }

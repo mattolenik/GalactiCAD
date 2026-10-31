@@ -310,6 +310,10 @@ fn a_buried_carrier_intersection_does_not_supply_an_exposed_gate() {
         shape: crate::sdf::Shape::Sphere { r: 1000. },
         index: 0,
         strata: Vec::new(),
+        warped: false,
+        warp_scale: 1.0,
+        params_valid: Default::default(),
+        polygons_valid: Default::default(),
     });
     let occluded = crate::sdf::CsgNode::Min(vec![tree, covering]);
     assert!(obligations(&occluded, &features, &points, (3, 4), 0.01).is_err());

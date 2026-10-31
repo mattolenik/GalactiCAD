@@ -153,6 +153,8 @@ struct BridgeTuning {
     recovery_cull: bool,
     re_refine_max_rounds: u32,
     check_vertex_links: bool,
+    decimate_tol_mm: f64,
+    multi_sheet_cells: bool,
 }
 
 impl Default for BridgeTuning {
@@ -190,6 +192,8 @@ impl Default for BridgeTuning {
             recovery_cull: d.recovery_cull,
             re_refine_max_rounds: d.re_refine_max_rounds,
             check_vertex_links: d.check_vertex_links,
+            decimate_tol_mm: d.decimate_tol_mm,
+            multi_sheet_cells: d.multi_sheet_cells,
         }
     }
 }
@@ -223,6 +227,8 @@ impl BridgeTuning {
             project_max_iters: self.project_max_iters,
             re_refine_max_rounds: self.re_refine_max_rounds,
             check_vertex_links: self.check_vertex_links,
+            decimate_tol_mm: self.decimate_tol_mm,
+            multi_sheet_cells: self.multi_sheet_cells,
             tangential_epsilon: self.tangential_epsilon,
             feature_query_inflate: self.feature_query_inflate,
             curve_chord_tol_mm: self.curve_chord_tol_mm,

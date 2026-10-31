@@ -261,29 +261,8 @@ pub(super) fn partial(node: &CsgNode, c: [f64; 3], half: [f64; 3]) -> Option<(f6
     }
     match node {
         CsgNode::Leaf(leaf) => {
-            if !leaf.valid_parameters() {
+            if !leaf.valid_parameters() || !leaf.polygons_valid() {
                 return None;
-            }
-            let polygon_valid = |p: &[f64]| {
-                (0..p.len() / 2).all(|i| {
-                    let j = (i + 1) % (p.len() / 2);
-                    p[2 * i] != p[2 * j] || p[2 * i + 1] != p[2 * j + 1]
-                })
-            };
-            match &leaf.shape {
-                Shape::Extrude { verts, .. } if !polygon_valid(verts) => return None,
-                Shape::Loft { profs, .. } if !profs.iter().all(|p| polygon_valid(p)) => {
-                    return None
-                }
-                Shape::Lathe { edges }
-                    if edges.iter().any(|e| e.len <= 0.)
-                        || edges
-                            .iter()
-                            .all(|e| e.kind == crate::primitives::shapes::LatheEdgeKind::None) =>
-                {
-                    return None
-                }
-                _ => {}
             }
             match leaf.shape {
                 Shape::Sphere { .. } | Shape::Cuboid { .. } | Shape::Cylinder { .. } => {
@@ -309,6 +288,15 @@ pub(super) fn partial(node: &CsgNode, c: [f64; 3], half: [f64; 3]) -> Option<(f6
                 hi = if min { hi.min(b) } else { hi.max(b) };
             }
             Some((lo, hi))
+        }
+        CsgNode::Taper { ratio, height, sim, child } => {
+            // Checked enclosure through the warp: the child's partial enclosure
+            // over the conservative image box, scaled by the correction range
+            // with outward rounding (this file's discipline).
+            let map = super::taper::map_box(sim, *ratio, *height, c, half)?;
+            let (lo, hi) = partial(child, map.c, map.half)?;
+            let scaled = super::taper::scale_interval((lo, hi), map.corr_lo, map.corr_hi);
+            Some((scaled.0.next_down(), scaled.1.next_up()))
         }
         CsgNode::Blend {
             kind,

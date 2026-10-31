@@ -620,6 +620,10 @@ mod tests {
             shape: Shape::Cylinder { r: 8., h: 19. },
             index: 0,
             strata: vec![],
+            warped: false,
+            warp_scale: 1.,
+            params_valid: Default::default(),
+            polygons_valid: Default::default(),
         };
         let loft = Leaf {
             sign: 1.,
@@ -632,6 +636,10 @@ mod tests {
             },
             index: 2,
             strata: vec![],
+            warped: false,
+            warp_scale: 1.,
+            params_valid: Default::default(),
+            polygons_valid: Default::default(),
         };
         let root = std::sync::Arc::new(CsgNode::Blend {
             kind: BlendKind::Smin,

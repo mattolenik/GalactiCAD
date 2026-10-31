@@ -75,6 +75,10 @@ pub struct PointTable {
     pub(crate) coverage: Vec<super::local_coverage::Witness>,
     pub(crate) coverage_edge_failures: Vec<super::local_coverage::EdgeFailure>,
     pub(crate) coverage_cells: HashSet<super::local_coverage::CellId>,
+    /// Face points on an untagged crease (`face_contour::split_at_creases`);
+    /// cell meshing cuts loops between them. Local to the table that contours
+    /// and meshes the faces, so never merged.
+    pub(crate) creases: HashSet<usize>,
     pub(crate) coverage_faces: HashMap<(usize,i64,i64),(usize,usize)>,
     pos: Vec<f64>,
     normal: Vec<f64>,

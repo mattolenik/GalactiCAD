@@ -16,6 +16,7 @@ pub fn prepared(mut tree: CsgNode) -> CsgNode {
                     attach(c, first);
                 }
             }
+            CsgNode::Taper { child, .. } => attach(child, first),
         }
     }
     tree.assign_leaf_indices();

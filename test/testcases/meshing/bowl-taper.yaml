@@ -1,0 +1,130 @@
+schemaVersion: 1
+source: |-
+  // Rounded-square bowl (mm). Y-up; flat base at y=0, rim at y=150.
+  // Exactly two lofts: the solid outer shell, and a concentric inner shell subtracted
+  // from it to hollow the part (0.6 mm wall, 1.8 mm floor).
+  //
+  // Outer: 170 x 170 design width with 15 mm plan corner radius, 150 tall, tapering
+  // out to 180 x 180 at the rim. The bottom edge is an FDM teardrop: a 45° tangent
+  // line (nothing overhangs past 45°) flowing into a 15 mm fillet concentric with
+  // the plan corners, so the wall stays uniformly thick through the curve. The
+  // teardrop foot meets the floor ~76 mm from the axis (~152 x 152 contact patch);
+  // the design width is reached at the walls, 15 mm up.
+  //
+  // Slices, bottom to top: the foot (starts the 45° band), samples across the fillet
+  // arc, then one wall shape reused up to the rim. Two engine limits shape the grid:
+  //  - The loft spaces sections evenly in y and compiles one branch per segment, and
+  //    WGSL caps statement chains at 127 — so a full-height loft tops out near 126
+  //    segments, which bounds the arc sampling at ~8 slices (`maxGrid` below).
+  //  - The profile is flat above y = 15, so every wall-zone slot — including the rim
+  //    — reuses a single polygon2d instance; the scene registers it once, and only
+  //    registered nodes cost the shared 1024-vertex polygon budget.
+  // Every slice keeps its corner-arc centers at ±70, so all slices are exact offsets
+  // of one another: the loft's blend between two slices is the exact intermediate
+  // slice, and the only approximation is the piecewise-linear profile in y
+  // (~0.03 mm chord error at 8 arc slices).
+  //
+  // Budget: 32 vertices per slice (8 per corner arc) x (13 + 12) unique slices
+  // = 800 of the 1024 shared polygon vertices.
+  //
+  // Taper: `taper()` scales XZ linearly with height (anchored at y = 0), widening the
+  // walls from the 170 mm design width at the base to `topWidth` at the rim — at zero
+  // slice cost, so the wall-zone slots keep reusing a single polygon instance (a
+  // per-slice taper would need a distinct polygon every grid slot: ~100 extra slices,
+  // far past the vertex budget). Both shells scale identically, so they stay
+  // concentric: the wall is 0.6 mm at the base and 0.6 x (topWidth/width) at the rim,
+  // and the teardrop's worst overhang steepens by under one degree (~46° max).
+  
+  let width = 170          // outer design width at the walls (X and Z)
+  let topWidth = 180       // rim width — the walls taper up to this (slight flare)
+  let height = 150         // outer height (Y)
+  let cornerR = 15         // plan corner radius = bottom fillet radius
+  let wall = 0.6           // wall thickness
+  let floorT = 1.8         // floor thickness
+  let arcSlices = 8        // grid slices across the teardrop fillet arc
+  let cornerSegs = 8       // segments per plan corner arc → 32 vertices per slice
+  let maxGrid = 120        // segment cap: the loft's if/else chain must stay under WGSL's 127
+  
+  let half = width / 2     // 85 — wall half-width
+  let cx = half - cornerR  // 70 — fillet center offset = corner-arc center offset
+  let cy = cornerR         // 15 — fillet center height (arc is tangent to the wall)
+  
+  // Rounded-square slice: flats at ±w, corner arcs of radius w − cx centered at ±cx.
+  // Fixed arc centers keep inner and outer slices concentric, so the wall thickness
+  // is uniform around the corners as well.
+  function slice(w) {
+    let rc = w - cx
+    let pts = []
+    let corners = [[1, 1], [1, -1], [-1, -1], [-1, 1]]
+    for (let c = 0; c < 4; c++) {
+      for (let k = 0; k < cornerSegs; k++) {
+        let a = (c % 2 === 0 ? 1 - k / cornerSegs : k / cornerSegs) * Math.PI / 2
+        pts.push([
+          corners[c][0] * (cx + rc * Math.cos(a)),
+          corners[c][1] * (cx + rc * Math.sin(a)),
+        ])
+      }
+    }
+    return polygon2d(...pts)
+  }
+  
+  // Teardrop half-width at height y for a fillet of radius r centered at (cx, cy):
+  // 45° tangent line below the arc, arc up to y = cy, wall above.
+  function teardropW(y, r) {
+    let arcStart = cy - r / Math.SQRT2
+    if (y <= arcStart) return y + cx - cy + r * Math.SQRT2
+    if (y >= cy) return cx + r
+    return cx + Math.sqrt(r * r - (y - cy) * (y - cy))
+  }
+  
+  // One loft over [y0, y1]: evenly spaced sections, pitched so the fillet arc gets
+  // `arcSlices` samples (clamped to maxGrid segments). Teardrop-zone slots get their
+  // own slice; wall-zone slots (y > cy, including the rim) all reuse one instance.
+  function shellLoft(y0, y1, r, wallW) {
+    let dy = (r / Math.SQRT2) / arcSlices
+    let steps = Math.min(maxGrid, Math.round((y1 - y0) / dy))
+    let wallSlice = slice(wallW)
+    let sections = []
+    for (let i = 0; i <= steps; i++) {
+      let y = y0 + (y1 - y0) * i / steps
+      sections.push(y <= cy ? slice(teardropW(y, r)) : wallSlice)
+    }
+    return loft.sections(...sections).height((y1 - y0) / 2).shift(0, (y0 + y1) / 2, 0)
+  }
+  
+  let overCut = 1          // inner loft pokes this far above the rim so the top cuts open
+  
+  // Taper the finished bowl: XZ scale 1 at y=0 rising to topWidth/width at the rim,
+  // so the widest point (the top polygons) renders exactly topWidth across.
+  return taper(topWidth / width, height, subtract(
+    shellLoft(0, height, cornerR, half),                        // outer: base y=0, rim y=150
+    shellLoft(floorT, height + overCut, cornerR - wall, half - wall),  // inner: floor 1.8, wall 0.6
+  ))
+camera:
+  position:
+    - 1
+    - 0
+    - 0
+  translation:
+    - 0
+    - 0
+    - 0
+  dollyDistance: 420
+  rotation:
+    - 0.88
+    - 0.28
+    - 0.36
+    - 0.12
+  pivot:
+    - 0
+    - 75
+    - 0
+viewCenter:
+  - 0.5
+  - 0.5
+resolutionScale: 1
+viewportWidth: 1000
+viewportHeight: 800
+meshExport:
+  simplifyOnExport: false
+  exporter: sfcc-rs

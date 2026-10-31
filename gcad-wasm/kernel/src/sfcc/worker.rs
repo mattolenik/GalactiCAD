@@ -43,6 +43,7 @@ use crate::sfcc::feature_set::SfccFeatureSet;
 use crate::sfcc::manifold_check::{check_manifold, ManifoldReport};
 use crate::sfcc::octree::{
     rebuild_octree_from_leaves, CellDecision, ResumableOctreeBuild, SfccCell, SfccOctree,
+    Sheet,
 };
 use crate::sfcc::pipeline::{
     build_pipeline_context, morton_partition_indices,
@@ -255,7 +256,7 @@ pub fn build_octree_resumable_inprocess(
 // thread concatenates the slices' decisions and applies split+ripple. The decision is
 // a pure per-cell function (no cross-cell reads, confluent), so the split is exact.
 
-const DECISIONS_MAGIC: u32 = 0x5346_4443; // "SFDC"
+const DECISIONS_MAGIC: u32 = 0x5346_4444; // "SFDD" (sheet verdict byte added)
 
 /// Serialize a frontier's per-cell decisions. Layout: magic u32 | count u64 |
 /// per decision: split (u8 0/1), feature_curve (i64), feature_corner (i64).
@@ -267,6 +268,11 @@ pub fn encode_decisions(decisions: &[CellDecision]) -> Vec<u8> {
         out.push(d.split as u8);
         put_i64(&mut out, d.feature_curve);
         put_i64(&mut out, d.feature_corner);
+        out.push(match d.sheet {
+            Sheet::None => 0,
+            Sheet::Keep => 1,
+            Sheet::Unresolved => 2,
+        });
     }
     out
 }
@@ -281,7 +287,12 @@ pub fn decode_decisions(buf: &[u8]) -> Vec<CellDecision> {
         let split = r.bytes(1)[0] != 0;
         let feature_curve = r.i64();
         let feature_corner = r.i64();
-        out.push(CellDecision { split, feature_curve, feature_corner });
+        let sheet = match r.bytes(1)[0] {
+            1 => Sheet::Keep,
+            2 => Sheet::Unresolved,
+            _ => Sheet::None,
+        };
+        out.push(CellDecision { split, feature_curve, feature_corner, sheet });
     }
     out
 }
@@ -620,7 +631,7 @@ fn mesh_opts<'a>(
     features: &'a SfccFeatureSet,
 ) -> (FaceContourOptions<'a>, CellMeshOptions<'a>) {
     let root_tol = (tuning.edge_root_tol_fraction * lat.step).min(tuning.surface_tol_mm * 0.1);
-    let fc = FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull };
+    let fc = FaceContourOptions { root_tol, features: Some(features), recovery_cull: tuning.recovery_cull, multi_sheet: tuning.multi_sheet_cells };
     let cm = CellMeshOptions {
         surface_tol: tuning.surface_tol_mm,
         interior_vertex_mode: tuning.interior_vertex_mode,
@@ -673,6 +684,9 @@ pub fn mesh_partition(
     // Reconstruct a usable octree from the tagged leaves (cheap — re-derives the
     // lookup maps + re-seeds the corner-sample cache, NO decision work).
     let oct: SfccOctree = rebuild_octree_from_leaves(tree, &lat, leaves);
+    if tuning.multi_sheet_cells {
+        oct.seed_unresolved_sheet_edges();
+    }
 
     // Morton-partition with the EXACT ordering of the in-process partition_morton,
     // then gather THIS group's leaves (Copy + tiny).
@@ -944,7 +958,8 @@ fn merge_partials_impl(
     let (refined, unresolved_triangles, quality_audit) = super::assembly::finish(
         tree, features, &mut merged, &tris, lat.step, tuning, None,
     );
-    let (verts, out_tris) = merged.build_mesh(&refined);
+    let (mut verts, mut out_tris) = merged.build_mesh(&refined);
+    let decimation = super::decimate::decimate(tree, &mut verts, &mut out_tris, tuning.decimate_tol_mm);
     let manifold = check_manifold(&out_tris, tuning.check_vertex_links);
 
     let face_audit_failures = face_uses.values().filter(|&&(fwd, rev)| fwd != 1 || rev != 1).count();
@@ -979,7 +994,7 @@ fn merge_partials_impl(
     let ok = validation.ok();
 
     MergedMesh {
-        feature_edges: merged.compacted_curve_edges(&refined),
+        feature_edges: super::decimate::remap_curve_edges(merged.compacted_curve_edges(&refined), &decimation.remap),
         verts,
         tris: out_tris,
         manifold,

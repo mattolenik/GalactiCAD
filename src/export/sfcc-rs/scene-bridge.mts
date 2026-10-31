@@ -2,10 +2,15 @@
  * Serialize an SFCC-subset scene to the `BridgeNode` JSON shape the Rust
  * `scene_bridge` (gcad-wasm/kernel) ingests at the WASM boundary.
  *
- * Supports 7 primitives + Translate/Rotate/uniform-Scale +
+ * Supports 7 primitives + Translate/Rotate/uniform-Scale + the Taper warp +
  * Union/Subtract/Intersect (hard + smooth). The GPU-render `SerializedNode[]` is
  * insufficient for SFCC — it lacks Rotate's `getWgslMatrices().fwd`, profile
  * vertices, and operator blend modes — so this is a dedicated SFCC serializer.
+ *
+ * Taper lowers to the `taper` bridge kind: the kernel warps the child domain
+ * (exact preview parity in f64) and meshes warped regions by field refinement
+ * only — leaves under a warp get no analytic feature carriers. See
+ * docs/feat/sfcc/taper.md.
  *
  * Throws on anything outside the subset (so we never emit a scene the bridge
  * would mishandle; the Rust side ALSO rejects it, but failing fast in TS gives a
@@ -26,6 +31,7 @@ import { Intersect } from "../../scene/operators/intersect.mjs"
 import { Translate } from "../../scene/operators/translate.mjs"
 import { Rotate } from "../../scene/operators/rotate.mjs"
 import { Scale } from "../../scene/operators/scale.mjs"
+import { Taper } from "../../scene/operators/taper.mjs"
 import { eulerMatrices } from "../../scene/transform-math.mjs"
 
 const nid = (n: Node): number => (typeof (n as { id?: number }).id === "number" ? (n as { id: number }).id : -1)
@@ -78,6 +84,11 @@ export function serializeBridgeNode(n: Node): unknown {
         return { kind: "rotate", node_id: nid(n), fwd: n.getWgslMatrices().fwd, arg: serializeBridgeNode(n.arg) }
     if (n instanceof Scale)
         return { kind: "scale", node_id: nid(n), sx: n.sx, sy: n.sy, sz: n.sz, arg: serializeBridgeNode(n.arg) }
+    if (n instanceof Taper) {
+        if (!(n.ratio > 0)) throw new Error(`sfcc-rs: taper ratio must be finite and positive (#${nid(n)}), got ${n.ratio}`)
+        if (!(n.height > 0)) throw new Error(`sfcc-rs: taper height must be finite and positive (#${nid(n)}), got ${n.height}`)
+        return { kind: "taper", node_id: nid(n), ratio: n.ratio, height: n.height, arg: serializeBridgeNode(n.arg) }
+    }
     if (n instanceof Union)
         return {
             kind: "union",

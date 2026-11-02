@@ -72,11 +72,15 @@ pub struct Sampler<'a> {
     // Values from an earlier build are not visible to has_sample_key until
     // sampled by THIS build (hanging-node detection observes that distinction).
     retained: HashMap<i64, f64>,
+    // Values the decision pass evaluated off the corners (the multi-sheet edge
+    // walk): reused by later decisions and by `sample_at`, never "present".
+    // Freed when the build finishes.
+    walked: RefCell<HashMap<i64, f64>>,
 }
 
 impl<'a> Sampler<'a> {
     fn new(tree: &'a CsgNode, lat: &'a SfccLattice) -> Self {
-        Sampler { tree, lat, samples: RefCell::new(HashMap::new()), retained: HashMap::new() }
+        Sampler { tree, lat, samples: RefCell::new(HashMap::new()), retained: HashMap::new(), walked: RefCell::default() }
     }
 
     /// `f` at a lattice point, evaluated once and cached.
@@ -88,6 +92,8 @@ impl<'a> Sampler<'a> {
         let w = point_to_world(self.lat, gx, gy, gz);
         let v = if let Some(&v) = self.retained.get(&key) {
             super::perf::add(11,1); v
+        } else if let Some(&v) = self.walked.borrow().get(&key) {
+            v
         } else { self.tree.f([w[0], w[1], w[2]]) };
         self.samples.borrow_mut().insert(key, v);
         v
@@ -99,29 +105,33 @@ impl<'a> Sampler<'a> {
     }
 }
 
-/// A READ-ONLY view of the sample cache over an immutable borrow, used by the
-/// round-batched decision pass. `make_probe` corner reads go through `sample_at`;
-/// in the decision pass every corner is already populated (cell creation cached
-/// them), so a missing key would be a bug — we fall back to a direct (un-cached)
-/// tree eval to stay safe.
+/// A view of the sample cache for the round-batched decision pass: the presence
+/// map is borrowed immutably (every frontier corner is already cached at cell
+/// creation, and hanging-node detection observes which keys are present), while
+/// off-corner reads (the multi-sheet edge walk) go through the value-only
+/// `walked` cache.
 pub struct SampleView<'a> {
     tree: &'a CsgNode,
     lat: &'a SfccLattice,
     samples: &'a HashMap<i64, f64>,
+    walked: &'a RefCell<HashMap<i64, f64>>,
 }
 
 impl<'a> SampleView<'a> {
-    /// `f` at a lattice point — read from the pre-populated cache. The decision
-    /// pass never inserts (all frontier corners are cached at cell creation), so
-    /// this is a pure read. A cache miss falls back to a direct tree eval (a
-    /// missing corner would be a build-order bug, not a correctness one).
+    /// `f` at a lattice point: the presence map, then the walk cache, then a tree
+    /// eval stored in the walk cache only (never marking the key present).
     pub fn sample_at(&self, gx: i64, gy: i64, gz: i64) -> f64 {
         let key = pack_point(self.lat, gx, gy, gz);
         if let Some(&v) = self.samples.get(&key) {
             return v;
         }
+        if let Some(&v) = self.walked.borrow().get(&key) {
+            return v;
+        }
         let w = point_to_world(self.lat, gx, gy, gz);
-        self.tree.f([w[0], w[1], w[2]])
+        let v = self.tree.f([w[0], w[1], w[2]]);
+        self.walked.borrow_mut().insert(key, v);
+        v
     }
 }
 
@@ -644,7 +654,9 @@ impl<'a> Builder<'a> {
     /// Collect + deterministically sort the leaves and assemble the [`SfccOctree`]
     /// (carrying the sampler cache for downstream meshing). Extracted so the serial
     /// driver and the resumable build assemble the result identically.
-    fn finalize(self, profile: Option<OctreeProfile>) -> SfccOctree<'a> {
+    fn finalize(mut self, profile: Option<OctreeProfile>) -> SfccOctree<'a> {
+        // The walk cache only serves the build; release it before contouring.
+        *self.sampler.walked.get_mut() = HashMap::new();
         let mut leaves = Vec::new();
         let mut degenerate_cells = 0usize;
         for per_level in &self.cells_by_level {
@@ -793,7 +805,7 @@ where
         // populated them), so no writes occur; `decide` only reads.
         let decisions: Vec<CellDecision> = {
             let samples = b.sampler.samples.borrow();
-            let view = SampleView { tree, lat, samples: &samples };
+            let view = SampleView { tree, lat, samples: &samples, walked: &b.sampler.walked };
             decide_frontier(&frontier, &view, &decide)
         };
 
@@ -913,7 +925,7 @@ impl ResumableOctreeBuild {
     pub(crate) fn finish<'a>(mut self, tree: &'a CsgNode, lat: &'a SfccLattice) -> SfccOctree<'a> {
         let b = Builder {
             lat,
-            sampler: Sampler { tree, lat, samples: RefCell::new(std::mem::take(&mut self.samples)), retained: HashMap::new() },
+            sampler: Sampler { tree, lat, samples: RefCell::new(std::mem::take(&mut self.samples)), retained: HashMap::new(), walked: RefCell::default() },
             cells_by_level: std::mem::take(&mut self.cells_by_level),
             internal_by_level: std::mem::take(&mut self.internal_by_level),
             worklist: std::mem::take(&mut self.worklist),
@@ -941,7 +953,7 @@ impl ResumableOctreeBuild {
         let lat = self.lat;
         let mut b = Builder {
             lat: &lat,
-            sampler: Sampler { tree, lat: &lat, samples: RefCell::new(std::mem::take(&mut self.samples)), retained: HashMap::new() },
+            sampler: Sampler { tree, lat: &lat, samples: RefCell::new(std::mem::take(&mut self.samples)), retained: HashMap::new(), walked: RefCell::default() },
             cells_by_level: std::mem::take(&mut self.cells_by_level),
             internal_by_level: std::mem::take(&mut self.internal_by_level),
             worklist: std::mem::take(&mut self.worklist),
@@ -1315,6 +1327,7 @@ mod retained_value_tests {
                 tree: &tree,
                 lat: &lat,
                 samples: &samples,
+                walked: &next.walked,
             };
             assert_eq!(view.sample_at(1, 2, 3).to_bits(), expected.to_bits());
         }
@@ -1324,5 +1337,25 @@ mod retained_value_tests {
         );
         assert_eq!(next.sample_at(1, 2, 3).to_bits(), expected.to_bits());
         assert!(next.has_sample_key(key));
+    }
+
+    #[test]
+    fn walk_misses_are_cached_without_marking_presence() {
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);
+        let lat = crate::math::grid::make_lattice(4, -4., -4., -4., 8.);
+        let key = pack_point(&lat, 5, 6, 7);
+        let sampler = Sampler::new(&tree, &lat);
+        let w = point_to_world(&lat, 5, 6, 7);
+        let expected = tree.f([w[0], w[1], w[2]]);
+        {
+            let samples = sampler.samples.borrow();
+            let view = SampleView { tree: &tree, lat: &lat, samples: &samples, walked: &sampler.walked };
+            assert_eq!(view.sample_at(5, 6, 7).to_bits(), expected.to_bits());
+            assert_eq!(view.sample_at(5, 6, 7).to_bits(), expected.to_bits());
+        }
+        assert_eq!(sampler.walked.borrow().get(&key).map(|v| v.to_bits()), Some(expected.to_bits()));
+        assert!(!sampler.has_sample_key(key), "a walk miss must not mark a hanging node");
+        assert_eq!(sampler.sample_at(5, 6, 7).to_bits(), expected.to_bits());
+        assert!(sampler.has_sample_key(key), "seeding still inserts into the presence map");
     }
 }

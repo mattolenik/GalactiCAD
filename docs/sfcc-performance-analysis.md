@@ -277,3 +277,28 @@ the time), carrying child emptiness in decisions so apply stops re-evaluating
 intervals, and a gradient cache keyed by lattice point for the normal cone (the
 eight corner gradients are shared by up to eight cells).
 
+
+## Implementation follow-up — November 2, 2026 (multi-sheet walk cache)
+
+With multi-sheet cells on, 95% of the octree decision time was the fine-edge
+walk in `refine_criteria::sheet_decision`: 16.9 M field evaluations for 4.2 M
+distinct lattice points (on the edited bowl: 1.2 mm wall, depth 5/8, native),
+because the decision pass read the sample cache through a read-only view and
+evaluated every miss directly. `Sampler` now keeps a second, value-only map
+(`walked`): the decision view stores its misses there, and `Sampler::sample_at`
+(apply-pass edge seeding, cell creation) reads it before evaluating. The
+presence map that `has_sample_key` exposes to face contouring and hanging-node
+detection is written exactly as before, so the mesh is byte-identical
+(`cmp` on the saved verts / tris). The map is freed when the build finishes.
+
+| | Before | After |
+|---|---|---|
+| decide | 20.9 s | 8.8 s |
+| apply | 5.3 s | 2.1 s |
+| octree | 26.4 s | 11.1 s |
+| whole export (native) | 44.5 s | 29.2 s |
+| wasm export, GUI tuning (decimation 0.05) | 87.5 s | 56.1 s |
+
+The rest of the decide time is about half the remaining 4.2 M evaluations and
+half std `HashMap` (SipHash) lookups; a faster hasher across the sample maps
+would recover part of it.

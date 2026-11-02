@@ -140,8 +140,11 @@ one-third cut and under 0.5%.
   the old path; scenes made of plain sphere/box primitives go through the
   certified box-discovery check first, which splits multi-root edges before
   detection runs (the untapered hollow box is unchanged).
-* Detection walks 12·stride samples per candidate cell through the read-only
-  decision cache, so they are evaluated directly, not cached.
+* Detection walks 12·stride samples per candidate cell. Misses go to a
+  value-only walk cache (`Sampler::walked`, freed after the build) that later
+  decisions and the apply-pass edge seeding reuse; it never marks a sample
+  present, so contouring is unchanged. On the bowl this cut the octree build
+  from 26.4 s to 11.1 s (docs/sfcc-performance-analysis.md, November 2).
 
 ## Why the kernel default is off
 

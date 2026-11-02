@@ -299,6 +299,11 @@ detection is written exactly as before, so the mesh is byte-identical
 | whole export (native) | 44.5 s | 29.2 s |
 | wasm export, GUI tuning (decimation 0.05) | 87.5 s | 56.1 s |
 
+The walk cache peaks at 4.41 M entries on the bowl (2^23 hashbrown buckets,
+about 143 MB while the build runs). It is capped at 7.3 M entries, the most
+that table size holds; past the cap misses are evaluated without storing. A
+3.6 M cap (2^22 buckets, ~71 MB) costs the bowl 2.6 s of octree time.
+
 The rest of the decide time is about half the remaining 4.2 M evaluations and
 half std `HashMap` (SipHash) lookups; a faster hasher across the sample maps
 would recover part of it.

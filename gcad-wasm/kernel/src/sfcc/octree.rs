@@ -105,6 +105,13 @@ impl<'a> Sampler<'a> {
     }
 }
 
+// ponytail: fixed cap; 7.3 M entries stay in 2^23 hashbrown buckets (~143 MB,
+// and wasm memory never shrinks). The edited bowl at depth 8 peaks at 4.41 M
+// (a 3.6 M cap costs it 2.6 s of octree time). Past the cap, misses are
+// evaluated without storing (values are deterministic, so the mesh is
+// unchanged). Scale it with the lattice if larger parts need it.
+const WALK_CACHE_CAP: usize = 7_300_000;
+
 /// A view of the sample cache for the round-batched decision pass: the presence
 /// map is borrowed immutably (every frontier corner is already cached at cell
 /// creation, and hanging-node detection observes which keys are present), while
@@ -130,7 +137,10 @@ impl<'a> SampleView<'a> {
         }
         let w = point_to_world(self.lat, gx, gy, gz);
         let v = self.tree.f([w[0], w[1], w[2]]);
-        self.walked.borrow_mut().insert(key, v);
+        let mut walked = self.walked.borrow_mut();
+        if walked.len() < WALK_CACHE_CAP {
+            walked.insert(key, v);
+        }
         v
     }
 }
@@ -1357,5 +1367,19 @@ mod retained_value_tests {
         assert!(!sampler.has_sample_key(key), "a walk miss must not mark a hanging node");
         assert_eq!(sampler.sample_at(5, 6, 7).to_bits(), expected.to_bits());
         assert!(sampler.has_sample_key(key), "seeding still inserts into the presence map");
+    }
+
+    #[test]
+    fn walk_cache_stops_growing_at_its_cap() {
+        let tree = crate::sdf::leaf_at(crate::sdf::Shape::Sphere { r: 2. }, [0.; 3]);
+        let lat = crate::math::grid::make_lattice(4, -4., -4., -4., 8.);
+        let sampler = Sampler::new(&tree, &lat);
+        // Keys no lattice point packs to, so the probe below still misses.
+        sampler.walked.borrow_mut().extend((0..WALK_CACHE_CAP as i64).map(|i| (-1 - i, 0.0)));
+        let w = point_to_world(&lat, 5, 6, 7);
+        let samples = sampler.samples.borrow();
+        let view = SampleView { tree: &tree, lat: &lat, samples: &samples, walked: &sampler.walked };
+        assert_eq!(view.sample_at(5, 6, 7).to_bits(), tree.f([w[0], w[1], w[2]]).to_bits());
+        assert_eq!(sampler.walked.borrow().len(), WALK_CACHE_CAP, "a full walk cache evaluates without storing");
     }
 }

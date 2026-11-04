@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round19-graph-capture/baseline/kernel-tests",
+    "correlated_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.99999366600241,
+  "elapsedSeconds": 5.326282041991362,
+  "exitCode": 0,
+  "timedOut": false
+}

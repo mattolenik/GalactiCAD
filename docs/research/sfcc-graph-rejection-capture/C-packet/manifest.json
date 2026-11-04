@@ -1,0 +1,29 @@
+{
+  "candidate": "C",
+  "disposition": "Reject branch-name plus post-return-only capture as complete replay; static alternative contract, no runtime patch",
+  "runtimeBase": "/tmp/sfcc-graph-stage1-baseline",
+  "runtimeUnchanged": true,
+  "geometryExecuted": false,
+  "files": [
+    {
+      "path": "candidate.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "capture-counterexamples.json",
+      "sha256": "aa42d1efc6805d0c69e42d82c6adcfb53acdca9ac6e60106e7b462fba9285a11"
+    },
+    {
+      "path": "handoff.md",
+      "sha256": "9cc76c3b33b753b5aa53bd1edeb3dde8f1199d22229e3607b5c3ef40eedf1681"
+    },
+    {
+      "path": "rejection-inventory.json",
+      "sha256": "8c2f0145547e6dab034a1c14ddf569f07f8ed62ea1cb863d87f07c54d91a4e38"
+    },
+    {
+      "path": "static-verification.json",
+      "sha256": "ebfe798b78e8bef511d20a830d719f8b579cfd2e34f0e5757b2a5120d5a62ea0"
+    }
+  ]
+}

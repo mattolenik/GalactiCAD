@@ -1,5 +1,11 @@
 # SFCC critical repairs after the bracket/housing investigation
 
+Current execution follow-up (November 3, 2026):
+[feature-graph correctness implementation plan](sfcc-graph-correctness-implementation.md).
+It expands the next E4 milestones, separates the frozen Round 18 diagnosis from
+integration into `421f5a9`, and retains the E4–E6 exits below. Earlier campaign
+results in this document are historical evidence, not results for current HEAD.
+
 Status: bounded implementations complete; remaining acceptance and performance
 exits are open, October 24, 2026. Baseline commit:
 `5566520` (`Add SDF meshing acceptance diagnostics`). Milestone 1's construction

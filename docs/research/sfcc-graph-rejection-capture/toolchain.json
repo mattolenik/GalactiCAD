@@ -1,0 +1,11 @@
+{
+  "selectedCompiler": "/opt/homebrew/Cellar/rust/1.99.0_1/bin/rustc",
+  "compilerSha256": "951efe952b1e70ab89d1b040de27315385ddb1ea8ece7d260655a54c3e52034f",
+  "selectedCargo": "/opt/homebrew/Cellar/rust/1.99.0_1/bin/cargo",
+  "cargoSha256": "6835d1434d8070993c7628e7a389605cd983cbc05a3c43cbdf2eccb57de8fa63",
+  "version": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.2\n",
+  "storageAuditFilesMatchHistorical": true,
+  "compilerMigrationRequired": false,
+  "currentProductionCommit": "421f5a9",
+  "historicalInputsMatch155Files": true
+}

@@ -1,0 +1,8 @@
+{
+  "source": "/tmp/sfcc-graph-stage1-baseline",
+  "base": "3abea38c93679fff5e6e7c600b23d8a0f46974a6",
+  "overlaySha256": "a7321f9db89f3ec64144f4a67f8e5ffba8454bbad6ce091fe39e381104d95fce",
+  "verifiedSourceFiles": 155,
+  "productionBaseline": "421f5a9",
+  "oldTemporarySourceUnavailable": true
+}

@@ -1,0 +1,31 @@
+{
+  "receiptSha256": "6e890a6e87147c743d274a30b64c3227a1fa286c6d954ad586b5cfd51e18c37a",
+  "postReturnSnapshot": {
+    "scope": "after failed private mesh return; available staged boundary state only",
+    "capturedPointIds": [
+      60,
+      61,
+      62,
+      618,
+      620,
+      623,
+      624,
+      625
+    ],
+    "capturedPointCount": 8,
+    "actualPrivatePointCount": 634,
+    "truncatedField": false,
+    "conclusion": "truncated:false applies to the selected boundary detail, not to complete pre-call or graph state; replayComplete cannot be inferred"
+  },
+  "jsonNumberPrecision": {
+    "originalBitsDecimal": "4629354576626184382",
+    "binary64NumberRoundTripDecimal": "4629354576626184192",
+    "difference": -190,
+    "losslessHex": "403ec575c721f0be"
+  },
+  "mutationOrdering": {
+    "cornerPointInsertionBeforeFirstArcGuard": true,
+    "fanMutationBeforeLateValidationRefusal": true
+  },
+  "meaning": "Static/data observations only; no geometry evaluation or claim about the executed internal predicate"
+}

@@ -1,0 +1,18 @@
+{
+  "productionBaseline": "421f5a9",
+  "source": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "candidateManifestSha256": "396d712b35b9cf70793509055afc6fdb8af83a9e7a6934bddef580e86d0ad82e",
+  "review": "/tmp/sfcc-graph-stage1-consensus.md",
+  "permittedJobs": {
+    "build": 120,
+    "focusedCampaign": 60,
+    "serdeOnlyCheck": 60,
+    "originalPrivateCapture": 120
+  },
+  "originalCapturesAuthorized": 1,
+  "fullExportAuthorizedInThisStage": false,
+  "scope": "Stage1 observational capture only; no graph behavior or geometry admission changes",
+  "failureHandling": "retain first failure and review; no automatic retry/cap increase",
+  "recordedProofStatus": "graph predicate and mathematical cause not yet observed",
+  "compiler": "/opt/homebrew/Cellar/rust/1.99.0_1/bin/rustc"
+}

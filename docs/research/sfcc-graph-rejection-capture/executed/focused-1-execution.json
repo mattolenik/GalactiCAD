@@ -1,0 +1,13 @@
+{
+  "step": "focused-1",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round19-graph-capture/selected/kernel-tests",
+    "modeled_feature_paths_connect_two_boundary_loops_without_caps",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.70143020800606,
+  "elapsedSeconds": 0.007751500001177192,
+  "exitCode": 0,
+  "timedOut": false
+}

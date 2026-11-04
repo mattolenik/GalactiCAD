@@ -1,0 +1,60 @@
+{
+  "base": "verified155-file Round18 overlay",
+  "candidate": "A graph rejection observation",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "511c0ea2a177ab73d142c02853469dae5d3c39bd62532309911564489aade063",
+      "baseSha256": "0fee9cec68b7c9222a23f4bc57f46e97062ffafa46c3536a17e78b82fc8e2f8b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "168f4adfe05abf187a04961d2e72bdaadb7823617f7b459f519fe9588bf91c6a",
+      "baseSha256": "0c7ef4a126c2833ba5c139b558749c4be490a5e5571334e10e0ded3e8e70f6cc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "86f718e852fd05dd4a31b6b4a22dd3aa97a399a65e6a3530ddc167e42bd656c3",
+      "baseSha256": "0629c7774b9e964a14b1d842d89905b79193b044819f94d61824f3617d4dab8a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "sha256": "d3ebaae9eb1f679a864a81f9d374e390539453ef70b55e6549e55f35b2266fbf",
+      "baseSha256": "145d1f3bdad8acd80ac8de711bf40805469646d012a81365edb4158d27173e83"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/graph_capture_a.rs",
+      "sha256": "e1ba696dc705803b2b8307e7c8e27ff953e9534ff2717207de93d44388833d0a",
+      "baseSha256": null
+    }
+  ],
+  "patchSha256": "a78b76c743644ab8fabf917706209accf85972312b091126e29af9f937af9870",
+  "staticControls": {
+    "originalGraphBodySha256": "2f8fb611980e44e94b9129fcdb923b52ca8b4fc114da2ef3661fabc561da72ca",
+    "observationRemovedTokensMatchOriginal": true,
+    "allOriginalFalseExits": 16,
+    "stableRejectionCodes": [
+      "empty_loops",
+      "insufficient_path_nodes",
+      "midpoint_query_failed",
+      "arc_sampling_failed",
+      "edge_overlap_or_uncertified",
+      "low_vertex_degree",
+      "invalid_vertex_normal",
+      "halfedge_revisited",
+      "walk_budget",
+      "mixed_boundary_orientation",
+      "short_polygon",
+      "missing_candidate_strata",
+      "empty_candidate_strata",
+      "edge_usage_mismatch",
+      "patch_sample_validation_failed",
+      "patch_intersection"
+    ],
+    "appendedDescriptorsPreserveOriginalFilePrefix": {
+      "gcad-wasm/kernel/src/strata.rs": true,
+      "gcad-wasm/kernel/src/sfcc/field_branches.rs": true
+    }
+  },
+  "handoffSha256": "d2f7f5b975734d3e9532e8a87970d4857cdbebf33b12d713a421e02b28dc7aff"
+}

@@ -1287,6 +1287,26 @@ reproduces all 36 changed files against E3 byte-for-byte. It is an isolated nati
 prototype; production runtime remains E3. Complete component geometry, contacts,
 links, metadata and final export closure remain downstream and unvalidated.
 
+### Exact private graph rejection captured
+
+The next three-agent investigation and fourth review selected bounded pre-call
+instrumentation. All 13 focused controls and the serde-only compile check pass.
+One original-scene capture confirms the actual `vertex_degree_lt_two` guard at
+cell `[7,36,79,29]`: newly inserted point 633 (`corner:27`) has only neighbor 620,
+the boundary pin on chart 20. The graph contains the eight-edge boundary and one
+interior feature edge. Its six graph-local queries are run-wide indices `[40,46)`.
+
+All 35 compared historical receipt fields remain exactly equal, including all
+198 face certificates, the inventory, complete query log, storage reservation and
+live-state digest. No replacement is accepted. The pre-call state is now saved,
+but exact local replay and the source's continuation/termination obligation are
+not yet proved. Degree one identifies the executed implementation assumption;
+it does not alone establish invalid surface geometry.
+
+The [capture implementation and reviewed evidence](sfcc-graph-rejection-capture/README.md)
+retain the alternatives, selected patch, commands, full receipt and precision
+limitations. Production runtime remains unchanged by this isolated diagnostic.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

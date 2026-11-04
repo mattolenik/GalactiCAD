@@ -1,0 +1,77 @@
+{
+  "guard": {
+    "code": "vertex_degree_lt_two",
+    "operands": {
+      "degree": 1,
+      "neighbors": [
+        620
+      ],
+      "point": 633
+    }
+  },
+  "cell": {
+    "cell": [
+      7,
+      36,
+      79,
+      29
+    ],
+    "curvedCorner": true,
+    "degenerate": false,
+    "distinctPinCurves": 1,
+    "featureCorner": 27,
+    "featureCurve": -1,
+    "queryViewPruned": false
+  },
+  "graphVertices": 9,
+  "graphEdges": 9,
+  "degrees": {
+    "60": 2,
+    "61": 2,
+    "62": 2,
+    "624": 2,
+    "620": 3,
+    "618": 2,
+    "623": 2,
+    "633": 1,
+    "625": 2
+  },
+  "boundaryLoop": [
+    624,
+    625,
+    623,
+    618,
+    620,
+    62,
+    60,
+    61
+  ],
+  "preCallPointCount": 633,
+  "pointCountAtFailure": 634,
+  "graphQueryRange": [
+    40,
+    46
+  ],
+  "newCorner": {
+    "id": 633,
+    "key": {
+      "string": "corner:27"
+    },
+    "normalHex": [
+      "bfccb3bf7cca8369",
+      "bfe6ba6ddce3933a",
+      "bfe55a4c2acdb300"
+    ],
+    "positionHex": [
+      "c01ae303f75efc73",
+      "4005871f5a33c661",
+      "c020e81b1b90e888"
+    ]
+  },
+  "sameHistoricalEvidence": true,
+  "completeObservedSchema": true,
+  "localReplayValidated": false,
+  "sourceContinuationProved": false,
+  "replacementAccepted": false,
+  "mainRuntimeChanged": false
+}

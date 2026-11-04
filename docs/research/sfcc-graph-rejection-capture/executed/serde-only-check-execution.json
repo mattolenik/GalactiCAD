@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/opt/homebrew/Cellar/rust/1.99.0_1/bin/cargo",
+    "check",
+    "--manifest-path",
+    "/tmp/sfcc-graph-stage1-b-reviewed/gcad-wasm/Cargo.toml",
+    "--locked",
+    "--offline",
+    "-p",
+    "gcad-kernel",
+    "--features",
+    "serde",
+    "--lib"
+  ],
+  "exitCode": 0,
+  "timedOut": false,
+  "capSeconds": 60,
+  "elapsedSeconds": 5.0903481249988545
+}

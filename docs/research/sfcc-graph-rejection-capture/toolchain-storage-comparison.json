@@ -1,0 +1,82 @@
+[
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/std/Cargo.toml",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/std/Cargo.toml",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/std/src/collections/hash/map.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/std/src/collections/hash/map.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/std/src/hash/random.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/std/src/hash/random.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/slice.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/slice.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/boxed.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/boxed.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/sync.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/sync.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/raw.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/raw.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/neon.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/neon.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/sse2.rs",
+    "historicalFileExists": true,
+    "historicalHashMatches": true,
+    "currentPath": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/sse2.rs",
+    "currentExists": true,
+    "currentHashMatches": true
+  }
+]

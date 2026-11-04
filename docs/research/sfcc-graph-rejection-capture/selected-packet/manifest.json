@@ -1,0 +1,44 @@
+{
+  "candidate": "B reviewed correction",
+  "base": "/tmp/sfcc-graph-stage1-baseline",
+  "frozenB": "/tmp/sfcc-graph-stage1-b",
+  "source": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "changed": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "80d769dd344609d15b73ec1716350a6a7213b750232511b37be38e1a67b49803",
+      "baseSha256": "0c7ef4a126c2833ba5c139b558749c4be490a5e5571334e10e0ded3e8e70f6cc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "1df45c6e2b48449076e6d2c87d7d8ac6a2dec6a32736ed1f4835cb2f355dec8a",
+      "baseSha256": "0629c7774b9e964a14b1d842d89905b79193b044819f94d61824f3617d4dab8a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/graph_capture_b.rs",
+      "sha256": "5d86a4473f7d662d5b052c3aef810c674079bfe9b39f995ac4e3f57350c38e80",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "sha256": "f3278a868df4cce42a8486518df81c61928e86ac7243e91cc26ec1e6aa5381b4",
+      "baseSha256": "145d1f3bdad8acd80ac8de711bf40805469646d012a81365edb4158d27173e83"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+      "sha256": "74196ae89fb00ac91d83d1d44033856af0646dc47e4e92711a2d378ff6389a01",
+      "baseSha256": "b2bd83f3038afa041e4e86732a7dfd4ae513fff40f27f3526e1514e958ff70da"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "6a5d4fc888e95e261ed6a3f0f9d52716709b22419336a127624b15997eb981f1",
+      "baseSha256": "0fee9cec68b7c9222a23f4bc57f46e97062ffafa46c3536a17e78b82fc8e2f8b"
+    }
+  ],
+  "graphNonObservationTokenEquality": true,
+  "productionCfg": "all(feature=serde,any(test,feature=sfcc-profile))",
+  "rootExecutionPending": true,
+  "handoffSha256": "86f75aca6bf46b5d9732a6e4c9358d6762d256e5a19d929f96b75df89e6cc3c0",
+  "patchSha256": "e41abf660352e9553826174f72de104568dc372b8c5ed7f3c39f34fae5e007eb",
+  "correctionPatchSha256": "19b8705c43c997c0369a5c7df026f895b0efe09c6aa9ae801d03023c8f9bf30f"
+}

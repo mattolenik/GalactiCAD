@@ -1,0 +1,27 @@
+{
+  "originalGraphBodySha256": "2f8fb611980e44e94b9129fcdb923b52ca8b4fc114da2ef3661fabc561da72ca",
+  "observationRemovedTokensMatchOriginal": true,
+  "allOriginalFalseExits": 16,
+  "stableRejectionCodes": [
+    "empty_loops",
+    "insufficient_path_nodes",
+    "midpoint_query_failed",
+    "arc_sampling_failed",
+    "edge_overlap_or_uncertified",
+    "low_vertex_degree",
+    "invalid_vertex_normal",
+    "halfedge_revisited",
+    "walk_budget",
+    "mixed_boundary_orientation",
+    "short_polygon",
+    "missing_candidate_strata",
+    "empty_candidate_strata",
+    "edge_usage_mismatch",
+    "patch_sample_validation_failed",
+    "patch_intersection"
+  ],
+  "appendedDescriptorsPreserveOriginalFilePrefix": {
+    "gcad-wasm/kernel/src/strata.rs": true,
+    "gcad-wasm/kernel/src/sfcc/field_branches.rs": true
+  }
+}

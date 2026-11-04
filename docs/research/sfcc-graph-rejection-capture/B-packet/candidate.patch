@@ -1,0 +1,554 @@
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -408,6 +408,8 @@
+                     .any(|&(curve, _)| features.curves[curve].kind() != CurveKind::Segment)
+             });
+             if corners.len() > 1 || ((cell.degenerate || loops.len() > 1) && distinct_curves.len() > 1) || curved_corner {
++                #[cfg(feature="serde")]
++                super::private_arc_a::graph_b::context(cell, curved_corner, distinct_curves.len(), pruned.is_some());
+                 if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris, &mut retained_unresolved) {
+                     if retained_unresolved {
+                         failed_cells.push(*cell);
+@@ -803,7 +805,11 @@
+     retained_unresolved: &mut bool,
+ ) -> bool {
+     use std::collections::{BTreeMap, BTreeSet};
++    #[cfg(feature="serde")]
++    let mut capture_b=super::private_arc_a::graph_b::Capture::begin(loops,pins,corners,cell_box,points,features,opts);
+     if loops.is_empty() {
++        #[cfg(feature="serde")]
++        capture_b.finish("empty_loops",serde_json::json!({"loopCount":loops.len()}),&BTreeMap::new(),&[],points);
+         return false;
+     }
+     let key = |a: usize, b: usize| if a < b { (a, b) } else { (b, a) };
+@@ -811,6 +817,11 @@
+     let mut shared_arcs: Vec<SharedArc> = Vec::new();
+     let mut memberships = Vec::new();
+     let mut boundary_forward = BTreeSet::new();
++    macro_rules! reject_b { ($code:literal,$operands:expr) => {{
++        #[cfg(feature="serde")]
++        capture_b.finish($code,$operands,&edges,&memberships,points);
++        return false;
++    }}; }
+     for boundary in loops {
+         for i in 0..boundary.len() {
+             let (a, b) = (boundary[i], boundary[(i + 1) % boundary.len()]);
+@@ -842,7 +853,7 @@
+         nodes.sort_by(|a, b| a.0.total_cmp(&b.0));
+         nodes.dedup_by(|a, b| a.1 == b.1);
+         if nodes.len() < 2 {
+-            return false; // an incident arc cannot silently disappear
++            reject_b!("path_nodes_lt_two",serde_json::json!({"chart":id,"nodeCount":nodes.len(),"nodes":nodes.iter().map(|(t,p)|serde_json::json!([format!("{:016x}",t.to_bits()),p])).collect::<Vec<_>>() })); // an incident arc cannot silently disappear
+         }
+         if curve.closed {
+             let (t, p) = nodes[0];
+@@ -854,13 +865,13 @@
+                 continue;
+             }
+             let Some(mid) = curve.point_at_checked((ta + tb) * 0.5) else {
+-                return false;
++                reject_b!("midpoint_query_none",serde_json::json!({"chart":id,"edge":[a,b],"spanHex":[format!("{:016x}",ta.to_bits()),format!("{:016x}",tb.to_bits())]}));
+             };
+             if !in_box(cell_box, mid[0], mid[1], mid[2], 1e-9) {
+                 continue;
+             }
+             let Some(interior) = sample_in_cell_arc(curve, ta, tb, cell_box, points, features, &arc_opts) else {
+-                return false;
++                reject_b!("sample_in_cell_arc_none",serde_json::json!({"chart":id,"edge":[a,b],"spanHex":[format!("{:016x}",ta.to_bits()),format!("{:016x}",tb.to_bits())]}));
+             };
+             let own_nodes: Vec<_> = std::iter::once(a).chain(interior.points.iter().copied()).chain(std::iter::once(b)).collect();
+             let mut shared = None;
+@@ -888,7 +899,7 @@
+                         let pad=opts.curve_chord_tol*0.001;
+                         super::loft_seam::certify(features,id,id,p.map(|x|x-pad),p.map(|x|x+pad)).is_some()
+                     });
+-                    if existing.is_some() || !supported {return false;}
++                    if existing.is_some() || !supported {reject_b!("occupied_or_unsupported_edge",serde_json::json!({"chart":id,"edge":[k.0,k.1],"existingFeature":existing.is_some(),"supported":supported}));}
+                     *existing=Some(curve.adjacent_strata.into_iter().collect());
+                 } else {
+                     edges.insert(k, Some(curve.adjacent_strata.into_iter().collect()));
+@@ -909,13 +920,13 @@
+     }
+     for (&id, neighbors) in &mut around {
+         if neighbors.len() < 2 {
+-            return false;
++            reject_b!("vertex_degree_lt_two",serde_json::json!({"point":id,"neighbors":neighbors,"degree":neighbors.len()}));
+         }
+         let p = [points.x(id), points.y(id), points.z(id)];
+         let mut n = [points.nx(id), points.ny(id), points.nz(id)];
+         let len = n[0].hypot(n[1]).hypot(n[2]);
+         if !len.is_finite() || len < 1e-12 {
+-            return false;
++            reject_b!("invalid_vertex_normal",serde_json::json!({"point":id,"lengthHex":format!("{:016x}",len.to_bits()),"normalHex":n.map(|v|format!("{:016x}",v.to_bits()))}));
+         }
+         n = n.map(|v| v / len);
+         let axis = if n[0].abs() < 0.8 { [1., 0., 0.] } else { [0., 1., 0.] };
+@@ -948,7 +959,7 @@
+             let mut candidates: Option<BTreeSet<usize>> = None;
+             loop {
+                 if !visited.insert(edge) {
+-                    return false;
++                    reject_b!("directed_edge_revisited",serde_json::json!({"edge":[edge.0,edge.1],"first":[first.0,first.1],"polygonLength":polygon.len()}));
+                 }
+                 polygon.push(edge.0);
+                 forward |= boundary_forward.contains(&edge);
+@@ -969,23 +980,23 @@
+                     break;
+                 }
+                 if polygon.len() > edges.len() * 2 {
+-                    return false;
++                    reject_b!("polygon_walk_bound",serde_json::json!({"polygonLength":polygon.len(),"edgeCount":edges.len()}));
+                 }
+             }
+             if backward {
+                 if forward {
+-                    return false;
++                    reject_b!("mixed_boundary_orientation",serde_json::json!({"first":[first.0,first.1],"forward":forward,"backward":backward,"polygonLength":polygon.len()}));
+                 }
+                 continue;
+             }
+             if polygon.len() < 3 {
+-                return false;
++                reject_b!("polygon_lt_three",serde_json::json!({"polygon":polygon}));
+             }
+             let Some(candidates) = candidates else {
+-                return false;
++                reject_b!("no_patch_candidates",serde_json::json!({"first":[first.0,first.1],"polygonLength":polygon.len()}));
+             };
+             if candidates.is_empty() {
+-                return false;
++                reject_b!("empty_patch_candidates",serde_json::json!({"first":[first.0,first.1],"polygonLength":polygon.len()}));
+             }
+             let score = |id: usize| {
+                 polygon
+@@ -1010,7 +1021,7 @@
+             && !boundary_forward.contains(edge) && !boundary_forward.contains(&(edge.1,edge.0))
+             && used_features.get(edge) != Some(&2))
+     {
+-        return false;
++        reject_b!("boundary_or_feature_incidence",serde_json::json!({"usedBoundaryCount":used_boundary.len(),"requiredBoundaryCount":boundary_forward.len(),"featureEdgeCount":used_features.len()}));
+     }
+     let mut triangles = Vec::new();
+     let mut unresolved=false;
+@@ -1042,7 +1053,7 @@
+                     Some(features.strata[id].project(sample[0], sample[1], sample[2]))
+                 };
+                 if super::quality_remesh::validate_with_samples(tree, &features.strata[id], p, normal, opts.surface_tol, reference).is_err() {
+-                    return false;
++                    reject_b!("triangle_sample_validation",serde_json::json!({"stratum":id,"triangle":tri}));
+                 }
+             }
+         }
+@@ -1052,7 +1063,7 @@
+         for tri in triangles.chunks_exact(3) {
+             let ids = [tri[0], tri[1], tri[2]];
+             let p = ids.map(|i| q::pos(points, i));
+-            if index.conflicts(ids, p) { return false; }
++            if index.conflicts(ids, p) { reject_b!("triangle_contact",serde_json::json!({"triangle":ids})); }
+             index.extend([(ids, p)]);
+         }
+     }
+@@ -1061,6 +1072,8 @@
+     }
+     out.extend(triangles);
+     *retained_unresolved|=unresolved;
++    #[cfg(feature="serde")]
++    capture_b.success();
+     true
+ }
+ 
+@@ -2027,6 +2040,27 @@
+         disconnected_pins.retain(|p| p.point_id < 3);
+         assert!(!mesh_feature_graph(&loops, &disconnected_pins, &[], &[-1., -0.5, -1., 1., 0.5, 1.],
+             &tree, &mut points, &opts, &features, &mut Vec::new(), &mut false));
++        #[cfg(feature="serde")]
++        {
++            super::super::private_arc_a::graph_b::test_begin();
++            let before=points.count();
++            let mut rejected=Vec::new();
++            assert!(!mesh_feature_graph(&loops,&disconnected_pins,&[],&[-1.,-0.5,-1.,1.,0.5,1.],
++                &tree,&mut points,&opts,&features,&mut rejected,&mut false));
++            assert_eq!(points.count(),before);
++            assert!(rejected.is_empty());
++            let receipt=super::super::private_arc_a::graph_b::test_take();
++            assert_eq!(receipt["graphCaptureB"]["rejectionCode"],"path_nodes_lt_two");
++            assert_eq!(receipt["graphCaptureB"]["complete"],true);
++            assert_eq!(receipt["graphCaptureB"]["returned"],false);
++            assert_eq!(receipt["graphCaptureB"]["finalPrivateFailure"],false);
++            super::super::private_arc_a::graph_b::test_begin();
++            assert!(!mesh_feature_graph(&[],&[],&[],&[-1.,-0.5,-1.,1.,0.5,1.],
++                &tree,&mut points,&opts,&features,&mut Vec::new(),&mut false));
++            let receipt=super::super::private_arc_a::graph_b::test_take();
++            assert_eq!(receipt["graphCaptureB"]["rejectionCode"],"empty_loops");
++            assert_eq!(points.count(),before);
++        }
+     }
+     use crate::sfcc::spatial_index::SfccSpatialIndex;
+     use crate::sfcc::validation::{numerical_failures, NumericalGuard};
+--- a/gcad-wasm/kernel/src/sfcc/field_branches.rs
++++ b/gcad-wasm/kernel/src/sfcc/field_branches.rs
+@@ -1023,3 +1023,13 @@
+         std::sync::Arc::ptr_eq(&self.root,&other.root)&&std::sync::Arc::ptr_eq(&self.partners,&other.partners)&&self.path==other.path&&match(&self.branch,&other.branch){(Some((a,k,x)),Some((b,l,y)))=>a==b&&k==l&&x.to_bits()==y.to_bits(),(None,None)=>true,_=>false}
+     }
+ }
++
++#[cfg(feature="serde")]
++impl FieldRef {
++    pub(crate) fn graph_capture_identity_b(&self)->Option<serde_json::Value> {
++        if self.path.len()>32||self.partners.len()>64||self.branch.as_ref().is_some_and(|b|b.0.len()>32){return None;}
++        Some(serde_json::json!({"path":self.path,"partners":self.partners.as_ref(),
++            "branch":self.branch.as_ref().map(|(p,b,n)|serde_json::json!({"path":p,"kind":format!("{b:?}"),"nativeBandHex":format!("{:016x}",n.to_bits())})),
++            "rootAddressProcessLocal":format!("{:x}",std::sync::Arc::as_ptr(&self.root)as usize)}))
++    }
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/graph_capture_b.rs
+@@ -0,0 +1,309 @@
++//! B: pre-call provenance plus exact executed graph refusal. No geometry queries.
++use super::DIAGNOSTIC;
++use crate::sfcc::{
++    cell_mesh::CellMeshOptions,
++    face_contour::FacePin,
++    feature_set::SfccFeatureSet,
++    octree::SfccCell,
++    point_table::{CurveInterval, PointKey, PointTable},
++};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++const CAP: usize = 512 * 1024;
++const ITEMS: usize = 1024;
++fn bits(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn query_count() -> Option<usize> {
++    super::QUERY_LOG.with(|s| s.borrow().as_ref().map(|log| log.attempts.len()))
++}
++fn bounded(value: Value) -> Value {
++    struct Writer(Vec<u8>);
++    impl std::io::Write for Writer {
++        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++            if bytes.len() > CAP - self.0.len() {
++                return Err(std::io::ErrorKind::OutOfMemory.into());
++            }
++            self.0.extend_from_slice(bytes);
++            Ok(bytes.len())
++        }
++        fn flush(&mut self) -> std::io::Result<()> {
++            Ok(())
++        }
++    }
++    let mut w = Writer(Vec::with_capacity(CAP));
++    if serde_json::to_writer(&mut w, &value).is_err() {
++        json!({"complete":false,"refusal":"graph_capture_512KiB_cap","byteCap":CAP,"context":value.get("context"),"returned":value.get("returned"),"rejectionCode":value.get("rejectionCode")})
++    } else {
++        value
++    }
++}
++fn point_record(p: &PointTable, id: usize) -> Value {
++    let key = match p.key_at(id) {
++        PointKey::Num(k) => json!({"numericHex":format!("{:016x}", *k as u64)}),
++        PointKey::Str(k) => json!({"string":k}),
++        PointKey::Unkeyed => Value::Null,
++    };
++    json!({"id":id,"key":key,"positionHex":[bits(p.x(id)),bits(p.y(id)),bits(p.z(id))],
++        "normalHex":[bits(p.nx(id)),bits(p.ny(id)),bits(p.nz(id))]})
++}
++fn points_supported(points: &PointTable) -> bool {
++    points.count() <= ITEMS
++        && (0..points.count()).all(|id| match points.key_at(id) {
++            PointKey::Str(k) => k.len() <= 128,
++            _ => true,
++        })
++}
++pub(crate) fn context(cell: &SfccCell, curved: bool, distinct: usize, pruned: bool) {
++    DIAGNOSTIC.with(|s| {
++        if let Some(v) = s.borrow_mut().as_mut() {
++            v["graphContextB"] = json!({"cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],
++            "degenerate":cell.degenerate,"featureCorner":cell.feature_corner,
++            "featureCurve":cell.feature_curve,"curvedCorner":curved,"distinctPinCurves":distinct,
++            "queryViewPruned":pruned});
++            v.as_object_mut().unwrap().remove("graphCaptureB");
++        }
++    });
++}
++pub(crate) struct Capture {
++    active: bool,
++    initial_points: usize,
++    finished: bool,
++}
++impl Capture {
++    pub(crate) fn begin(
++        loops: &[Vec<usize>],
++        pins: &[FacePin],
++        corners: &[usize],
++        cell_box: &[f64; 6],
++        points: &PointTable,
++        features: &SfccFeatureSet,
++        opts: &CellMeshOptions,
++    ) -> Self {
++        let context = DIAGNOSTIC.with(|s| {
++            s.borrow()
++                .as_ref()
++                .and_then(|v| v.get("graphContextB"))
++                .cloned()
++        });
++        let mut this = Self {
++            active: context.is_some(),
++            initial_points: points.count(),
++            finished: false,
++        };
++        let Some(context) = context else {
++            return this;
++        };
++        let count = loops.iter().map(Vec::len).sum::<usize>();
++        let valid = loops.len() <= 64
++            && count <= ITEMS
++            && pins.len() <= ITEMS
++            && corners.len() <= 64
++            && points_supported(points)
++            && loops.iter().flatten().all(|&id| id < points.count())
++            && pins
++                .iter()
++                .all(|p| p.point_id < points.count() && p.curve_id < features.curves.len())
++            && corners.iter().all(|&i| {
++                features
++                    .corners
++                    .get(i)
++                    .is_some_and(|c| c.curve_ends.len() <= 64 && c.strata.len() <= 64)
++            });
++        if !valid {
++            this.store(
++                json!({"context":context,"complete":false,"refusal":"graph_capture_input_bound"}),
++            );
++            return this;
++        }
++        let curve_ids: BTreeSet<_> = pins
++            .iter()
++            .map(|p| p.curve_id)
++            .chain(
++                corners
++                    .iter()
++                    .flat_map(|&id| features.corners[id].curve_ends.iter().map(|p| p.0)),
++            )
++            .collect();
++        if curve_ids.len() > 128 || curve_ids.iter().any(|&id| id >= features.curves.len()) {
++            this.store(
++                json!({"context":context,"complete":false,"refusal":"graph_capture_source_bound"}),
++            );
++            return this;
++        }
++        let mut strata_ids = BTreeSet::new();
++        for &id in &curve_ids {
++            strata_ids.extend(features.curves[id].adjacent_strata);
++        }
++        for &id in corners {
++            strata_ids.extend(features.corners[id].strata.iter().copied());
++        }
++        if strata_ids.len() > 128 || strata_ids.iter().any(|&id| id >= features.strata.len()) {
++            this.store(
++                json!({"context":context,"complete":false,"refusal":"graph_capture_stratum_bound"}),
++            );
++            return this;
++        }
++        let sources: Option<Vec<_>> = strata_ids
++            .into_iter()
++            .map(|id| features.strata[id].graph_capture_identity_b())
++            .collect();
++        let Some(sources) = sources else {
++            this.store(json!({"context":context,"complete":false,"refusal":"graph_capture_source_path_bound"}));
++            return this;
++        };
++        let curves: Vec<_> = curve_ids
++            .into_iter()
++            .map(|id| {
++                let c = &features.curves[id];
++                json!({"id":id,
++            "ownerNodeId":c.owner_node_id,"native":c.native,"kind":format!("{:?}",c.kind()),
++            "strata":c.adjacent_strata,"rangeHex":[bits(c.t_min),bits(c.t_max)],"closed":c.closed,
++            "wrapHex":c.param_wrap.map(bits),"cornerEnds":[c.corner_start,c.corner_end]})
++            })
++            .collect();
++        let corners:Vec<_>=corners.iter().map(|&id|{let c=&features.corners[id];json!({"id":id,
++            "positionHex":[bits(c.x),bits(c.y),bits(c.z)],"curveEnds":c.curve_ends,"strata":c.strata})}).collect();
++        this.store(json!({"context":context,"complete":true,"returned":null,"finalPrivateFailure":false,"queryStart":query_count(),"queryIndexConvention":"half-open indices into generatedQueries; excludes later fallback work",
++            "scope":"local pre-call inputs and executed guard; replay also requires pinned source and private feature-view edits",
++            "pre":{"loops":loops,"pins":pins.iter().map(|p|json!({"id":p.point_id,"chart":p.curve_id,"parameterHex":bits(p.t)})).collect::<Vec<_>>(),
++                "corners":corners,"curves":curves,"strata":sources,"cellBoxHex":cell_box.map(bits),
++                "allPrivatePoints":(0..points.count()).map(|id|point_record(points,id)).collect::<Vec<_>>(),
++                "options":{"surfaceTolHex":bits(opts.surface_tol),"chordTolHex":bits(opts.curve_chord_tol),
++                    "maxPolylinePoints":opts.max_polyline_points_per_cell,"projectMaxIters":opts.project_max_iters,
++                    "qualityTriangulation":opts.quality_triangulation,"interiorMode":format!("{:?}",opts.interior_vertex_mode)}},
++            "bounds":{"serializedBytes":CAP,"points":ITEMS,"loopEntries":ITEMS,"pins":ITEMS,
++                "corners":64,"curves":128,"strata":128,"edges":ITEMS,"memberships":ITEMS},
++            "sourceGeometryIncluded":false,"completeReplayEstablished":false}));
++        this
++    }
++    fn store(&mut self, value: Value) {
++        DIAGNOSTIC.with(|s| {
++            if let Some(v) = s.borrow_mut().as_mut() {
++                v["graphCaptureB"] = bounded(value);
++            }
++        });
++    }
++    pub(crate) fn finish(
++        &mut self,
++        code: &'static str,
++        operands: Value,
++        edges: &BTreeMap<(usize, usize), Option<BTreeSet<usize>>>,
++        memberships: &[(usize, usize, CurveInterval)],
++        points: &PointTable,
++    ) {
++        if !self.active {
++            return;
++        }
++        self.finished = true;
++        DIAGNOSTIC.with(|s|if let Some(v)=s.borrow_mut().as_mut(){
++            let mut capture=v["graphCaptureB"].take();
++            capture["returned"]=json!(false);capture["queryEnd"]=json!(query_count());capture["rejection"]=json!({"code":code,"operands":operands});
++            if edges.len()>ITEMS || edges.values().flatten().any(|s|s.len()>128) || memberships.len()>ITEMS || !points_supported(points) {
++                capture["complete"]=json!(false);capture["postRefusal"]=json!("graph_capture_graph_bound");
++            } else {
++                capture["graph"]=json!({"edges":edges.iter().map(|(&(a,b),s)|json!({"edge":[a,b],"strata":s})).collect::<Vec<_>>(),
++                    "memberships":memberships.iter().map(|(a,b,m)|json!({"edge":[a,b],"chart":m.curve_id,"rangeHex":[bits(m.start),bits(m.end)]})).collect::<Vec<_>>(),
++                    "newPoints":(self.initial_points..points.count()).map(|id|point_record(points,id)).collect::<Vec<_>>(),"pointCount":points.count()});
++            }
++            capture["rejectionCode"]=json!(code);
++            v["graphCaptureB"]=bounded(capture);
++        });
++    }
++    pub(crate) fn success(&mut self) {
++        self.finished = true;
++        if self.active {
++            DIAGNOSTIC.with(|s| {
++                if let Some(v) = s.borrow_mut().as_mut() {
++                    v["graphCaptureB"]["returned"] = json!(true);
++                    v["graphCaptureB"]["queryEnd"] = json!(query_count());
++                }
++            });
++        }
++    }
++}
++impl Drop for Capture {
++    fn drop(&mut self) {
++        if self.active && !self.finished {
++            DIAGNOSTIC.with(|s| {
++                if let Some(v) = s.borrow_mut().as_mut() {
++                    v["graphCaptureB"]["complete"] = json!(false);
++                    v["graphCaptureB"]["abandoned"] = json!(true);
++                }
++            });
++        }
++    }
++}
++pub(crate) fn final_failure(cell: &SfccCell) {
++    DIAGNOSTIC.with(|s| {
++        if let Some(v) = s.borrow_mut().as_mut() {
++            let id = json!([cell.level as i64, cell.ix, cell.iy, cell.iz]);
++            let matches = v["graphCaptureB"]["context"]["cell"] == id;
++            if v.get("graphCaptureB").is_some() {
++                v["graphCaptureB"]["finalPrivateFailure"] = json!(matches);
++            }
++        }
++    });
++}
++#[cfg(test)]
++pub(crate) fn test_begin() {
++    DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"graphContextB":{"cell":[7,36,79,29]}})));
++}
++#[cfg(test)]
++pub(crate) fn test_take() -> Value {
++    DIAGNOSTIC.with(|s| s.borrow_mut().take().unwrap_or(Value::Null))
++}
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn graph_b_byte_cap_and_hex_are_exact() {
++        assert_eq!(bits(-0.), "8000000000000000");
++        let finite = f64::from_bits(0x3ff0000000000001);
++        assert_eq!(
++            u64::from_str_radix(&bits(finite), 16).unwrap(),
++            finite.to_bits()
++        );
++        assert_eq!(bounded(json!({"text":"x".repeat(CAP)}))["complete"], false);
++    }
++    #[test]
++    fn graph_b_query_indices_are_read_only() {
++        super::super::QUERY_LOG.with(|s| {
++            *s.borrow_mut() = Some(super::super::QueryLog {
++                attempts: Vec::new(),
++                exhausted: false,
++            })
++        });
++        assert_eq!(query_count(), Some(0));
++        assert!(super::super::before_query(20, 0.));
++        assert_eq!(query_count(), Some(1));
++        assert_eq!(query_count(), Some(1));
++        super::super::QUERY_LOG.with(|s| *s.borrow_mut() = None);
++    }
++    #[test]
++    fn graph_b_inactive_capture_does_not_create_diagnostic_state() {
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = None);
++        let c = Capture {
++            active: false,
++            initial_points: 0,
++            finished: false,
++        };
++        drop(c);
++        assert!(DIAGNOSTIC.with(|s| s.borrow().is_none()));
++    }
++    #[test]
++    fn graph_b_abandonment_is_explicit_and_scope_can_be_cleared() {
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"graphCaptureB":{"complete":true}})));
++        let c = Capture {
++            active: true,
++            initial_points: 0,
++            finished: false,
++        };
++        drop(c);
++        assert_eq!(
++            DIAGNOSTIC.with(|s| s.borrow().as_ref().unwrap()["graphCaptureB"]["abandoned"].clone()),
++            true
++        );
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = None);
++    }
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -453,3 +453,7 @@
+     });
+     #[cfg(not(feature="serde"))] let _=(oct,faces,cell,points,result);
+ }
++
++#[cfg(feature = "serde")]
++#[path = "graph_capture_b.rs"]
++pub(crate) mod graph_b;
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -670,6 +670,8 @@
+             std::slice::from_ref(cell),
+         );
+         if !result.failed_cells.is_empty() || result.feature_cell_fallbacks != 0 {
++            #[cfg(feature="serde")]
++            super::private_arc_a::graph_b::final_failure(cell);
+             super::private_arc_a::note_private_mesher_failure(oct,&staged,cell,&private,&result);
+             graph_failed = true;
+             break;
+--- a/gcad-wasm/kernel/src/strata.rs
++++ b/gcad-wasm/kernel/src/strata.rs
+@@ -1240,3 +1240,15 @@
+         &&match(&self.domain,&other.domain){(Some(a),Some(b))=>a.len()==b.len()&&a.iter().zip(b).all(|(a,b)|a.private_storage_clone_equal_a(b)),(None,None)=>true,_=>false}
+     }
+ }
++
++#[cfg(feature="serde")]
++impl Stratum {
++    pub(crate) fn graph_capture_identity_b(&self)->Option<serde_json::Value> {
++        if self.domain.as_ref().is_some_and(|d|d.len()>16){return None;}
++        let field=match &self.field{Some(f)=>Some(f.graph_capture_identity_b()?),None=>None};
++        let domain=match &self.domain{Some(d)=>Some(d.iter().map(|f|f.graph_capture_identity_b()).collect::<Option<Vec<_>>>()?),None=>None};
++        Some(serde_json::json!({"id":self.id,"ownerNodeId":self.owner_node_id,"leafIndex":self.leaf_index,
++            "localIndex":self.local_index,"signHex":format!("{:016x}",self.sign.to_bits()),
++            "field":field,"domain":domain,"compoundPresent":self.compound.is_some(),"compoundTermsIncluded":false}))
++    }
++}

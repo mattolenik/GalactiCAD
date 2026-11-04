@@ -1,0 +1,41 @@
+{
+  "candidate": "B",
+  "base": "/tmp/sfcc-graph-stage1-baseline",
+  "source": "/tmp/sfcc-graph-stage1-b",
+  "changed": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "1ab321c96f08f2e5a4efef485d12b03a61d126455cd1fd081378d18e804ddb14",
+      "baseSha256": "0c7ef4a126c2833ba5c139b558749c4be490a5e5571334e10e0ded3e8e70f6cc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "9a21ece84eacd15370aba9dab0e56d50b9d20e7eb2a17027dd2b383941b450ef",
+      "baseSha256": "0629c7774b9e964a14b1d842d89905b79193b044819f94d61824f3617d4dab8a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/graph_capture_b.rs",
+      "sha256": "dcc4b3683fb34f84243f7702dc40d07c40db843fba219ec5318d56cf0b551202",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "sha256": "3a273bf6b7a1076ecd76a30d4be4d304f15dc834a0213d339ca068b9ecfe79d7",
+      "baseSha256": "145d1f3bdad8acd80ac8de711bf40805469646d012a81365edb4158d27173e83"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+      "sha256": "6562ec67cef7ae1b86ac5f0f046ca190795cb4f88946f5fe8b1a477a8f55c194",
+      "baseSha256": "b2bd83f3038afa041e4e86732a7dfd4ae513fff40f27f3526e1514e958ff70da"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "c9d1a8b2dac6dfa1880b6b91cd7e53270829fbdca48ffc336b515b5f3260847f",
+      "baseSha256": "0fee9cec68b7c9222a23f4bc57f46e97062ffafa46c3536a17e78b82fc8e2f8b"
+    }
+  ],
+  "graphNonObservationTokenEquality": true,
+  "rootExecutionPending": true,
+  "handoffSha256": "4b6a10e4fd7052b84578c035970c60ff0e0c80cadb222e51952ad966fb87dbe3",
+  "patchSha256": "b2299b6f6a1fa962be0b88586f2f9d7d801c77bc9f13c43fb426971f112dfcbb"
+}

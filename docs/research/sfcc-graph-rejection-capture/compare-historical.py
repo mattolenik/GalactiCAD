@@ -1,0 +1,8 @@
+from pathlib import Path
+import json,hashlib,sys
+repo=Path('/Users/matt/gcad/galacticad');oldpath=repo/'docs/research/sfcc-e4-prototype/round18-storage-integration/executed/private-receipt.json';newpath=Path(sys.argv[1]);a=json.loads(oldpath.read_text());b=json.loads(newpath.read_text())
+keys=['adaptiveRound','branch','consumerInventory','effectiveCubeBits','effectiveNativeTuning','finalChargedQueries','finalExportClosure','fingerprint','liveDigestAfter','liveDigestBefore','liveLattice','liveStatePreserved','nativeAttempt','nativeResourceObservationBound','originalCharts','originalCounts','outcome','productionAcceptance','publicationReady','requestedCube','requestedSceneJson','requestedTuning','sourceConfigSha256','stage','stoppedBeforeProductionCellMeshingAndPostassembly','storageReservation','unconsumedTsOnlyOptions']
+results={k:a[k]==b[k] for k in keys}
+for k in ['activeFace','activePrivateCell','admission','chargedAfterAdmission','finalChargedQueries','generatedQueries','privateMesherFailure','typedFaceCertificates']:results['admissionAndQueryEvidence.'+k]=a['admissionAndQueryEvidence'].get(k)==b['admissionAndQueryEvidence'].get(k)
+report={'historicalReceiptSha256':hashlib.sha256(oldpath.read_bytes()).hexdigest(),'newReceiptSha256':hashlib.sha256(newpath.read_bytes()).hexdigest(),'equalFields':results,'allEqual':all(results.values()),'scope':'exact JSON-value comparison using integer-preserving Python decoding; excludes provenance and newly added observation fields'}
+(newpath.parent/'historical-comparison.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))

@@ -1,0 +1,104 @@
+{
+  "sourceSha256": "0c7ef4a126c2833ba5c139b558749c4be490a5e5571334e10e0ded3e8e70f6cc",
+  "functionSha256": "2f8fb611980e44e94b9129fcdb923b52ca8b4fc114da2ef3661fabc561da72ca",
+  "directFalseReturnCount": 16,
+  "inventory": [
+    {
+      "code": "empty_loops",
+      "sourceLine": 807,
+      "predicate": "loops.len() == 0",
+      "minimumOperands": "loop count"
+    },
+    {
+      "code": "incident_nodes_lt_two",
+      "sourceLine": 845,
+      "predicate": "nodes.len() < 2",
+      "minimumOperands": "curve id; sorted/deduplicated (parameter bits,point id) nodes"
+    },
+    {
+      "code": "midpoint_query_failed",
+      "sourceLine": 857,
+      "predicate": "point_at_checked(mid parameter) == None",
+      "minimumOperands": "curve id; ta/tb/mid bits; a/b; query-attempt index"
+    },
+    {
+      "code": "arc_sampling_failed",
+      "sourceLine": 863,
+      "predicate": "sample_in_cell_arc(...) == None",
+      "minimumOperands": "curve id; span bits; endpoints; point count before/after; query-attempt interval"
+    },
+    {
+      "code": "edge_overlap_unsupported",
+      "sourceLine": 891,
+      "predicate": "existing.is_some() || !supported",
+      "minimumOperands": "edge ids; old label; supported boolean; actual midpoint result if already obtained"
+    },
+    {
+      "code": "degree_lt_two",
+      "sourceLine": 912,
+      "predicate": "neighbors.len() < 2",
+      "minimumOperands": "node id; actual neighbor list; built labeled edges; memberships"
+    },
+    {
+      "code": "normal_invalid",
+      "sourceLine": 918,
+      "predicate": "!len.is_finite() || len < 1e-12",
+      "minimumOperands": "node id; stored normal bits; already computed length bits"
+    },
+    {
+      "code": "directed_edge_revisited",
+      "sourceLine": 951,
+      "predicate": "!visited.insert(edge)",
+      "minimumOperands": "first edge; current edge; polygon prefix; visited set"
+    },
+    {
+      "code": "walk_length_limit",
+      "sourceLine": 972,
+      "predicate": "polygon.len() > edges.len()*2",
+      "minimumOperands": "polygon prefix/count; edge count; current edge"
+    },
+    {
+      "code": "mixed_boundary_orientation",
+      "sourceLine": 977,
+      "predicate": "backward && forward",
+      "minimumOperands": "polygon; forward/backward; boundary_forward"
+    },
+    {
+      "code": "polygon_lt_three",
+      "sourceLine": 982,
+      "predicate": "polygon.len() < 3",
+      "minimumOperands": "polygon; orientation flags"
+    },
+    {
+      "code": "no_candidate_set",
+      "sourceLine": 985,
+      "predicate": "candidates == None",
+      "minimumOperands": "polygon; labeled edges"
+    },
+    {
+      "code": "candidate_set_empty",
+      "sourceLine": 988,
+      "predicate": "candidates.is_empty()",
+      "minimumOperands": "polygon; candidate set"
+    },
+    {
+      "code": "edge_coverage_mismatch",
+      "sourceLine": 1013,
+      "predicate": "used_boundary != boundary_forward || invalid internal feature usage",
+      "minimumOperands": "built edges; boundary/used-boundary; used-feature counts; preserve original short circuit"
+    },
+    {
+      "code": "sampled_patch_validation_failed",
+      "sourceLine": 1045,
+      "predicate": "validate_with_samples(...).is_err()",
+      "minimumOperands": "stratum id; triangle ids/positions; actual existing result category if retained without repeating call"
+    },
+    {
+      "code": "triangle_contact",
+      "sourceLine": 1055,
+      "predicate": "index.conflicts(ids,p)",
+      "minimumOperands": "triangle ordinal/ids/positions; already built triangles; do not requery index"
+    }
+  ],
+  "scope": "Static direct false returns only; helper-internal None branches and panics are not mislabeled as direct guards"
+}

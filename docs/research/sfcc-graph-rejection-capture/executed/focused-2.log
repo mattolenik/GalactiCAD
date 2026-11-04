@@ -1,0 +1,11 @@
+
+running 6 tests
+test sfcc::private_arc_a::tests::correlated_private_a_admission_controls ... ok
+test sfcc::private_storage_observation::tests::correlated_storage_staging_and_typed_lifecycle_controls ... ok
+test sfcc::shared_twisted_proof::correlated_c::tests::correlated_selected_binding_and_failed_transport_controls ... ok
+test sfcc::shared_twisted_proof::correlated_c::transport_a::tests::correlated_transport_a_full_inventory_and_controls ... ok
+test sfcc::shared_twisted_proof::typed_face_root::tests::correlated_typed_face_integrated_controls ... ok
+test sfcc::source_storage_a::tests::correlated_source_storage_a_feature_only_witness ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 314 filtered out; finished in 4.31s
+

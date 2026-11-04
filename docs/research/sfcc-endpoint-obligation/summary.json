@@ -1,0 +1,118 @@
+{
+  "sourceRuntimeBaseline": "executed Round18+Stage1 overlay; production421f5a9 unchanged",
+  "localReplayPassed": true,
+  "exactMatches": {
+    "builtGraphAndNewPointBits": true,
+    "originalChartBits": true,
+    "preCallInputsAndSharing": true,
+    "rejectionOperands": true,
+    "sixCurveQueries": true,
+    "sourceFingerprint": true
+  },
+  "idealSourceScope": "regular exposed native crease across recordedcorner height \u00b11e\u22124mm inactual failedcell",
+  "heightInterval": [
+    2.6908777686167187,
+    2.69107776861672
+  ],
+  "positiveBeyondInterval": [
+    2.6910277686167188,
+    2.69107776861672
+  ],
+  "numericalCornerDistanceUpper": 8.068991924865286e-09,
+  "curveEps": 4.745819212738724e-08,
+  "associationAllowance": 3.796655370190979e-07,
+  "determinantBounds": [
+    14.510685717773635,
+    14.510685717773654
+  ],
+  "ancestorMarginBounds": {
+    "innerUnionCompetitorMarginHex": [
+      1.0188084717334747,
+      1.018808471733475
+    ],
+    "grooveChamferMarginHex": [
+      4.1908777686167165,
+      4.191077768616722
+    ],
+    "capCutMarginHex": [
+      2.3089222313832787,
+      2.3091222313832827
+    ],
+    "outerRoundMarginHex": [
+      0.003317998503392871,
+      0.0034587006285189408
+    ]
+  },
+  "probeComparisons": [
+    {
+      "step": 0.0,
+      "signedAdvance": 0.0,
+      "defaultStatus": "Ok(true)",
+      "smallerProbeStatus": "Ok(true)",
+      "rootResidual": 3.8902214782865485e-13,
+      "domains": [
+        true,
+        true
+      ]
+    },
+    {
+      "step": 0.0001,
+      "signedAdvance": 9.999999999984563e-05,
+      "defaultStatus": "Ok(false)",
+      "smallerProbeStatus": "Ok(true)",
+      "rootResidual": 4.1598546829391125e-10,
+      "domains": [
+        true,
+        true
+      ]
+    },
+    {
+      "step": 0.0005,
+      "signedAdvance": 0.0005000000000005455,
+      "defaultStatus": "Ok(false)",
+      "smallerProbeStatus": "Ok(true)",
+      "rootResidual": 1.039027885951782e-08,
+      "domains": [
+        true,
+        true
+      ]
+    },
+    {
+      "step": 0.001,
+      "signedAdvance": 0.0009999999999999016,
+      "defaultStatus": "Ok(false)",
+      "smallerProbeStatus": "Ok(true)",
+      "rootResidual": 4.155994659527096e-08,
+      "domains": [
+        true,
+        true
+      ]
+    },
+    {
+      "step": 0.002,
+      "signedAdvance": 0.001999999972364999,
+      "defaultStatus": "Ok(false)",
+      "smallerProbeStatus": "Ok(true)",
+      "rootResidual": 3.552713678800501e-15,
+      "domains": [
+        true,
+        true
+      ]
+    },
+    {
+      "step": 0.004,
+      "signedAdvance": 0.003999999778918439,
+      "defaultStatus": "Ok(false)",
+      "smallerProbeStatus": "Ok(true)",
+      "rootResidual": -0.0,
+      "domains": [
+        true,
+        true
+      ]
+    }
+  ],
+  "actualUpstreamLossLocalized": false,
+  "laterBlendContinuationEstablished": false,
+  "replacementMeshAccepted": false,
+  "floatingEvaluatorOrGpuParityProved": false
+}

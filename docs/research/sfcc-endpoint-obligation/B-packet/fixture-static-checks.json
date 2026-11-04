@@ -1,0 +1,29 @@
+{
+  "fixtureSha256": "9127f7986c675ad0868c71d23099aa6a7356f8703fb5cef7dce355d1bd37f00c",
+  "sourceReceiptSha256": "6acd91cc9a04c34ac394bf669ec1d54ba487ab4ad8ed18559a9b7e894c4a3543",
+  "preCallPoints": 633,
+  "uniqueKeyedPoints": 627,
+  "corner27AbsentAtEntry": true,
+  "boundaryVertices": 8,
+  "graphVertices": 9,
+  "graphEdges": 9,
+  "connected": true,
+  "cycleRank": 1,
+  "featureBridge": [
+    620,
+    633
+  ],
+  "degrees": {
+    "60": 2,
+    "61": 2,
+    "62": 2,
+    "624": 2,
+    "620": 3,
+    "618": 2,
+    "623": 2,
+    "633": 1,
+    "625": 2
+  },
+  "largeSourceSentinelEncodedAsString": true,
+  "scope": "exact saved JSON graph/key checks only; no field or curve evaluation; no mesh replay executed"
+}

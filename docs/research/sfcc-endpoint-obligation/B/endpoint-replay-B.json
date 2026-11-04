@@ -1,0 +1,485 @@
+{
+  "baseline": {
+    "accepted": false,
+    "graph": {
+      "edges": [
+        {
+          "edge": [
+            60,
+            61
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            60,
+            62
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            61,
+            624
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            62,
+            620
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            618,
+            620
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            618,
+            623
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            620,
+            633
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "edge": [
+            623,
+            625
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            624,
+            625
+          ],
+          "strata": null
+        }
+      ],
+      "memberships": [
+        {
+          "chart": 20,
+          "edge": [
+            620,
+            633
+          ],
+          "rangeHex": [
+            "403ec575c721f0be",
+            "403f000000000000"
+          ]
+        }
+      ],
+      "newPoints": [
+        {
+          "id": 633,
+          "key": {
+            "string": "corner:27"
+          },
+          "normalHex": [
+            "bfccb3bf7cca8369",
+            "bfe6ba6ddce3933a",
+            "bfe55a4c2acdb300"
+          ],
+          "positionHex": [
+            "c01ae303f75efc73",
+            "4005871f5a33c661",
+            "c020e81b1b90e888"
+          ]
+        }
+      ],
+      "pointCount": 634
+    },
+    "incomingCellQueryCalls": 0,
+    "pointCount": 634,
+    "queries": [
+      {
+        "chart": 20,
+        "parameterHex": "403ee2bae390f85f",
+        "pointHex": [
+          "c01b0afcdebea63a",
+          "40056493bb4ea8c8",
+          "c020d82363ecc399"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ec575c721f0be",
+        "pointHex": [
+          "c01b32d1298bd5e2",
+          "40054206f7300c1b",
+          "c020c81383104032"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403f000000000000",
+        "pointHex": [
+          "c01ae303f75efc73",
+          "4005871f5a33c661",
+          "c020e81b1b90e888"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ed4185559748e",
+        "pointHex": [
+          "c01b1eeba1b8bb06",
+          "4005534d788297d6",
+          "c020d01e74dc0335"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ee2bae390f85f",
+        "pointHex": [
+          "c01b0afcdebea63a",
+          "40056493bb4ea8c8",
+          "c020d82363ecc399"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ef15d71c87c30",
+        "pointHex": [
+          "c01af704f496d66a",
+          "400575d9b4b6d77d",
+          "c020e02248ac1b35"
+        ],
+        "querySucceeded": true
+      }
+    ],
+    "rejection": {
+      "code": "vertex_degree_lt_two",
+      "operands": {
+        "degree": 1,
+        "neighbors": [
+          620
+        ],
+        "point": 633
+      }
+    },
+    "seededMetadata": false,
+    "wrongPinChart": false
+  },
+  "controls": {
+    "duplicateKeyAndUnkeyedIdentity": "separate endpoint_replay_b_duplicate_pre_call_keys_are_rejected test",
+    "pinChartMismatchChangesGuard": true,
+    "unusedMetadataUnchanged": true
+  },
+  "earlyPathReplayEstablished": true,
+  "exactMatches": {
+    "builtGraphAndNewPointBits": true,
+    "originalChartBits": true,
+    "preCallInputsAndSharing": true,
+    "rejectionOperands": true,
+    "sixCurveQueries": true,
+    "sourceFingerprint": true
+  },
+  "fixtureSha256": "9127f7986c675ad0868c71d23099aa6a7356f8703fb5cef7dce355d1bd37f00c",
+  "metadataControl": {
+    "accepted": false,
+    "graph": {
+      "edges": [
+        {
+          "edge": [
+            60,
+            61
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            60,
+            62
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            61,
+            624
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            62,
+            620
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            618,
+            620
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            618,
+            623
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            620,
+            633
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "edge": [
+            623,
+            625
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            624,
+            625
+          ],
+          "strata": null
+        }
+      ],
+      "memberships": [
+        {
+          "chart": 20,
+          "edge": [
+            620,
+            633
+          ],
+          "rangeHex": [
+            "403ec575c721f0be",
+            "403f000000000000"
+          ]
+        }
+      ],
+      "newPoints": [
+        {
+          "id": 633,
+          "key": {
+            "string": "corner:27"
+          },
+          "normalHex": [
+            "bfccb3bf7cca8369",
+            "bfe6ba6ddce3933a",
+            "bfe55a4c2acdb300"
+          ],
+          "positionHex": [
+            "c01ae303f75efc73",
+            "4005871f5a33c661",
+            "c020e81b1b90e888"
+          ]
+        }
+      ],
+      "pointCount": 634
+    },
+    "incomingCellQueryCalls": 0,
+    "pointCount": 634,
+    "queries": [
+      {
+        "chart": 20,
+        "parameterHex": "403ee2bae390f85f",
+        "pointHex": [
+          "c01b0afcdebea63a",
+          "40056493bb4ea8c8",
+          "c020d82363ecc399"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ec575c721f0be",
+        "pointHex": [
+          "c01b32d1298bd5e2",
+          "40054206f7300c1b",
+          "c020c81383104032"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403f000000000000",
+        "pointHex": [
+          "c01ae303f75efc73",
+          "4005871f5a33c661",
+          "c020e81b1b90e888"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ed4185559748e",
+        "pointHex": [
+          "c01b1eeba1b8bb06",
+          "4005534d788297d6",
+          "c020d01e74dc0335"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ee2bae390f85f",
+        "pointHex": [
+          "c01b0afcdebea63a",
+          "40056493bb4ea8c8",
+          "c020d82363ecc399"
+        ],
+        "querySucceeded": true
+      },
+      {
+        "chart": 20,
+        "parameterHex": "403ef15d71c87c30",
+        "pointHex": [
+          "c01af704f496d66a",
+          "400575d9b4b6d77d",
+          "c020e02248ac1b35"
+        ],
+        "querySucceeded": true
+      }
+    ],
+    "rejection": {
+      "code": "vertex_degree_lt_two",
+      "operands": {
+        "degree": 1,
+        "neighbors": [
+          620
+        ],
+        "point": 633
+      }
+    },
+    "seededMetadata": true,
+    "wrongPinChart": false
+  },
+  "publicationReady": false,
+  "scope": "exact replay through observed early guard only; no octree/private constructor/final surface repair",
+  "sourceFingerprint": "9875508341830920921",
+  "sourceIdentityControl": {
+    "accepted": false,
+    "graph": {
+      "edges": [
+        {
+          "edge": [
+            60,
+            61
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            60,
+            62
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            61,
+            624
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            62,
+            620
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            618,
+            620
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            618,
+            623
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            623,
+            625
+          ],
+          "strata": null
+        },
+        {
+          "edge": [
+            624,
+            625
+          ],
+          "strata": null
+        }
+      ],
+      "memberships": [],
+      "newPoints": [
+        {
+          "id": 633,
+          "key": {
+            "string": "corner:27"
+          },
+          "normalHex": [
+            "bfccb3bf7cca8369",
+            "bfe6ba6ddce3933a",
+            "bfe55a4c2acdb300"
+          ],
+          "positionHex": [
+            "c01ae303f75efc73",
+            "4005871f5a33c661",
+            "c020e81b1b90e888"
+          ]
+        }
+      ],
+      "pointCount": 634
+    },
+    "incomingCellQueryCalls": 0,
+    "pointCount": 634,
+    "queries": [],
+    "rejection": {
+      "code": "path_nodes_lt_two",
+      "operands": {
+        "chart": 20,
+        "nodeCount": 1,
+        "nodes": [
+          [
+            "403f000000000000",
+            633
+          ]
+        ]
+      }
+    },
+    "seededMetadata": false,
+    "wrongPinChart": true
+  },
+  "sourceReceiptSha256": "6acd91cc9a04c34ac394bf669ec1d54ba487ab4ad8ed18559a9b7e894c4a3543",
+  "wholeCellOrSourceContinuationEstablished": false
+}

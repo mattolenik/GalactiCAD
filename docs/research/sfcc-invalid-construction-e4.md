@@ -1307,6 +1307,29 @@ The [capture implementation and reviewed evidence](sfcc-graph-rejection-capture/
 retain the alternatives, selected patch, commands, full receipt and precision
 limitations. Production runtime remains unchanged by this isolated diagnostic.
 
+### Endpoint source obligation and exact local replay
+
+Three independent test-only candidates now pass their focused runs. The actual
+failed graph replays exactly from the original source, all 633 pre-call points
+and keys, and the private alias edit, including the new corner and six curve
+queries. A separate interval argument binds every source ancestor and proves a
+regular exposed native crease over the captured endpoint height ±0.0001 mm,
+inside the failed cell. The numerical endpoint's ideal-branch association is
+below the unchanged curve epsilon. This rules out a legitimate source termination
+at this recorded endpoint; it is not a global feature-completeness theorem.
+
+A third discriminator finds continued supporting-pair samples that the default
+finite flank-probe schedule calls dead while a smaller diagnostic schedule calls
+alive, with small full-field residuals and valid carrier domains. It separately
+exposes an intermediate chamfer branch-propagation gap. Neither result yet records
+which actual raw-trace/trim/refinement/wiring event created corner 27. The next
+experiment is therefore bounded feature-compilation provenance, not a degree-guard
+relaxation or a blind probe-factor reduction.
+
+[Endpoint proof, replay and discriminator evidence](sfcc-endpoint-obligation/README.md)
+retain the executed results and limitations. No replacement geometry has been
+accepted and no production meshing logic changed.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

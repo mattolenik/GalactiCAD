@@ -1,0 +1,251 @@
+{
+  "beyondEndpointProof": {
+    "capCutMarginHex": [
+      "400278ac38066362",
+      "400278c66ee94e87"
+    ],
+    "claim": "ideal fixed-sign native supporting helix is a regular exposed crease throughout this closed height interval; numerical endpoint is associated separately",
+    "fullFeatureCompilerComplete": false,
+    "grooveChamferMarginHex": [
+      "4010c39cc88b58bb",
+      "4010c3a9e3fcce50"
+    ],
+    "heightHex": [
+      "400587399116b17c",
+      "40058753c7f99c9b"
+    ],
+    "helixImageHex": [
+      [
+        "c01ae2f1cd46c08c",
+        "400587399116b17c",
+        "c020e83af0e36699"
+      ],
+      [
+        "c01ae2baf606ff35",
+        "40058753c7f99c9b",
+        "c020e81f854385e9"
+      ]
+    ],
+    "innerUnionCompetitorMarginHex": [
+      "3ff04d19998c02c5",
+      "3ff04d19998c02c7"
+    ],
+    "outerInactiveSquaredRadiusHex": [
+      "406ce147ae147ade",
+      "406ce147ae147ae3"
+    ],
+    "outerRoundMarginHex": [
+      "3f6b2e58e1ed8fff",
+      "3f6b781dab443001"
+    ],
+    "outerSquaredDistanceHex": [
+      "406cde04b55632ef",
+      "406cde0d7769b95e"
+    ],
+    "outsideThisIntervalProved": false,
+    "sourceBinding": {
+      "capOccurrence": [
+        0,
+        1
+      ],
+      "competingLatheOccurrence": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cylinderOccurrence": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "cylinderRadiusHex": "402599999999999a",
+      "cylinderStratum": 15,
+      "fieldStratum": 30,
+      "fixedSign": 1,
+      "grooveChamferRadiusHex": "3fe6666666666666",
+      "grooveOccurrence": [
+        0,
+        0,
+        1
+      ],
+      "innerRoundRadiusHex": "3ff6666666666666",
+      "intrinsicUHex": [
+        "401d05789930be7f",
+        "401d05789930be86"
+      ],
+      "intrinsicVHex": "4020000000000000",
+      "leafIndices": [
+        1,
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "mode": "same immutable root, exact ancestor structure and pointer-identical registered leaves",
+      "nativeOccurrence": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "nativeStratum": 10,
+      "outerRoundRadiusHex": "3fe999999999999a",
+      "outerSphereOccurrence": [
+        1
+      ],
+      "sphereCenterHex": [
+        "0000000000000000",
+        "c020000000000000",
+        "0000000000000000"
+      ],
+      "sphereRadiusHex": "4030000000000000"
+    },
+    "transverseDeterminantHex": [
+      "402d05789930be7d",
+      "402d05789930be88"
+    ]
+  },
+  "capturedReceiptSha256": "6acd91cc9a04c34ac394bf669ec1d54ba487ab4ad8ed18559a9b7e894c4a3543",
+  "controls": {
+    "activeOuterRoundRejected": true,
+    "wrongBranchRejected": true
+  },
+  "corner": 27,
+  "curveEpsHex": "3e697a9ab0c2db32",
+  "featureFingerprint": "9875508341830920921",
+  "floatingEvaluatorParityProved": false,
+  "gpuReferenceChecked": false,
+  "insideCapturedCell": true,
+  "missingCompiledContinuationCause": "not localized by this proof",
+  "neighborhoodProof": {
+    "capCutMarginHex": [
+      "400278ac38066362",
+      "4002791513920fdc"
+    ],
+    "claim": "ideal fixed-sign native supporting helix is a regular exposed crease throughout this closed height interval; numerical endpoint is associated separately",
+    "fullFeatureCompilerComplete": false,
+    "grooveChamferMarginHex": [
+      "4010c3757636f811",
+      "4010c3a9e3fcce50"
+    ],
+    "heightHex": [
+      "400586eaec6df027",
+      "40058753c7f99c9b"
+    ],
+    "helixImageHex": [
+      [
+        "c01ae371a571fae3",
+        "400586eaec6df027",
+        "c020e851f2fbca7b"
+      ],
+      [
+        "c01ae2964872fc62",
+        "40058753c7f99c9b",
+        "c020e7e4447c4b37"
+      ]
+    ],
+    "innerUnionCompetitorMarginHex": [
+      "3ff04d0a1cafba6d",
+      "3ff04d0a1cafba6f"
+    ],
+    "outerInactiveSquaredRadiusHex": [
+      "406ce147ae147ade",
+      "406ce147ae147ae3"
+    ],
+    "outerRoundMarginHex": [
+      "3f6b2e58e1ed8fff",
+      "3f6c556bc2c1b001"
+    ],
+    "outerSquaredDistanceHex": [
+      "406cddea6f2bbae5",
+      "406cde0d7769b95e"
+    ],
+    "outsideThisIntervalProved": false,
+    "sourceBinding": {
+      "capOccurrence": [
+        0,
+        1
+      ],
+      "competingLatheOccurrence": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cylinderOccurrence": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "cylinderRadiusHex": "402599999999999a",
+      "cylinderStratum": 15,
+      "fieldStratum": 30,
+      "fixedSign": 1,
+      "grooveChamferRadiusHex": "3fe6666666666666",
+      "grooveOccurrence": [
+        0,
+        0,
+        1
+      ],
+      "innerRoundRadiusHex": "3ff6666666666666",
+      "intrinsicUHex": [
+        "401d05789930be7f",
+        "401d05789930be86"
+      ],
+      "intrinsicVHex": "4020000000000000",
+      "leafIndices": [
+        1,
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "mode": "same immutable root, exact ancestor structure and pointer-identical registered leaves",
+      "nativeOccurrence": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "nativeStratum": 10,
+      "outerRoundRadiusHex": "3fe999999999999a",
+      "outerSphereOccurrence": [
+        1
+      ],
+      "sphereCenterHex": [
+        "0000000000000000",
+        "c020000000000000",
+        "0000000000000000"
+      ],
+      "sphereRadiusHex": "4030000000000000"
+    },
+    "transverseDeterminantHex": [
+      "402d05789930be7d",
+      "402d05789930be88"
+    ]
+  },
+  "numericalCornerToIdealSameHeightDistanceUpperHex": "3e4153f9a83568d3",
+  "originalIncidentEnds": [
+    [
+      20,
+      1
+    ],
+    [
+      33,
+      1
+    ]
+  ],
+  "publicationReady": false,
+  "scope": "original fixed source, local continuous native-crease obligation; no mesh reconstruction",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "unchangedAssociationAllowanceHex": "3e997a9ab0c2db32"
+}

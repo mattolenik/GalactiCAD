@@ -1,0 +1,19 @@
+{
+  "source": "/tmp/sfcc-graph-stage2-c",
+  "base": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "scope": "test-only source/identity discriminator; no production geometry edit",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "9a26fb54c9294ce8b754e17e587b0270bf97f4d2d2bb8485e2841205175e47cc",
+      "baseSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/endpoint_identity_c_tests.rs",
+      "sha256": "9e1507b2e1c25298f22ce9dbc177073b7b0d2b6d8e12dc2af14da35db4eef6f0",
+      "baseSha256": null
+    }
+  ],
+  "patchSha256": "7184436f5c6ebee120a95d3adb613241ec4d0fe44e44afddbc192767a737320f",
+  "rustGeometryExecutedByAuthor": false
+}

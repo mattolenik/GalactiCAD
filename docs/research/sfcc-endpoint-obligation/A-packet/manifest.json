@@ -1,0 +1,56 @@
+{
+  "base": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "source": "/tmp/sfcc-graph-stage2-a",
+  "scope": "test-only local source obligation; root execution pending",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/endpoint_source_a.rs",
+      "sha256": "e1d8eef5ba7a704b5e6e328ca4aac1c08ef77fc9196e07860f6fa2d83d9c54f1",
+      "baseSha256": null,
+      "originalPrefixPreserved": true
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/endpoint-source-a.json",
+      "sha256": "abf8093e716b463619ea808da62c4af9c03c2ae6f1526e7ed80cce1627459963",
+      "baseSha256": null,
+      "originalPrefixPreserved": true
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_twisted_proof.rs",
+      "sha256": "7f181a8c4402a2b3486d8aecce772be1d86264a9e64ed94c6930d8db5f7a4359",
+      "baseSha256": "f3a300801f1dfcf1f6316f68456c06aa927ebc1cc0d9f127a85c66045dfb4a04",
+      "originalPrefixPreserved": true
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "1cf3261fe295f440eeb04cc0e853a7d3b4ba22e6cd59d256fe5949c67ec61a72",
+      "baseSha256": "1df45c6e2b48449076e6d2c87d7d8ac6a2dec6a32736ed1f4835cb2f355dec8a",
+      "originalPrefixPreserved": true
+    },
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "557e8199aac032cfc6e60730a7fdc4c91dbc09f89cf962b4d8374f77e9ad8bca",
+      "baseSha256": "6a5d4fc888e95e261ed6a3f0f9d52716709b22419336a127624b15997eb981f1",
+      "originalPrefixPreserved": true
+    }
+  ],
+  "patchSha256": "2176cbf53f5cf517c7839b4412704c71b3d87c0673b00947755a92a8d04ec40f",
+  "evidence": [
+    {
+      "path": "candidate.patch",
+      "sha256": "2176cbf53f5cf517c7839b4412704c71b3d87c0673b00947755a92a8d04ec40f"
+    },
+    {
+      "path": "handoff.md",
+      "sha256": "21bfb74066ce79cf0ff008b31404e4686003be4cc935e5590b482fd51c11b78a"
+    },
+    {
+      "path": "proof.md",
+      "sha256": "ac281df4f15496ed2068bd43c235718e9ceaacbae7d99f35493d1108b5f1fc7e"
+    },
+    {
+      "path": "saved-coordinate-arithmetic.json",
+      "sha256": "36a7b7fc0999191818804f5b71420c65d0ed71aeaafca6bd269acee9963b1744"
+    }
+  ]
+}

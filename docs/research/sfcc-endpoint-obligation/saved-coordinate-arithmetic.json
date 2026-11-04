@@ -1,0 +1,15 @@
+{
+  "scope": "exact rational arithmetic on stored binary64 coordinates and source constants only; no whole-scene evaluation or exposure claim",
+  "cylinderSquaredResidual": {
+    "numerator": "10650303687027325465",
+    "denominator": "1267650600228229401496703205376",
+    "approximate": 8.401608207427055e-12
+  },
+  "outerRoundInactiveSphereSquaredMargin": {
+    "numerator": "-2088973612518906464327280283285",
+    "denominator": "20282409603651670423947251286016",
+    "approximate": -0.10299435093465448
+  },
+  "strictInactiveRoundAtCapturedPoint": true,
+  "fullSourceContinuationEstablished": false
+}

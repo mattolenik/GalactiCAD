@@ -1,0 +1,13 @@
+
+running 2 tests
+test sfcc::cell_mesh::graph_replay_b_tests::endpoint_replay_b_actual_source_and_point_keys_reproduce_exact_guard ... ok
+test sfcc::cell_mesh::graph_replay_b_tests::endpoint_replay_b_duplicate_pre_call_keys_are_rejected ... 
+thread 'sfcc::cell_mesh::graph_replay_b_tests::endpoint_replay_b_duplicate_pre_call_keys_are_rejected' (4025334) panicked at kernel/src/sfcc/graph_replay_b_tests.rs:44:9:
+assertion `left == right` failed: duplicate fixture key would change reuse
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 320 filtered out; finished in 0.84s
+

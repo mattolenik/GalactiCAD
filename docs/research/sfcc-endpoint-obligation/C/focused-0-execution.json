@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round20-endpoint-obligation/C/kernel-tests",
+    "endpoint_identity_c_native_exposure_and_lifted_branch_discriminator",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.9999907080055,
+  "elapsedSeconds": 1.045117540998035,
+  "exitCode": 0,
+  "timedOut": false
+}

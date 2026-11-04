@@ -2,7 +2,8 @@
 
 Status: stage 1 implemented and mechanically validated, November 3, 2026;
 [executed capture and limitations](../research/sfcc-graph-rejection-capture/README.md).
-Stage 2 source/replay proof and stages 3–5 remain open. Current production baseline:
+Stage 2 now has [exact early replay and a bounded source continuation proof](../research/sfcc-endpoint-obligation/README.md); actual upstream loss localization
+is still open. Stages 3–5 remain open. Current production baseline:
 `421f5a9`. This expands the next five steps of
 [E4 in the critical-repairs plan](sfcc-critical-repairs.md), then defines the
 handoff to the remaining E4 work, E5 and E6. It does not supersede their acceptance

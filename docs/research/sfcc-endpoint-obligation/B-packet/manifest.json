@@ -1,0 +1,40 @@
+{
+  "base": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "source": "/tmp/sfcc-graph-stage2-b",
+  "scope": "test-only exact early graph replay; no production runtime changes",
+  "changed": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "dba7c0633721d4cfdf17b7cf46f727a58099385239a7202cec99fbdb3b1c0474",
+      "baseSha256": "80d769dd344609d15b73ec1716350a6a7213b750232511b37be38e1a67b49803"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/graph_replay_b_tests.rs",
+      "sha256": "159f13157b3c7a4650a097925cbcdc9bf112bfaf27e363ee8bb61a9cb9e9952f",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/graph-rejection-replay-b.json",
+      "sha256": "9127f7986c675ad0868c71d23099aa6a7356f8703fb5cef7dce355d1bd37f00c",
+      "baseSha256": null
+    }
+  ],
+  "cellMeshOriginalExactPrefix": true,
+  "filter": "endpoint_replay_b_",
+  "receiptEnvironment": "SFCC_ENDPOINT_REPLAY_B_RECEIPT",
+  "executedByAuthor": "static/data checks and rustfmt parsing only",
+  "evidence": [
+    {
+      "path": "candidate.patch",
+      "sha256": "84c84aae9123fd6dd10e4e075878e3b90e011f4f1fdec2b5abfae82a9cf20b04"
+    },
+    {
+      "path": "fixture-static-checks.json",
+      "sha256": "ce24575a8d746b825ba96f9085820a0e324fa2512ff751f6520d36d02de48c16"
+    },
+    {
+      "path": "handoff.md",
+      "sha256": "cb0938a96a5899ac19736b82efa0432d1692d33850689fa79e5a12c6644a8074"
+    }
+  ]
+}

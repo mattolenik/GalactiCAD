@@ -1,0 +1,25 @@
+{
+  "sourceReceiptSha256": "6acd91cc9a04c34ac394bf669ec1d54ba487ab4ad8ed18559a9b7e894c4a3543",
+  "cornerHex": [
+    "c01ae303f75efc73",
+    "4005871f5a33c661",
+    "c020e81b1b90e888"
+  ],
+  "sphereSquaredDistanceMinusInnerRoundThresholdSquared": {
+    "numerator": "-2088973612518906464327280283285",
+    "denominator": "20282409603651670423947251286016",
+    "approximate": -0.10299435093465448,
+    "strictlyNegative": true
+  },
+  "scope": "Exact rational arithmetic on stored binary64 corner and source sphere/radius literals; not a full scene evaluation or a proof of neighborhood exposure",
+  "duplicatePhysicalEdgeCounterfactual": {
+    "beforeNeighbors": [
+      620
+    ],
+    "afterAddingSamePhysicalEdgeForAlias": [
+      620
+    ],
+    "claim": "metadata on a duplicate canonical edge cannot add a second distinct neighbor",
+    "assumption": "same admitted physical arc and canonical point endpoints"
+  }
+}

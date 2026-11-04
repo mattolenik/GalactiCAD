@@ -1,0 +1,213 @@
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -818,3 +818,7 @@
+         keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
+     TrimResult { curves: out, corners: final_corners, unresolved_trims }
+ }
++
++#[cfg(all(test,feature="serde"))]
++#[path="endpoint_identity_c_tests.rs"]
++mod endpoint_identity_c_tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/endpoint_identity_c_tests.rs
+@@ -0,0 +1,200 @@
++//! Feature-only discriminator on the captured full source. No meshing repair.
++use super::*;
++use crate::primitives::smin::SminMode;
++use crate::sdf::{BlendKind, CsgNode};
++use crate::sfcc::{
++    branch_surfaces::{sample_override, FieldBranch},
++    feature_curves::make_traced_curve,
++    feature_set::{build_leaf_strata, compile_feature_set},
++    newton::{carrier_pair_tangent, project_to_carrier_pair},
++    tree::build_tree,
++};
++use serde_json::{json, Value};
++
++fn bits(p: [f64; 3]) -> [String; 3] {
++    p.map(|x| format!("{:016x}", x.to_bits()))
++}
++fn node_at<'a>(mut node: &'a CsgNode, path: &[usize]) -> &'a CsgNode {
++    for &i in path {
++        node = match node {
++            CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => &c[i],
++            _ => panic!("fixed fixture path"),
++        };
++    }
++    node
++}
++fn native_probe(
++    tree: &SfccTree<'_>,
++    curve: &FeatureCurve,
++    t: f64,
++    tol: &ResolvedTolerances,
++) -> Value {
++    let p = curve
++        .point_at_checked(t)
++        .expect("local supporting carrier point");
++    let sa = &tree.strata[curve.adjacent_strata[0]];
++    let sb = &tree.strata[curve.adjacent_strata[1]];
++    let na = sa.normal(p[0], p[1], p[2]);
++    let nb = sb.normal(p[0], p[1], p[2]);
++    let tg = curve.tangent_at(t);
++    let gap = (na[0] - nb[0]).hypot(na[1] - nb[1]).hypot(na[2] - nb[2]);
++    let normal_tolerance = (gap * 0.25).min(0.1);
++    let cross = |a: [f64; 3]| {
++        [
++            a[1] * tg[2] - a[2] * tg[1],
++            a[2] * tg[0] - a[0] * tg[2],
++            a[0] * tg[1] - a[1] * tg[0],
++        ]
++    };
++    let flank = |st: &Stratum, w: [f64; 3]| {
++        format!(
++            "{:?}",
++            flank_survives(
++                tree,
++                st,
++                p[0],
++                p[1],
++                p[2],
++                w[0],
++                w[1],
++                w[2],
++                tol,
++                normal_tolerance
++            )
++        )
++    };
++    json!({"pointHex":bits(p),"rootResidual":tree.root.f(p),"roundedRootResidual":tree.root.f(p.map(|x|x as f32 as f64)),
++        "carrierResiduals":[sa.f(p[0],p[1],p[2]),sb.f(p[0],p[1],p[2])],
++        "domains":[sa.domain_contains(p,tol.curve_eps*8.),sb.domain_contains(p,tol.curve_eps*8.)],
++        "carrierNormalsHex":[bits(na),bits(nb)],"fullOneSidedNormalHex":bits(tree.grad(p[0],p[1],p[2])),"normalGap":gap,"probeDelta":tol.probe_delta,"minimumProbeDelta":tol.probe_delta*0.0625,
++        "flanks":[flank(sa,cross(na)),flank(sb,cross(nb))],"status":format!("{:?}",curve_point_status(tree,curve,t,tol))})
++}
++
++#[test]
++fn endpoint_identity_c_native_exposure_and_lifted_branch_discriminator() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let size =
++        fixture["cube"]["max"][0].as_f64().unwrap() - fixture["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        (3. * size * size).sqrt(),
++    );
++    let (features, _) = compile_feature_set(&root, &tol);
++    assert_eq!(features.fingerprint(), 9875508341830920921);
++    assert_eq!(features.corners[27].curve_ends, vec![(20, 1), (33, 1)]);
++    let p = [0xc01ae303f75efc73, 0x4005871f5a33c661, 0xc020e81b1b90e888].map(f64::from_bits);
++    assert_eq!(
++        [
++            features.corners[27].x,
++            features.corners[27].y,
++            features.corners[27].z
++        ]
++        .map(f64::to_bits),
++        p.map(f64::to_bits)
++    );
++    let mut tree = build_tree(&root, build_leaf_strata);
++    tree.strata = features.strata.clone();
++    let curve = &features.curves[20];
++    let (sa, sb, refine) = curve.traced_carriers().unwrap();
++    let mut tangent = [0.; 3];
++    let rank = carrier_pair_tangent(&sa, &sb, p[0], p[1], p[2], &mut tangent);
++    let n = curve.index_polyline.len();
++    let previous: [f64; 3] = curve.index_polyline[n - 6..n - 3].try_into().unwrap();
++    if (0..3)
++        .map(|k| tangent[k] * (p[k] - previous[k]))
++        .sum::<f64>()
++        < 0.
++    {
++        tangent = tangent.map(|x| -x);
++    }
++    let mut small = tol;
++    small.probe_delta *= 1. / 32.;
++    let cell_box = [
++        0xc01b869b36dc59b2,
++        0x40054206f7300bd0,
++        0xc0212fb4cdee2703,
++        0xc01a8b6803a9267f,
++        0x4007386d5d967236,
++        0xc020b21b34548d69,
++    ]
++    .map(f64::from_bits);
++    let mut probes = Vec::new();
++    for h in [0., 0.0001, 0.0005, 0.001, 0.002, 0.004] {
++        let seed: [f64; 3] = std::array::from_fn(|k| p[k] + h * tangent[k]);
++        let q = project_to_carrier_pair(
++            &sa,
++            &sb,
++            seed[0],
++            seed[1],
++            seed[2],
++            tol.curve_eps,
++            tol.min_tangency_sin,
++            0.01,
++        );
++        let Some(q) = q else {
++            probes.push(json!({"step":h,"projection":null}));
++            continue;
++        };
++        // Extending the supporting pair here is a diagnostic, not admitted mesh geometry.
++        let sample_curve = make_traced_curve(
++            100_000,
++            [10, 15],
++            previous.into_iter().chain(p).chain(q).collect(),
++            false,
++            sa.clone(),
++            sb.clone(),
++            refine,
++            -1,
++        );
++        probes.push(json!({"step":h,"predictorHex":bits(seed),"pointHex":bits(q),
++            "inCapturedCell":(0..3).all(|k|q[k]>=cell_box[k] && q[k]<=cell_box[k+3]),
++            "signedAdvance":(0..3).map(|k|(q[k]-p[k])*tangent[k]).sum::<f64>(),
++            "default":native_probe(&tree,&sample_curve,2.,&tol),"smallerProbe":native_probe(&tree,&sample_curve,2.,&small)}));
++    }
++    let chamfer = node_at(&root, &[0, 0]);
++    let CsgNode::Blend {
++        kind: BlendKind::Smax,
++        mode: SminMode::Chamfer,
++        r,
++        children,
++        ..
++    } = chamfer
++    else {
++        panic!("fixed intermediate chamfer")
++    };
++    let a = children[0].f(p);
++    let b = children[1].f(p);
++    let diagonal = (a + b + r) * std::f64::consts::FRAC_1_SQRT_2;
++    let partner_path = [1, usize::MAX, 1];
++    let lifted: [f64; 2] = [0, 1].map(|i| {
++        sample_override(&root, &[0, 0, 0], &FieldBranch::Child(i), &partner_path, p).value
++    });
++    let report = json!({"scope":"full original source; feature-only numerical discriminator, not a continuous proof or repair",
++        "fingerprint":features.fingerprint().to_string(),"endpointHex":bits(p),"carrierRank":rank,
++        "originalEndpointIncidence":features.corners[27].curve_ends,"afterAliasRemoval":features.corners[27].curve_ends.iter().filter(|x|x.0!=33).collect::<Vec<_>>(),
++        "rootResidual":root.f(p),"intermediateChamfer":{"path":[0,0],"left":a,"right":b,"diagonal":diagonal,"actual":chamfer.f(p),"leftMinusDiagonal":a-diagonal},
++        "outerRoundSphereOperand":node_at(&root,&[1]).f(p),"liftedHardIntersectionBranches":{"relativePath":[0,0,0],"partnerPath":["1","usize::MAX","1"],"values":lifted},
++        "probes":probes,"newGeometryAccepted":false,"continuousCoverageProved":false});
++    let path = std::env::var("SFCC_ENDPOINT_C_RECEIPT").expect("root-owned receipt path");
++    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    assert!(
++        rank > tol.min_tangency_sin,
++        "supporting intersection must be transverse at the captured endpoint"
++    );
++    assert!(
++        a - diagonal > 0.1,
++        "intervening chamfer is in its child-dominant region, not its diagonal branch"
++    );
++    assert!(
++        lifted.iter().all(|v| (v - root.f(p)).abs() > 0.1),
++        "legacy deeper-branch propagation omits the native chamfer child alternative here"
++    );
++    assert!(report["probes"].as_array().unwrap().iter().any(|q|q["step"].as_f64().unwrap()>0. && q["signedAdvance"].as_f64().unwrap_or(0.)>0.
++        && q["inCapturedCell"]==true && q["default"]["status"]=="Ok(false)" && q["smallerProbe"]["status"]=="Ok(true)"
++        && q["default"]["rootResidual"].as_f64().unwrap().abs()<tol.curve_eps*8.),
++        "must exhibit an on-surface point beyond the stored endpoint rejected only by the finite default probe schedule");
++}

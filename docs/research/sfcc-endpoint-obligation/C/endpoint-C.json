@@ -1,0 +1,653 @@
+{
+  "afterAliasRemoval": [
+    [
+      20,
+      1
+    ]
+  ],
+  "carrierRank": 0.9430633390512988,
+  "continuousCoverageProved": false,
+  "endpointHex": [
+    "c01ae303f75efc73",
+    "4005871f5a33c661",
+    "c020e81b1b90e888"
+  ],
+  "fingerprint": "9875508341830920921",
+  "intermediateChamfer": {
+    "actual": 3.8902214782865485e-13,
+    "diagonal": -3.166422768674776,
+    "left": 3.8902214782865485e-13,
+    "leftMinusDiagonal": 3.166422768675165,
+    "path": [
+      0,
+      0
+    ],
+    "right": -5.1779980236672225
+  },
+  "liftedHardIntersectionBranches": {
+    "partnerPath": [
+      "1",
+      "usize::MAX",
+      "1"
+    ],
+    "relativePath": [
+      0,
+      0,
+      0
+    ],
+    "values": [
+      -0.8033883497318612,
+      -0.8033883497318612
+    ]
+  },
+  "newGeometryAccepted": false,
+  "originalEndpointIncidence": [
+    [
+      20,
+      1
+    ],
+    [
+      33,
+      1
+    ]
+  ],
+  "outerRoundSphereOperand": -0.8033883497318612,
+  "probes": [
+    {
+      "default": {
+        "carrierNormalsHex": [
+          [
+            "3f9dcb983d58d37e",
+            "bfec97b298b4a4f2",
+            "bfdcad68dd267ff3"
+          ],
+          [
+            "bfe3ea87adc19dc4",
+            "0000000000000000",
+            "bfe90c023bcd3192"
+          ]
+        ],
+        "carrierResiduals": [
+          -2.4338047434842924e-9,
+          3.8902214782865485e-13
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(true)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3ea87adc19dc4",
+          "8000000000000000",
+          "bfe90c023bcd3192"
+        ],
+        "minimumProbeDelta": 0.00625,
+        "normalGap": 1.1553240267757194,
+        "pointHex": [
+          "c01ae303f75efc73",
+          "4005871f5a33c661",
+          "c020e81b1b90e888"
+        ],
+        "probeDelta": 0.1,
+        "rootResidual": 3.8902214782865485e-13,
+        "roundedRootResidual": 1.8345654773099795e-7,
+        "status": "Ok(true)"
+      },
+      "inCapturedCell": true,
+      "pointHex": [
+        "c01ae303f75efc73",
+        "4005871f5a33c661",
+        "c020e81b1b90e888"
+      ],
+      "predictorHex": [
+        "c01ae303f75efc73",
+        "4005871f5a33c661",
+        "c020e81b1b90e888"
+      ],
+      "signedAdvance": 0.0,
+      "smallerProbe": {
+        "carrierNormalsHex": [
+          [
+            "3f9dcb983d58d37e",
+            "bfec97b298b4a4f2",
+            "bfdcad68dd267ff3"
+          ],
+          [
+            "bfe3ea87adc19dc4",
+            "0000000000000000",
+            "bfe90c023bcd3192"
+          ]
+        ],
+        "carrierResiduals": [
+          -2.4338047434842924e-9,
+          3.8902214782865485e-13
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(true)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3ea87adc19dc4",
+          "8000000000000000",
+          "bfe90c023bcd3192"
+        ],
+        "minimumProbeDelta": 0.0001953125,
+        "normalGap": 1.1553240267757194,
+        "pointHex": [
+          "c01ae303f75efc73",
+          "4005871f5a33c661",
+          "c020e81b1b90e888"
+        ],
+        "probeDelta": 0.003125,
+        "rootResidual": 3.8902214782865485e-13,
+        "roundedRootResidual": 1.8345654773099795e-7,
+        "status": "Ok(true)"
+      },
+      "step": 0.0
+    },
+    {
+      "default": {
+        "carrierNormalsHex": [
+          [
+            "3f9dcca00a9beb59",
+            "bfec97b298b598df",
+            "bfdcad67cb081370"
+          ],
+          [
+            "bfe3ea794741d9b6",
+            "0000000000000000",
+            "bfe90c0daf1b6bb9"
+          ]
+        ],
+        "carrierResiduals": [
+          -2.2955736386294513e-9,
+          4.1598546829391125e-10
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(false)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3ea794741d9b7",
+          "8000000000000000",
+          "bfe90c0daf1b6bba"
+        ],
+        "minimumProbeDelta": 0.00625,
+        "normalGap": 1.1553240267845644,
+        "pointHex": [
+          "c01ae2f0869d588f",
+          "400587301f5b281b",
+          "c020e822d6354e51"
+        ],
+        "probeDelta": 0.1,
+        "rootResidual": 4.1598546829391125e-10,
+        "roundedRootResidual": 2.8293304410453857e-7,
+        "status": "Ok(false)"
+      },
+      "inCapturedCell": true,
+      "pointHex": [
+        "c01ae2f0869d588f",
+        "400587301f5b281b",
+        "c020e822d6354e51"
+      ],
+      "predictorHex": [
+        "c01ae2f0869d588f",
+        "400587301f5b281b",
+        "c020e822d6354e51"
+      ],
+      "signedAdvance": 0.00009999999999984563,
+      "smallerProbe": {
+        "carrierNormalsHex": [
+          [
+            "3f9dcca00a9beb59",
+            "bfec97b298b598df",
+            "bfdcad67cb081370"
+          ],
+          [
+            "bfe3ea794741d9b6",
+            "0000000000000000",
+            "bfe90c0daf1b6bb9"
+          ]
+        ],
+        "carrierResiduals": [
+          -2.2955736386294513e-9,
+          4.1598546829391125e-10
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(true)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3ea794741d9b7",
+          "8000000000000000",
+          "bfe90c0daf1b6bba"
+        ],
+        "minimumProbeDelta": 0.0001953125,
+        "normalGap": 1.1553240267845644,
+        "pointHex": [
+          "c01ae2f0869d588f",
+          "400587301f5b281b",
+          "c020e822d6354e51"
+        ],
+        "probeDelta": 0.003125,
+        "rootResidual": 4.1598546829391125e-10,
+        "roundedRootResidual": 2.8293304410453857e-7,
+        "status": "Ok(true)"
+      },
+      "step": 0.0001
+    },
+    {
+      "default": {
+        "carrierNormalsHex": [
+          [
+            "3f9dd0bf3ef7146e",
+            "bfec97b298cc7722",
+            "bfdcad6381e3e78d"
+          ],
+          [
+            "bfe3ea3fad00f570",
+            "0000000000000000",
+            "bfe90c3b7c01888e"
+          ]
+        ],
+        "carrierResiduals": [
+          1.0219162433508426e-9,
+          1.039027885951782e-8
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(false)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3ea3fad00f570",
+          "8000000000000000",
+          "bfe90c3b7c01888e"
+        ],
+        "minimumProbeDelta": 0.00625,
+        "normalGap": 1.1553240269968545,
+        "pointHex": [
+          "c01ae2a2c396c8fd",
+          "4005877333f8af03",
+          "c020e841c0c6e575"
+        ],
+        "probeDelta": 0.1,
+        "rootResidual": 1.039027885951782e-8,
+        "roundedRootResidual": -4.1017017338162987e-8,
+        "status": "Ok(false)"
+      },
+      "inCapturedCell": true,
+      "pointHex": [
+        "c01ae2a2c396c8fd",
+        "4005877333f8af03",
+        "c020e841c0c6e575"
+      ],
+      "predictorHex": [
+        "c01ae2a2c396c8fd",
+        "4005877333f8af03",
+        "c020e841c0c6e575"
+      ],
+      "signedAdvance": 0.0005000000000005455,
+      "smallerProbe": {
+        "carrierNormalsHex": [
+          [
+            "3f9dd0bf3ef7146e",
+            "bfec97b298cc7722",
+            "bfdcad6381e3e78d"
+          ],
+          [
+            "bfe3ea3fad00f570",
+            "0000000000000000",
+            "bfe90c3b7c01888e"
+          ]
+        ],
+        "carrierResiduals": [
+          1.0219162433508426e-9,
+          1.039027885951782e-8
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(true)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3ea3fad00f570",
+          "8000000000000000",
+          "bfe90c3b7c01888e"
+        ],
+        "minimumProbeDelta": 0.0001953125,
+        "normalGap": 1.1553240269968545,
+        "pointHex": [
+          "c01ae2a2c396c8fd",
+          "4005877333f8af03",
+          "c020e841c0c6e575"
+        ],
+        "probeDelta": 0.003125,
+        "rootResidual": 1.039027885951782e-8,
+        "roundedRootResidual": -4.1017017338162987e-8,
+        "status": "Ok(true)"
+      },
+      "step": 0.0005
+    },
+    {
+      "default": {
+        "carrierNormalsHex": [
+          [
+            "3f9dd5e63ed9f341",
+            "bfec97b29913ee79",
+            "bfdcad5e24f71c23"
+          ],
+          [
+            "bfe3e9f7ab9bbf1f",
+            "0000000000000000",
+            "bfe90c74bb66dec6"
+          ]
+        ],
+        "carrierResiduals": [
+          1.138871983805393e-8,
+          4.155994659527096e-8
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(false)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3e9f7ab9bbf1f",
+          "8000000000000000",
+          "bfe90c74bb66dec6"
+        ],
+        "minimumProbeDelta": 0.00625,
+        "normalGap": 1.1553240276603172,
+        "pointHex": [
+          "c01ae2418fce9587",
+          "400587c70dbd97a4",
+          "c020e86865fce261"
+        ],
+        "probeDelta": 0.1,
+        "rootResidual": 4.155994659527096e-8,
+        "roundedRootResidual": 6.628785698126194e-8,
+        "status": "Ok(false)"
+      },
+      "inCapturedCell": true,
+      "pointHex": [
+        "c01ae2418fce9587",
+        "400587c70dbd97a4",
+        "c020e86865fce261"
+      ],
+      "predictorHex": [
+        "c01ae2418fce9587",
+        "400587c70dbd97a4",
+        "c020e86865fce261"
+      ],
+      "signedAdvance": 0.0009999999999999016,
+      "smallerProbe": {
+        "carrierNormalsHex": [
+          [
+            "3f9dd5e63ed9f341",
+            "bfec97b29913ee79",
+            "bfdcad5e24f71c23"
+          ],
+          [
+            "bfe3e9f7ab9bbf1f",
+            "0000000000000000",
+            "bfe90c74bb66dec6"
+          ]
+        ],
+        "carrierResiduals": [
+          1.138871983805393e-8,
+          4.155994659527096e-8
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(true)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3e9f7ab9bbf1f",
+          "8000000000000000",
+          "bfe90c74bb66dec6"
+        ],
+        "minimumProbeDelta": 0.0001953125,
+        "normalGap": 1.1553240276603172,
+        "pointHex": [
+          "c01ae2418fce9587",
+          "400587c70dbd97a4",
+          "c020e86865fce261"
+        ],
+        "probeDelta": 0.003125,
+        "rootResidual": 4.155994659527096e-8,
+        "roundedRootResidual": 6.628785698126194e-8,
+        "status": "Ok(true)"
+      },
+      "step": 0.001
+    },
+    {
+      "default": {
+        "carrierNormalsHex": [
+          [
+            "3f9de0343abbd673",
+            "bfec97b298a03f0c",
+            "bfdcad536c5f0ad0"
+          ],
+          [
+            "bfe3e967a6db85fa",
+            "0000000000000000",
+            "bfe90ce737cb0042"
+          ]
+        ],
+        "carrierResiduals": [
+          1.5952672639905788e-15,
+          0.0
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(false)"
+        ],
+        "fullOneSidedNormalHex": [
+          "3f9de0343abbd673",
+          "bfec97b298a03f0c",
+          "bfdcad536c5f0ad0"
+        ],
+        "minimumProbeDelta": 0.00625,
+        "normalGap": 1.1553240263913007,
+        "pointHex": [
+          "c01ae17f2141f4df",
+          "4005886ec0f33012",
+          "c020e8b5ac0f6cfa"
+        ],
+        "probeDelta": 0.1,
+        "rootResidual": 3.552713678800501e-15,
+        "roundedRootResidual": -2.930268774292699e-7,
+        "status": "Ok(false)"
+      },
+      "inCapturedCell": true,
+      "pointHex": [
+        "c01ae17f2141f4df",
+        "4005886ec0f33012",
+        "c020e8b5ac0f6cfa"
+      ],
+      "predictorHex": [
+        "c01ae17f283e2e9b",
+        "4005886ec14768e8",
+        "c020e8b5b068dc3a"
+      ],
+      "signedAdvance": 0.001999999972364999,
+      "smallerProbe": {
+        "carrierNormalsHex": [
+          [
+            "3f9de0343abbd673",
+            "bfec97b298a03f0c",
+            "bfdcad536c5f0ad0"
+          ],
+          [
+            "bfe3e967a6db85fa",
+            "0000000000000000",
+            "bfe90ce737cb0042"
+          ]
+        ],
+        "carrierResiduals": [
+          1.5952672639905788e-15,
+          0.0
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(true)"
+        ],
+        "fullOneSidedNormalHex": [
+          "3f9de0343abbd673",
+          "bfec97b298a03f0c",
+          "bfdcad536c5f0ad0"
+        ],
+        "minimumProbeDelta": 0.0001953125,
+        "normalGap": 1.1553240263913007,
+        "pointHex": [
+          "c01ae17f2141f4df",
+          "4005886ec0f33012",
+          "c020e8b5ac0f6cfa"
+        ],
+        "probeDelta": 0.003125,
+        "rootResidual": 3.552713678800501e-15,
+        "roundedRootResidual": -2.930268774292699e-7,
+        "status": "Ok(true)"
+      },
+      "step": 0.002
+    },
+    {
+      "default": {
+        "carrierNormalsHex": [
+          [
+            "3f9df4d02d73103e",
+            "bfec97b298a03f0d",
+            "bfdcad3dec719c43"
+          ],
+          [
+            "bfe3e84795b5f7bf",
+            "0000000000000000",
+            "bfe90dcc26d14711"
+          ]
+        ],
+        "carrierResiduals": [
+          -7.976336319952887e-16,
+          0.0
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(false)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3e84795b5f7c0",
+          "8000000000000000",
+          "bfe90dcc26d14712"
+        ],
+        "minimumProbeDelta": 0.00625,
+        "normalGap": 1.155324026391301,
+        "pointHex": [
+          "c01adffa3d4f41a9",
+          "400589be280567bf",
+          "c020e95033cd432c"
+        ],
+        "probeDelta": 0.1,
+        "rootResidual": -0.0,
+        "roundedRootResidual": 4.790702554657855e-7,
+        "status": "Ok(false)"
+      },
+      "inCapturedCell": true,
+      "pointHex": [
+        "c01adffa3d4f41a9",
+        "400589be280567bf",
+        "c020e95033cd432c"
+      ],
+      "predictorHex": [
+        "c01adffa591d60c4",
+        "400589be285b0b6e",
+        "c020e9504540cfed"
+      ],
+      "signedAdvance": 0.003999999778918439,
+      "smallerProbe": {
+        "carrierNormalsHex": [
+          [
+            "3f9df4d02d73103e",
+            "bfec97b298a03f0d",
+            "bfdcad3dec719c43"
+          ],
+          [
+            "bfe3e84795b5f7bf",
+            "0000000000000000",
+            "bfe90dcc26d14711"
+          ]
+        ],
+        "carrierResiduals": [
+          -7.976336319952887e-16,
+          0.0
+        ],
+        "domains": [
+          true,
+          true
+        ],
+        "flanks": [
+          "Ok(true)",
+          "Ok(true)"
+        ],
+        "fullOneSidedNormalHex": [
+          "bfe3e84795b5f7c0",
+          "8000000000000000",
+          "bfe90dcc26d14712"
+        ],
+        "minimumProbeDelta": 0.0001953125,
+        "normalGap": 1.155324026391301,
+        "pointHex": [
+          "c01adffa3d4f41a9",
+          "400589be280567bf",
+          "c020e95033cd432c"
+        ],
+        "probeDelta": 0.003125,
+        "rootResidual": -0.0,
+        "roundedRootResidual": 4.790702554657855e-7,
+        "status": "Ok(true)"
+      },
+      "step": 0.004
+    }
+  ],
+  "rootResidual": 3.8902214782865485e-13,
+  "scope": "full original source; feature-only numerical discriminator, not a continuous proof or repair"
+}

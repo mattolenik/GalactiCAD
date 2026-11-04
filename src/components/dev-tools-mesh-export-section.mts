@@ -1074,7 +1074,6 @@ const SFCC_RANGE_KNOBS: {
         | "boundsPaddingMm"
         | "surfaceTolMm"
         | "curveChordTolMm"
-        | "creaseAngleDeg"
         | "normalVariationDeg"
         | "blendCurvatureDeg"
         | "decimateTolMm"
@@ -1089,10 +1088,9 @@ const SFCC_RANGE_KNOBS: {
     { key: "boundsPaddingMm", label: "Bounds padding (mm)", min: 0, max: 20, step: 0.1 },
     { key: "surfaceTolMm", label: "Surface tol (mm)", min: 0.001, max: 0.1, step: 0.001 },
     { key: "curveChordTolMm", label: "Curve chord tol (mm)", min: 0.001, max: 0.5, step: 0.001 },
-    { key: "creaseAngleDeg", label: "Crease °", min: -1, max: 180, step: 1, int: true },
     { key: "normalVariationDeg", label: "Surface curvature °", min: 1, max: 90, step: 1, int: true },
     { key: "blendCurvatureDeg", label: "Blend curvature °", min: 1, max: 90, step: 1, int: true },
-    { key: "decimateTolMm", label: "Decimate tol (mm, 0 = off)", min: 0, max: 0.5, step: 0.005 },
+    { key: "decimateTolMm", label: "Decimation (experimental, mm; 0 = off)", min: 0, max: 0.5, step: 0.005 },
 ]
 
 const SFCC_BOOL_KNOBS: {
@@ -1102,15 +1100,13 @@ const SFCC_BOOL_KNOBS: {
         | "normalVariationAnalytic"
         | "checkVertexLinks"
         | "multiSheetCells"
-        | "debugOutput"
     label: string
 }[] = [
     { key: "enforceEdgeBalance", label: "2:1 edge balance" },
     { key: "blendCurvatureRefine", label: "Blend curvature refine" },
     { key: "normalVariationAnalytic", label: "Carrier curvature heuristic (sfcc-rs)" },
     { key: "checkVertexLinks", label: "Vertex-link audit" },
-    { key: "multiSheetCells", label: "Multi-sheet cells (thin walls)" },
-    { key: "debugOutput", label: "Debug overlays" },
+    { key: "multiSheetCells", label: "Multi-sheet cells (experimental)" },
 ]
 
 function formatSfccValue(knob: (typeof SFCC_RANGE_KNOBS)[number], v: number): string {
@@ -1118,12 +1114,11 @@ function formatSfccValue(knob: (typeof SFCC_RANGE_KNOBS)[number], v: number): st
     return knob.step < 0.01 ? v.toFixed(3) : v.toFixed(1)
 }
 
-/** SFCC exporter tuning (persisted on `app.exporterTuning.sfcc`). */
+/** SFCC exporter tuning (persisted on `app.exporterTuning["sfcc-rs"]`). */
 export class DevToolsSfccSection extends HTMLElement {
     #settings = SettingsManager.instance
     #rows = new Map<(typeof SFCC_RANGE_KNOBS)[number]["key"], { range: HTMLInputElement; valueEl: HTMLSpanElement }>()
     #checks = new Map<(typeof SFCC_BOOL_KNOBS)[number]["key"], HTMLInputElement>()
-    #throwOnFailureCheckbox: HTMLInputElement
 
     onSfccTuningChange?: (tuning: SfccTuning) => void
 
@@ -1176,11 +1171,6 @@ export class DevToolsSfccSection extends HTMLElement {
             this.#checks.set(knob.key, cb)
         }
 
-        this.#throwOnFailureCheckbox = addCheckbox(shadow, "Throw on certification failure", t.failurePolicy === "throw")
-        this.#throwOnFailureCheckbox.addEventListener("change", () => {
-            this.#persist({ failurePolicy: this.#throwOnFailureCheckbox.checked ? "throw" : "partial" })
-        })
-
         const defaults = document.createElement("button")
         defaults.textContent = "SFCC defaults"
         defaults.addEventListener("click", () => {
@@ -1202,7 +1192,6 @@ export class DevToolsSfccSection extends HTMLElement {
             const cb = this.#checks.get(knob.key)
             if (cb) cb.checked = tuning[knob.key]
         }
-        this.#throwOnFailureCheckbox.checked = tuning.failurePolicy === "throw"
     }
 
     #persist(patch: Partial<SfccTuning>): void {

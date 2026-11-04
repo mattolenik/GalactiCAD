@@ -120,6 +120,7 @@ pub fn audit_primitive_inputs(scene_json: &str) -> Result<Vec<f64>, JsError> {
 /// creaseAngleDeg, debugOutput, profile, ambiguityResolution, faceSnapEpsFraction)
 /// are ignored. Missing fields fall back to the pipeline defaults.
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "camelCase", default)]
 struct BridgeTuning {
     depth_min: u32,
@@ -182,7 +183,11 @@ impl Default for BridgeTuning {
             max_trace_steps: d.max_trace_steps,
             edge_root_tol_fraction: d.edge_root_tol_fraction,
             max_polyline_points_per_cell: d.max_polyline_points_per_cell,
-            interior_vertex_mode: "project".to_string(),
+            interior_vertex_mode: match d.interior_vertex_mode {
+                gcad_kernel::sfcc::cell_mesh::InteriorVertexMode::Project => "project",
+                gcad_kernel::sfcc::cell_mesh::InteriorVertexMode::Centroid => "centroid",
+                gcad_kernel::sfcc::cell_mesh::InteriorVertexMode::Fan => "fan",
+            }.to_string(),
             quality_triangulation: d.quality_triangulation,
             quality_audit: d.quality_audit,
             quality_refinement: d.quality_refinement,
@@ -583,6 +588,29 @@ pub fn sfcc_worker_merge(
 #[cfg(test)]
 mod validation_tests {
     use super::*;
+
+    #[test]
+    fn gui_bridge_and_native_defaults_match() {
+        let gui: serde_json::Value = serde_json::from_str(include_str!(
+            "../../kernel/fixtures/sfcc-defaults.json"
+        )).unwrap();
+        let mut native = serde_json::to_value(BridgeTuning::default()).unwrap();
+        // Retained native struct fields are compatibility-only, not GUI options.
+        native.as_object_mut().unwrap().remove("blendCurvatureAnalytic");
+        native.as_object_mut().unwrap().remove("minDihedralDeg");
+        assert_eq!(native.as_object().unwrap().len(), gui.as_object().unwrap().len());
+        for (key, expected) in gui.as_object().unwrap() {
+            let actual = native.get(key).expect("GUI option missing from native tuning");
+            // JSON has one number type; serde retains integer/float representation.
+            assert!(actual == expected || (actual.is_number() && expected.is_number()
+                && actual.as_f64() == expected.as_f64()), "default mismatch for {key}");
+        }
+        let explicit: BridgeTuning = serde_json::from_value(gui).unwrap();
+        let omitted: BridgeTuning = serde_json::from_str("{}").unwrap();
+        assert_eq!(explicit.to_pipeline(), PipelineTuning::default());
+        assert_eq!(omitted.to_pipeline(), PipelineTuning::default());
+    }
+
     #[test]
     fn boundary_defaults_enable_links_and_serialize_unchecked_honestly() {
         let tuning: BridgeTuning = serde_json::from_str("{}").unwrap();

@@ -2,7 +2,7 @@
  * SFCC exporter tuning — the light half of the exporter (type + defaults +
  * normalizer + display name), safe to import from main-thread code without
  * pulling in the meshing pipeline. The `run` and the assembled `MeshExporter`
- * object live in `./sfcc-exporter.mts`.
+ * object live in `../sfcc-rs/sfcc-rs-exporter.mts`.
  *
  * SFCC (Stratified Feature-Conforming Contouring) is a CPU-side primal
  * contouring method driven by symbolic CSG features; see
@@ -15,7 +15,7 @@ export interface SfccTuning {
     // --- Octree -----------------------------------------------------------
     /** Minimum octree depth (uniform refinement floor). */
     depthMin: number
-    /** Maximum octree depth; cells still failing certificates here are tagged degenerate. */
+    /** Normal refinement ceiling; unresolved sheet handling can use up to two extra levels (capped at 14). */
     depthMax: number
     /** Padding (mm) added to refined scene bounds when sizing the root cube. */
     boundsPaddingMm: number
@@ -39,12 +39,6 @@ export interface SfccTuning {
     /** Max surface-normal variation (deg) across a blend cell before it splits (anti-diamond on fillets). */
     blendCurvatureDeg: number
     /**
-     * Legacy compatibility option, default off. Blend refinement always uses the
-     * sampled normal cone: the former 1/r curvature estimate underestimates oblique
-     * blends, and cell-edge length does not bound surface travel distance.
-     */
-    blendCurvatureAnalytic: boolean
-    /**
      * Use the per-stratum κ·cellSize heuristic instead of the sampled normal cone.
      * Cell-edge length is not a certified surface-path bound.
      * Ships OFF by default; only the Rust (`sfcc-rs`) kernel reads it.
@@ -56,18 +50,16 @@ export interface SfccTuning {
     featureQueryInflate: number
 
     // --- Geometry tolerances ------------------------------------------------
-    /** Surface accuracy anchor (mm): max |f| at emitted vertices. */
+    /** Field-residual target for projection/validation and sampled refinement; not a global distance bound. */
     surfaceTolMm: number
-    /** Post-pass decimation (sfcc-rs): allowed surface deviation in mm; 0 = off. Default 0.05. */
+    /** Experimental edge collapse: sampled field-deviation allowance (mm), not a global bound. 0 = off. */
     decimateTolMm: number
-    /** Multi-sheet cells (sfcc-rs): keep thin walls in coarse cells, resolved on fine edges. */
+    /** Experimental coarse multi-sheet handling; may miss enclosed components. Default off. */
     multiSheetCells: boolean
     /** Max chord deviation (mm) of in-cell feature polylines from the analytic curve. */
     curveChordTolMm: number
     /** Flank-probe offset for seam trimming, in multiples of surfaceTolMm. */
     probeDeltaFactor: number
-    /** @deprecated Kept for saved settings; exposure no longer discards creases by angle. */
-    minDihedralDeg: number
     /** Seam tracer bails (with a diagnostic) when carrier gradients are within this angle (deg) of parallel. */
     minTangencyAngleDeg: number
     /** Corner merge tolerance, as a fraction of the scene diagonal. */
@@ -78,24 +70,21 @@ export interface SfccTuning {
     maxTraceSteps: number
 
     // --- Meshing ------------------------------------------------------------
-    /** Edge iso-crossing root tolerance, in fractions of the max-depth cell size. */
+    /** Edge root tolerance as a fraction of the finest lattice spacing (up to depthMax + 2). */
     edgeRootTolFraction: number
-    /** Snap an edge crossing into a pinned feature point within this fraction of the face size. */
-    faceSnapEpsFraction: number
     /** Cap on sampled feature-polyline points per cell. */
     maxPolylinePointsPerCell: number
     /** Interior vertex placement for disk triangulation. */
     interiorVertexMode: "project" | "centroid" | "fan"
-    /** Experimental stages; defaults stay off until real-scene acceptance. */
+    /** Experimental construction stages; defaults stay off until real-scene acceptance. */
     qualityTriangulation: boolean
+    /** Adds final triangle-quality measurements; does not establish complete mesh acceptance. */
     qualityAudit: boolean
     qualityRefinement: boolean
     qualityRemeshing: boolean
     qualityMaxEditTrials: number
     /** Newton iterations for projecting interior vertices onto the surface. */
     projectMaxIters: number
-    /** Featureless ambiguous face resolution: sample f at the face center, or refine instead. */
-    ambiguityResolution: "centerSample" | "refine"
     /**
      * Lipschitz pre-cull for hidden-arc recovery: before the SUBDIV detection
      * scan, one carrier eval at the sub-edge midpoint skips the whole scan when
@@ -110,26 +99,11 @@ export interface SfccTuning {
     // --- Driver ---------------------------------------------------------------
     /** Max global re-runs with forced splits after loop failures or initial feature fallbacks. */
     reRefineMaxRounds: number
-    /** Max root-cube jitter retries on exact lattice degeneracies. */
-    jitterRetries: number
-    /** Legacy option, ignored by the Rust exporter: it returns best-effort geometry plus validation. */
-    failurePolicy: "partial" | "throw"
-    /** Crease angle (deg) for the shading vertex-split post-pass. */
-    creaseAngleDeg: number
     /** Verify each vertex fan is a single cycle (default on). Disabling leaves validation incomplete. */
     checkVertexLinks: boolean
-    /** Emit debug overlays (feature polylines, face segments, failed cells) in MeshData.debug. */
-    debugOutput: boolean
-    /**
-     * Collect a build-time perf breakdown (phase wall-times + octree-refinement
-     * sub-buckets + SDF call counts) into `MeshData.debug.sfcc.perf` and the
-     * `sfcc perf` log line. Adds `performance.now()` overhead at O(cells) call
-     * sites, so absolute times are inflated — read the SPLIT, not the sum. Off →
-     * zero instrumentation, the export path is byte-identical.
-     */
-    profile: boolean
 }
 
+/** Checked against native PipelineTuning::default() by the shared defaults fixture tests. */
 export const DEFAULT_SFCC_TUNING: SfccTuning = {
     depthMin: 5,
     depthMax: 8,
@@ -139,24 +113,21 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     normalVariationDeg: 18,
     blendCurvatureRefine: true,
     blendCurvatureDeg: 18,
-    blendCurvatureAnalytic: false,
     normalVariationAnalytic: false,
     tangentialEpsilon: 0.05,
     featureQueryInflate: 0.25,
 
     surfaceTolMm: 0.01,
-    decimateTolMm: 0.05,
-    multiSheetCells: true,
+    decimateTolMm: 0,
+    multiSheetCells: false,
     curveChordTolMm: 0.02,
     probeDeltaFactor: 10,
-    minDihedralDeg: 15,
     minTangencyAngleDeg: 2,
     cornerMergeTolDiagFraction: 1e-6,
     seedCellSizeMm: 0,
     maxTraceSteps: 20000,
 
     edgeRootTolFraction: 1e-3,
-    faceSnapEpsFraction: 0.05,
     maxPolylinePointsPerCell: 16,
     interiorVertexMode: "project",
     qualityTriangulation: false,
@@ -165,16 +136,10 @@ export const DEFAULT_SFCC_TUNING: SfccTuning = {
     qualityRemeshing: false,
     qualityMaxEditTrials: 10_000,
     projectMaxIters: 8,
-    ambiguityResolution: "centerSample",
     recoveryCull: true,
 
     reRefineMaxRounds: 2,
-    jitterRetries: 3,
-    failurePolicy: "partial",
-    creaseAngleDeg: 30,
     checkVertexLinks: true,
-    debugOutput: false,
-    profile: false,
 }
 
 /** Hard ceiling on octree depth — lattice keys must stay exact in f64 (see lattice.mts). */
@@ -204,7 +169,6 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         normalVariationDeg: num(o.normalVariationDeg, d.normalVariationDeg, 1, 90),
         blendCurvatureRefine: bool(o.blendCurvatureRefine, d.blendCurvatureRefine),
         blendCurvatureDeg: num(o.blendCurvatureDeg, d.blendCurvatureDeg, 1, 90),
-        blendCurvatureAnalytic: bool(o.blendCurvatureAnalytic, d.blendCurvatureAnalytic),
         normalVariationAnalytic: bool(o.normalVariationAnalytic, d.normalVariationAnalytic),
         tangentialEpsilon: num(o.tangentialEpsilon, d.tangentialEpsilon, 0, 1),
         featureQueryInflate: num(o.featureQueryInflate, d.featureQueryInflate, 0, 4),
@@ -214,38 +178,27 @@ export function normalizeSfccTuning(raw: unknown): SfccTuning {
         multiSheetCells: bool(o.multiSheetCells, d.multiSheetCells),
         curveChordTolMm: num(o.curveChordTolMm, d.curveChordTolMm, 1e-6, 10),
         probeDeltaFactor: num(o.probeDeltaFactor, d.probeDeltaFactor, 1, 1000),
-        minDihedralDeg: num(o.minDihedralDeg, d.minDihedralDeg, 0, 90),
         minTangencyAngleDeg: num(o.minTangencyAngleDeg, d.minTangencyAngleDeg, 0.01, 45),
         cornerMergeTolDiagFraction: num(o.cornerMergeTolDiagFraction, d.cornerMergeTolDiagFraction, 1e-12, 1e-2),
         seedCellSizeMm: num(o.seedCellSizeMm, d.seedCellSizeMm, 0, 1000),
         maxTraceSteps: num(o.maxTraceSteps, d.maxTraceSteps, 100, 1_000_000, true),
 
         edgeRootTolFraction: num(o.edgeRootTolFraction, d.edgeRootTolFraction, 1e-9, 0.5),
-        faceSnapEpsFraction: num(o.faceSnapEpsFraction, d.faceSnapEpsFraction, 0, 0.4),
         maxPolylinePointsPerCell: num(o.maxPolylinePointsPerCell, d.maxPolylinePointsPerCell, 2, 256, true),
         interiorVertexMode:
             o.interiorVertexMode === "project" || o.interiorVertexMode === "centroid" || o.interiorVertexMode === "fan"
                 ? o.interiorVertexMode
                 : d.interiorVertexMode,
         projectMaxIters: num(o.projectMaxIters, d.projectMaxIters, 0, 64, true),
-        ambiguityResolution:
-            o.ambiguityResolution === "centerSample" || o.ambiguityResolution === "refine"
-                ? o.ambiguityResolution
-                : d.ambiguityResolution,
         recoveryCull: bool(o.recoveryCull, d.recoveryCull),
 
         reRefineMaxRounds: num(o.reRefineMaxRounds, d.reRefineMaxRounds, 0, 10, true),
-        jitterRetries: num(o.jitterRetries, d.jitterRetries, 0, 10, true),
-        failurePolicy: o.failurePolicy === "partial" || o.failurePolicy === "throw" ? o.failurePolicy : d.failurePolicy,
-        creaseAngleDeg: num(o.creaseAngleDeg, d.creaseAngleDeg, -1, 180),
         checkVertexLinks: bool(o.checkVertexLinks, d.checkVertexLinks),
         qualityTriangulation: bool(o.qualityTriangulation, d.qualityTriangulation),
         qualityAudit: bool(o.qualityAudit, d.qualityAudit),
         qualityRefinement: bool(o.qualityRefinement, d.qualityRefinement),
         qualityRemeshing: bool(o.qualityRemeshing, d.qualityRemeshing),
         qualityMaxEditTrials: num(o.qualityMaxEditTrials, d.qualityMaxEditTrials, 0, 100_000, true),
-        debugOutput: bool(o.debugOutput, d.debugOutput),
-        profile: bool(o.profile, d.profile),
     }
     if (out.depthMin > out.depthMax) {
         const t = out.depthMin

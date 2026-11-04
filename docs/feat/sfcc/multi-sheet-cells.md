@@ -1,7 +1,7 @@
 # SFCC: multi-sheet cells (coarse cells, fine edges)
 
 Status: implemented behind `PipelineTuning::multi_sheet_cells` (kernel default
-off, GUI default on; see the end for why).
+off, GUI default off). See [export options and defaults](export-options.md).
 
 ## The problem
 
@@ -115,7 +115,7 @@ than 1° off the field gradient at the centroid):
 |---|---|---|---|
 | multi-sheet, no crease points | 79,992 | 12.5% / 32.3% | 65 slivers |
 | + crease points | 112,202 | 0.22% / 0.33% | 0 |
-| + decimation 0.05 mm (GUI default) | 1,716 | 2.6% / 2.9%, 95% of it under 2° | 0 |
+| + decimation 0.05 mm (then-GUI default) | 1,716 | 2.6% / 2.9%, 95% of it under 2° | 0 |
 
 The rim probes now sit on the surface (max 0.00 mm, was 0.48 mm with 89
 misses). Through the wasm path with the captured GUI tuning the bowl goes from
@@ -147,10 +147,14 @@ one-third cut and under 0.5%.
   present, so contouring is unchanged. On the bowl this cut the octree build
   from 26.4 s to 11.1 s (docs/sfcc-performance-analysis.md, November 2).
 
-## Why the kernel default is off
+## Default policy
 
-The TS-oracle parity fixtures pin the old refinement of the empty shell (the
-cells that straddle by interval looseness used to refine to the ceiling and
-drag their surface neighbours with them). Re-baselining those fixtures is a
-separate step; until then the kernel default keeps them green and the GUI
-turns the mode on.
+Both native and GUI defaults are off. The initial GUI rollout enabled this mode
+while native fixtures retained the earlier empty-shell refinement; that split
+made default comparisons misleading. The November 3 options audit aligned the
+GUI with native. Explicit saved settings remain enabled until reset.
+
+The performance results above still describe their recorded configurations.
+They do not establish complete coverage or preserved feature obligations on the
+five original torture models. Those checks are required before default-on;
+see [export options and defaults](export-options.md).

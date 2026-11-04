@@ -53,7 +53,7 @@ pub struct SfccWorldCube {
 
 /// The driver knobs the smooth pipeline reads. Port of the consumed subset of
 /// `SfccTuning` (the feature/seam/driver-policy knobs are M4).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PipelineTuning {
     pub depth_min: u32,
     pub depth_max: u32,
@@ -80,7 +80,8 @@ pub struct PipelineTuning {
     pub project_max_iters: u32,
     pub re_refine_max_rounds: u32,
     pub check_vertex_links: bool,
-    /// Post-pass edge-collapse decimation: allowed surface deviation (mm); 0 = off.
+    /// Experimental edge-collapse allowance for sampled field deviation (mm); 0 = off.
+    /// This is not a global geometric-distance or feature-preservation bound.
     pub decimate_tol_mm: f64,
     /// Multi-sheet cells: a featureless cell keeps several smooth sheets, resolved
     /// on its edges at the finest lattice spacing, instead of splitting below the
@@ -104,17 +105,18 @@ pub struct PipelineTuning {
 impl Default for PipelineTuning {
     /// Mirrors `DEFAULT_SFCC_TUNING` for the consumed subset.
     fn default() -> Self {
+        let features = SfccTuning::default();
         PipelineTuning {
-            depth_min: 5,
-            depth_max: 8,
-            bounds_padding_mm: 2.0,
-            enforce_edge_balance: true,
-            normal_variation_deg: 18.0,
-            blend_curvature_refine: true,
-            blend_curvature_deg: 18.0,
-            blend_curvature_analytic: false,
+            depth_min: features.depth_min,
+            depth_max: features.depth_max,
+            bounds_padding_mm: features.bounds_padding_mm,
+            enforce_edge_balance: features.enforce_edge_balance,
+            normal_variation_deg: features.normal_variation_deg,
+            blend_curvature_refine: features.blend_curvature_refine,
+            blend_curvature_deg: features.blend_curvature_deg,
+            blend_curvature_analytic: features.blend_curvature_analytic,
             normal_variation_analytic: false,
-            surface_tol_mm: 0.01,
+            surface_tol_mm: features.surface_tol_mm,
             edge_root_tol_fraction: 1e-3,
             interior_vertex_mode: InteriorVertexMode::Project,
             quality_triangulation: false,
@@ -127,17 +129,17 @@ impl Default for PipelineTuning {
             check_vertex_links: true,
             decimate_tol_mm: 0.0,
             multi_sheet_cells: false,
-            tangential_epsilon: 0.05,
-            feature_query_inflate: 0.25,
-            curve_chord_tol_mm: 0.02,
+            tangential_epsilon: features.tangential_epsilon,
+            feature_query_inflate: features.feature_query_inflate,
+            curve_chord_tol_mm: features.curve_chord_tol_mm,
             max_polyline_points_per_cell: 16,
             recovery_cull: true,
-            probe_delta_factor: 10.0,
-            min_dihedral_deg: 15.0,
-            min_tangency_angle_deg: 2.0,
-            corner_merge_tol_diag_fraction: 1e-6,
-            seed_cell_size_mm: 0.0,
-            max_trace_steps: 20_000,
+            probe_delta_factor: features.probe_delta_factor,
+            min_dihedral_deg: features.min_dihedral_deg,
+            min_tangency_angle_deg: features.min_tangency_angle_deg,
+            corner_merge_tol_diag_fraction: features.corner_merge_tol_diag_fraction,
+            seed_cell_size_mm: features.seed_cell_size_mm,
+            max_trace_steps: features.max_trace_steps,
         }
     }
 }

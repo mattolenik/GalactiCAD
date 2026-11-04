@@ -17,17 +17,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let t = PipelineTuning::default();
     let defaults = json!({"depthMin":t.depth_min,"depthMax":t.depth_max,"boundsPaddingMm":t.bounds_padding_mm,
         "enforceEdgeBalance":t.enforce_edge_balance,"normalVariationDeg":t.normal_variation_deg,
-        "blendCurvatureRefine":t.blend_curvature_refine,"blendCurvatureDeg":t.blend_curvature_deg,"blendCurvatureAnalytic":t.blend_curvature_analytic,
-        "normalVariationAnalytic":t.normal_variation_analytic,"surfaceTolMm":t.surface_tol_mm,"edgeRootTolFraction":t.edge_root_tol_fraction,
+        "blendCurvatureRefine":t.blend_curvature_refine,"blendCurvatureDeg":t.blend_curvature_deg,
+        "normalVariationAnalytic":t.normal_variation_analytic,"surfaceTolMm":t.surface_tol_mm,"multiSheetCells":t.multi_sheet_cells,"decimateTolMm":t.decimate_tol_mm,"edgeRootTolFraction":t.edge_root_tol_fraction,
         "interiorVertexMode":"project","qualityTriangulation":t.quality_triangulation,"qualityAudit":t.quality_audit,
         "qualityRefinement":t.quality_refinement,"qualityRemeshing":t.quality_remeshing,"qualityMaxEditTrials":t.quality_max_edit_trials,
         "projectMaxIters":t.project_max_iters,"reRefineMaxRounds":t.re_refine_max_rounds,"checkVertexLinks":t.check_vertex_links,
         "tangentialEpsilon":t.tangential_epsilon,"featureQueryInflate":t.feature_query_inflate,"curveChordTolMm":t.curve_chord_tol_mm,
         "maxPolylinePointsPerCell":t.max_polyline_points_per_cell,"recoveryCull":t.recovery_cull,
-        "probeDeltaFactor":t.probe_delta_factor,"minDihedralDeg":t.min_dihedral_deg,"minTangencyAngleDeg":t.min_tangency_angle_deg,
+        "probeDeltaFactor":t.probe_delta_factor,"minTangencyAngleDeg":t.min_tangency_angle_deg,
         "cornerMergeTolDiagFraction":t.corner_merge_tol_diag_fraction,"seedCellSizeMm":t.seed_cell_size_mm,"maxTraceSteps":t.max_trace_steps});
     for (key, expected) in defaults.as_object().ok_or("defaults object")? {
-        let actual = &config["tuning"][key];
+        // Older captures predate these options; omission used native off defaults.
+        let actual = if matches!(key.as_str(), "multiSheetCells" | "decimateTolMm") {
+            config["tuning"].get(key).unwrap_or(expected)
+        } else {
+            &config["tuning"][key]
+        };
         if actual != expected && !(actual.is_number() && expected.is_number() && actual.as_f64() == expected.as_f64()) {
             return Err(format!("diagnostic supports checked defaults only: {key}: {actual} != {expected}").into());
         }

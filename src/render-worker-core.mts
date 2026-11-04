@@ -2667,7 +2667,7 @@ export class RenderWorkerCore {
                     `timeMs=${(performance.now() - tConvert0).toFixed(1)} tris=${mesh.tris.length / 3}`,
             )
 
-            // Unified mesh post-passes for **both** MDC and SHREC: optional QEM
+            // Shared GUI post-passes for every exporter, including SFCC: optional QEM
             // simplification (when enabled and targetRatio < 1), then optional
             // normal recompute — gated only by `simplifyTuning.renormalizeTriangles`
             // (Dev Tools checkbox), not by simplify enablement or target ratio.

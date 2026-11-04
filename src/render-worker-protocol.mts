@@ -15,8 +15,8 @@ import type { FeatureGraphOcclusionMode } from "./feature-graph/feature-graph-ov
 export type { FeatureGraphOcclusionMode }
 
 /**
- * Post-MDC meshoptimizer simplification (QEM). Used when mesh export runs the MDC
- * pipeline with simplification enabled; ignored for SHREC.
+ * Generic post-export meshoptimizer simplification (QEM), applied by the render
+ * worker to any exporter when enabled. Separate from SFCC native decimation.
  */
 export interface SimplifyTuning {
     /** Fraction of input triangles to keep (0–1). `1` skips simplification. */
@@ -31,7 +31,7 @@ export interface SimplifyTuning {
     /** When positive, uses normal-aware simplification (protects sharp features). */
     normalWeight: number
     /**
-     * Recompute vertex normals from triangle geometry on export (smooth shading).
+     * Create flat face normals on export, splitting vertices per triangle.
      * Applied only in the worker post-pass after export (and after QEM if it ran);
      * not coupled to simplify enablement or `targetRatio`. Off keeps exporter normals.
      */

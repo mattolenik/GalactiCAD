@@ -19,3 +19,4 @@ sharpiso/
 .user-browser/
 .agents/tmp
 
+.claude/worktrees/

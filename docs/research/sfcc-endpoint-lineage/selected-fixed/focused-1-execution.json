@@ -1,0 +1,13 @@
+{
+  "step": "focused-1",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round21-endpoint-lineage/selected-fixed/kernel-tests",
+    "endpoint_lineage_b_original_feature_compile_is_observational",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.678032750001876,
+  "elapsedSeconds": 1.7140501249959925,
+  "exitCode": 101,
+  "timedOut": false
+}

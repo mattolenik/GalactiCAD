@@ -1,0 +1,168 @@
+[
+  {
+    "rawIndex": 103,
+    "sampleId": 986,
+    "rawParameterHex": "40506e2bbd5eaf58",
+    "pointHex": [
+      "c01ae303f75efc73",
+      "4005871f5a33c661",
+      "c020e81b1b90e888"
+    ],
+    "height": 2.6909777686167193,
+    "status": "Ok(true)",
+    "flanks": {
+      "10": {
+        "attempts": 1,
+        "outcomes": {
+          "survives": 1
+        },
+        "scales": [
+          1.0
+        ]
+      },
+      "15": {
+        "attempts": 10,
+        "outcomes": {
+          "domain_rejected": 9,
+          "survives": 1
+        },
+        "scales": [
+          1.0,
+          1.0,
+          0.5,
+          0.5,
+          0.25,
+          0.25,
+          0.125,
+          0.125,
+          0.0625,
+          0.0625
+        ]
+      }
+    }
+  },
+  {
+    "rawIndex": 103,
+    "sampleId": 987,
+    "rawParameterHex": "40506e2beb8b1ae3",
+    "pointHex": [
+      "c01ae30299076326",
+      "40058720886bf367",
+      "c020e81ba6da94dc"
+    ],
+    "height": 2.6909800203269927,
+    "status": "Ok(false)",
+    "flanks": {
+      "10": {
+        "attempts": 1,
+        "outcomes": {
+          "survives": 1
+        },
+        "scales": [
+          1.0
+        ]
+      },
+      "15": {
+        "attempts": 10,
+        "outcomes": {
+          "domain_rejected": 10
+        },
+        "scales": [
+          1.0,
+          1.0,
+          0.5,
+          0.5,
+          0.25,
+          0.25,
+          0.125,
+          0.125,
+          0.0625,
+          0.0625
+        ]
+      }
+    }
+  },
+  {
+    "rawIndex": 131,
+    "sampleId": 3906,
+    "rawParameterHex": "40584f02adfb0774",
+    "pointHex": [
+      "c01ae302fbcef479",
+      "40058720327fbba8",
+      "c020e81b7f94d8af"
+    ],
+    "height": 2.6909793801528004,
+    "status": "Ok(true)",
+    "flanks": {
+      "15": {
+        "attempts": 10,
+        "outcomes": {
+          "domain_rejected": 9,
+          "survives": 1
+        },
+        "scales": [
+          1.0,
+          1.0,
+          0.5,
+          0.5,
+          0.25,
+          0.25,
+          0.125,
+          0.125,
+          0.0625,
+          0.0625
+        ]
+      },
+      "30": {
+        "attempts": 1,
+        "outcomes": {
+          "survives": 1
+        },
+        "scales": [
+          1.0
+        ]
+      }
+    }
+  },
+  {
+    "rawIndex": 131,
+    "sampleId": 3909,
+    "rawParameterHex": "40584f02dbf60ee9",
+    "pointHex": [
+      "c01ae3019ef37d0d",
+      "400587215f6ff646",
+      "c020e81c0a475b10"
+    ],
+    "height": 2.6909816223185627,
+    "status": "Ok(false)",
+    "flanks": {
+      "15": {
+        "attempts": 10,
+        "outcomes": {
+          "domain_rejected": 10
+        },
+        "scales": [
+          1.0,
+          1.0,
+          0.5,
+          0.5,
+          0.25,
+          0.25,
+          0.125,
+          0.125,
+          0.0625,
+          0.0625
+        ]
+      },
+      "30": {
+        "attempts": 1,
+        "outcomes": {
+          "survives": 1
+        },
+        "scales": [
+          1.0
+        ]
+      }
+    }
+  }
+]

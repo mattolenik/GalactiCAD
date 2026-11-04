@@ -1,0 +1,159 @@
+--- a/gcad-wasm/kernel/src/sfcc/endpoint_lineage_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/endpoint_lineage_b.rs
+@@ -312,6 +312,35 @@
+         );
+     }
+ }
++fn refinement_source(curve: &FeatureCurve, source: Value) -> Result<Value, &'static str> {
++    if !selected(curve) {
++        return Ok(source);
++    }
++    let index = STATE.with(|s| {
++        let slot = s.borrow();
++        let state = slot
++            .as_ref()
++            .ok_or("refinement_raw_reference_scope_missing")?;
++        let context = state
++            .curve
++            .ok_or("refinement_raw_reference_context_missing")?;
++        if context.id != curve.id || context.pair != curve.adjacent_strata {
++            return Err("refinement_raw_reference_context_mismatch");
++        }
++        let mut rows = state.rows.iter().filter(|r| {
++            r["kind"] == "raw_received" && r["raw"]["index"].as_u64() == Some(context.index as u64)
++        });
++        let row = rows.next().ok_or("refinement_raw_reference_missing")?;
++        if rows.next().is_some() {
++            return Err("refinement_raw_reference_ambiguous");
++        }
++        if row["data"] != source {
++            return Err("refinement_raw_reference_source_mismatch");
++        }
++        Ok(context.index)
++    })?;
++    Ok(json!({"reference":"raw_received.data","rawIndex":index}))
++}
+ pub(crate) fn refinement(
+     curve: &FeatureCurve,
+     t: f64,
+@@ -331,6 +360,13 @@
+         let Some(source) = source_record(curve) else {
+             refuse("refinement_stored_carrier_descriptor_bound");
+             return;
++        };
++        let source = match refinement_source(curve, source) {
++            Ok(source) => source,
++            Err(reason) => {
++                refuse(reason);
++                return;
++            }
+         };
+         emit(
+             "refine_transition",
+@@ -629,6 +665,106 @@
+             assert_eq!(row["data"]["midpointClassifications"], n);
+         }
+     }
++    #[test]
++    fn endpoint_lineage_b_controls_references_expand_exactly_and_missing_sources_refuse() {
++        let curve = crate::sfcc::feature_curves::make_segment_curve(
++            0,
++            -1,
++            [10, 15],
++            0.,
++            0.,
++            0.,
++            1.,
++            0.,
++            0.,
++        );
++        let expected = source_record(&curve).unwrap();
++        let scope = Scope::begin();
++        {
++            let _curve = curve_scope(7, &curve);
++            refinement(&curve, 0.5, [0.; 3], None, 0.1, 0.1);
++        }
++        let report = scope.finish();
++        assert_eq!(report["complete"], true);
++        let rows = report["events"].as_array().unwrap();
++        let event = rows
++            .iter()
++            .find(|r| r["kind"] == "refine_transition")
++            .unwrap();
++        assert_eq!(
++            event["data"]["source"],
++            json!({"reference":"raw_received.data","rawIndex":7})
++        );
++        let raw = rows
++            .iter()
++            .find(|r| {
++                r["kind"] == "raw_received"
++                    && r["raw"]["index"] == event["data"]["source"]["rawIndex"]
++            })
++            .unwrap();
++        assert_eq!(raw["data"], expected);
++        let mut expanded = event.clone();
++        expanded["data"]["source"] = raw["data"].clone();
++        assert_eq!(
++            expanded,
++            json!({"kind":"refine_transition","raw":{"index":7,"id":0,"strata":[10,15]},"sample":null,
++            "data":{"source":expected,"parameterHex":hex(0.5),"seedHex":point([0.;3]),"selectedHex":null,"outputHex":point([0.;3]),
++            "reason":"no_accepted_candidate_seed_retained","bestDistanceHex":hex(0.1),"maxDistanceHex":hex(0.1)}})
++        );
++        for mismatch in [false, true] {
++            let scope = Scope::begin();
++            {
++                let _curve = curve_scope(7, &curve);
++                if mismatch {
++                    let mut changed = curve.clone();
++                    changed.t_max = 0.75;
++                    refinement(&changed, 0.5, [0.; 3], None, 0.1, 0.1);
++                } else {
++                    STATE.with(|s| {
++                        let mut slot = s.borrow_mut();
++                        let state = slot.as_mut().unwrap();
++                        state.rows.clear();
++                        state.bytes = 0;
++                    });
++                    refinement(&curve, 0.5, [0.; 3], None, 0.1, 0.1);
++                }
++            }
++            assert_eq!(
++                scope.finish()["incompleteReason"],
++                if mismatch {
++                    "refinement_raw_reference_source_mismatch"
++                } else {
++                    "refinement_raw_reference_missing"
++                }
++            );
++        }
++        let external = crate::sfcc::feature_curves::make_segment_curve(
++            3,
++            -1,
++            [101, 102],
++            0.,
++            0.,
++            0.,
++            1.,
++            0.,
++            0.,
++        );
++        let expected = source_record(&external).unwrap();
++        let scope = Scope::begin();
++        {
++            let _curve = curve_scope(9, &external);
++            refinement(&external, 0.5, [-6.7, 2.69, -8.4], None, 0.1, 0.1);
++        }
++        let report = scope.finish();
++        let row = report["events"]
++            .as_array()
++            .unwrap()
++            .iter()
++            .find(|r| r["kind"] == "refine_transition")
++            .unwrap();
++        assert_eq!(row["data"]["source"], expected);
++        assert_eq!(report["complete"], true);
++    }
+     fn join(report: &Value, final_id: usize) -> Option<Value> {
+         let rows = report["events"].as_array()?;
+         let dedup = rows.iter().find(|r| {

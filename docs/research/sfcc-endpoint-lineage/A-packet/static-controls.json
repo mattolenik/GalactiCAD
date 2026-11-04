@@ -1,0 +1,8 @@
+{
+  "baseTrimSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa",
+  "observedTrimSha256": "6ff7cdeb9e4e56e38670738ccb44e978e5b1beeaa45dde5b3752094729e831c4",
+  "observationRemovedTokensMatch": true,
+  "normalization": "strip explicitly marked observer blocks; remove one match-arm brace pair holding only instrumentation",
+  "geometryQueriesExecutedByAuthor": false,
+  "originalCurveConstructorsAndRefineArgumentsChanged": false
+}

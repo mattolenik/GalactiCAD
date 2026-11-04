@@ -1,0 +1,14 @@
+{
+  "source": "/tmp/sfcc-graph-lineage-b-compact",
+  "candidateManifestSha256": "5dc7bc3246efee636c1f8edf91b9ade34af5c5505cfb7f6be7592f70584cb836",
+  "reason": "reviewed lossless repeated-source references after retained aggregate-byte-cap refusal",
+  "changes": "observer representation only; raw source exact-equality checked, external origins inline",
+  "sameByteCap": 524288,
+  "sameEventCap": 4096,
+  "sameWindow": true,
+  "sameGeometryAndQueries": true,
+  "buildCapSeconds": 120,
+  "fiveControlsThenOneCaptureCapSeconds": 60,
+  "oneNewFeatureOnlyCaptureApproved": true,
+  "noOctreeOrPrivateOrFullExport": true
+}

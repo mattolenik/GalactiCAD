@@ -1,0 +1,686 @@
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -50,22 +50,42 @@
+             let pz = z + sign * delta * dz;
+             let proj = stratum.project(px, py, pz);
+             if !proj.iter().all(|v| v.is_finite()) {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("flank", lineage_a::Scope::Point, || serde_json::json!({"stratum":stratum.id,"scaleHex":lineage_a::hex(scale),"signHex":lineage_a::hex(sign),"projectedHex":lineage_a::point(proj),"outcome":"nonfinite_projection"}));
++            // LINEAGE_A_END
+                 uncertain = true;
+                 continue;
+             }
+             if !stratum.domain_contains(proj, tol.curve_eps * 8.) {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("flank", lineage_a::Scope::Point, || serde_json::json!({"stratum":stratum.id,"scaleHex":lineage_a::hex(scale),"signHex":lineage_a::hex(sign),"projectedHex":lineage_a::point(proj),"outcome":"domain_rejected"}));
++            // LINEAGE_A_END
+                 continue;
+             }
+             let value = tree.f(proj[0], proj[1], proj[2]);
+             if !value.is_finite() {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("flank", lineage_a::Scope::Point, || serde_json::json!({"stratum":stratum.id,"scaleHex":lineage_a::hex(scale),"signHex":lineage_a::hex(sign),"valueHex":lineage_a::hex(value),"outcome":"nonfinite_full_field"}));
++            // LINEAGE_A_END
+                 uncertain = true;
+                 continue;
+             }
+             if value.abs() > delta * 0.2 {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("flank", lineage_a::Scope::Point, || serde_json::json!({"stratum":stratum.id,"scaleHex":lineage_a::hex(scale),"signHex":lineage_a::hex(sign),"valueHex":lineage_a::hex(value),"deltaHex":lineage_a::hex(delta),"outcome":"full_field_residual"}));
++            // LINEAGE_A_END
+                 continue;
+             }
+             let Some(sample) = super::field_branches::sample_tree(tree.root, proj).normalized_equation()
+             else {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("flank", lineage_a::Scope::Point, || serde_json::json!({"stratum":stratum.id,"scaleHex":lineage_a::hex(scale),"signHex":lineage_a::hex(sign),"outcome":"unnormalizable_full_field"}));
++            // LINEAGE_A_END
+                 uncertain = true;
+                 continue;
+             };
+@@ -74,6 +94,11 @@
+             let error = (flank_grad[0] - flank_normal[0])
+                 .hypot(flank_grad[1] - flank_normal[1])
+                 .hypot(flank_grad[2] - flank_normal[2]);
++
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("flank", lineage_a::Scope::Point, || serde_json::json!({"stratum":stratum.id,"scaleHex":lineage_a::hex(scale),"signHex":lineage_a::hex(sign),"projectedHex":lineage_a::point(proj),"valueHex":lineage_a::hex(value),"errorHex":lineage_a::hex(error),"normalToleranceHex":lineage_a::hex(normal_tolerance),"outcome":"normal_comparison"}));
++            // LINEAGE_A_END
+             if !error.is_finite() { uncertain = true; }
+             if error <= normal_tolerance {
+                 return Ok(true);
+@@ -96,43 +121,93 @@
+ fn curve_point_status(
+     tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64, tol: &ResolvedTolerances,
+ ) -> Result<bool, ()> {
++    // LINEAGE_A_BEGIN
++    #[cfg(all(test, feature = "serde"))]
++    lineage_a::clear_probe();
++    // LINEAGE_A_END
+     let p = curve.point_at_checked(t).ok_or_else(|| {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("query_failed",lineage_a::Scope::Curve,||serde_json::json!({"parameterHex":lineage_a::hex(t)}));
++        // LINEAGE_A_END
+         super::validation::curve_projection_failed();
+     })?;
++    // LINEAGE_A_BEGIN
++    #[cfg(all(test, feature = "serde"))]
++    lineage_a::probe(curve,t,p);
++    // LINEAGE_A_END
+     let (x, y, z) = (p[0], p[1], p[2]);
+     let value = tree.f(x, y, z);
+-    if !value.is_finite() { return Err(()); }
++    if !value.is_finite() {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"nonfinite_full_value","valueHex":lineage_a::hex(value)}));
++        // LINEAGE_A_END
++ return Err(()); }
+     if value.abs() > tol.surface_tol {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"full_value_outside_tolerance","valueHex":lineage_a::hex(value),"surfaceToleranceHex":lineage_a::hex(tol.surface_tol)}));
++        // LINEAGE_A_END
+         return Ok(false);
+     }
+     // Trim endpoints can lie exactly on the tolerance boundary. Keep the
+     // eventual f32 payload on its accepted side as well, rather than turning a
+     // valid f64 endpoint into an off-surface exported corner by rounding.
+     let rounded_value = tree.f(x as f32 as f64, y as f32 as f64, z as f32 as f64);
+-    if !rounded_value.is_finite() { return Err(()); }
++    if !rounded_value.is_finite() {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"nonfinite_rounded_value","roundedValueHex":lineage_a::hex(rounded_value)}));
++        // LINEAGE_A_END
++return Err(()); }
+     if rounded_value.abs() > tol.surface_tol {
+         // An actual f64 feature lost only by output quantization is unresolved,
+         // not absent. Ordinary samples in the loose trim band remain dead.
+         let on_locus = super::field_branches::sample_tree(tree.root, p).normalized_equation()
+             .map_or(value.abs() <= tol.curve_eps * 8., |s| s.value.abs() <= tol.curve_eps * 8.);
++
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"rounded_value_outside_tolerance","roundedValueHex":lineage_a::hex(rounded_value),"onLocus":on_locus}));
++        // LINEAGE_A_END
+         return if on_locus { Err(()) } else { Ok(false) };
+     }
+     let sa = &tree.strata[curve.adjacent_strata[0]];
+     let sb = &tree.strata[curve.adjacent_strata[1]];
+     if !sa.domain_contains(p, tol.curve_eps * 8.) || !sb.domain_contains(p, tol.curve_eps * 8.) {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"carrier_domain_disjunction","strata":curve.adjacent_strata,"scope":"at least one failed; original short circuit unchanged"}));
++        // LINEAGE_A_END
+         return Ok(false);
+     }
+     let na = sa.normal(x, y, z);
+     let nb = sb.normal(x, y, z);
+-    if !na.iter().chain(nb.iter()).all(|v| v.is_finite()) { return Err(()); }
++    if !na.iter().chain(nb.iter()).all(|v| v.is_finite()) {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"nonfinite_carrier_normal","normalsHex":[lineage_a::point(na),lineage_a::point(nb)]}));
++        // LINEAGE_A_END
++return Err(()); }
+     let gap = (na[0] - nb[0]).hypot(na[1] - nb[1]).hypot(na[2] - nb[2]);
+-    if gap <= 64. * f64::EPSILON { return Ok(false); }
++    if gap <= 64. * f64::EPSILON {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"normal_gap_too_small","gapHex":lineage_a::hex(gap)}));
++        // LINEAGE_A_END
++return Ok(false); }
+     // A small dihedral is still a crease. Require each exposed flank's actual
+     // field normal to agree much more closely than the separation of the two
+     // carriers; a smooth sheet cannot pass as both shallow flanks.
+     let normal_tolerance = (gap * 0.25).min(0.1);
+     let tg = curve.tangent_at(t);
+-    if !tg.iter().all(|v| v.is_finite()) || tg.iter().all(|&v| v == 0.) { return Err(()); }
++    if !tg.iter().all(|v| v.is_finite()) || tg.iter().all(|&v| v == 0.) {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::record("status_guard",lineage_a::Scope::Point,||serde_json::json!({"reason":"nonfinite_or_zero_tangent","tangentHex":lineage_a::point(tg)}));
++        // LINEAGE_A_END
++return Err(()); }
+     // In-surface, ⊥-curve probe directions: w = n × tangent.
+     let wax = na[1] * tg[2] - na[2] * tg[1];
+     let way = na[2] * tg[0] - na[0] * tg[2];
+@@ -142,6 +217,11 @@
+     let wby = nb[2] * tg[0] - nb[0] * tg[2];
+     let wbz = nb[0] * tg[1] - nb[1] * tg[0];
+     let b = flank_survives(tree, sb, x, y, z, wbx, wby, wbz, tol, normal_tolerance);
++
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("flank_pair", lineage_a::Scope::Point, || serde_json::json!({"a":format!("{:?}",a),"b":format!("{:?}",b),"gapHex":lineage_a::hex(gap),"tangentHex":lineage_a::point(tg),"fullValueHex":lineage_a::hex(value),"roundedValueHex":lineage_a::hex(rounded_value)}));
++            // LINEAGE_A_END
+     match (a, b) {
+         (Ok(false), _) | (_, Ok(false)) => Ok(false),
+         (Ok(true), Ok(true)) => Ok(true),
+@@ -183,6 +263,11 @@
+     t_dead: f64,
+     tol: &ResolvedTolerances,
+ ) -> f64 {
++
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("bisect_begin", lineage_a::Scope::Curve, || serde_json::json!({"aliveHex":lineage_a::hex(t_alive),"deadHex":lineage_a::hex(t_dead)}));
++            // LINEAGE_A_END
+     let mut a = t_alive;
+     let mut d = t_dead;
+     for _ in 0..40 {
+@@ -196,6 +281,11 @@
+             d = m;
+         }
+     }
++
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("bisect_end", lineage_a::Scope::Curve, || serde_json::json!({"aliveHex":lineage_a::hex(a),"deadHex":lineage_a::hex(d)}));
++            // LINEAGE_A_END
+     a // retain the known-alive side of the tolerance boundary
+ }
+ 
+@@ -210,8 +300,18 @@
+     if let Some(result) = super::segment_exposure::trim(tree, curve, curve_idx, tol) { return result; }
+     let unresolved = std::cell::Cell::new(false);
+     let classify = |t| match curve_point_status(tree, curve, t, tol) {
+-        Ok(alive) => alive,
+-        Err(()) => { unresolved.set(true); false }
++        Ok(alive) => {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("classification", lineage_a::Scope::Point, || serde_json::json!({"parameterHex":lineage_a::hex(t),"alive":alive,"unresolved":false}));
++            // LINEAGE_A_END
++alive },
++        Err(()) => {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("classification", lineage_a::Scope::Point, || serde_json::json!({"parameterHex":lineage_a::hex(t),"alive":false,"unresolved":true}));
++            // LINEAGE_A_END
++ unresolved.set(true); false }
+     };
+     let params = classification_params(curve, tol);
+     let alive: Vec<bool> = params.iter().map(|&t| classify(t)).collect();
+@@ -426,10 +526,18 @@
+     let add_candidate = |candidates: &mut Vec<Candidate>, x: f64, y: f64, z: f64| -> usize {
+         for (i, c) in candidates.iter().enumerate() {
+             if ((c.x - x).powi(2) + (c.y - y).powi(2) + (c.z - z).powi(2)).sqrt() <= tol.corner_merge_tol {
++                // LINEAGE_A_BEGIN
++                #[cfg(all(test, feature = "serde"))]
++                lineage_a::candidate([x,y,z],i,true,[c.x,c.y,c.z]);
++                // LINEAGE_A_END
+                 return i;
+             }
+         }
+         candidates.push(Candidate { x, y, z });
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::candidate([x,y,z],candidates.len()-1,false,[x,y,z]);
++        // LINEAGE_A_END
+         candidates.len() - 1
+     };
+ 
+@@ -437,6 +545,11 @@
+     let refine_transition =
+         |tree: &SfccTree<'_>, curve: &FeatureCurve, t: f64, max_distance: f64| -> [f64; 3] {
+             let seed = curve.point_at(t);
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("refine_begin", lineage_a::Scope::Curve, || serde_json::json!({"parameterHex":lineage_a::hex(t),"seedHex":lineage_a::point(seed),"maxDistanceHex":lineage_a::hex(max_distance)}));
++            // LINEAGE_A_END
++
+             let sa = &tree.strata[curve.adjacent_strata[0]];
+             let sb = &tree.strata[curve.adjacent_strata[1]];
+             let mut best = None;
+@@ -465,6 +578,10 @@
+                 if distance < best_distance {
+                     best_distance = distance;
+                     best = Some(p);
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("refine_improvement", lineage_a::Scope::Curve, || serde_json::json!({"kind":"primary_triple","thirdStratum":sc.id,"pointHex":lineage_a::point(p),"distanceHex":lineage_a::hex(distance)}));
++            // LINEAGE_A_END
+                 }
+             }
+             if best.is_none() {
+@@ -510,11 +627,20 @@
+                             if distance < best_distance {
+                                 best_distance = distance;
+                                 best = Some(p);
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("refine_improvement", lineage_a::Scope::Curve, || serde_json::json!({"kind":"alternate_triple","anchor":anchor.id,"others":[nearby[i].id,nearby[j].id],"pointHex":lineage_a::point(p),"distanceHex":lineage_a::hex(distance)}));
++            // LINEAGE_A_END
+                             }
+                         }
+                     }
+                 }
+             }
++
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::record("refine_end", lineage_a::Scope::Curve, || serde_json::json!({"parameterHex":lineage_a::hex(t),"seedHex":lineage_a::point(seed),"chosenHex":best.map(lineage_a::point),"reason":if best.is_some(){"accepted_triple"}else{"no_accepted_triple_return_seed"}}));
++            // LINEAGE_A_END
+             best.unwrap_or(seed)
+         };
+ 
+@@ -525,9 +651,17 @@
+         !curve.closed && ((t - curve.t_min).abs() < 1e-9 || (t - curve.t_max).abs() < 1e-9)
+     };
+     for (ci, curve) in raw_curves.iter().enumerate() {
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::start_raw(ci,curve);
++        // LINEAGE_A_END
+         let (runs, unresolved) = trim_curve(tree, curve, ci, tol);
+         unresolved_trims += unresolved;
+         for run in runs {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            lineage_a::run(&run,curve);
++            // LINEAGE_A_END
+             all_runs.push(run);
+             if !run.full_closed {
+                 for t in [run.t0, run.t1] {
+@@ -548,9 +682,17 @@
+             }
+         }
+     }
++    // LINEAGE_A_BEGIN
++    #[cfg(all(test, feature = "serde"))]
++    lineage_a::clear_raw();
++    // LINEAGE_A_END
+     // 2. Surviving native corners join the candidate set.
+     for nc in native_corners {
+         if tree.f(nc.x, nc.y, nc.z).abs() <= tol.surface_tol {
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            if lineage_a::near([nc.x,nc.y,nc.z]) {lineage_a::record("native_candidate_origin",lineage_a::Scope::Global,||serde_json::json!({"nativeId":nc.id,"pointHex":lineage_a::point([nc.x,nc.y,nc.z]),"strata":nc.strata}));}
++            // LINEAGE_A_END
+             add_candidate(&mut candidates, nc.x, nc.y, nc.z);
+         }
+     }
+@@ -713,6 +855,10 @@
+                     None
+                 }
+             });
++            // LINEAGE_A_BEGIN
++            #[cfg(all(test, feature = "serde"))]
++            if lineage_a::pair(src) { lineage_a::record("remake_input",lineage_a::Scope::Global,||serde_json::json!({"rawIndex":run.curve_idx,"rawId":src.id,"preDedupId":id,"originalRunHex":[lineage_a::hex(run.t0),lineage_a::hex(run.t1)],"adjustedRawSpanHex":[lineage_a::hex(t0),lineage_a::hex(t1)],"candidateIds":[c0,c1],"sampledRunEndsHex":[lineage_a::point(q0),lineage_a::point(q1)],"replacementEndsHex":endpoints.map(|p|p.map(lineage_a::point))})); }
++            // LINEAGE_A_END
+             let mut nc = remake_curve(src, id, t0, t1, false, endpoints);
+             if c0 >= 0 {
+                 let c0u = c0 as usize;
+@@ -736,6 +882,10 @@
+             }
+             next = nc;
+         }
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::remade(run,&next);
++        // LINEAGE_A_END
+         out.push(next);
+     }
+ 
+@@ -769,6 +919,10 @@
+             };
+             covered(&curve, prev) && covered(prev, &curve)
+         });
++        // LINEAGE_A_BEGIN
++        #[cfg(all(test, feature = "serde"))]
++        lineage_a::dedup(&curve,duplicate,unique.len());
++        // LINEAGE_A_END
+         if !duplicate {
+             curve.id = unique.len();
+             unique.push(curve);
+@@ -816,5 +970,15 @@
+     }
+     let final_corners: Vec<SfccCorner> =
+         keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
++    // LINEAGE_A_BEGIN
++    #[cfg(all(test, feature = "serde"))]
++    lineage_a::final_state(&out,&final_corners,&remap);
++    // LINEAGE_A_END
+     TrimResult { curves: out, corners: final_corners, unresolved_trims }
+ }
++
++// LINEAGE_A_BEGIN
++#[cfg(all(test, feature = "serde"))]
++#[path = "endpoint_lineage_a.rs"]
++mod lineage_a;
++// LINEAGE_A_END
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/endpoint_lineage_a.rs
+@@ -0,0 +1,322 @@
++//! Test-only, bounded observations of the existing trace/trim/wiring path.
++use super::*;
++use serde_json::{json, Value};
++use std::{cell::RefCell, collections::BTreeMap, io::Write};
++const BYTE_CAP: usize = 512 * 1024;
++const EVENT_CAP: usize = 4096;
++const TARGET: [f64; 3] = [-6.721694817707532, 2.6909777686167193, -8.453331815184598];
++pub(super) fn hex(v: f64) -> String {
++    format!("{:016x}", v.to_bits())
++}
++pub(super) fn point(p: [f64; 3]) -> [String; 3] {
++    p.map(hex)
++}
++pub(super) fn pair(c: &FeatureCurve) -> bool {
++    matches!(c.adjacent_strata, [10, 15] | [15, 10] | [30, 15] | [15, 30])
++}
++pub(super) fn near(p: [f64; 3]) -> bool {
++    (0..3).all(|k| (p[k] - TARGET[k]).abs() <= 0.05)
++}
++#[derive(Clone, Copy)]
++pub(super) enum Scope {
++    Global,
++    Curve,
++    Point,
++}
++#[derive(Default)]
++struct State {
++    events: Vec<Value>,
++    bytes: usize,
++    incomplete: Option<&'static str>,
++    raw: Option<(usize, usize, [usize; 2])>,
++    raw_origin: Option<(usize, usize, [usize; 2])>,
++    probe: Option<(f64, [f64; 3])>,
++}
++thread_local! { static STATE: RefCell<Option<State>> = const { RefCell::new(None) }; }
++fn encoded_size(value: &Value, limit: usize) -> Option<usize> {
++    struct Count {
++        used: usize,
++        limit: usize,
++    }
++    impl Write for Count {
++        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++            if bytes.len() > self.limit - self.used {
++                return Err(std::io::ErrorKind::OutOfMemory.into());
++            }
++            self.used += bytes.len();
++            Ok(bytes.len())
++        }
++        fn flush(&mut self) -> std::io::Result<()> {
++            Ok(())
++        }
++    }
++    let mut count = Count { used: 0, limit };
++    serde_json::to_writer(&mut count, value).ok()?;
++    Some(count.used)
++}
++pub(super) fn record(kind: &'static str, scope: Scope, make: impl FnOnce() -> Value) {
++    STATE.with(|s| {
++        let mut s = s.borrow_mut();
++        let Some(s) = s.as_mut() else { return; };
++        let selected = match scope { Scope::Global => true, Scope::Curve => s.raw.is_some(), Scope::Point => s.probe.is_some() };
++        if s.incomplete.is_some() || !selected { return; }
++        if s.events.len() >= EVENT_CAP { s.incomplete = Some("event_cap"); return; }
++        let value = json!({"kind":kind,"raw":s.raw,"rawOrigin":s.raw_origin,
++            "probe":s.probe.map(|(t,p)|json!({"parameterHex":hex(t),"pointHex":point(p)})),"data":make()});
++        let Some(bytes) = encoded_size(&value, BYTE_CAP - s.bytes) else { s.incomplete = Some("byte_cap"); return; };
++        s.bytes += bytes; s.events.push(value);
++    });
++}
++pub(super) fn start_raw(ci: usize, c: &FeatureCurve) {
++    STATE.with(|s| {
++        if let Some(s) = s.borrow_mut().as_mut() {
++            s.raw = pair(c).then_some((ci, c.id, c.adjacent_strata));
++            s.raw_origin = Some((ci, c.id, c.adjacent_strata));
++            s.probe = None;
++        }
++    });
++    if c.index_polyline.len() > 12288 {
++        STATE.with(|s| {
++            if let Some(s) = s.borrow_mut().as_mut() {
++                if s.raw.is_some() {
++                    s.incomplete = Some("raw_polyline_cap");
++                }
++            }
++        });
++        return;
++    }
++    record("raw_curve", Scope::Curve, || curve(c));
++}
++pub(super) fn clear_raw() {
++    STATE.with(|s| {
++        if let Some(s) = s.borrow_mut().as_mut() {
++            s.raw = None;
++            s.raw_origin = None;
++            s.probe = None;
++        }
++    });
++}
++pub(super) fn clear_probe() {
++    STATE.with(|s| {
++        if let Some(s) = s.borrow_mut().as_mut() {
++            s.probe = None;
++        }
++    });
++}
++pub(super) fn probe(c: &FeatureCurve, t: f64, p: [f64; 3]) {
++    STATE.with(|s| {
++        if let Some(s) = s.borrow_mut().as_mut() {
++            s.probe = (s.raw.is_some() && pair(c) && near(p)).then_some((t, p));
++        }
++    });
++}
++pub(super) fn candidate(p: [f64; 3], id: usize, merged: bool, retained: [f64; 3]) {
++    if near(p) || near(retained) {
++        record(
++            "candidate",
++            Scope::Global,
++            || json!({"incomingHex":point(p),"candidate":id,"merged":merged,"retainedHex":point(retained)}),
++        );
++        STATE.with(|s| {
++            if let Some(s) = s.borrow_mut().as_mut() {
++                if s.raw_origin.is_some() && s.raw.is_none() {
++                    s.incomplete = Some("near_candidate_origin_outside_selected_raw_capture");
++                }
++            }
++        });
++    }
++}
++fn curve(c: &FeatureCurve) -> Value {
++    json!({"id":c.id,"strata":c.adjacent_strata,"native":c.native,"ownerNodeId":c.owner_node_id,
++        "kind":format!("{:?}",c.kind()),"closed":c.closed,"rangeHex":[hex(c.t_min),hex(c.t_max)],
++        "wrapHex":c.param_wrap.map(hex),"corners":[c.corner_start,c.corner_end],
++        "polylineHex":c.index_polyline.iter().copied().map(hex).collect::<Vec<_>>()})
++}
++pub(super) fn run(run: &TrimmedRun, c: &FeatureCurve) {
++    if pair(c) {
++        record(
++            "trim_run",
++            Scope::Curve,
++            || json!({"rawIndex":run.curve_idx,"rangeHex":[hex(run.t0),hex(run.t1)],"closed":run.full_closed}),
++        );
++    }
++}
++pub(super) fn remade(run: &TrimmedRun, c: &FeatureCurve) {
++    if pair(c) {
++        if c.index_polyline.len() > 12288 {
++            STATE.with(|s| {
++                if let Some(s) = s.borrow_mut().as_mut() {
++                    s.incomplete = Some("remade_polyline_cap");
++                }
++            });
++            return;
++        }
++        record(
++            "remade_pre_dedup",
++            Scope::Global,
++            || json!({"rawIndex":run.curve_idx,"runRangeHex":[hex(run.t0),hex(run.t1)],"curve":curve(c)}),
++        );
++    }
++}
++pub(super) fn dedup(c: &FeatureCurve, duplicate: bool, new_id: usize) {
++    if pair(c) {
++        record(
++            "dedup",
++            Scope::Global,
++            || json!({"preDedupId":c.id,"duplicate":duplicate,"newIdIfRetained":new_id,"cornersBeforeCompaction":[c.corner_start,c.corner_end],"strata":c.adjacent_strata}),
++        );
++    }
++}
++pub(super) fn final_state(
++    curves: &[FeatureCurve],
++    corners: &[SfccCorner],
++    remap: &std::collections::HashMap<usize, usize>,
++) {
++    let coordinates = curves
++        .iter()
++        .filter(|c| pair(c))
++        .try_fold(0usize, |n, c| n.checked_add(c.index_polyline.len()));
++    if curves.len() > 1024
++        || corners.len() > 1024
++        || remap.len() > 1024
++        || coordinates.is_none_or(|n| n > 12288)
++        || corners
++            .iter()
++            .filter(|c| near([c.x, c.y, c.z]))
++            .any(|c| c.curve_ends.len() > 64 || c.strata.len() > 64)
++    {
++        STATE.with(|s| {
++            if let Some(s) = s.borrow_mut().as_mut() {
++                s.incomplete = Some("final_geometry_count_cap");
++            }
++        });
++        return;
++    }
++    record(
++        "final",
++        Scope::Global,
++        || json!({"cornerRemap":remap.iter().map(|(&a,&b)|(a,b)).collect::<BTreeMap<_,_>>(),"selectedCurves":curves.iter().filter(|c|pair(c)).map(curve).collect::<Vec<_>>(),"nearCorners":corners.iter().filter(|c|near([c.x,c.y,c.z])).map(|c|json!({"id":c.id,"pointHex":point([c.x,c.y,c.z]),"ends":c.curve_ends,"strata":c.strata})).collect::<Vec<_>>() }),
++    );
++}
++struct Guard;
++impl Guard {
++    fn begin() -> Self {
++        STATE.with(|s| {
++            assert!(s.borrow().is_none());
++            *s.borrow_mut() = Some(State::default());
++        });
++        Self
++    }
++    fn finish(self) -> Value {
++        let s = STATE.with(|s| s.borrow_mut().take().unwrap());
++        let result = json!({"events":s.events,"eventBytes":s.bytes,"complete":s.incomplete.is_none(),"incompleteReason":s.incomplete,"limits":{"serializedCaptureBytes":BYTE_CAP,"events":EVENT_CAP,"polylineScalarsPerRecord":12288},"selection":{"pairs":[[10,15],[30,15]],"pointWindowCenterHex":point(TARGET),"pointWindowHalfExtentHex":hex(0.05)},"extraGeometryQueries":false});
++        if encoded_size(&result, BYTE_CAP).is_some() {
++            result
++        } else {
++            json!({"complete":false,"incompleteReason":"final_capture_byte_cap","eventCount":result["events"].as_array().unwrap().len(),"eventBytes":s.bytes})
++        }
++    }
++}
++impl Drop for Guard {
++    fn drop(&mut self) {
++        STATE.with(|s| {
++            s.borrow_mut().take();
++        });
++    }
++}
++fn normalize_roots(v: &mut Value, ids: &mut BTreeMap<String, usize>) {
++    match v {
++        Value::Object(m) => {
++            if let Some(v) = m.get_mut("rootAddressProcessLocal") {
++                let key = v.as_str().unwrap().to_string();
++                let n = ids.len();
++                *v = json!(*ids.entry(key).or_insert(n));
++            }
++            for x in m.values_mut() {
++                normalize_roots(x, ids);
++            }
++        }
++        Value::Array(a) => {
++            for x in a {
++                normalize_roots(x, ids);
++            }
++        }
++        Value::Number(n) if n.as_u64().is_some_and(|n| n > 9_007_199_254_740_991) => {
++            *v = json!(n.to_string())
++        }
++        _ => {}
++    }
++}
++fn compiled(f: &super::super::feature_set::SfccFeatureSet) -> Value {
++    let curves:Vec<_>=f.curves.iter().map(|c|{let mut v=curve(c);v["tracedRefine"]=c.traced_carriers().map(|(a,b,r)|json!({"strata":[a.id,b.id],"curveEpsHex":hex(r.curve_eps),"minCrossHex":hex(r.min_cross),"maxDisplacementHex":hex(r.max_displacement)})).unwrap_or(Value::Null);v}).collect();
++    let mut result = json!({"curves":curves,"corners":f.corners.iter().map(|c|json!({"id":c.id,"pointHex":point([c.x,c.y,c.z]),"ends":c.curve_ends,"strata":c.strata})).collect::<Vec<_>>(),"strata":f.strata.iter().map(|s|s.graph_capture_identity_b()).collect::<Option<Vec<_>>>().unwrap(),"unresolved":f.unresolved_branch_paths,"traceDiagnostics":format!("{:?}",f.trace_diagnostics)});
++    normalize_roots(&mut result, &mut BTreeMap::new());
++    result
++}
++#[test]
++fn endpoint_lineage_a_controls() {
++    assert_eq!(
++        encoded_size(&json!("x".repeat(BYTE_CAP - 2)), BYTE_CAP),
++        Some(BYTE_CAP)
++    );
++    assert!(encoded_size(&json!("x".repeat(BYTE_CAP - 1)), BYTE_CAP).is_none());
++    let called = std::cell::Cell::new(false);
++    record("off", Scope::Global, || {
++        called.set(true);
++        json!({})
++    });
++    assert!(!called.get());
++    {
++        let _g = Guard::begin();
++        record("only", Scope::Global, || json!({"x":hex(-0.)}));
++    }
++    assert!(STATE.with(|s| s.borrow().is_none()));
++    let g = Guard::begin();
++    for _ in 0..EVENT_CAP + 1 {
++        record("bounded", Scope::Global, || json!({}));
++    }
++    let v = g.finish();
++    assert_eq!(v["complete"], false);
++    assert_eq!(v["incompleteReason"], "event_cap");
++    let g = Guard::begin();
++    record(
++        "huge",
++        Scope::Global,
++        || json!({"text":"x".repeat(BYTE_CAP)}),
++    );
++    let v = g.finish();
++    assert_eq!(v["complete"], false);
++    assert_eq!(v["incompleteReason"], "byte_cap");
++}
++#[test]
++fn endpoint_lineage_a_original_feature_compilation() {
++    let config: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let tree = crate::scene_bridge::build_csg_tree_from_json(config["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let size =
++        config["cube"]["max"][0].as_f64().unwrap() - config["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        (3. * size * size).sqrt(),
++    );
++    let (plain, _) = super::super::feature_set::compile_feature_set(&tree, &tol);
++    let baseline = compiled(&plain);
++    assert_eq!(plain.fingerprint(), 9875508341830920921);
++    let guard = Guard::begin();
++    let (observed, _) = super::super::feature_set::compile_feature_set(&tree, &tol);
++    let capture = guard.finish();
++    let observation = compiled(&observed);
++    assert_eq!(baseline, observation);
++    assert_eq!(observed.fingerprint(), 9875508341830920921);
++    let result = json!({"capture":capture,"sourceFingerprint":observed.fingerprint().to_string(),"observedAndUnobservedCompiledGeometryEqual":true,"compared":"all public curve fields/indexing arrays/traced refinement values; all corners/incidences; stratum source identities normalized for shared-root labels; unresolved and trace counters","hiddenGeometryScope":"constructors and original runtime tokens unchanged; no recursive immutable-tree Debug expansion","sourceScene":config["sceneJson"],"sourceStrata":observed.strata.iter().filter(|s|[10,15,30].contains(&s.id)).map(|s|s.graph_capture_identity_b()).collect::<Option<Vec<_>>>().unwrap(),"tolerances":{"curveEpsHex":hex(tol.curve_eps),"probeDeltaHex":hex(tol.probe_delta),"cornerMergeHex":hex(tol.corner_merge_tol)},"firstLossEstablished":false,"newGeometryAccepted":false});
++    std::fs::write(
++        std::env::var("SFCC_ENDPOINT_LINEAGE_A_RECEIPT").expect("root receipt path"),
++        serde_json::to_vec_pretty(&result).unwrap(),
++    )
++    .unwrap();
++    assert_eq!(
++        result["capture"]["complete"], true,
++        "bounded capture incomplete; do not infer missing lineage"
++    );
++}

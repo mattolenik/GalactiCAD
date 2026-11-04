@@ -3,8 +3,11 @@
 This advances stage 2 of the [implementation plan](../../plans/sfcc-graph-correctness-implementation.md).
 The local graph failure can now be replayed exactly, and a bounded source argument
 shows that the represented crease continues beyond the stored endpoint. The
-actual upstream trace/trim/wiring event that creates that endpoint remains to be
-localized before choosing a repair.
+actual upstream trace/trim/wiring event that creates that endpoint was still
+unlocalized at this package's freeze. **Follow-up:** the
+[executed lineage capture](../sfcc-endpoint-lineage/README.md) subsequently identifies
+finite-flank trimming as that first loss; the sections below retain this package's
+original evidence boundary.
 
 [Fourth-agent consensus and next execution contract](decision.md).
 
@@ -123,7 +126,8 @@ preserved. Passing the old degree guard alone is insufficient. The actual outer
 rounding transition also lies later inside this failed cell, so simply extending
 the native endpoint a little cannot establish a complete component replacement.
 
-Stage 2's exact replay and local source obligation are established; its actual
-upstream loss localization is still open. No new mesh is accepted, no production
+This package established exact replay and the local source obligation; its
+upstream loss question was subsequently resolved by the linked lineage capture.
+No new mesh is accepted, no production
 repair is integrated, and full-component, native/WASM and GPU-reference obligations
 remain open. [Machine-readable summary](summary.json).

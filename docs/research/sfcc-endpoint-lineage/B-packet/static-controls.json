@@ -1,0 +1,8 @@
+{
+  "trimObservationStrippingMatchesBaselineTokens": true,
+  "geometryQueryCallSequenceUnchanged": true,
+  "baselineTrimSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa",
+  "queryCallLexemes": 60,
+  "featureCurvesOriginalPrefixPreserved": true,
+  "authorExecutedGeometry": false
+}

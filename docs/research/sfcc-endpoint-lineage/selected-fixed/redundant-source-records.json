@@ -1,0 +1,167 @@
+{
+  "scope": "retained capture only; does not recover missing final lineage",
+  "refinementSourceRecords": [
+    {
+      "event": 7,
+      "rawIndex": 102,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 9,
+      "rawIndex": 102,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 241,
+      "rawIndex": 103,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 323,
+      "rawIndex": 103,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 338,
+      "rawIndex": 124,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 340,
+      "rawIndex": 124,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 342,
+      "rawIndex": 124,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 344,
+      "rawIndex": 124,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 346,
+      "rawIndex": 124,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 348,
+      "rawIndex": 124,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 353,
+      "rawIndex": 125,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 355,
+      "rawIndex": 125,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 360,
+      "rawIndex": 126,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 362,
+      "rawIndex": 126,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 366,
+      "rawIndex": 127,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 368,
+      "rawIndex": 127,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 375,
+      "rawIndex": 128,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 377,
+      "rawIndex": 128,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 379,
+      "rawIndex": 128,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 381,
+      "rawIndex": 128,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 390,
+      "rawIndex": 129,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 392,
+      "rawIndex": 129,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 394,
+      "rawIndex": 129,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 396,
+      "rawIndex": 129,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 398,
+      "rawIndex": 129,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 400,
+      "rawIndex": 129,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 405,
+      "rawIndex": 130,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 407,
+      "rawIndex": 130,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 641,
+      "rawIndex": 131,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 643,
+      "rawIndex": 131,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 645,
+      "rawIndex": 131,
+      "exactlyMatchesRawRecord": true
+    },
+    {
+      "event": 727,
+      "rawIndex": 131,
+      "exactlyMatchesRawRecord": true
+    }
+  ],
+  "allMatch": true,
+  "compactBytesSavedForRetainedRows": 181378
+}

@@ -1,0 +1,17 @@
+
+running 1 test
+test sfcc::trim::lineage_b::tests::endpoint_lineage_b_original_feature_compile_is_observational ... 
+thread 'sfcc::trim::lineage_b::tests::endpoint_lineage_b_original_feature_compile_is_observational' (4410215) panicked at kernel/src/sfcc/endpoint_lineage_b.rs:708:9:
+assertion `left == right` failed: capture truncated; cannot infer missing lineage
+  left: Bool(false)
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sfcc::trim::lineage_b::tests::endpoint_lineage_b_original_feature_compile_is_observational
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 324 filtered out; finished in 1.71s
+

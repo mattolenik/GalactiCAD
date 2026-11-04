@@ -1,0 +1,6 @@
+{
+  "trimByteIdenticalToExecutedBuildfix": true,
+  "featureCurvesByteIdenticalToExecutedBuildfix": true,
+  "scope": "only observer representation and its new control changed",
+  "authorExecutedGeometry": false
+}

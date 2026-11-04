@@ -1,0 +1,26 @@
+{
+  "source": "/tmp/sfcc-graph-lineage-b-reviewed",
+  "base": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "reviewBase": "/tmp/sfcc-graph-lineage-b",
+  "scope": "test-only bounded feature-compilation lineage after fourth-review corrections; execution pending",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "4e3f59fe7d7b9e7e41881b79209d7da7025f2e03ea11f0d404aa63c7c9a65259",
+      "baseSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/endpoint_lineage_b.rs",
+      "sha256": "185efde22d3d23a27f185d619096b46890815bc9b86db0546d9d45501f7fd9ea",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+      "sha256": "699400236bcfa126402c729fdd11b677996ddeb2bebe98c22f45beb468e2b493",
+      "baseSha256": "bf6cdc12884cad8e240a0c3dae5f34425d6ae30a5cefbc4562203a916b8b3d24"
+    }
+  ],
+  "patchSha256": "bfd5d3b9465641d3af6bae977e90bc315a885c93b9e83b291b8635ec0479100b",
+  "correctionsSha256": "16f3626b17cdf936ff0c1f7efe9ef1469191a9cd74512660d8a5b6ee6d739e5b",
+  "authorExecutedGeometry": false
+}

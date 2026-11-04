@@ -1,0 +1,15 @@
+{
+  "source": "/tmp/sfcc-graph-lineage-b-reviewed",
+  "candidateManifestSha256": "0d6eebb987a361eefa017935ebcfb9a2852e8f9a3dd14b49c8e77b172b12ae32",
+  "scope": "one selected feature-only lineage capture plus unobserved same-input equality control",
+  "buildCapSeconds": 120,
+  "focusedCampaignCapSeconds": 60,
+  "controlFilter": "endpoint_lineage_b_controls",
+  "captureFilter": "endpoint_lineage_b_original_feature_compile_is_observational",
+  "receiptEnv": "SFCC_ENDPOINT_LINEAGE_B_RECEIPT",
+  "newGeometryAuthorized": false,
+  "octreeOrPrivateOrFullExportAuthorized": false,
+  "stopOnIncompleteOrMismatch": true,
+  "productionRuntimeBaseline": "421f5a9",
+  "currentDocumentationCommit": "aa7f476"
+}

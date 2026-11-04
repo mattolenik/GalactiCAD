@@ -1,0 +1,44 @@
+{
+  "status": "causal localization accepted by independent fourth review",
+  "firstLoss": "finite flank search exhaustion classified as dead during trim",
+  "sourceSnapshot": "original full knob on executed Round18 + Stage1 diagnostic source",
+  "rawToFinal": {
+    "20": {
+      "rawIndex": 103,
+      "preDedupId": 20,
+      "finalCorner": 27
+    },
+    "33": {
+      "rawIndex": 131,
+      "preDedupId": 39,
+      "finalCorner": 27
+    }
+  },
+  "physicalLastAlive": {
+    "sample": 986,
+    "rawParameterHex": "40506e2bbd5eaf58",
+    "height": 2.6909777686167193
+  },
+  "physicalFinalDead": {
+    "sample": 987,
+    "rawParameterHex": "40506e2beb8b1ae3",
+    "height": 2.6909800203269927,
+    "nativeFlank": "Ok(true)",
+    "cylinderFlanks": "10 domain rejections, Ok(false)"
+  },
+  "bisectionMidpointClassifications": 14,
+  "stopReason": "parameter_distance_below_corner_merge_quarter",
+  "endpointRefinement": "no accepted triple; seed retained",
+  "cornerOrigin": "raw103 creates candidate27; raw131 merges into it",
+  "complete": true,
+  "lineageJoinComplete": true,
+  "compiledOutputExactlyEqual": true,
+  "eventCount": 766,
+  "eventBytes": 347817,
+  "completeCompactBytes": 356778,
+  "sameCap": 524288,
+  "all765OldRetainedEventsPreserved": true,
+  "productionRuntimeChanged": false,
+  "geometryRepairImplemented": false,
+  "fullComponentAccepted": false
+}

@@ -1,0 +1,19 @@
+{
+  "source": "/tmp/sfcc-graph-lineage-a",
+  "base": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "6ff7cdeb9e4e56e38670738ccb44e978e5b1beeaa45dde5b3752094729e831c4",
+      "baseSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/endpoint_lineage_a.rs",
+      "sha256": "9238eb6c3764e9dca034e04f7aed40f4a70b56dd6794f9ae540b497630bc8e70",
+      "baseSha256": null
+    }
+  ],
+  "scope": "test-only bounded feature-compilation observation; no algorithm repair",
+  "patchSha256": "5e156a12ef6091cda33623786b4b22ff5781f9ca12537fe8a5b33a80c5cf6b84",
+  "authorExecutedGeometry": false
+}

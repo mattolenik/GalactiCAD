@@ -1,0 +1,7 @@
+{
+  "trimObservationStrippingMatchesBaselineTokens": true,
+  "geometryQueryCallSequenceUnchanged": true,
+  "queryCallLexemes": 60,
+  "featureCurvesOriginalPrefixPreserved": true,
+  "authorExecutedGeometry": false
+}

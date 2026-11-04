@@ -1,0 +1,10 @@
+
+running 5 tests
+test sfcc::trim::lineage_b::tests::endpoint_lineage_b_controls_are_bounded_and_clean ... ok
+test sfcc::trim::lineage_b::tests::endpoint_lineage_b_controls_bisection_stop_is_actual ... ok
+test sfcc::trim::lineage_b::tests::endpoint_lineage_b_controls_final_bounds_precede_collection ... ok
+test sfcc::trim::lineage_b::tests::endpoint_lineage_b_controls_record_stored_sources_and_refuse_descriptor_bounds ... ok
+test sfcc::trim::lineage_b::tests::endpoint_lineage_b_controls_references_expand_exactly_and_missing_sources_refuse ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 321 filtered out; finished in 0.00s
+

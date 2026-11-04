@@ -1,0 +1,357 @@
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -223,11 +223,19 @@
+ ) -> f64 {
+     let mut a = t_alive;
+     let mut d = t_dead;
++    #[cfg(all(test, feature = "serde"))]
++    let mut lineage_iterations=0usize;
++    #[cfg(all(test, feature = "serde"))]
++    let mut lineage_stop="iteration_cap";
+     for _ in 0..40 {
+         let m = (a + d) / 2.0;
+         if curve.param_distance(a, d) < tol.corner_merge_tol / 4.0 {
++            #[cfg(all(test, feature = "serde"))]
++            {lineage_stop="parameter_distance_below_corner_merge_quarter";}
+             break;
+         }
++        #[cfg(all(test, feature = "serde"))]
++        {lineage_iterations+=1;}
+         if alive(m) {
+             a = m;
+         } else {
+@@ -235,7 +243,7 @@
+         }
+     }
+     #[cfg(all(test, feature = "serde"))]
+-    lineage_b::bracket(t_alive,t_dead,a,d);
++    lineage_b::bracket(t_alive,t_dead,a,d,lineage_iterations,lineage_stop);
+     a // retain the known-alive side of the tolerance boundary
+ }
+ 
+--- a/gcad-wasm/kernel/src/sfcc/endpoint_lineage_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/endpoint_lineage_b.rs
+@@ -135,12 +135,7 @@
+             refuse("source_descriptor_bound");
+             return;
+         };
+-        if let Some(n) = v["leafIndex"]
+-            .as_u64()
+-            .filter(|n| *n > 9_007_199_254_740_991)
+-        {
+-            v["leafIndex"] = json!(format!("u64:{n:016x}"));
+-        }
++        safe_integers(&mut v);
+         values.push(v);
+     }
+     emit(
+@@ -179,10 +174,33 @@
+         if c.index_polyline.len() > WORD_CAP {
+             refuse("raw_polyline_cap");
+         } else {
+-            emit("raw_received", || curve_record(c));
++            if let Some(record) = source_record(c) {
++                emit("raw_received", || record);
++            } else {
++                refuse("raw_stored_carrier_descriptor_bound");
++            }
+         }
+     }
+     CurveScope(old)
++}
++fn safe_integers(value: &mut Value) {
++    match value {
++        Value::Number(n) => {
++            if let Some(v) = n.as_u64().filter(|&v| v > 9_007_199_254_740_991) {
++                *value = json!(format!("u64:{v:016x}"));
++            }
++        }
++        Value::Array(a) => a.iter_mut().for_each(safe_integers),
++        Value::Object(m) => m.values_mut().for_each(safe_integers),
++        _ => {}
++    }
++}
++fn source_record(c: &FeatureCurve) -> Option<Value> {
++    let mut stored = c.lineage_stored_carriers_b()?;
++    safe_integers(&mut stored);
++    let mut record = curve_record(c);
++    record["storedTracedCarriers"] = stored;
++    Some(record)
+ }
+ fn curve_record(c: &FeatureCurve) -> Value {
+     json!({"id":c.id,"strata":c.adjacent_strata,"native":c.native,"ownerNodeId":c.owner_node_id,"kind":format!("{:?}",c.kind()),"closed":c.closed,"rangeHex":[hex(c.t_min),hex(c.t_max)],"wrapHex":c.param_wrap.map(hex),"cornerEnds":[c.corner_start,c.corner_end],"indexPolylineHex":c.index_polyline.iter().copied().map(hex).collect::<Vec<_>>()})
+@@ -265,11 +283,18 @@
+         );
+     }
+ }
+-pub(crate) fn bracket(a: f64, d: f64, final_a: f64, final_d: f64) {
++pub(crate) fn bracket(
++    a: f64,
++    d: f64,
++    final_a: f64,
++    final_d: f64,
++    iterations: usize,
++    stop: &'static str,
++) {
+     if active_curve() {
+         emit(
+             "bisection",
+-            || json!({"initialAliveHex":hex(a),"initialDeadHex":hex(d),"finalAliveHex":hex(final_a),"finalDeadHex":hex(final_d)}),
++            || json!({"initialAliveHex":hex(a),"initialDeadHex":hex(d),"finalAliveHex":hex(final_a),"finalDeadHex":hex(final_d),"midpointClassifications":iterations,"stopReason":stop}),
+         );
+     }
+ }
+@@ -300,9 +325,16 @@
+             refuse("refinement_source_cap");
+             return;
+         }
++        if !enabled() {
++            return;
++        }
++        let Some(source) = source_record(curve) else {
++            refuse("refinement_stored_carrier_descriptor_bound");
++            return;
++        };
+         emit(
+             "refine_transition",
+-            || json!({"source":curve_record(curve),"parameterHex":hex(t),"seedHex":point(seed),"selectedHex":best.map(point),"outputHex":point(best.unwrap_or(seed)),"reason":if best.is_some(){"accepted_projected_candidate"}else{"no_accepted_candidate_seed_retained"},"bestDistanceHex":hex(distance),"maxDistanceHex":hex(limit)}),
++            || json!({"source":source,"parameterHex":hex(t),"seedHex":point(seed),"selectedHex":best.map(point),"outputHex":point(best.unwrap_or(seed)),"reason":if best.is_some(){"accepted_projected_candidate"}else{"no_accepted_candidate_seed_retained"},"bestDistanceHex":hex(distance),"maxDistanceHex":hex(limit)}),
+         );
+     }
+ }
+@@ -356,6 +388,46 @@
+         );
+     }
+ }
++fn final_bounds(
++    c: &[FeatureCurve],
++    corners: &[SfccCorner],
++    remap_count: usize,
++) -> Result<(), &'static str> {
++    if remap_count > 512 || corners.len() > 512 {
++        return Err("final_corner_count_cap");
++    }
++    if c.len() > 4096 {
++        return Err("final_input_curve_count_cap");
++    }
++    let mut count = 0usize;
++    let mut words = 0usize;
++    for curve in c.iter().filter(|c| selected(c)) {
++        count = count.checked_add(1).ok_or("final_curve_count_overflow")?;
++        words = words
++            .checked_add(curve.index_polyline.len())
++            .ok_or("final_polyline_words_overflow")?;
++        if count > 64 || curve.index_polyline.len() > WORD_CAP {
++            return Err("final_curve_cap");
++        }
++        if words > WORD_CAP {
++            return Err("final_aggregate_polyline_cap");
++        }
++    }
++    let mut incidence = 0usize;
++    for corner in corners {
++        if corner.strata.len() > 128 || corner.curve_ends.len() > 128 {
++            return Err("final_corner_incidence_cap");
++        }
++        incidence = incidence
++            .checked_add(corner.strata.len())
++            .and_then(|n| n.checked_add(corner.curve_ends.len()))
++            .ok_or("final_corner_incidence_overflow")?;
++        if incidence > 4096 {
++            return Err("final_total_incidence_cap");
++        }
++    }
++    Ok(())
++}
+ pub(crate) fn finish(
+     c: &[FeatureCurve],
+     corners: &[SfccCorner],
+@@ -364,15 +436,11 @@
+     if !enabled() {
+         return;
+     }
+-    if remap.len() > 512 {
+-        refuse("corner_remap_cap");
++    if let Err(reason) = final_bounds(c, corners, remap.len()) {
++        refuse(reason);
+         return;
+     }
+     let selected: Vec<_> = c.iter().filter(|c| selected(c)).collect();
+-    if selected.len() > 64 || selected.iter().any(|c| c.index_polyline.len() > WORD_CAP) {
+-        refuse("final_curve_cap");
+-        return;
+-    }
+     emit("final", || {
+         let mut mapping: Vec<_> = remap.iter().map(|(&a, &b)| [a, b]).collect();
+         mapping.sort();
+@@ -415,6 +483,151 @@
+         let mut count = Count(0);
+         assert_eq!(count.write(&vec![0; BYTE_CAP]).unwrap(), BYTE_CAP);
+         assert!(count.write(&[0]).is_err());
++    }
++    #[test]
++    fn endpoint_lineage_b_controls_record_stored_sources_and_refuse_descriptor_bounds() {
++        use crate::{
++            sfcc::{
++                feature_curves::{make_traced_curve, TracedRefine},
++                field_branches::FieldRef,
++            },
++            strata::{Stratum, StratumIdentity},
++        };
++        let identity = |id| StratumIdentity {
++            id,
++            owner_node_id: -1,
++            leaf_index: usize::MAX,
++            local_index: 0,
++            sign: 1.,
++        };
++        let a = Stratum::plane(identity(101), 1., 0., 0., 0.);
++        let b = Stratum::plane(identity(102), 0., 0., 1., 0.);
++        let refine = TracedRefine {
++            curve_eps: 1e-9,
++            min_cross: 0.01,
++            max_displacement: 0.02,
++        };
++        let make = |a: Stratum| {
++            let mut c = make_traced_curve(
++                0,
++                [101, 102],
++                vec![0., 0., 0., 0., 1., 0.],
++                false,
++                a,
++                b.clone(),
++                refine,
++                -1,
++            );
++            c.adjacent_strata = [10, 15];
++            c
++        };
++        let mut sentinel =
++            json!({"branch":{"path":[usize::MAX]},"partners":[usize::MAX],"leafIndex":usize::MAX});
++        safe_integers(&mut sentinel);
++        let encoded = format!("u64:{:016x}", usize::MAX);
++        assert_eq!(sentinel["branch"]["path"][0], encoded);
++        assert_eq!(sentinel["partners"][0], encoded);
++        assert_eq!(sentinel["leafIndex"], encoded);
++        let c = make(a.clone());
++        let record = source_record(&c).unwrap();
++        let (sa, sb, r) = c.traced_carriers().unwrap();
++        assert_eq!(record["strata"], json!([10, 15]));
++        assert_eq!(record["storedTracedCarriers"]["ids"], json!([sa.id, sb.id]));
++        assert_eq!(
++            record["storedTracedCarriers"]["sources"][0]["leafIndex"],
++            format!("u64:{:016x}", usize::MAX)
++        );
++        assert_eq!(
++            record["storedTracedCarriers"]["refineHex"],
++            json!([r.curve_eps, r.min_cross, r.max_displacement].map(hex))
++        );
++        let domain = FieldRef::new(
++            std::sync::Arc::new(crate::sdf::leaf_at(
++                crate::sdf::Shape::Sphere { r: 1. },
++                [0.; 3],
++            )),
++            vec![],
++        );
++        let one = a.with_domain(domain);
++        let mut oversized = one.clone();
++        for _ in 0..16 {
++            oversized.merge_domains(&one);
++        }
++        let c = make(oversized);
++        assert!(source_record(&c).is_none());
++        let scope = Scope::begin();
++        {
++            let _curve = curve_scope(0, &c);
++        }
++        assert_eq!(
++            scope.finish()["incompleteReason"],
++            "raw_stored_carrier_descriptor_bound"
++        );
++    }
++    #[test]
++    fn endpoint_lineage_b_controls_final_bounds_precede_collection() {
++        use crate::sfcc::feature_curves::make_segment_curve;
++        let corner = |n| SfccCorner {
++            id: 0,
++            x: 0.,
++            y: 0.,
++            z: 0.,
++            strata: vec![0; n],
++            curve_ends: vec![],
++        };
++        let many: Vec<_> = (0..513).map(|_| corner(0)).collect();
++        assert_eq!(final_bounds(&[], &many, 0), Err("final_corner_count_cap"));
++        assert_eq!(
++            final_bounds(&[], &[corner(129)], 0),
++            Err("final_corner_incidence_cap")
++        );
++        let total: Vec<_> = (0..33).map(|_| corner(128)).collect();
++        assert_eq!(
++            final_bounds(&[], &total, 0),
++            Err("final_total_incidence_cap")
++        );
++        let mut curve = make_segment_curve(0, -1, [10, 15], 0., 0., 0., 1., 0., 0.);
++        curve.index_polyline = vec![0.; WORD_CAP / 2 + 1];
++        assert_eq!(
++            final_bounds(&[curve.clone(), curve], &[], 0),
++            Err("final_aggregate_polyline_cap")
++        );
++    }
++    #[test]
++    fn endpoint_lineage_b_controls_bisection_stop_is_actual() {
++        let curve = crate::sfcc::feature_curves::make_segment_curve(
++            0,
++            -1,
++            [10, 15],
++            0.,
++            0.,
++            0.,
++            1.,
++            0.,
++            0.,
++        );
++        let mut tol =
++            crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 1.);
++        for (merge, expected, n) in [
++            (1., "parameter_distance_below_corner_merge_quarter", 0),
++            (0., "iteration_cap", 40),
++        ] {
++            tol.corner_merge_tol = merge;
++            let scope = Scope::begin();
++            {
++                let _curve = curve_scope(0, &curve);
++                super::super::bisect_transition(&|t| t < 0.5, &curve, 0.45, 0.55, &tol);
++            }
++            let report = scope.finish();
++            let row = report["events"]
++                .as_array()
++                .unwrap()
++                .iter()
++                .find(|r| r["kind"] == "bisection")
++                .unwrap();
++            assert_eq!(row["data"]["stopReason"], expected);
++            assert_eq!(row["data"]["midpointClassifications"], n);
++        }
+     }
+     fn join(report: &Value, final_id: usize) -> Option<Value> {
+         let rows = report["events"].as_array()?;
+--- a/gcad-wasm/kernel/src/sfcc/feature_curves.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature_curves.rs
+@@ -938,3 +938,16 @@
+         }
+     }
+ }
++
++#[cfg(all(test, feature="serde"))]
++impl FeatureCurve {
++    /// Same stored carriers/refinement returned by traced_carriers(), borrowed to avoid clones.
++    pub(crate) fn lineage_stored_carriers_b(&self)->Option<serde_json::Value> {
++        let Geom::Traced(t)=&self.geom else{return Some(serde_json::Value::Null);};
++        Some(serde_json::json!({"ids":[t.sa.id,t.sb.id],
++            "sources":[t.sa.graph_capture_identity_b()?,t.sb.graph_capture_identity_b()?],
++            "refineHex":[t.refine.curve_eps,t.refine.min_cross,t.refine.max_displacement].map(|x|format!("{:016x}",x.to_bits())),
++            "source":"stored TracedData carriers, not canonical adjacent_strata tags",
++            "rootLabelsAreProcessLocal":true}))
++    }
++}

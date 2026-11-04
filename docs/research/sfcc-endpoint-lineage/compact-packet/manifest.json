@@ -1,0 +1,26 @@
+{
+  "source": "/tmp/sfcc-graph-lineage-b-compact",
+  "base": "/tmp/sfcc-graph-stage1-b-reviewed",
+  "correctionBase": "/tmp/sfcc-graph-lineage-b-buildfix",
+  "scope": "same-cap checked reference representation for repeated selected raw source metadata",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "4e3f59fe7d7b9e7e41881b79209d7da7025f2e03ea11f0d404aa63c7c9a65259",
+      "baseSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/endpoint_lineage_b.rs",
+      "sha256": "1af1e2fea6e109a2653ec5da4e7ba0adaede00bc3881a2b8cc62e6a223c98f08",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+      "sha256": "d4f663addc6612d46bcad62ce1f7f444b0e298c2429a71034a055d4c6fb8dc79",
+      "baseSha256": "bf6cdc12884cad8e240a0c3dae5f34425d6ae30a5cefbc4562203a916b8b3d24"
+    }
+  ],
+  "patchSha256": "dd9885751b6c16e8fd1d53c52be4238c78ba3548d82fe3d959e475921f49bf96",
+  "correctionSha256": "f716cdf277f1e2ba6d515d53177a2d63b077eb429c418840eb1548c97bc584f6",
+  "authorExecutedGeometry": false
+}

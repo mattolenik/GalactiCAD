@@ -1,0 +1,11 @@
+--- a/gcad-wasm/kernel/src/sfcc/feature_curves.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature_curves.rs
+@@ -946,7 +946,7 @@
+         let Geom::Traced(t)=&self.geom else{return Some(serde_json::Value::Null);};
+         Some(serde_json::json!({"ids":[t.sa.id,t.sb.id],
+             "sources":[t.sa.graph_capture_identity_b()?,t.sb.graph_capture_identity_b()?],
+-            "refineHex":[t.refine.curve_eps,t.refine.min_cross,t.refine.max_displacement].map(|x|format!("{:016x}",x.to_bits())),
++            "refineHex":([t.refine.curve_eps,t.refine.min_cross,t.refine.max_displacement].map(|x|format!("{:016x}",x.to_bits()))),
+             "source":"stored TracedData carriers, not canonical adjacent_strata tags",
+             "rootLabelsAreProcessLocal":true}))
+     }

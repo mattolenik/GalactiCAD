@@ -1,0 +1,9 @@
+{
+  "oldRetainedEventCount": 765,
+  "newEventCount": 766,
+  "expandedPrefixExactlyEqual": true,
+  "normalization": "resolve checked raw references and normalize process-local root address labels by sharing partition",
+  "newComplete": true,
+  "targetLineageJoinComplete": true,
+  "compactTotalBytes": 356778
+}

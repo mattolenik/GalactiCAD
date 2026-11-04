@@ -1,0 +1,88 @@
+[
+  {
+    "path": "gcad-wasm/kernel/src/sfcc/feature_set.rs",
+    "sha256": "00c2d6d254abf4c6173c87ca6424d51a4158fc16da053300f018dd925e7104e3",
+    "anchors": [
+      {
+        "anchor": "pub fn compile_feature_set(",
+        "line": 1874
+      },
+      {
+        "anchor": "pub fn fingerprint(",
+        "line": 71
+      }
+    ]
+  },
+  {
+    "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+    "sha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa",
+    "anchors": [
+      {
+        "anchor": "fn classification_params(",
+        "line": 162
+      },
+      {
+        "anchor": "fn bisect_transition(",
+        "line": 179
+      },
+      {
+        "anchor": "pub fn trim_curve(",
+        "line": 204
+      },
+      {
+        "anchor": "fn nearest_candidate(",
+        "line": 269
+      },
+      {
+        "anchor": "fn remake_curve(",
+        "line": 294
+      },
+      {
+        "anchor": "pub fn trim_and_wire(",
+        "line": 419
+      },
+      {
+        "anchor": "let refine_transition =",
+        "line": 437
+      },
+      {
+        "anchor": "let mut unique: Vec<FeatureCurve>",
+        "line": 746
+      },
+      {
+        "anchor": "let final_corners: Vec<SfccCorner>",
+        "line": 817
+      }
+    ]
+  },
+  {
+    "path": "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+    "sha256": "bf6cdc12884cad8e240a0c3dae5f34425d6ae30a5cefbc4562203a916b8b3d24",
+    "anchors": [
+      {
+        "anchor": "pub fn make_traced_curve(",
+        "line": 803
+      }
+    ]
+  },
+  {
+    "path": "gcad-wasm/kernel/src/sfcc/seam_trace.rs",
+    "sha256": "c56d0dc980319aa12bef584f9ee788a04515c8eec859b1cb0a4b0b81f6ad4a30",
+    "anchors": [
+      {
+        "anchor": "pub fn trace_carrier_pair(",
+        "line": 294
+      }
+    ]
+  },
+  {
+    "path": "gcad-wasm/kernel/src/sfcc/diagnosis.rs",
+    "sha256": "57170ab149d34d88d5d83a8e281a83fae1e5ca42fe7035bad67a52355503f380",
+    "anchors": [
+      {
+        "anchor": "pub(crate) fn features(",
+        "line": 276
+      }
+    ]
+  }
+]

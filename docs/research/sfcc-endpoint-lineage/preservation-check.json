@@ -1,0 +1,6 @@
+{
+  "patchAppliedAgainst": "executed Stage1 B-reviewed source",
+  "inputHashesVerified": 157,
+  "allMatch": true,
+  "scope": "source preservation only; no build or geometry rerun"
+}

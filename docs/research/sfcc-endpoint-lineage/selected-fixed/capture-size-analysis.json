@@ -1,0 +1,126 @@
+{
+  "perKind": {
+    "source_occurrences": [
+      1,
+      958
+    ],
+    "raw_received": [
+      16,
+      61634
+    ],
+    "trim_runs": [
+      16,
+      3206
+    ],
+    "bisection": [
+      24,
+      7702
+    ],
+    "refine_transition": [
+      32,
+      196150
+    ],
+    "endpoint_candidate": [
+      32,
+      10035
+    ],
+    "status_point": [
+      32,
+      6480
+    ],
+    "flank_attempt": [
+      326,
+      137965
+    ],
+    "flank_result": [
+      60,
+      9948
+    ],
+    "status_result": [
+      32,
+      4932
+    ],
+    "status_reason": [
+      2,
+      383
+    ],
+    "refinement_trial": [
+      160,
+      30108
+    ],
+    "remake": [
+      16,
+      28630
+    ],
+    "dedup": [
+      16,
+      2064
+    ]
+  },
+  "largestEvents": [
+    [
+      8049,
+      394,
+      "refine_transition"
+    ],
+    [
+      8049,
+      392,
+      "refine_transition"
+    ],
+    [
+      8049,
+      390,
+      "refine_transition"
+    ],
+    [
+      8049,
+      342,
+      "refine_transition"
+    ],
+    [
+      8049,
+      340,
+      "refine_transition"
+    ],
+    [
+      8049,
+      338,
+      "refine_transition"
+    ],
+    [
+      8002,
+      400,
+      "refine_transition"
+    ],
+    [
+      8002,
+      398,
+      "refine_transition"
+    ],
+    [
+      8002,
+      396,
+      "refine_transition"
+    ],
+    [
+      8002,
+      348,
+      "refine_transition"
+    ],
+    [
+      8002,
+      346,
+      "refine_transition"
+    ],
+    [
+      8002,
+      344,
+      "refine_transition"
+    ]
+  ],
+  "complete": false,
+  "eventCount": 765,
+  "eventBytes": 500195,
+  "incompleteReason": "aggregate_byte_cap"
+}

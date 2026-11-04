@@ -1,0 +1,9 @@
+{
+  "source": "/tmp/sfcc-graph-lineage-b-buildfix",
+  "base": "/tmp/sfcc-graph-lineage-b-reviewed",
+  "reason": "serde_json json! macro requires parentheses around array.map value expression; no geometry or observer logic changed",
+  "file": "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+  "baseSha256": "699400236bcfa126402c729fdd11b677996ddeb2bebe98c22f45beb468e2b493",
+  "sha256": "d4f663addc6612d46bcad62ce1f7f444b0e298c2429a71034a055d4c6fb8dc79",
+  "captureRanBeforeFix": false
+}

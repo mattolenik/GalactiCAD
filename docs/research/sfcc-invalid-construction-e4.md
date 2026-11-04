@@ -1330,6 +1330,35 @@ relaxation or a blind probe-factor reduction.
 retain the executed results and limitations. No replacement geometry has been
 accepted and no production meshing logic changed.
 
+### Actual first loss localized to finite-flank trimming
+
+The next three-agent investigation and fourth review captured the actual
+feature-compilation lineage. Raw curve 103 becomes final curve 20; raw curve
+131 becomes pre-dedup curve 39 and final curve 33. The final parameter 31 is a
+remade indexing parameter, not the raw parameter.
+
+For raw 103, sample 987 at y=2.6909800203269927 lies in the source-checked
+neighborhood. Its native-side flank succeeds, but all ten cylinder-side probes
+are domain-rejected. The finite search returns `Ok(false)`, not uncertainty.
+Fourteen bisection classifications retain the preceding alive point at
+y=2.6909777686167193. Endpoint refinement retains that seed, candidate 27 is
+created there, and the alias endpoint later merges into it. Remaking and final
+corner compaction preserve the cutoff. This establishes trimming as the first
+loss for the witnessed continuation, rather than raw tracing or later wiring.
+
+The observation preserves all compiled output. An initial byte-cap refusal is
+retained; a reviewed lossless source-reference representation fits under the same
+512 KiB cap and expands to the exact 765-event old prefix. The final 766-event
+capture has complete target lineage joins. This is a diagnostic result, not a
+meshing repair. It does not show the domain predicate itself is wrong or identify
+each rejected probe's inner ancestor.
+
+[Complete lineage and stage-3 repair contract](sfcc-endpoint-lineage/README.md)
+require a source-level continuation/exposure repair with unresolved outcomes where
+proof is unavailable. A global probe-factor reduction, duplicate edge or relaxed
+degree guard does not close the obligation. Later blend continuation, complete
+component reconstruction and production acceptance remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

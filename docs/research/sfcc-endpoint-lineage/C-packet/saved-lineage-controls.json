@@ -1,0 +1,482 @@
+{
+  "scope": "saved compiled indexing data only; no field/curve evaluation and no complete-curve absence theorem",
+  "receiptSha256": "6acd91cc9a04c34ac394bf669ec1d54ba487ab4ad8ed18559a9b7e894c4a3543",
+  "capturedCornerHex": [
+    "c01ae303f75efc73",
+    "4005871f5a33c661",
+    "c020e81b1b90e888"
+  ],
+  "sameCarrierFamily": [
+    {
+      "finalId": 18,
+      "strata": [
+        10,
+        15
+      ],
+      "cornerEnds": [
+        24,
+        28
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "3ff0000000000000"
+      ],
+      "recordedIndexSamples": 2,
+      "recordedYMin": 2.6959318961636476,
+      "recordedYMax": 2.697445032061129,
+      "firstHex": [
+        "401f1654b54231f8",
+        "4005945e0f9bae88",
+        "c01dff3fe44ec709"
+      ],
+      "lastHex": [
+        "401f1324afef5766",
+        "40059144bdf2210b",
+        "c01e028d38722fea"
+      ]
+    },
+    {
+      "finalId": 19,
+      "strata": [
+        10,
+        15
+      ],
+      "cornerEnds": [
+        28,
+        25
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403a000000000000"
+      ],
+      "recordedIndexSamples": 27,
+      "recordedYMin": -2.492038035725069,
+      "recordedYMax": 2.6959318961636476,
+      "firstHex": [
+        "401f1324afef5766",
+        "40059144bdf2210b",
+        "c01e028d38722fea"
+      ],
+      "lastHex": [
+        "c0191a49447b03b7",
+        "c003efb1a33e9e36",
+        "c021943e39017ba9"
+      ]
+    },
+    {
+      "finalId": 20,
+      "strata": [
+        10,
+        15
+      ],
+      "cornerEnds": [
+        26,
+        27
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403f000000000000"
+      ],
+      "recordedIndexSamples": 32,
+      "recordedYMin": -2.492038035725069,
+      "recordedYMax": 2.6909777686167193,
+      "firstHex": [
+        "c022b7c9d907b15a",
+        "c003efb1a33e9e36",
+        "40158f2508500325"
+      ],
+      "lastHex": [
+        "c01ae303f75efc73",
+        "4005871f5a33c661",
+        "c020e81b1b90e888"
+      ]
+    },
+    {
+      "finalId": 21,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        24,
+        28
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "3ff0000000000000"
+      ],
+      "recordedIndexSamples": 2,
+      "recordedYMin": 2.6959318961636476,
+      "recordedYMax": 2.697445032061129,
+      "firstHex": [
+        "401f1654b54231f8",
+        "4005945e0f9bae88",
+        "c01dff3fe44ec709"
+      ],
+      "lastHex": [
+        "401f1324afef5766",
+        "40059144bdf2210b",
+        "c01e028d38722fea"
+      ]
+    },
+    {
+      "finalId": 22,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        28,
+        25
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403a000000000000"
+      ],
+      "recordedIndexSamples": 27,
+      "recordedYMin": -2.492038035725069,
+      "recordedYMax": 2.6959318961636476,
+      "firstHex": [
+        "401f1324afef5766",
+        "40059144bdf2210b",
+        "c01e028d38722fea"
+      ],
+      "lastHex": [
+        "c0191a49447b03b7",
+        "c003efb1a33e9e36",
+        "c021943e39017ba9"
+      ]
+    },
+    {
+      "finalId": 23,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        29,
+        30
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403c000000000000"
+      ],
+      "recordedIndexSamples": 29,
+      "recordedYMin": -8.99560248791687,
+      "recordedYMax": -5.507961964274931,
+      "firstHex": [
+        "c02589bab990a373",
+        "c01608272e60b0e5",
+        "bfea2a555054e0d9"
+      ],
+      "lastHex": [
+        "c01d0d857b55bb7c",
+        "c021fdbf9bfad6a0",
+        "401ff8b119d58c57"
+      ]
+    },
+    {
+      "finalId": 24,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        31,
+        32
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "4008000000000000"
+      ],
+      "recordedIndexSamples": 4,
+      "recordedYMin": -9.001507502779655,
+      "recordedYMax": -9.000000460058395,
+      "firstHex": [
+        "c01d03ba3d751a80",
+        "c02200000f6fdf1c",
+        "402000ca5ca53f2d"
+      ],
+      "lastHex": [
+        "c01d03c1673b487d",
+        "c02200c597664645",
+        "402000c71d74f3b2"
+      ]
+    },
+    {
+      "finalId": 25,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        33,
+        34
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "4044800000000000"
+      ],
+      "recordedIndexSamples": 42,
+      "recordedYMin": -9.001518940164363,
+      "recordedYMax": -9.001518939763335,
+      "firstHex": [
+        "c01d0e438f7e539e",
+        "c02200c7172ca7c3",
+        "401ff8045bc56ccb"
+      ],
+      "lastHex": [
+        "c01d03c88e8590cd",
+        "c02200c7172c7e14",
+        "c02000c3df634b93"
+      ]
+    },
+    {
+      "finalId": 26,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        34,
+        35
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "4008000000000000"
+      ],
+      "recordedIndexSamples": 4,
+      "recordedYMin": -9.001518940144742,
+      "recordedYMax": -9.000000000005684,
+      "firstHex": [
+        "c01d03c88e8590cd",
+        "c02200c7172c7e14",
+        "c02000c3df634b93"
+      ],
+      "lastHex": [
+        "c01d03ba3d44d050",
+        "c022000000000c80",
+        "c02000ca5ce65621"
+      ]
+    },
+    {
+      "finalId": 27,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        35,
+        36
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "4041000000000000"
+      ],
+      "recordedIndexSamples": 35,
+      "recordedYMin": -9.000000000005684,
+      "recordedYMax": -5.507961964274931,
+      "firstHex": [
+        "c01d03ba3d44d050",
+        "c022000000000c80",
+        "c02000ca5ce65621"
+      ],
+      "lastHex": [
+        "4006f48f99951e76",
+        "c01608272e60b0e5",
+        "c024d2dcfed2c846"
+      ]
+    },
+    {
+      "finalId": 28,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        22,
+        23
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403a000000000000"
+      ],
+      "recordedIndexSamples": 27,
+      "recordedYMin": -2.492038035725069,
+      "recordedYMax": 2.690977919180629,
+      "firstHex": [
+        "4022b7c9d907b298",
+        "c003efb1a33e9e36",
+        "c0158f2508500496"
+      ],
+      "lastHex": [
+        "401ae303dfc81684",
+        "4005871f6e691c89",
+        "4020e81b24f1d47d"
+      ]
+    },
+    {
+      "finalId": 29,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        20,
+        21
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403a000000000000"
+      ],
+      "recordedIndexSamples": 27,
+      "recordedYMin": -2.4920380357250655,
+      "recordedYMax": 2.6959320672955998,
+      "firstHex": [
+        "c01f1324c791345b",
+        "40059144d4ea2d9d",
+        "401e028d1ffa2379"
+      ],
+      "lastHex": [
+        "40191a49447b03ad",
+        "c003efb1a33e9e2e",
+        "4021943e39017bae"
+      ]
+    },
+    {
+      "finalId": 30,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        37,
+        38
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403c000000000000"
+      ],
+      "recordedIndexSamples": 29,
+      "recordedYMin": -8.995602494745468,
+      "recordedYMax": -5.507961964274931,
+      "firstHex": [
+        "402589bab990a3cb",
+        "c01608272e60b0e5",
+        "3fea2a555054e3e7"
+      ],
+      "lastHex": [
+        "401d0d857a56be27",
+        "c021fdbf9c357edf",
+        "c01ff8b11abd4297"
+      ]
+    },
+    {
+      "finalId": 31,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        39,
+        40
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "4000000000000000"
+      ],
+      "recordedIndexSamples": 3,
+      "recordedYMin": -9.001514649740072,
+      "recordedYMax": -9.000000064821505,
+      "firstHex": [
+        "401d03ba3cf914a4",
+        "c0220000022ccfff",
+        "c02000ca5cdd4739"
+      ],
+      "lastHex": [
+        "401d03c16fe433a3",
+        "c02200c68736326f",
+        "c02000c71987f4c9"
+      ]
+    },
+    {
+      "finalId": 32,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        41,
+        42
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "4049800000000000"
+      ],
+      "recordedIndexSamples": 52,
+      "recordedYMin": -9.001518940164274,
+      "recordedYMax": -5.507961964274931,
+      "firstHex": [
+        "401d0e438c1dcceb",
+        "c02200c7172c8df3",
+        "c01ff8045ed72c3e"
+      ],
+      "lastHex": [
+        "c006f48f99951e6b",
+        "c01608272e60b0e5",
+        "4024d2dcfed2c847"
+      ]
+    },
+    {
+      "finalId": 33,
+      "strata": [
+        30,
+        15
+      ],
+      "cornerEnds": [
+        26,
+        27
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403f000000000000"
+      ],
+      "recordedIndexSamples": 32,
+      "recordedYMin": -2.492038035725069,
+      "recordedYMax": 2.6909777686167193,
+      "firstHex": [
+        "c022b7c9d907b15a",
+        "c003efb1a33e9e36",
+        "40158f2508500325"
+      ],
+      "lastHex": [
+        "c01ae303f75efc73",
+        "4005871f5a33c661",
+        "c020e81b1b90e888"
+      ]
+    }
+  ],
+  "bitIdenticalRecordedEndpointMatches": [
+    {
+      "finalId": 20,
+      "end": 1,
+      "strata": [
+        10,
+        15
+      ]
+    },
+    {
+      "finalId": 33,
+      "end": 1,
+      "strata": [
+        30,
+        15
+      ]
+    }
+  ],
+  "limitations": [
+    "Raw curve IDs and pre-trim spans are not present in this receipt.",
+    "Recorded knot ranges do not by themselves bound every projected continuous curve query.",
+    "A different-carrier trace with related source geometry is not excluded by this family filter."
+  ]
+}

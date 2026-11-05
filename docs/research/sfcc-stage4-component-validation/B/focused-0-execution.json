@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round25-component-validation/B/kernel-tests",
+    "stage4_component_b_topology_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.799560499996005,
+  "elapsedSeconds": 0.0049840840001706965,
+  "exitCode": 0,
+  "timedOut": false
+}

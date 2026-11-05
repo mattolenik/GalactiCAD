@@ -14,8 +14,13 @@ original/final parameter provenance. The subsequent
 selects A-rollback for the bounded Stage 3 witness: its source-derived chart
 restores the lower attachment, retains upper continuation, preserves non-target
 families and rolls back an injected late refusal. All 12 focused tests pass.
-Stage 3's local exit is satisfied; Stages 4–5 remain open. The original private
-graph guard and complete component have not yet been rerun on this selection.
+Stage 3's local exit is satisfied. The
+[Stage 4 validation attempt](../research/sfcc-stage4-component-validation/README.md)
+reidentifies the current source charts but refuses with `endpoint_missing` before
+octree or component construction: both upper ends remain unresolved. The original
+private graph guard and geometric/interface checks were not reached. Stages 4–5
+remain open; the next prerequisite is the current upper source transition and
+ordered handoff, without relaxing complete-arc admission.
 Current production baseline:
 `421f5a9`. This expands the next five steps of
 [E4 in the critical-repairs plan](sfcc-critical-repairs.md), then defines the
@@ -248,6 +253,23 @@ source intervals; reuse old 198/396 results only after demonstrating identical
 inputs. Re-establish complete storage/reservation/lifecycle bounds before the new
 component run. The selected isolated source is the captured Stage 1 baseline plus
 the archived flat A-rollback patch, not a patch applied directly to current HEAD.
+
+**Current attempted result:** [source admission refuses](../research/sfcc-stage4-component-validation/README.md)
+on the correctly identified physical/alias pair `[20,38]`, both with range `[0,31]`
+and upper corner `-1`. Their upper numerical points differ by about 0.0023014 mm.
+The unchanged private gate rejects before transport, octree, faces, staging or
+construction. Selected repair controls and source-only clone accounting pass,
+but actual combined storage and all component geometry/interface exits are not
+reached. The conditional capture's success path is compiled, not validated on
+the unavailable component.
+
+The next bounded prerequisite is to capture the current upper raw frontiers and
+derive full composed-field continuation, branch transition or legitimate
+termination. Check nonzero blend operands and active domains explicitly; old
+zero-locus equivalence does not supply that contract. Preserve the accepted lower
+repair, prove any ordered outgoing handoff, then rerun the unchanged complete-arc
+admission before resuming component construction. No endpoint welding, invented
+corner, smaller obligation or relaxed admission is authorized by this refusal.
 
 Check these independently:
 

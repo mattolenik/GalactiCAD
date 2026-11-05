@@ -1,0 +1,1294 @@
+{
+  "actualComponentStorage": null,
+  "componentAttempted": false,
+  "counts": {
+    "corners": 40,
+    "curves": 76,
+    "strata": 74,
+    "unresolvedTrims": 83
+  },
+  "featureClonePreserved": true,
+  "featureIndexAndCloneOwnedChartMetadataIncluded": true,
+  "fingerprint": "5850573460878635130",
+  "fullArcAdmitted": false,
+  "historical198FaceCertificatesReused": false,
+  "historical396PinBoundsReused": false,
+  "historicalFingerprint": "9875508341830920921",
+  "outcome": {
+    "kind": "refusal",
+    "refusal": {
+      "detail": "admission reservation",
+      "originals": [
+        {
+          "corners": [
+            13,
+            -1
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            -1
+          ],
+          "id": 38,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "endpoint_missing"
+    }
+  },
+  "pipelineSetup": {
+    "cubeHex": [
+      "c02b666666666666",
+      "c02d666666666666",
+      "c02b666666666666",
+      "403b666666666666"
+    ],
+    "effectiveTuning": {
+      "blendCurvatureAnalytic": false,
+      "blendCurvatureDeg": 18.0,
+      "blendCurvatureRefine": true,
+      "boundsPaddingMm": 2.0,
+      "checkVertexLinks": true,
+      "cornerMergeTolDiagFraction": 1e-6,
+      "curveChordTolMm": 0.02,
+      "depthMax": 8,
+      "depthMin": 5,
+      "edgeRootTolFraction": 0.001,
+      "enforceEdgeBalance": true,
+      "featureQueryInflate": 0.25,
+      "interiorVertexMode": "project",
+      "maxPolylinePointsPerCell": 16,
+      "maxTraceSteps": 20000,
+      "minDihedralDeg": 15.0,
+      "minTangencyAngleDeg": 2.0,
+      "normalVariationAnalytic": false,
+      "normalVariationDeg": 18.0,
+      "probeDeltaFactor": 10.0,
+      "projectMaxIters": 8,
+      "qualityAudit": false,
+      "qualityMaxEditTrials": 10000,
+      "qualityRefinement": false,
+      "qualityRemeshing": false,
+      "qualityTriangulation": false,
+      "reRefineMaxRounds": 2,
+      "recoveryCull": true,
+      "seedCellSizeMm": 0.0,
+      "surfaceTolMm": 0.01,
+      "tangentialEpsilon": 0.05
+    },
+    "entry": "pipeline::build_pipeline_context",
+    "lattice": {
+      "depth": 8,
+      "originHex": [
+        "c02f6ce73507c672",
+        "c030b8f2544d31b9",
+        "c02f6a1b34548d69"
+      ],
+      "resolution": 256,
+      "sizeHex": "403f666666666666",
+      "span": 257,
+      "stepHex": "3fbf666666666666"
+    },
+    "octreeConstructed": false
+  },
+  "publicationReady": false,
+  "scope": "feature-only source-based Stage4 admission prerequisite; no octree/faces/component construction",
+  "selectedCharts": [
+    {
+      "chart": 20,
+      "endpoints": [
+        {
+          "corner": 13,
+          "cornerPointHex": [
+            "c022b7c9d907b15a",
+            "c003efb1a33e9e36",
+            "40158f2508500325"
+          ],
+          "end": 0,
+          "incidentEnds": [
+            [
+              20,
+              0
+            ],
+            [
+              38,
+              0
+            ],
+            [
+              45,
+              0
+            ],
+            [
+              48,
+              1
+            ],
+            [
+              61,
+              0
+            ]
+          ],
+          "nearbySourceCandidates": null,
+          "parameterHex": "0000000000000000",
+          "pointHex": [
+            "c022b7c9d907b15a",
+            "c003efb1a33e9e36",
+            "40158f2508500325"
+          ],
+          "stratumChecks": [
+            {
+              "domain": true,
+              "rawValueHex": "3d30000000000000",
+              "source": 10
+            },
+            {
+              "domain": true,
+              "rawValueHex": "3d36000000000000",
+              "source": 15
+            }
+          ]
+        },
+        {
+          "corner": -1,
+          "cornerPointHex": null,
+          "end": 1,
+          "incidentEnds": null,
+          "nearbySourceCandidates": {
+            "candidates": [
+              {
+                "chart": 20,
+                "checkedEndpoints": [
+                  {
+                    "parameterHex": "0000000000000000",
+                    "pointHex": [
+                      "c022b7c9d907b15a",
+                      "c003efb1a33e9e36",
+                      "40158f2508500325"
+                    ]
+                  },
+                  {
+                    "parameterHex": "403f000000000000",
+                    "pointHex": [
+                      "c01ad5086af889ea",
+                      "4005932d3cf8b455",
+                      "c020eda7e56734e0"
+                    ]
+                  }
+                ],
+                "cornerEnds": [
+                  13,
+                  -1
+                ],
+                "nearestIndexKnotQuery": {
+                  "parameterHex": "403f000000000000",
+                  "pointHex": [
+                    "c01ad5086af889ea",
+                    "4005932d3cf8b455",
+                    "c020eda7e56734e0"
+                  ]
+                },
+                "rangeHex": [
+                  "0000000000000000",
+                  "403f000000000000"
+                ],
+                "sourceIdentity": [
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          0,
+                          1
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": null,
+                    "id": 10,
+                    "leafIndex": 1,
+                    "localIndex": 3,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  },
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          1
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": null,
+                    "id": 15,
+                    "leafIndex": 2,
+                    "localIndex": 0,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  }
+                ],
+                "sourcePair": [
+                  10,
+                  15
+                ]
+              },
+              {
+                "chart": 38,
+                "checkedEndpoints": [
+                  {
+                    "parameterHex": "0000000000000000",
+                    "pointHex": [
+                      "c022b7c9d907b15a",
+                      "c003efb1a33e9e36",
+                      "40158f2508500325"
+                    ]
+                  },
+                  {
+                    "parameterHex": "403f000000000000",
+                    "pointHex": [
+                      "c01ad6c85ba6f8fb",
+                      "400591ab49aebf9d",
+                      "c020ecf65baed00e"
+                    ]
+                  }
+                ],
+                "cornerEnds": [
+                  13,
+                  -1
+                ],
+                "nearestIndexKnotQuery": {
+                  "parameterHex": "403f000000000000",
+                  "pointHex": [
+                    "c01ad6c85ba6f8fb",
+                    "400591ab49aebf9d",
+                    "c020ecf65baed00e"
+                  ]
+                },
+                "rangeHex": [
+                  "0000000000000000",
+                  "403f000000000000"
+                ],
+                "sourceIdentity": [
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          0
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": {
+                      "branch": null,
+                      "partners": [],
+                      "path": [
+                        0,
+                        0,
+                        0,
+                        0
+                      ],
+                      "rootAddressProcessLocal": "101207380"
+                    },
+                    "id": 30,
+                    "leafIndex": 18446744073709551615,
+                    "localIndex": 0,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  },
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          1
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": null,
+                    "id": 15,
+                    "leafIndex": 2,
+                    "localIndex": 0,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  }
+                ],
+                "sourcePair": [
+                  30,
+                  15
+                ]
+              }
+            ],
+            "queryBoxHex": [
+              [
+                "c01b26f3f017423d",
+                "4004ef5632bb43b0",
+                "c021169da7f6910a"
+              ],
+              [
+                "c01a831ce5d9d197",
+                "40063704473624fa",
+                "c020c4b222d7d8b6"
+              ]
+            ],
+            "radiusHex": "3fb47ae147ae147b",
+            "scope": "proximity and indexing observations only; no source completeness, handoff or attachment proof",
+            "status": "indexed_candidates"
+          },
+          "parameterHex": "403f000000000000",
+          "pointHex": [
+            "c01ad5086af889ea",
+            "4005932d3cf8b455",
+            "c020eda7e56734e0"
+          ],
+          "stratumChecks": [
+            {
+              "domain": true,
+              "rawValueHex": "be36e2c7c0000000",
+              "source": 10
+            },
+            {
+              "domain": true,
+              "rawValueHex": "3d5e400000000000",
+              "source": 15
+            }
+          ]
+        }
+      ],
+      "indexPolylineHex": [
+        "c022b7c9d907b15a",
+        "c003efb1a33e9e36",
+        "40158f2508500325",
+        "c022e4375c71fef8",
+        "c00375bdac936157",
+        "4014f1e5facee4f5",
+        "c02372e9e964c1c1",
+        "c001d2e1e501cfb8",
+        "4012cb3163e16db4",
+        "c023f1f30fa90559",
+        "c00030061d703e1b",
+        "4010955a76089657",
+        "c02460ec82bc2f9f",
+        "bffd1a54abbd58f8",
+        "400ca451b3029218",
+        "c024bf7ce529964c",
+        "bff9d49d1c9a35c1",
+        "400806ddef0893ce",
+        "c0250d5810812b0b",
+        "bff68ee58d771289",
+        "40035611055e7c71",
+        "c0254a3f52a9e3fd",
+        "bff3492dfe53ef43",
+        "3ffd2b63dfccf99e",
+        "c0257601a05e7f0e",
+        "bff003766f30cc0e",
+        "3ff3932864f5b00b",
+        "c025907bbcabf81b",
+        "bfe97b7dc01b51a7",
+        "3fe3d65318989951",
+        "c02599985551e42d",
+        "bfe2f00ea1d50b3c",
+        "3f8d96fcbdddee82",
+        "c025915013edd80d",
+        "bfd8c93f071d8980",
+        "bfe2e9fa827e30c6",
+        "c02577a9a3e40688",
+        "bfc764c19521fa1b",
+        "bff31d8aeb46f8da",
+        "c0255268cf7cd158",
+        "bf541b5c9fd02b7d",
+        "bffba38f2f7f6976",
+        "c0252c52a7fdb01d",
+        "3fc1cf78748e02cb",
+        "c001178659871c93",
+        "c0250c305d6516bc",
+        "3fcea5ac29d4f5d1",
+        "c0036a2517db8c02",
+        "c024f2bc6ce34d9f",
+        "3fd3e89c22fbc459",
+        "c00510a4f87f2db3",
+        "c024df493dec7069",
+        "3fd72f112d01494b",
+        "c0063d2e7ddfb42a",
+        "c024cac89727367f",
+        "3fda758636ffb622",
+        "c0076898e62a4978",
+        "c024ac523501156f",
+        "3fdf0b4c45167f82",
+        "c00909c25aa7c333",
+        "c0247e3fd1e3a3d6",
+        "3fe2bb330ff1afb7",
+        "c00b4d8759f80bf1",
+        "c024371b1ce486a2",
+        "3fe7391edc00ca0b",
+        "c00e700d667e19f2",
+        "c023cfbe52481cc6",
+        "3fed08419245ee10",
+        "c011364fab1cafe8",
+        "c0234c3fe2ff0665",
+        "3ff1c9d858463dc8",
+        "c013680feb66e83f",
+        "c022b9372fac7b33",
+        "3ff50f8fe769846d",
+        "c0158a2f820fba23",
+        "c022171a9f7a3e29",
+        "3ff85547768ccb09",
+        "c0179af6a75b28e2",
+        "c021666cbdd3972e",
+        "3ffb9aff05b011ab",
+        "c01998bb8b55bc2d",
+        "c020a7bbd145758c",
+        "3ffee0b694d35840",
+        "c01b81e3acba0468",
+        "c01fb742d1d87161",
+        "4001133711fb4f6b",
+        "c01d54e523828052",
+        "c01e0583c196c42e",
+        "4002b612d98cf2ba",
+        "c01f1047de1db0bf",
+        "c01c3b97bae588f6",
+        "400458eea11e9607",
+        "c020595368227556",
+        "c01ad5086af889ea",
+        "4005932d3cf8b455",
+        "c020eda7e56734e0"
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403f000000000000"
+      ],
+      "refineHex": [
+        "3e697a9ab0c2db32",
+        "3fa1de58c9f7dc27",
+        "3fb47ae147ae147b"
+      ],
+      "sourceIdentity": [
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "101207380"
+            }
+          ],
+          "field": null,
+          "id": 10,
+          "leafIndex": 1,
+          "localIndex": 3,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        },
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "101207380"
+            }
+          ],
+          "field": null,
+          "id": 15,
+          "leafIndex": 2,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        }
+      ],
+      "sourcePair": [
+        10,
+        15
+      ]
+    },
+    {
+      "chart": 38,
+      "endpoints": [
+        {
+          "corner": 13,
+          "cornerPointHex": [
+            "c022b7c9d907b15a",
+            "c003efb1a33e9e36",
+            "40158f2508500325"
+          ],
+          "end": 0,
+          "incidentEnds": [
+            [
+              20,
+              0
+            ],
+            [
+              38,
+              0
+            ],
+            [
+              45,
+              0
+            ],
+            [
+              48,
+              1
+            ],
+            [
+              61,
+              0
+            ]
+          ],
+          "nearbySourceCandidates": null,
+          "parameterHex": "0000000000000000",
+          "pointHex": [
+            "c022b7c9d907b15a",
+            "c003efb1a33e9e36",
+            "40158f2508500325"
+          ],
+          "stratumChecks": [
+            {
+              "domain": true,
+              "rawValueHex": "3d30000000000000",
+              "source": 30
+            },
+            {
+              "domain": true,
+              "rawValueHex": "3d36000000000000",
+              "source": 15
+            }
+          ]
+        },
+        {
+          "corner": -1,
+          "cornerPointHex": null,
+          "end": 1,
+          "incidentEnds": null,
+          "nearbySourceCandidates": {
+            "candidates": [
+              {
+                "chart": 20,
+                "checkedEndpoints": [
+                  {
+                    "parameterHex": "0000000000000000",
+                    "pointHex": [
+                      "c022b7c9d907b15a",
+                      "c003efb1a33e9e36",
+                      "40158f2508500325"
+                    ]
+                  },
+                  {
+                    "parameterHex": "403f000000000000",
+                    "pointHex": [
+                      "c01ad5086af889ea",
+                      "4005932d3cf8b455",
+                      "c020eda7e56734e0"
+                    ]
+                  }
+                ],
+                "cornerEnds": [
+                  13,
+                  -1
+                ],
+                "nearestIndexKnotQuery": {
+                  "parameterHex": "403f000000000000",
+                  "pointHex": [
+                    "c01ad5086af889ea",
+                    "4005932d3cf8b455",
+                    "c020eda7e56734e0"
+                  ]
+                },
+                "rangeHex": [
+                  "0000000000000000",
+                  "403f000000000000"
+                ],
+                "sourceIdentity": [
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          0,
+                          1
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": null,
+                    "id": 10,
+                    "leafIndex": 1,
+                    "localIndex": 3,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  },
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          1
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": null,
+                    "id": 15,
+                    "leafIndex": 2,
+                    "localIndex": 0,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  }
+                ],
+                "sourcePair": [
+                  10,
+                  15
+                ]
+              },
+              {
+                "chart": 38,
+                "checkedEndpoints": [
+                  {
+                    "parameterHex": "0000000000000000",
+                    "pointHex": [
+                      "c022b7c9d907b15a",
+                      "c003efb1a33e9e36",
+                      "40158f2508500325"
+                    ]
+                  },
+                  {
+                    "parameterHex": "403f000000000000",
+                    "pointHex": [
+                      "c01ad6c85ba6f8fb",
+                      "400591ab49aebf9d",
+                      "c020ecf65baed00e"
+                    ]
+                  }
+                ],
+                "cornerEnds": [
+                  13,
+                  -1
+                ],
+                "nearestIndexKnotQuery": {
+                  "parameterHex": "403f000000000000",
+                  "pointHex": [
+                    "c01ad6c85ba6f8fb",
+                    "400591ab49aebf9d",
+                    "c020ecf65baed00e"
+                  ]
+                },
+                "rangeHex": [
+                  "0000000000000000",
+                  "403f000000000000"
+                ],
+                "sourceIdentity": [
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          0
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": {
+                      "branch": null,
+                      "partners": [],
+                      "path": [
+                        0,
+                        0,
+                        0,
+                        0
+                      ],
+                      "rootAddressProcessLocal": "101207380"
+                    },
+                    "id": 30,
+                    "leafIndex": 18446744073709551615,
+                    "localIndex": 0,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  },
+                  {
+                    "compoundPresent": false,
+                    "compoundTermsIncluded": false,
+                    "domain": [
+                      {
+                        "branch": null,
+                        "partners": [],
+                        "path": [
+                          0,
+                          0,
+                          0,
+                          1
+                        ],
+                        "rootAddressProcessLocal": "101207380"
+                      }
+                    ],
+                    "field": null,
+                    "id": 15,
+                    "leafIndex": 2,
+                    "localIndex": 0,
+                    "ownerNodeId": -1,
+                    "signHex": "3ff0000000000000"
+                  }
+                ],
+                "sourcePair": [
+                  30,
+                  15
+                ]
+              }
+            ],
+            "queryBoxHex": [
+              [
+                "c01b28b3e0c5b14e",
+                "4004edd43f714ef8",
+                "c02115ec1e3e2c38"
+              ],
+              [
+                "c01a84dcd68840a8",
+                "4006358253ec3042",
+                "c020c400991f73e4"
+              ]
+            ],
+            "radiusHex": "3fb47ae147ae147b",
+            "scope": "proximity and indexing observations only; no source completeness, handoff or attachment proof",
+            "status": "indexed_candidates"
+          },
+          "parameterHex": "403f000000000000",
+          "pointHex": [
+            "c01ad6c85ba6f8fb",
+            "400591ab49aebf9d",
+            "c020ecf65baed00e"
+          ],
+          "stratumChecks": [
+            {
+              "domain": true,
+              "rawValueHex": "3e36e0d080000000",
+              "source": 30
+            },
+            {
+              "domain": true,
+              "rawValueHex": "3d5d800000000000",
+              "source": 15
+            }
+          ]
+        }
+      ],
+      "indexPolylineHex": [
+        "c022b7c9d907b15a",
+        "c003efb1a33e9e36",
+        "40158f2508500325",
+        "c0232ba2bdf63a63",
+        "c002a9c45746c671",
+        "4013e7b80caaeb77",
+        "c023b2c2647fd56b",
+        "c00106e88fb534d0",
+        "4011b96c91062b58",
+        "c0242a053a885442",
+        "bffec8199047468f",
+        "400ef9b66836c228",
+        "c0248649288d0d5c",
+        "bffbe08834cafb64",
+        "400aec43cbd70a8a",
+        "c024c4b65f159219",
+        "bff9a1924f1146f5",
+        "4007be37b198f6d0",
+        "c024ec7debdfff67",
+        "bff806cbd868689f",
+        "4005730a9137bcf2",
+        "c025066de5ddbcda",
+        "bff6e15a54e41649",
+        "4003cd037442198a",
+        "c02517af6ef7e783",
+        "bff60fbd1263b2e3",
+        "40029e571aa7001f",
+        "c02527e0a82152d0",
+        "bff53e1fcfe319cd",
+        "40016eba61d35b63",
+        "c0253cc0a729fbae",
+        "bff418ae4c5d6764",
+        "3fff8876989c4617",
+        "c025567272048f73",
+        "bff27de7d5aa2f69",
+        "3ffad93eb020cdbe",
+        "c0257377c839ce47",
+        "bff03ef1efa2a243",
+        "3ff4422ce168ad43",
+        "c0258ced1d7ecfd4",
+        "bfeaaec12900207e",
+        "3fe762acfc80af46",
+        "c0259939f3b09858",
+        "bfe423520ab992f4",
+        "3fc011e3ca4464e5",
+        "c02594223bd930c8",
+        "bfdb2fc5d8e60b81",
+        "bfdeb9ee976cc4c8",
+        "c0257daa0fd309d6",
+        "bfcc31cf38b1e1ef",
+        "bff159043518a0df",
+        "c02555e387b49224",
+        "bf902095fcbd69c2",
+        "bffaf5948591fc57",
+        "c0251ceeab3e1a0e",
+        "3fc829a9b98287a3",
+        "c0023e3794238440",
+        "c024d2f9580ec2fc",
+        "3fd92bb3194e5e40",
+        "c006f2f414d7879e",
+        "c024783f1cb53f8a",
+        "3fe32148aaedbc52",
+        "c00b95359f9f6e3a",
+        "c0240d0908ba22ab",
+        "3fe9acb7c9344992",
+        "c01010a078784b9a",
+        "c02391ad71ca5c9f",
+        "3ff01c1373bd6b61",
+        "c01249b6541dd823",
+        "c023068fae314676",
+        "3ff361cb02e0b200",
+        "c01474121d62d95c",
+        "c0226c1fc4da386e",
+        "3ff6a7829203f898",
+        "c0168df56adcd5df",
+        "c021c2da131a15dd",
+        "3ff9ed3a21273f34",
+        "c01895af16907b22",
+        "c0210b46e8897429",
+        "3ffd32f1b04a85d6",
+        "c01a899c9abf7735",
+        "c02045fa1940024b",
+        "40003c549fb6e639",
+        "c01c682b62ef2d0f",
+        "c01ee7250d932b3c",
+        "4001df3067488984",
+        "c01e2fda1018dd2d",
+        "c01d297340697191",
+        "4003820c2eda2cd2",
+        "c01fdf39aefe32fc",
+        "c01b5445b3438870",
+        "400524e7f66bd01d",
+        "c020ba776fd42811",
+        "c01ad6c85ba6f8fb",
+        "400591ab49aebf9d",
+        "c020ecf65baed00e"
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403f000000000000"
+      ],
+      "refineHex": [
+        "3e697a9ab0c2db32",
+        "3fa1de58c9f7dc27",
+        "3fb47ae147ae147b"
+      ],
+      "sourceIdentity": [
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "rootAddressProcessLocal": "101207380"
+            }
+          ],
+          "field": {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "rootAddressProcessLocal": "101207380"
+          },
+          "id": 30,
+          "leafIndex": 18446744073709551615,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        },
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "101207380"
+            }
+          ],
+          "field": null,
+          "id": 15,
+          "leafIndex": 2,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        }
+      ],
+      "sourcePair": [
+        30,
+        15
+      ]
+    }
+  ],
+  "selection": {
+    "actualPair": [
+      20,
+      38
+    ],
+    "denseHistoricalPairNotAuthority": [
+      20,
+      33
+    ],
+    "fixedBranchSign": 1,
+    "heightWindowHex": [
+      "400587399116b17c",
+      "40058753c7f99c9b"
+    ],
+    "sourceRoles": [
+      10,
+      30,
+      15
+    ],
+    "windowOnlyLocatorNotCompleteAdmission": true
+  },
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceOnlyStorage": {
+    "accounting_overhead_bytes": 16384,
+    "allowed": true,
+    "cap": 67108864,
+    "combined_bytes": 944540,
+    "complete": true,
+    "failure": null,
+    "feature_inline_bytes": 344,
+    "ledger": {
+      "owned_reservation": 927812,
+      "rows": [
+        {
+          "alignment": 8,
+          "allocations": 1,
+          "category": "features.curves",
+          "elements": 128,
+          "layout_bytes": 25600,
+          "reserved_bytes": 51335,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 76,
+          "category": "curve.index_polyline",
+          "elements": 4014,
+          "layout_bytes": 32112,
+          "reserved_bytes": 74484,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 60,
+          "category": "curve.traced_box",
+          "elements": 60,
+          "layout_bytes": 74400,
+          "reserved_bytes": 156900,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 60,
+          "category": "curve.traced_samples",
+          "elements": 3756,
+          "layout_bytes": 30048,
+          "reserved_bytes": 68196,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 194,
+          "category": "stratum.domains",
+          "elements": 200,
+          "layout_bytes": 22400,
+          "reserved_bytes": 70990,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 0,
+          "allocations": 0,
+          "category": "shared.source_root_handle",
+          "elements": 0,
+          "layout_bytes": 0,
+          "reserved_bytes": 0,
+          "shared_handle_inline_bytes": 2240,
+          "shared_handles": 280,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 0,
+          "allocations": 0,
+          "category": "shared.partners_handle",
+          "elements": 0,
+          "layout_bytes": 0,
+          "reserved_bytes": 0,
+          "shared_handle_inline_bytes": 4480,
+          "shared_handles": 280,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 156,
+          "category": "field.path",
+          "elements": 560,
+          "layout_bytes": 4480,
+          "reserved_bytes": 30020,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 0,
+          "allocations": 0,
+          "category": "shared.compound_handle",
+          "elements": 0,
+          "layout_bytes": 0,
+          "reserved_bytes": 0,
+          "shared_handle_inline_bytes": 216,
+          "shared_handles": 27,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 122,
+          "category": "field.override_path",
+          "elements": 408,
+          "layout_bytes": 3264,
+          "reserved_bytes": 22998,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 1,
+          "category": "features.corners",
+          "elements": 40,
+          "layout_bytes": 3200,
+          "reserved_bytes": 6535,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 36,
+          "category": "corner.strata",
+          "elements": 144,
+          "layout_bytes": 1152,
+          "reserved_bytes": 7164,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 36,
+          "category": "corner.curve_ends",
+          "elements": 152,
+          "layout_bytes": 2432,
+          "reserved_bytes": 9724,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 8,
+          "allocations": 1,
+          "category": "features.strata",
+          "elements": 120,
+          "layout_bytes": 52800,
+          "reserved_bytes": 105735,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        },
+        {
+          "alignment": 16,
+          "allocations": 1,
+          "category": "index.curve_cells",
+          "elements": 65618,
+          "layout_bytes": 65618,
+          "reserved_bytes": 131379,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 898,
+          "table_capacity_sum": 448,
+          "table_element_size": 72
+        },
+        {
+          "alignment": 16,
+          "allocations": 393,
+          "category": "index.curve_cell_sets",
+          "elements": 59370,
+          "layout_bytes": 59370,
+          "reserved_bytes": 174939,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 3802,
+          "table_capacity_sum": 1508,
+          "table_element_size": 8
+        },
+        {
+          "alignment": 16,
+          "allocations": 1,
+          "category": "index.corner_cells",
+          "elements": 5650,
+          "layout_bytes": 5650,
+          "reserved_bytes": 11443,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 114,
+          "table_capacity_sum": 56,
+          "table_element_size": 48
+        },
+        {
+          "alignment": 8,
+          "allocations": 30,
+          "category": "index.corner_cell_vectors",
+          "elements": 120,
+          "layout_bytes": 960,
+          "reserved_bytes": 5970,
+          "shared_handle_inline_bytes": 0,
+          "shared_handles": 0,
+          "table_bucket_upper_sum": 0,
+          "table_capacity_sum": 0,
+          "table_element_size": null
+        }
+      ]
+    },
+    "native_report_storage_bound": 9455,
+    "native_row_capacity": 32,
+    "scope": "owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS",
+    "staged_bytes": 0,
+    "staged_semantics": "source-only; actual combined component staging remains unestablished"
+  },
+  "wholeComponentAccepted": false
+}

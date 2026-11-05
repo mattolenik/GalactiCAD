@@ -1,0 +1,47 @@
+{
+  "checks": [
+    {
+      "label": "selected-controls",
+      "source": "/tmp/sfcc-stage3-r3-a-rollback",
+      "inputs": 164,
+      "allInputHashesMatch": true,
+      "binarySha256": "41b6fe3b1dbb1cd345509cf287db205f95c6815b861908d222b61396a250d045",
+      "binaryHashMatches": true
+    },
+    {
+      "label": "C",
+      "source": "/tmp/sfcc-stage4-c",
+      "inputs": 165,
+      "allInputHashesMatch": true,
+      "binarySha256": "868ab17a1f4ebaf19812c4e04ea884c1050e143c93e223893238d32f7db5ddfc",
+      "binaryHashMatches": true
+    },
+    {
+      "label": "B",
+      "source": "/tmp/sfcc-stage4-b",
+      "inputs": 166,
+      "allInputHashesMatch": true,
+      "binarySha256": "1550a35cd52e6dfe38bacacf08427c01d78eea74055d77265bc8ec55c8ea77ba",
+      "binaryHashMatches": true
+    },
+    {
+      "label": "A-read-only",
+      "inputs": 164,
+      "selectedSourceUnchanged": true,
+      "patchEmpty": true
+    },
+    {
+      "label": "B-lifecycle",
+      "source": "/tmp/sfcc-stage4-b-lifecycle",
+      "inputs": 166,
+      "allInputHashesMatch": true,
+      "binarySha256": "36d08cffa834450e9caa88fe99d8c8aad8a62585ba4237ead89c4954ea69fe85",
+      "binaryHashMatches": true,
+      "changedFromB": [
+        "gcad-wasm/kernel/src/sfcc/stage4_component_b.rs"
+      ]
+    }
+  ],
+  "BUsesExactFrozenCSelector": true,
+  "auditedStdFilesMatch": 10
+}

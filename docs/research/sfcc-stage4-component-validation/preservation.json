@@ -1,0 +1,27 @@
+{
+  "checks": [
+    {
+      "label": "C",
+      "inputs": 165,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "B",
+      "inputs": 166,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "B-lifecycle",
+      "inputs": 166,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A",
+      "inputs": 164,
+      "unchangedSelectedSource": true,
+      "geometryExecuted": false
+    }
+  ],
+  "BUsesExactCSelector": true,
+  "scope": "source reconstruction and hash checks, not component acceptance"
+}

@@ -1,0 +1,246 @@
+{
+  "constructionAttempted": false,
+  "effectiveTuning": {
+    "blendCurvatureAnalytic": false,
+    "blendCurvatureDeg": 18.0,
+    "blendCurvatureRefine": true,
+    "boundsPaddingMm": 2.0,
+    "checkVertexLinks": true,
+    "cornerMergeTolDiagFraction": 1e-6,
+    "curveChordTolMm": 0.02,
+    "depthMax": 8,
+    "depthMin": 5,
+    "edgeRootTolFraction": 0.001,
+    "enforceEdgeBalance": true,
+    "featureQueryInflate": 0.25,
+    "interiorVertexMode": "project",
+    "maxPolylinePointsPerCell": 16,
+    "maxTraceSteps": 20000,
+    "minDihedralDeg": 15.0,
+    "minTangencyAngleDeg": 2.0,
+    "normalVariationAnalytic": false,
+    "normalVariationDeg": 18.0,
+    "probeDeltaFactor": 10.0,
+    "projectMaxIters": 8,
+    "qualityAudit": false,
+    "qualityMaxEditTrials": 10000,
+    "qualityRefinement": false,
+    "qualityRemeshing": false,
+    "qualityTriangulation": false,
+    "reRefineMaxRounds": 2,
+    "recoveryCull": true,
+    "seedCellSizeMm": 0.0,
+    "surfaceTolMm": 0.01,
+    "tangentialEpsilon": 0.05
+  },
+  "facesPrepared": false,
+  "fingerprint": "5850573460878635130",
+  "fullComponentAccepted": false,
+  "octreeBuilt": false,
+  "outcome": {
+    "kind": "refusal",
+    "refusal": {
+      "detail": "admission reservation",
+      "originals": [
+        {
+          "corners": [
+            13,
+            -1
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            -1
+          ],
+          "id": 38,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "endpoint_missing"
+    }
+  },
+  "publicationReady": false,
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sources": [
+    {
+      "chart": 20,
+      "cornerEnds": [
+        13,
+        -1
+      ],
+      "endpointsHex": [
+        [
+          "c022b7c9d907b15a",
+          "c003efb1a33e9e36",
+          "40158f2508500325"
+        ],
+        [
+          "c01ad5086af889ea",
+          "4005932d3cf8b455",
+          "c020eda7e56734e0"
+        ]
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403f000000000000"
+      ],
+      "sourcePair": [
+        10,
+        15
+      ],
+      "sources": [
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "10141c570"
+            }
+          ],
+          "field": null,
+          "id": 10,
+          "leafIndex": 1,
+          "localIndex": 3,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        },
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "10141c570"
+            }
+          ],
+          "field": null,
+          "id": 15,
+          "leafIndex": 2,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        }
+      ]
+    },
+    {
+      "chart": 38,
+      "cornerEnds": [
+        13,
+        -1
+      ],
+      "endpointsHex": [
+        [
+          "c022b7c9d907b15a",
+          "c003efb1a33e9e36",
+          "40158f2508500325"
+        ],
+        [
+          "c01ad6c85ba6f8fb",
+          "400591ab49aebf9d",
+          "c020ecf65baed00e"
+        ]
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "403f000000000000"
+      ],
+      "sourcePair": [
+        30,
+        15
+      ],
+      "sources": [
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "rootAddressProcessLocal": "10141c570"
+            }
+          ],
+          "field": {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "rootAddressProcessLocal": "10141c570"
+          },
+          "id": 30,
+          "leafIndex": 18446744073709551615,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        },
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "10141c570"
+            }
+          ],
+          "field": null,
+          "id": 15,
+          "leafIndex": 2,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        }
+      ]
+    }
+  ],
+  "stage": "FEATURE_SOURCE_PREFLIGHT_BEFORE_OCTREE",
+  "topologyAndInterfaceAudits": "not_reached_no_private_candidate"
+}

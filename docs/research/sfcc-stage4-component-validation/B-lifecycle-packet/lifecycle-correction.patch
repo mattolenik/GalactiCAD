@@ -1,0 +1,35 @@
+--- a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -23,9 +23,14 @@
+ impl Drop for RequestScope {
+     fn drop(&mut self) {
+         REQUEST.with(|s| *s.borrow_mut() = None);
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = None);
+     }
+ }
+ fn request(fingerprint: u64, pair: [usize; 2]) -> RequestScope {
++    assert!(
++        DIAGNOSTIC.with(|s| s.borrow().is_none()),
++        "another diagnostic owns the capture"
++    );
+     REQUEST.with(|s| {
+         assert!(s.borrow().is_none());
+         *s.borrow_mut() = Some((fingerprint, pair));
+@@ -381,8 +386,16 @@
+ fn stage4_component_b_request_scope_cleans_up() {
+     let result = std::panic::catch_unwind(|| {
+         let _scope = request(1, [2, 3]);
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"active":true})));
+         panic!("scope control")
+     });
+     assert!(result.is_err());
+     assert!(REQUEST.with(|s| s.borrow().is_none()));
+-}
++    assert!(DIAGNOSTIC.with(|s| s.borrow().is_none()));
++    let unrelated = json!({"owner":"unrelated diagnostic"});
++    DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(unrelated.clone()));
++    let refused = std::panic::catch_unwind(|| request(2, [3, 4]));
++    assert!(refused.is_err());
++    assert!(REQUEST.with(|s| s.borrow().is_none()));
++    assert_eq!(DIAGNOSTIC.with(|s| s.borrow_mut().take()), Some(unrelated));
++}

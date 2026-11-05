@@ -1,0 +1,345 @@
+--- a/gcad-wasm/kernel/src/sfcc/mod.rs
++++ b/gcad-wasm/kernel/src/sfcc/mod.rs
+@@ -72,3 +72,6 @@
+ pub(crate) mod source_storage_a;
+ 
+ pub(crate) mod private_storage_observation;
++
++#[cfg(all(test, feature = "serde"))]
++pub(crate) mod stage4_source_preflight_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/stage4_source_preflight_c.rs
+@@ -0,0 +1,333 @@
++//! Test-only source selection and the unchanged full-arc admission prerequisite.
++use super::{
++    feature_set::SfccFeatureSet,
++    shared_twisted_proof::{correlated_c::ConsumedPiece, HelixBranch},
++};
++use serde_json::{json, Value};
++
++const HEIGHT: [f64; 2] = [2.6910277686167188, 2.69107776861672];
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn source_roles(f: &SfccFeatureSet) -> Result<[usize; 3], &'static str> {
++    if f.strata.len() > 256 || f.curves.len() > 256 {
++        return Err("source_selection_cap");
++    }
++    let find = |path: Value, field: bool, local: usize| {
++        let matches: Vec<_> = f
++            .strata
++            .iter()
++            .enumerate()
++            .filter_map(|(i, s)| {
++                let d = s.graph_capture_identity_b()?;
++                (s.id == i
++                    && s.local_index == local
++                    && if field {
++                        d["field"]["path"] == path
++                    } else {
++                        d["field"].is_null()
++                            && d["domain"].as_array().is_some_and(|ds| ds.len() == 1)
++                            && d["domain"][0]["path"] == path
++                    })
++                .then_some(i)
++            })
++            .collect();
++        if matches.len() == 1 {
++            Ok(matches[0])
++        } else {
++            Err("source_occurrence_not_unique")
++        }
++    };
++    Ok([
++        find(json!([0, 0, 0, 0, 1]), false, 3)?,
++        find(json!([0, 0, 0, 0]), true, 0)?,
++        find(json!([0, 0, 0, 1]), false, 0)?,
++    ])
++}
++fn window_spans(
++    f: &SfccFeatureSet,
++    pair: [usize; 2],
++) -> Result<Vec<(usize, [f64; 2])>, &'static str> {
++    let mut out = Vec::new();
++    let mut queries = 0;
++    for (id, c) in f.curves.iter().enumerate() {
++        if c.adjacent_strata != pair && c.adjacent_strata != [pair[1], pair[0]] {
++            continue;
++        }
++        if c.id != id || c.closed || c.t_min != 0. || c.t_max.ceil() > 128. {
++            return Err("unsupported_chart_frame");
++        }
++        for i in 0..c.t_max.ceil() as usize {
++            let span = [i as f64, (i as f64 + 1.).min(c.t_max)];
++            queries += 2;
++            if queries > 2048 {
++                return Err("source_query_cap");
++            }
++            let a = c
++                .shared_checked_point(span[0])
++                .ok_or("selection_query_failed")?;
++            let b = c
++                .shared_checked_point(span[1])
++                .ok_or("selection_query_failed")?;
++            if a[1].min(b[1]) <= HEIGHT[0] && a[1].max(b[1]) >= HEIGHT[1] {
++                out.push((id, span));
++                if out.len() > 32 {
++                    return Err("source_window_span_cap");
++                }
++            }
++        }
++    }
++    Ok(out)
++}
++/// Fixture-source locator only. Full private admission below is still mandatory.
++pub(crate) fn selected_pair_c(f: &SfccFeatureSet) -> Result<[usize; 2], &'static str> {
++    let roles = source_roles(f)?;
++    let physical = window_spans(f, [roles[0], roles[2]])?;
++    let aliases = window_spans(f, [roles[1], roles[2]])?;
++    let mut selected = None;
++    let mut attempts = 0;
++    for &(p, ps) in &physical {
++        let Some(tube) = f.curves[p].projection_tube(ps[0], ps[1]) else {
++            continue;
++        };
++        for &(a, ars) in &aliases {
++            attempts += 1;
++            if attempts > 128 {
++                return Err("source_pair_attempt_cap");
++            }
++            let Some(branch) = HelixBranch::identify(f, p, a, tube) else {
++                continue;
++            };
++            if [branch.native, branch.field, branch.cylinder_id] != roles || branch.sign != 1 {
++                continue;
++            }
++            let ids = [p, a];
++            let accepted = [(p, ps), (a, ars)].iter().all(|&(id, span)| {
++                let Some(piece) = ConsumedPiece::bind(f, &branch, ids, id, span, 0.02) else {
++                    return false;
++                };
++                [span[0], (span[0] + span[1]) * 0.5, span[1]]
++                    .into_iter()
++                    .all(|t| piece.consume(t).is_ok())
++            });
++            if !accepted {
++                continue;
++            }
++            if selected.is_some_and(|old| old != ids) {
++                return Err("source_branch_window_ambiguous");
++            }
++            selected = Some(ids);
++        }
++    }
++    selected.ok_or("source_branch_window_missing")
++}
++fn fixture() -> (
++    SfccFeatureSet,
++    Value,
++    super::pipeline::PipelineTuning,
++    Value,
++) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let tuning = super::pipeline::PipelineTuning::default();
++    let effective = super::private_arc_a::diagnostic::effective_tuning(&tuning);
++    for (key, value) in effective.as_object().unwrap() {
++        let requested = &v["tuning"][key];
++        if value.is_number() && requested.is_number() {
++            assert_eq!(value.as_f64(), requested.as_f64(), "fixture tuning {key}");
++        } else {
++            assert_eq!(value, requested, "fixture tuning {key}");
++        }
++    }
++    let cube = super::pipeline::SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = super::pipeline::build_pipeline_context(&root, &cube, &tuning);
++    let setup = json!({"entry":"pipeline::build_pipeline_context","effectiveTuning":effective,
++        "cubeHex":[hex(cube.min_x),hex(cube.min_y),hex(cube.min_z),hex(cube.size)],
++        "lattice":{"depth":context.lat.max_depth,"resolution":context.lat.res,"span":context.lat.span,
++            "originHex":[hex(context.lat.origin_x),hex(context.lat.origin_y),hex(context.lat.origin_z)],"sizeHex":hex(context.lat.world_size),"stepHex":hex(context.lat.step)},
++        "octreeConstructed":false});
++    (context.features, v, tuning, setup)
++}
++fn nearby_sources(f: &SfccFeatureSet, selected: usize, point: [f64; 3]) -> Value {
++    let radius = f.curves[selected]
++        .traced_carriers()
++        .unwrap()
++        .2
++        .max_displacement;
++    let lo = point.map(|v| (v - radius).next_down());
++    let hi = point.map(|v| (v + radius).next_up());
++    let mut ids = f.index.curves_in_box(lo, hi);
++    ids.sort_unstable();
++    ids.dedup();
++    if ids.len() > 16 {
++        return json!({"status":"candidate_cap_refusal","count":ids.len(),"limit":16});
++    }
++    let rows:Vec<_>=ids.into_iter().map(|id|{
++        let c=&f.curves[id];
++        let closest=c.index_polyline.chunks_exact(3).enumerate().min_by(|(_,a),(_,b)|{
++            let dist=|p:&[f64]|(p[0]-point[0]).hypot(p[1]-point[1]).hypot(p[2]-point[2]);dist(a).total_cmp(&dist(b))
++        }).map(|(i,_)|i);
++        let endpoint_queries:Vec<_>=[c.t_min,c.t_max].into_iter().map(|t|json!({"parameterHex":hex(t),"pointHex":c.point_at_checked(t).map(|p|p.map(hex))})).collect();
++        let knot_query=closest.filter(|&i|c.traced_carriers().is_some()&&(i as f64)>=c.t_min&&(i as f64)<=c.t_max)
++            .map(|i|json!({"parameterHex":hex(i as f64),"pointHex":c.point_at_checked(i as f64).map(|p|p.map(hex))}));
++        json!({"chart":id,"sourcePair":c.adjacent_strata,"sourceIdentity":c.adjacent_strata.map(|sid|f.strata[sid].graph_capture_identity_b()),
++            "rangeHex":[hex(c.t_min),hex(c.t_max)],"cornerEnds":[c.corner_start,c.corner_end],"checkedEndpoints":endpoint_queries,"nearestIndexKnotQuery":knot_query})
++    }).collect();
++    json!({"status":"indexed_candidates","queryBoxHex":[lo.map(hex),hi.map(hex)],"radiusHex":hex(radius),"candidates":rows,
++        "scope":"proximity and indexing observations only; no source completeness, handoff or attachment proof"})
++}
++fn endpoint_rows(f: &SfccFeatureSet, ids: [usize; 2]) -> Vec<Value> {
++    ids.into_iter().map(|id|{
++        let c=&f.curves[id];
++        let ends:Vec<_>=[(0,c.t_min,c.corner_start),(1,c.t_max,c.corner_end)].into_iter().map(|(end,t,corner)|{
++            let p=c.shared_checked_point(t);
++            let junction=usize::try_from(corner).ok().and_then(|i|f.corners.get(i));
++            json!({"end":end,"parameterHex":hex(t),"pointHex":p.map(|p|p.map(hex)),"corner":corner,
++                "cornerPointHex":junction.map(|c|[c.x,c.y,c.z].map(hex)),"incidentEnds":junction.map(|c|c.curve_ends.clone()),
++                "nearbySourceCandidates":if corner<0{p.map(|p|nearby_sources(f,id,p))}else{None},"stratumChecks":p.map(|p|c.adjacent_strata.map(|sid|{let s=&f.strata[sid];json!({"source":sid,"domain":s.domain_contains(p,8.*c.traced_carriers().unwrap().2.curve_eps),"rawValueHex":hex(s.raw_field(p[0],p[1],p[2]).value)})}))})
++        }).collect();
++        json!({"chart":id,"sourcePair":c.adjacent_strata,"sourceIdentity":c.adjacent_strata.map(|i|f.strata[i].graph_capture_identity_b()),
++            "rangeHex":[hex(c.t_min),hex(c.t_max)],"refineHex":c.traced_carriers().map(|(_,_,r)|[r.curve_eps,r.min_cross,r.max_displacement].map(hex)),"indexPolylineHex":c.index_polyline.iter().copied().map(hex).collect::<Vec<_>>(),"endpoints":ends})
++    }).collect()
++}
++fn clone_equal(a: &SfccFeatureSet, b: &SfccFeatureSet) -> bool {
++    a.run_id == b.run_id
++        && a.fingerprint() == b.fingerprint()
++        && a.trace_diagnostics == b.trace_diagnostics
++        && a.unresolved_branch_paths == b.unresolved_branch_paths
++        && a.index.private_storage_clone_equal_a(&b.index)
++        && a.curves.len() == b.curves.len()
++        && a.curves
++            .iter()
++            .zip(&b.curves)
++            .all(|(a, b)| a.private_storage_clone_equal_a(b))
++        && a.strata.len() == b.strata.len()
++        && a.strata
++            .iter()
++            .zip(&b.strata)
++            .all(|(a, b)| a.private_storage_clone_equal_a(b))
++        && a.corners.len() == b.corners.len()
++        && a.corners.iter().zip(&b.corners).all(|(a, b)| {
++            a.id == b.id
++                && [a.x, a.y, a.z].map(f64::to_bits) == [b.x, b.y, b.z].map(f64::to_bits)
++                && a.strata == b.strata
++                && a.curve_ends == b.curve_ends
++        })
++}
++#[test]
++fn stage4_c_source_reidentification_and_clone_controls() {
++    let (f, _, _, _) = fixture();
++    let ids = selected_pair_c(&f).expect("source-bound target pair");
++    let mut moved = f.clone();
++    let n = moved.curves.len();
++    moved.curves.rotate_left(1);
++    for (i, c) in moved.curves.iter_mut().enumerate() {
++        c.id = i;
++    }
++    for c in &mut moved.corners {
++        for (id, _) in &mut c.curve_ends {
++            *id = (*id + n - 1) % n;
++        }
++    }
++    // Selection does not read the spatial index; this is a locator-only permutation control.
++    assert_eq!(
++        selected_pair_c(&moved).unwrap(),
++        ids.map(|i| (i + n - 1) % n)
++    );
++    let mut duplicate = f.clone();
++    let mut c = duplicate.curves[ids[1]].clone();
++    c.id = duplicate.curves.len();
++    duplicate.curves.push(c);
++    assert_eq!(
++        selected_pair_c(&duplicate),
++        Err("source_branch_window_ambiguous")
++    );
++    let mut wrong = f.clone();
++    let roles = source_roles(&f).unwrap();
++    wrong.strata[roles[0]].local_index = usize::MAX;
++    assert!(selected_pair_c(&wrong).is_err());
++    let copy = f.clone();
++    assert!(clone_equal(&f, &copy));
++    let chart = f
++        .curves
++        .iter()
++        .position(|c| c.connection_identity().is_some())
++        .expect("selected repair chart exists");
++    for t in [0., 0.5, 1.] {
++        assert_eq!(
++            f.curves[chart]
++                .point_at_checked(t)
++                .map(|p| p.map(f64::to_bits)),
++            copy.curves[chart]
++                .point_at_checked(t)
++                .map(|p| p.map(f64::to_bits))
++        );
++    }
++    let source = super::source_storage_a::inspect(
++        &f,
++        0,
++        "source-only; no component staging has been constructed",
++    );
++    assert!(source.complete && source.allowed);
++    assert!(source
++        .ledger
++        .rows
++        .iter()
++        .any(|r| r.category == "curve.traced_box" && r.layout_bytes > 0));
++    let overflow = super::source_storage_a::inspect(
++        &f,
++        usize::MAX,
++        "synthetic overflow control; not actual staging",
++    );
++    assert!(!overflow.allowed);
++}
++#[test]
++fn stage4_c_complete_source_admission_gate() {
++    let (f, v, tuning, setup) = fixture();
++    let before = f.clone();
++    let selected = selected_pair_c(&f);
++    let (admitted, outcome) = match selected {
++        Ok(ids) => match super::private_arc_a::admit(&f, ids, tuning.curve_chord_tol_mm) {
++            Ok((plan, transport)) => (
++                true,
++                json!({"kind":"admitted","plan":plan,"chargedQueries":transport.charged_queries()}),
++            ),
++            Err(refusal) => (false, json!({"kind":"refusal","refusal":refusal})),
++        },
++        Err(reason) => (false, json!({"kind":"selection_refusal","reason":reason})),
++    };
++    let report = json!({"scope":"feature-only source-based Stage4 admission prerequisite; no octree/faces/component construction",
++        "pipelineSetup":setup,"sourceConfigSha256":v["sourceConfigSha256"],"fingerprint":f.fingerprint().to_string(),"historicalFingerprint":v["featureFingerprint"],
++        "counts":{"curves":f.curves.len(),"corners":f.corners.len(),"strata":f.strata.len(),"unresolvedTrims":f.trace_diagnostics.unresolved_trims},
++        "selection":{"sourceRoles":source_roles(&f).ok(),"fixedBranchSign":1,"heightWindowHex":HEIGHT.map(hex),"actualPair":selected.ok(),"denseHistoricalPairNotAuthority":[20,33],"windowOnlyLocatorNotCompleteAdmission":true},
++        "selectedCharts":selected.ok().map(|ids|endpoint_rows(&f,ids)),"outcome":outcome,"fullArcAdmitted":admitted,
++        "sourceOnlyStorage":super::source_storage_a::inspect(&f,0,"source-only; actual combined component staging remains unestablished"),
++        "featureClonePreserved":clone_equal(&before,&f),"featureIndexAndCloneOwnedChartMetadataIncluded":true,
++        "componentAttempted":false,"actualComponentStorage":Value::Null,"historical198FaceCertificatesReused":false,"historical396PinBoundsReused":false,
++        "wholeComponentAccepted":false,"publicationReady":false});
++    let bytes = serde_json::to_vec_pretty(&report).unwrap();
++    assert!(
++        bytes.len() <= 512 * 1024,
++        "bounded source prerequisite detail"
++    );
++    std::fs::write(
++        std::env::var("SFCC_STAGE4_SOURCE_C_RECEIPT").expect("root-owned receipt path"),
++        bytes,
++    )
++    .unwrap();
++    assert!(
++        clone_equal(&before, &f),
++        "admission refusal must leave actual source features unchanged"
++    );
++    assert!(
++        admitted,
++        "complete source admission is required before component work: {outcome}"
++    );
++}

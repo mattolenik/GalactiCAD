@@ -1,0 +1,99 @@
+{
+  "stage4Complete": false,
+  "componentConstructed": false,
+  "componentValidityEstablished": false,
+  "firstRefusal": {
+    "detail": "admission reservation",
+    "originals": [
+      {
+        "corners": [
+          13,
+          -1
+        ],
+        "id": 20,
+        "range_bits": [
+          0,
+          4629418941960159232
+        ],
+        "strata": [
+          10,
+          15
+        ]
+      },
+      {
+        "corners": [
+          13,
+          -1
+        ],
+        "id": 38,
+        "range_bits": [
+          0,
+          4629418941960159232
+        ],
+        "strata": [
+          30,
+          15
+        ]
+      }
+    ],
+    "reason": "endpoint_missing"
+  },
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "fingerprint": "5850573460878635130",
+  "matchesSelectedStage3Fingerprint": true,
+  "selectedCharts": [
+    20,
+    38
+  ],
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ],
+  "ranges": [
+    [
+      0,
+      31
+    ],
+    [
+      0,
+      31
+    ]
+  ],
+  "upperEndpoints": [
+    [
+      -6.7080399240680695,
+      2.6968636287115637,
+      -8.464171570633368
+    ],
+    [
+      -6.709748680177877,
+      2.696127486844445,
+      -8.462817063416903
+    ]
+  ],
+  "observedUpperSeparationMm": 0.0023014000284144916,
+  "sourceOnlyReservationBytes": 944540,
+  "actualStagingReservationBytes": null,
+  "oldFacePinCertificatesReused": false,
+  "stage3LocalRepairRetained": true,
+  "productionRuntimeChanged": false,
+  "validated": [
+    "selected repair12controls",
+    "synthetic storage lifecycle control",
+    "source locator and clone/storage controls",
+    "topology helper controls",
+    "owned diagnostic cleanup",
+    "honest conditional refusal capture"
+  ],
+  "notReached": [
+    "octree and actual affected-component inventory",
+    "faces and typed root/pin certificates",
+    "private cell construction",
+    "f64/f32 component validity",
+    "component topology and interface audit",
+    "same-stage outside contacts",
+    "publication"
+  ],
+  "next": "establish the actual current upper full-source transition and ordered continuation/handoff; rerun unchanged full-arc admission before component construction"
+}

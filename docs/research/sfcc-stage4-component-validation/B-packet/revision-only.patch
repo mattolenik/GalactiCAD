@@ -1,0 +1,766 @@
+--- a/gcad-wasm/kernel/src/sfcc/mod.rs
++++ b/gcad-wasm/kernel/src/sfcc/mod.rs
+@@ -72,3 +72,6 @@
+ pub(crate) mod source_storage_a;
+ 
+ pub(crate) mod private_storage_observation;
++
++#[cfg(all(test, feature = "serde"))]
++pub(crate) mod stage4_source_preflight_c;
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -459,3 +459,7 @@
+ #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
+ #[path = "graph_capture_b.rs"]
+ pub(crate) mod graph_b;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "stage4_component_b.rs"]
++pub(crate) mod stage4_component_b;
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
+@@ -102,7 +102,7 @@
+         json!({"status":"complete_required_consumer_enumeration","typedPins":pin_count,"changedFaces":records,"requiredFaceIds":required.into_iter().collect::<Vec<_>>(),"leafConsumers":leaves,"includesIndirectPointUsers":true}),
+     )
+ }
+-fn live_digest(faces: &[HashMap<i64, FaceRecord>; 3], live: &PointTable) -> String {
++pub(super) fn live_digest(faces: &[HashMap<i64, FaceRecord>; 3], live: &PointTable) -> String {
+     let mut h = 0xcbf29ce484222325u64;
+     let mut word = |n: u64| {
+         for b in n.to_le_bytes() {
+@@ -181,6 +181,8 @@
+     cube: &SfccWorldCube,
+     tuning: &PipelineTuning,
+ ) -> bool {
++    #[cfg(test)]
++    if super::stage4_component_b::round0(tree, f, oct, faces, live, opts) { return true; }
+     if !REQUESTED.with(|r| r.replace(false)) {
+         return false;
+     }
+--- a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -0,0 +1,388 @@
++//! Test-only Stage 4 capture. Missing prerequisites stop before octree preparation.
++use super::*;
++use crate::math::grid::{stride_at_level, unpack_point};
++use crate::sdf::CsgNode;
++use crate::sfcc::{
++    cell_mesh::CellMeshOptions,
++    face_contour::FaceRecord,
++    octree::SfccOctree,
++    pipeline::{PipelineTuning, SfccWorldCube},
++    point_table::{PointKey, PointTable},
++    shared_arc_plan::{cell_faces, PrivateCandidate},
++    stage4_source_preflight_c::selected_pair_c,
++};
++use serde_json::{json, Value};
++use std::{
++    cell::RefCell,
++    collections::{BTreeMap, BTreeSet, HashMap},
++};
++
++const CAP: usize = 64 * 1024 * 1024;
++thread_local! { static REQUEST: RefCell<Option<(u64,[usize;2])>> = const { RefCell::new(None) }; }
++struct RequestScope;
++impl Drop for RequestScope {
++    fn drop(&mut self) {
++        REQUEST.with(|s| *s.borrow_mut() = None);
++    }
++}
++fn request(fingerprint: u64, pair: [usize; 2]) -> RequestScope {
++    REQUEST.with(|s| {
++        assert!(s.borrow().is_none());
++        *s.borrow_mut() = Some((fingerprint, pair));
++    });
++    RequestScope
++}
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn write_report(report: &Value) {
++    let bytes = serde_json::to_vec_pretty(report).expect("diagnostic serialization");
++    assert!(
++        bytes.len() <= CAP,
++        "Stage4 diagnostic64MiB cap; no truncated acceptance"
++    );
++    std::fs::write(
++        std::env::var("SFCC_STAGE4_COMPONENT_B_RECEIPT").expect("root receipt path"),
++        bytes,
++    )
++    .expect("receipt write");
++}
++fn source_rows(f: &SfccFeatureSet, ids: [usize; 2]) -> Value {
++    json!(ids.map(|id| {let c=&f.curves[id];json!({"chart":id,"sourcePair":c.adjacent_strata,
++        "sources":c.adjacent_strata.map(|s|f.strata[s].graph_capture_identity_b()),
++        "rangeHex":[hex(c.t_min),hex(c.t_max)],"cornerEnds":[c.corner_start,c.corner_end],
++        "endpointsHex":[c.point_at_checked(c.t_min).map(|p|p.map(hex)),c.point_at_checked(c.t_max).map(|p|p.map(hex))]})}))
++}
++
++// Counts and links describe an open component; closed-manifold acceptance is not assumed.
++fn topology(triangles: &[usize], point_count: usize) -> Result<Value, &'static str> {
++    if triangles.is_empty() {
++        return Err("empty_candidate_mesh");
++    }
++    if point_count > 4096 || triangles.len() > 3 * 4096 || triangles.len() % 3 != 0 {
++        return Err("component_geometry_cap");
++    }
++    let mut edges: BTreeMap<[usize; 2], Vec<[usize; 2]>> = BTreeMap::new();
++    let mut links: BTreeMap<usize, BTreeMap<usize, BTreeSet<usize>>> = BTreeMap::new();
++    let mut faces = BTreeSet::new();
++    let mut duplicates = 0;
++    for t in triangles.chunks_exact(3) {
++        if t.iter().any(|&p| p >= point_count) || t[0] == t[1] || t[1] == t[2] || t[2] == t[0] {
++            return Err("invalid_triangle_index");
++        }
++        let mut key = [t[0], t[1], t[2]];
++        key.sort();
++        if !faces.insert(key) {
++            duplicates += 1;
++        }
++        for i in 0..3 {
++            let (v, a, b) = (t[i], t[(i + 1) % 3], t[(i + 2) % 3]);
++            let mut e = [v, a];
++            e.sort();
++            edges.entry(e).or_default().push([v, a]);
++            let link = links.entry(v).or_default();
++            link.entry(a).or_default().insert(b);
++            link.entry(b).or_default().insert(a);
++        }
++    }
++    let boundary: Vec<_> = edges
++        .values()
++        .filter(|uses| uses.len() == 1)
++        .map(|uses| uses[0])
++        .collect();
++    let boundary_vertices: BTreeSet<_> = boundary.iter().flatten().copied().collect();
++    let mut bad_links = Vec::new();
++    for (&v, link) in &links {
++        let start = *link.keys().next().ok_or("empty_vertex_link")?;
++        let mut todo = vec![start];
++        let mut seen = BTreeSet::new();
++        while let Some(n) = todo.pop() {
++            if seen.insert(n) {
++                todo.extend(link[&n].iter().copied());
++            }
++        }
++        let ones = link.values().filter(|ns| ns.len() == 1).count();
++        let degrees = link.values().all(|ns| ns.len() == 2 || ns.len() == 1);
++        let shape = if boundary_vertices.contains(&v) {
++            ones == 2
++        } else {
++            ones == 0 && link.len() >= 3
++        };
++        if seen.len() != link.len() || !degrees || !shape {
++            bad_links.push(v);
++        }
++    }
++    let nonmanifold = edges.values().filter(|uses| uses.len() > 2).count();
++    let misoriented = edges
++        .values()
++        .filter(|uses| uses.len() == 2 && uses[0] != [uses[1][1], uses[1][0]])
++        .count();
++    Ok(
++        json!({"scope":"indexed open-component combinatorics only; no geometric or outside-contact verdict",
++        "triangles":triangles.len()/3,"usedVertices":links.len(),"edges":edges.len(),"boundaryEdges":boundary,
++        "duplicateFaces":duplicates,"nonManifoldEdges":nonmanifold,"misorientedInternalEdges":misoriented,
++        "invalidVertexLinks":bad_links,"localTopologyValid":duplicates==0&&nonmanifold==0&&misoriented==0&&bad_links.is_empty()}),
++    )
++}
++
++fn candidate_inventory(
++    candidate: &PrivateCandidate,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++) -> Result<Value, &'static str> {
++    let candidate_topology = topology(&candidate.triangles, candidate.points.count())?;
++    let selected: BTreeSet<_> = candidate.receipt.consumers.iter().copied().collect();
++    if selected.len() > 256 {
++        return Err("leaf_consumer_cap");
++    }
++    let mut required = BTreeSet::new();
++    for cell in &oct.leaves {
++        if selected.contains(&[cell.level as i64, cell.ix, cell.iy, cell.iz]) {
++            required.extend(cell_faces(oct, faces, cell));
++        }
++    }
++    if required.len() > 1536 {
++        return Err("required_face_cap");
++    }
++    let mut consumers: BTreeMap<_, Vec<([i64; 4], usize, bool)>> = BTreeMap::new();
++    for cell in &oct.leaves {
++        let id = [cell.level as i64, cell.ix, cell.iy, cell.iz];
++        let stride = stride_at_level(&oct.lat, cell.level);
++        let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
++        for face in cell_faces(oct, faces, cell)
++            .into_iter()
++            .filter(|f| required.contains(f))
++        {
++            let g = unpack_point(&oct.lat, face.1);
++            let side = if g[face.0] == base[face.0] {
++                0
++            } else if g[face.0] == base[face.0] + stride {
++                1
++            } else {
++                return Err("consumer_face_plane");
++            };
++            let row = consumers.entry(face).or_default();
++            if row.len() >= 2 {
++                return Err("too_many_face_consumers");
++            }
++            row.push((id, side, selected.contains(&id)));
++        }
++    }
++    let mut interface_rows = Vec::new();
++    let mut expected = BTreeMap::<[usize; 2], usize>::new();
++    let mut binding_failures = Vec::new();
++    for face in &required {
++        let uses = consumers.get(face).ok_or("missing_required_consumers")?;
++        let inside: Vec<_> = uses.iter().filter(|u| u.2).collect();
++        if inside.len() != 1 {
++            continue;
++        }
++        let r = &faces[face.0][&face.1];
++        let mut bindings = BTreeMap::new();
++        for id in r
++            .segments
++            .iter()
++            .flat_map(|s| [s.a, s.b])
++            .chain(r.pins.iter().map(|p| p.point_id))
++        {
++            if id >= live.count() {
++                return Err("invalid_frontier_point");
++            }
++            let mapped = match live.key_at(id) {
++                PointKey::Num(k) => candidate.points.lookup(*k),
++                PointKey::Str(k) => candidate.points.lookup_str(k),
++                PointKey::Unkeyed => None,
++            };
++            let identical = mapped.is_some_and(|p| {
++                [live.x(id), live.y(id), live.z(id)].map(f64::to_bits)
++                    == [
++                        candidate.points.x(p),
++                        candidate.points.y(p),
++                        candidate.points.z(p),
++                    ]
++                    .map(f64::to_bits)
++            });
++            if !identical {
++                binding_failures.push(id);
++            }
++            if let Some(mapped) = mapped {
++                bindings.insert(id, mapped);
++            }
++        }
++        for s in &r.segments {
++            if let (Some(&a), Some(&b)) = (bindings.get(&s.a), bindings.get(&s.b)) {
++                let e = if inside[0].1 == 1 { [b, a] } else { [a, b] };
++                *expected.entry(e).or_default() += 1;
++            }
++        }
++        interface_rows.push(json!({"face":face,"consumers":uses,"outsideLeafPresent":uses.iter().any(|u|!u.2),
++            "oldSegments":r.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>(),"pointBindings":bindings}));
++    }
++    let boundary: Vec<[usize; 2]> =
++        serde_json::from_value(candidate_topology["boundaryEdges"].clone())
++            .map_err(|_| "boundary_encoding")?;
++    let mut actual = BTreeMap::new();
++    for edge in boundary {
++        *actual.entry(edge).or_insert(0usize) += 1;
++    }
++    let matching = actual == expected && binding_failures.is_empty();
++    let points:Vec<_>=(0..candidate.points.count()).map(|p|json!({"id":p,"positionHex":[hex(candidate.points.x(p)),hex(candidate.points.y(p)),hex(candidate.points.z(p))],
++        "normalHex":[hex(candidate.points.nx(p)),hex(candidate.points.ny(p)),hex(candidate.points.nz(p))],"key":format!("{:?}",candidate.points.key_at(p))})).collect();
++    Ok(
++        json!({"completeCandidateGeometry":true,"points":points,"triangles":candidate.triangles,
++        "topology":candidate_topology,"requiredFaceIds":required,"frontierFaces":interface_rows,
++        "frontierBindingFailures":binding_failures,"orientedBoundaryMatchesOriginalFaceSegments":matching,
++        "sameStageOutsideTrianglesAvailable":false,"outsideContactAudit":"not_reached_no_same_stage_outside_mesh_at_this_barrier",
++        "fullComponentAccepted":false,"publicationReady":false}),
++    )
++}
++
++pub(super) fn round0(
++    tree: &CsgNode,
++    f: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++) -> bool {
++    let Some((fingerprint, expected_ids)) = REQUEST.with(|s| s.borrow_mut().take()) else {
++        return false;
++    };
++    let before = super::diagnostic::live_digest(faces, live);
++    let mut report = json!({"stage":"SERIAL_ROUND0_AFTER_CONTOUR_ALL_FACES_BEFORE_MESH_ALL_CELLS",
++        "expectedFingerprint":fingerprint.to_string(),"fingerprint":f.fingerprint().to_string(),
++        "liveDigestBefore":before,"constructionAttempted":false,"fullComponentAccepted":false,"publicationReady":false});
++    let selected = selected_pair_c(f);
++    let storage_scope = crate::sfcc::private_storage_observation::begin();
++    DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"finalChargedQueries":0})));
++    report["outcome"] = match selected {
++        Err(reason) => json!({"kind":"refusal","reason":reason}),
++        Ok(ids) if ids != expected_ids || f.fingerprint() != fingerprint => {
++            json!({"kind":"refusal","reason":"preflight_source_drift","selected":ids})
++        }
++        Ok(ids) => {
++            report["sources"] = source_rows(f, ids);
++            report["constructionAttempted"] = json!(true);
++            match crate::sfcc::shared_arc_plan::construct_private(
++                tree, f, ids, oct, faces, live, opts,
++            ) {
++                Err(refusal) => json!({"kind":"refusal","refusal":refusal}),
++                Ok(candidate) => {
++                    report["candidateInventory"] =
++                        match candidate_inventory(&candidate, oct, faces, live) {
++                            Ok(v) => v,
++                            Err(e) => json!({"status":"refused","reason":e}),
++                        };
++                    json!({"kind":"private_candidate_publication_blocked","receipt":candidate.receipt,"plan":candidate.plan})
++                }
++            }
++        }
++    };
++    report["admissionAndQueryEvidence"] = DIAGNOSTIC
++        .with(|s| s.borrow_mut().take())
++        .unwrap_or(Value::Null);
++    report["storageReservation"] = json!(storage_scope.take());
++    report["liveDigestAfter"] = json!(super::diagnostic::live_digest(faces, live));
++    report["liveStatePreserved"] = json!(report["liveDigestBefore"] == report["liveDigestAfter"]);
++    report["stoppedBeforeProductionCellMeshingAndPostassembly"] = json!(true);
++    write_report(&report);
++    true
++}
++
++#[test]
++fn stage4_component_b_original_source_attempt() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let cube = SfccWorldCube {
++        min_x: fixture["cube"]["min"][0].as_f64().unwrap(),
++        min_y: fixture["cube"]["min"][1].as_f64().unwrap(),
++        min_z: fixture["cube"]["min"][2].as_f64().unwrap(),
++        size: fixture["cube"]["max"][0].as_f64().unwrap()
++            - fixture["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let tuning = PipelineTuning::default();
++    let effective = super::diagnostic::effective_tuning(&tuning);
++    for (key, value) in effective.as_object().unwrap() {
++        let requested = &fixture["tuning"][key];
++        if value.is_number() && requested.is_number() {
++            assert_eq!(
++                value.as_f64(),
++                requested.as_f64(),
++                "fixture/native tuning drift: {key}"
++            );
++        } else {
++            assert_eq!(value, requested, "fixture/native tuning drift: {key}");
++        }
++    }
++    let context = crate::sfcc::pipeline::build_pipeline_context(&root, &cube, &tuning);
++    let f = &context.features;
++    let selected = selected_pair_c(f);
++    let mut report = json!({"stage":"FEATURE_SOURCE_PREFLIGHT_BEFORE_OCTREE","sourceConfigSha256":fixture["sourceConfigSha256"],
++        "fingerprint":f.fingerprint().to_string(),"effectiveTuning":super::diagnostic::effective_tuning(&tuning),
++        "constructionAttempted":false,"octreeBuilt":false,"facesPrepared":false,"fullComponentAccepted":false,"publicationReady":false});
++    let ids = match selected {
++        Ok(ids) => ids,
++        Err(reason) => {
++            report["outcome"] = json!({"kind":"refusal","reason":reason});
++            write_report(&report);
++            return;
++        }
++    };
++    report["sources"] = source_rows(f, ids);
++    match super::admit(f, ids, tuning.curve_chord_tol_mm) {
++        Err(refusal) => {
++            report["outcome"] = json!({"kind":"refusal","refusal":refusal});
++            report["topologyAndInterfaceAudits"] = json!("not_reached_no_private_candidate");
++            write_report(&report);
++            return;
++        }
++        Ok((_, _)) => {}
++    }
++    let _scope = request(f.fingerprint(), ids);
++    drop(context);
++    let result = crate::sfcc::pipeline::run_sfcc_pipeline(&root, &cube, &tuning);
++    assert!(
++        result.cancelled,
++        "private diagnostic must stop before publication"
++    );
++    let report: Value = serde_json::from_slice(
++        &std::fs::read(std::env::var("SFCC_STAGE4_COMPONENT_B_RECEIPT").unwrap()).unwrap(),
++    )
++    .unwrap();
++    assert_eq!(report["liveStatePreserved"], true);
++    assert_eq!(report["publicationReady"], false);
++}
++
++#[test]
++fn stage4_component_b_topology_controls() {
++    let tetra = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3];
++    let closed = topology(&tetra, 4).unwrap();
++    assert_eq!(closed["localTopologyValid"], true);
++    assert!(closed["boundaryEdges"].as_array().unwrap().is_empty());
++    let disk = topology(&[0, 1, 2, 0, 2, 3], 4).unwrap();
++    assert_eq!(disk["localTopologyValid"], true);
++    assert_eq!(disk["boundaryEdges"].as_array().unwrap().len(), 4);
++    let bowtie = topology(&[0, 1, 2, 0, 3, 4], 5).unwrap();
++    assert_eq!(bowtie["localTopologyValid"], false);
++    assert_eq!(bowtie["invalidVertexLinks"], json!([0]));
++    let reversed = topology(&[0, 1, 2, 0, 3, 2], 4).unwrap();
++    assert_eq!(reversed["misorientedInternalEdges"], 1);
++    let duplicate = topology(&[0, 1, 2, 0, 2, 1], 3).unwrap();
++    assert_eq!(duplicate["duplicateFaces"], 1);
++    assert!(topology(&[], 0).is_err());
++    assert!(topology(&[0, 1, 4], 4).is_err());
++    assert!(topology(&[0, 1], 4).is_err());
++}
++#[test]
++fn stage4_component_b_request_scope_cleans_up() {
++    let result = std::panic::catch_unwind(|| {
++        let _scope = request(1, [2, 3]);
++        panic!("scope control")
++    });
++    assert!(result.is_err());
++    assert!(REQUEST.with(|s| s.borrow().is_none()));
++}
+--- a/gcad-wasm/kernel/src/sfcc/stage4_source_preflight_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_source_preflight_c.rs
+@@ -0,0 +1,333 @@
++//! Test-only source selection and the unchanged full-arc admission prerequisite.
++use super::{
++    feature_set::SfccFeatureSet,
++    shared_twisted_proof::{correlated_c::ConsumedPiece, HelixBranch},
++};
++use serde_json::{json, Value};
++
++const HEIGHT: [f64; 2] = [2.6910277686167188, 2.69107776861672];
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn source_roles(f: &SfccFeatureSet) -> Result<[usize; 3], &'static str> {
++    if f.strata.len() > 256 || f.curves.len() > 256 {
++        return Err("source_selection_cap");
++    }
++    let find = |path: Value, field: bool, local: usize| {
++        let matches: Vec<_> = f
++            .strata
++            .iter()
++            .enumerate()
++            .filter_map(|(i, s)| {
++                let d = s.graph_capture_identity_b()?;
++                (s.id == i
++                    && s.local_index == local
++                    && if field {
++                        d["field"]["path"] == path
++                    } else {
++                        d["field"].is_null()
++                            && d["domain"].as_array().is_some_and(|ds| ds.len() == 1)
++                            && d["domain"][0]["path"] == path
++                    })
++                .then_some(i)
++            })
++            .collect();
++        if matches.len() == 1 {
++            Ok(matches[0])
++        } else {
++            Err("source_occurrence_not_unique")
++        }
++    };
++    Ok([
++        find(json!([0, 0, 0, 0, 1]), false, 3)?,
++        find(json!([0, 0, 0, 0]), true, 0)?,
++        find(json!([0, 0, 0, 1]), false, 0)?,
++    ])
++}
++fn window_spans(
++    f: &SfccFeatureSet,
++    pair: [usize; 2],
++) -> Result<Vec<(usize, [f64; 2])>, &'static str> {
++    let mut out = Vec::new();
++    let mut queries = 0;
++    for (id, c) in f.curves.iter().enumerate() {
++        if c.adjacent_strata != pair && c.adjacent_strata != [pair[1], pair[0]] {
++            continue;
++        }
++        if c.id != id || c.closed || c.t_min != 0. || c.t_max.ceil() > 128. {
++            return Err("unsupported_chart_frame");
++        }
++        for i in 0..c.t_max.ceil() as usize {
++            let span = [i as f64, (i as f64 + 1.).min(c.t_max)];
++            queries += 2;
++            if queries > 2048 {
++                return Err("source_query_cap");
++            }
++            let a = c
++                .shared_checked_point(span[0])
++                .ok_or("selection_query_failed")?;
++            let b = c
++                .shared_checked_point(span[1])
++                .ok_or("selection_query_failed")?;
++            if a[1].min(b[1]) <= HEIGHT[0] && a[1].max(b[1]) >= HEIGHT[1] {
++                out.push((id, span));
++                if out.len() > 32 {
++                    return Err("source_window_span_cap");
++                }
++            }
++        }
++    }
++    Ok(out)
++}
++/// Fixture-source locator only. Full private admission below is still mandatory.
++pub(crate) fn selected_pair_c(f: &SfccFeatureSet) -> Result<[usize; 2], &'static str> {
++    let roles = source_roles(f)?;
++    let physical = window_spans(f, [roles[0], roles[2]])?;
++    let aliases = window_spans(f, [roles[1], roles[2]])?;
++    let mut selected = None;
++    let mut attempts = 0;
++    for &(p, ps) in &physical {
++        let Some(tube) = f.curves[p].projection_tube(ps[0], ps[1]) else {
++            continue;
++        };
++        for &(a, ars) in &aliases {
++            attempts += 1;
++            if attempts > 128 {
++                return Err("source_pair_attempt_cap");
++            }
++            let Some(branch) = HelixBranch::identify(f, p, a, tube) else {
++                continue;
++            };
++            if [branch.native, branch.field, branch.cylinder_id] != roles || branch.sign != 1 {
++                continue;
++            }
++            let ids = [p, a];
++            let accepted = [(p, ps), (a, ars)].iter().all(|&(id, span)| {
++                let Some(piece) = ConsumedPiece::bind(f, &branch, ids, id, span, 0.02) else {
++                    return false;
++                };
++                [span[0], (span[0] + span[1]) * 0.5, span[1]]
++                    .into_iter()
++                    .all(|t| piece.consume(t).is_ok())
++            });
++            if !accepted {
++                continue;
++            }
++            if selected.is_some_and(|old| old != ids) {
++                return Err("source_branch_window_ambiguous");
++            }
++            selected = Some(ids);
++        }
++    }
++    selected.ok_or("source_branch_window_missing")
++}
++fn fixture() -> (
++    SfccFeatureSet,
++    Value,
++    super::pipeline::PipelineTuning,
++    Value,
++) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let tuning = super::pipeline::PipelineTuning::default();
++    let effective = super::private_arc_a::diagnostic::effective_tuning(&tuning);
++    for (key, value) in effective.as_object().unwrap() {
++        let requested = &v["tuning"][key];
++        if value.is_number() && requested.is_number() {
++            assert_eq!(value.as_f64(), requested.as_f64(), "fixture tuning {key}");
++        } else {
++            assert_eq!(value, requested, "fixture tuning {key}");
++        }
++    }
++    let cube = super::pipeline::SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = super::pipeline::build_pipeline_context(&root, &cube, &tuning);
++    let setup = json!({"entry":"pipeline::build_pipeline_context","effectiveTuning":effective,
++        "cubeHex":[hex(cube.min_x),hex(cube.min_y),hex(cube.min_z),hex(cube.size)],
++        "lattice":{"depth":context.lat.max_depth,"resolution":context.lat.res,"span":context.lat.span,
++            "originHex":[hex(context.lat.origin_x),hex(context.lat.origin_y),hex(context.lat.origin_z)],"sizeHex":hex(context.lat.world_size),"stepHex":hex(context.lat.step)},
++        "octreeConstructed":false});
++    (context.features, v, tuning, setup)
++}
++fn nearby_sources(f: &SfccFeatureSet, selected: usize, point: [f64; 3]) -> Value {
++    let radius = f.curves[selected]
++        .traced_carriers()
++        .unwrap()
++        .2
++        .max_displacement;
++    let lo = point.map(|v| (v - radius).next_down());
++    let hi = point.map(|v| (v + radius).next_up());
++    let mut ids = f.index.curves_in_box(lo, hi);
++    ids.sort_unstable();
++    ids.dedup();
++    if ids.len() > 16 {
++        return json!({"status":"candidate_cap_refusal","count":ids.len(),"limit":16});
++    }
++    let rows:Vec<_>=ids.into_iter().map(|id|{
++        let c=&f.curves[id];
++        let closest=c.index_polyline.chunks_exact(3).enumerate().min_by(|(_,a),(_,b)|{
++            let dist=|p:&[f64]|(p[0]-point[0]).hypot(p[1]-point[1]).hypot(p[2]-point[2]);dist(a).total_cmp(&dist(b))
++        }).map(|(i,_)|i);
++        let endpoint_queries:Vec<_>=[c.t_min,c.t_max].into_iter().map(|t|json!({"parameterHex":hex(t),"pointHex":c.point_at_checked(t).map(|p|p.map(hex))})).collect();
++        let knot_query=closest.filter(|&i|c.traced_carriers().is_some()&&(i as f64)>=c.t_min&&(i as f64)<=c.t_max)
++            .map(|i|json!({"parameterHex":hex(i as f64),"pointHex":c.point_at_checked(i as f64).map(|p|p.map(hex))}));
++        json!({"chart":id,"sourcePair":c.adjacent_strata,"sourceIdentity":c.adjacent_strata.map(|sid|f.strata[sid].graph_capture_identity_b()),
++            "rangeHex":[hex(c.t_min),hex(c.t_max)],"cornerEnds":[c.corner_start,c.corner_end],"checkedEndpoints":endpoint_queries,"nearestIndexKnotQuery":knot_query})
++    }).collect();
++    json!({"status":"indexed_candidates","queryBoxHex":[lo.map(hex),hi.map(hex)],"radiusHex":hex(radius),"candidates":rows,
++        "scope":"proximity and indexing observations only; no source completeness, handoff or attachment proof"})
++}
++fn endpoint_rows(f: &SfccFeatureSet, ids: [usize; 2]) -> Vec<Value> {
++    ids.into_iter().map(|id|{
++        let c=&f.curves[id];
++        let ends:Vec<_>=[(0,c.t_min,c.corner_start),(1,c.t_max,c.corner_end)].into_iter().map(|(end,t,corner)|{
++            let p=c.shared_checked_point(t);
++            let junction=usize::try_from(corner).ok().and_then(|i|f.corners.get(i));
++            json!({"end":end,"parameterHex":hex(t),"pointHex":p.map(|p|p.map(hex)),"corner":corner,
++                "cornerPointHex":junction.map(|c|[c.x,c.y,c.z].map(hex)),"incidentEnds":junction.map(|c|c.curve_ends.clone()),
++                "nearbySourceCandidates":if corner<0{p.map(|p|nearby_sources(f,id,p))}else{None},"stratumChecks":p.map(|p|c.adjacent_strata.map(|sid|{let s=&f.strata[sid];json!({"source":sid,"domain":s.domain_contains(p,8.*c.traced_carriers().unwrap().2.curve_eps),"rawValueHex":hex(s.raw_field(p[0],p[1],p[2]).value)})}))})
++        }).collect();
++        json!({"chart":id,"sourcePair":c.adjacent_strata,"sourceIdentity":c.adjacent_strata.map(|i|f.strata[i].graph_capture_identity_b()),
++            "rangeHex":[hex(c.t_min),hex(c.t_max)],"refineHex":c.traced_carriers().map(|(_,_,r)|[r.curve_eps,r.min_cross,r.max_displacement].map(hex)),"indexPolylineHex":c.index_polyline.iter().copied().map(hex).collect::<Vec<_>>(),"endpoints":ends})
++    }).collect()
++}
++fn clone_equal(a: &SfccFeatureSet, b: &SfccFeatureSet) -> bool {
++    a.run_id == b.run_id
++        && a.fingerprint() == b.fingerprint()
++        && a.trace_diagnostics == b.trace_diagnostics
++        && a.unresolved_branch_paths == b.unresolved_branch_paths
++        && a.index.private_storage_clone_equal_a(&b.index)
++        && a.curves.len() == b.curves.len()
++        && a.curves
++            .iter()
++            .zip(&b.curves)
++            .all(|(a, b)| a.private_storage_clone_equal_a(b))
++        && a.strata.len() == b.strata.len()
++        && a.strata
++            .iter()
++            .zip(&b.strata)
++            .all(|(a, b)| a.private_storage_clone_equal_a(b))
++        && a.corners.len() == b.corners.len()
++        && a.corners.iter().zip(&b.corners).all(|(a, b)| {
++            a.id == b.id
++                && [a.x, a.y, a.z].map(f64::to_bits) == [b.x, b.y, b.z].map(f64::to_bits)
++                && a.strata == b.strata
++                && a.curve_ends == b.curve_ends
++        })
++}
++#[test]
++fn stage4_c_source_reidentification_and_clone_controls() {
++    let (f, _, _, _) = fixture();
++    let ids = selected_pair_c(&f).expect("source-bound target pair");
++    let mut moved = f.clone();
++    let n = moved.curves.len();
++    moved.curves.rotate_left(1);
++    for (i, c) in moved.curves.iter_mut().enumerate() {
++        c.id = i;
++    }
++    for c in &mut moved.corners {
++        for (id, _) in &mut c.curve_ends {
++            *id = (*id + n - 1) % n;
++        }
++    }
++    // Selection does not read the spatial index; this is a locator-only permutation control.
++    assert_eq!(
++        selected_pair_c(&moved).unwrap(),
++        ids.map(|i| (i + n - 1) % n)
++    );
++    let mut duplicate = f.clone();
++    let mut c = duplicate.curves[ids[1]].clone();
++    c.id = duplicate.curves.len();
++    duplicate.curves.push(c);
++    assert_eq!(
++        selected_pair_c(&duplicate),
++        Err("source_branch_window_ambiguous")
++    );
++    let mut wrong = f.clone();
++    let roles = source_roles(&f).unwrap();
++    wrong.strata[roles[0]].local_index = usize::MAX;
++    assert!(selected_pair_c(&wrong).is_err());
++    let copy = f.clone();
++    assert!(clone_equal(&f, &copy));
++    let chart = f
++        .curves
++        .iter()
++        .position(|c| c.connection_identity().is_some())
++        .expect("selected repair chart exists");
++    for t in [0., 0.5, 1.] {
++        assert_eq!(
++            f.curves[chart]
++                .point_at_checked(t)
++                .map(|p| p.map(f64::to_bits)),
++            copy.curves[chart]
++                .point_at_checked(t)
++                .map(|p| p.map(f64::to_bits))
++        );
++    }
++    let source = super::source_storage_a::inspect(
++        &f,
++        0,
++        "source-only; no component staging has been constructed",
++    );
++    assert!(source.complete && source.allowed);
++    assert!(source
++        .ledger
++        .rows
++        .iter()
++        .any(|r| r.category == "curve.traced_box" && r.layout_bytes > 0));
++    let overflow = super::source_storage_a::inspect(
++        &f,
++        usize::MAX,
++        "synthetic overflow control; not actual staging",
++    );
++    assert!(!overflow.allowed);
++}
++#[test]
++fn stage4_c_complete_source_admission_gate() {
++    let (f, v, tuning, setup) = fixture();
++    let before = f.clone();
++    let selected = selected_pair_c(&f);
++    let (admitted, outcome) = match selected {
++        Ok(ids) => match super::private_arc_a::admit(&f, ids, tuning.curve_chord_tol_mm) {
++            Ok((plan, transport)) => (
++                true,
++                json!({"kind":"admitted","plan":plan,"chargedQueries":transport.charged_queries()}),
++            ),
++            Err(refusal) => (false, json!({"kind":"refusal","refusal":refusal})),
++        },
++        Err(reason) => (false, json!({"kind":"selection_refusal","reason":reason})),
++    };
++    let report = json!({"scope":"feature-only source-based Stage4 admission prerequisite; no octree/faces/component construction",
++        "pipelineSetup":setup,"sourceConfigSha256":v["sourceConfigSha256"],"fingerprint":f.fingerprint().to_string(),"historicalFingerprint":v["featureFingerprint"],
++        "counts":{"curves":f.curves.len(),"corners":f.corners.len(),"strata":f.strata.len(),"unresolvedTrims":f.trace_diagnostics.unresolved_trims},
++        "selection":{"sourceRoles":source_roles(&f).ok(),"fixedBranchSign":1,"heightWindowHex":HEIGHT.map(hex),"actualPair":selected.ok(),"denseHistoricalPairNotAuthority":[20,33],"windowOnlyLocatorNotCompleteAdmission":true},
++        "selectedCharts":selected.ok().map(|ids|endpoint_rows(&f,ids)),"outcome":outcome,"fullArcAdmitted":admitted,
++        "sourceOnlyStorage":super::source_storage_a::inspect(&f,0,"source-only; actual combined component staging remains unestablished"),
++        "featureClonePreserved":clone_equal(&before,&f),"featureIndexAndCloneOwnedChartMetadataIncluded":true,
++        "componentAttempted":false,"actualComponentStorage":Value::Null,"historical198FaceCertificatesReused":false,"historical396PinBoundsReused":false,
++        "wholeComponentAccepted":false,"publicationReady":false});
++    let bytes = serde_json::to_vec_pretty(&report).unwrap();
++    assert!(
++        bytes.len() <= 512 * 1024,
++        "bounded source prerequisite detail"
++    );
++    std::fs::write(
++        std::env::var("SFCC_STAGE4_SOURCE_C_RECEIPT").expect("root-owned receipt path"),
++        bytes,
++    )
++    .unwrap();
++    assert!(
++        clone_equal(&before, &f),
++        "admission refusal must leave actual source features unchanged"
++    );
++    assert!(
++        admitted,
++        "complete source admission is required before component work: {outcome}"
++    );
++}

@@ -1430,6 +1430,31 @@ source/face/pin/query/storage obligations and validate the complete component an
 its interfaces; the old private graph guard has not been rerun on this selection.
 Current-HEAD/native-WASM integration, full torture cases and E4 overall remain open.
 
+### Stage 4 attempt refuses before component construction
+
+The [fresh component-validation attempt](sfcc-stage4-component-validation/README.md)
+uses exact pipeline-context preparation and source-based selection, not the old
+fingerprint or chart IDs. The current fingerprint matches the selected Stage 3
+result. Physical/alias charts 20 and 38 both have lower corner 13, upper corner
+`-1`, and range `[0,31]`; their numerical upper endpoints differ by approximately
+0.0023014 mm. The unchanged private admission gate refuses `endpoint_missing`
+before complete source transport, octree, faces, staging or private construction.
+The required admission assertion fails; a separately bounded conditional attempt
+captures the same refusal and does not publish geometry.
+
+The twelve selected repair controls still pass. Source reidentification, clone
+metadata and source-only storage controls pass with a 944,540-byte reservation,
+explicitly excluding actual component staging. Historical component/face/pin
+counts are not reused. No current component triangles, f64/f32 validity, topology,
+frontier or outside contacts were evaluated. The round0 barrier also lacks
+same-stage outside triangles, a separate future prerequisite for contact closure.
+
+The fourth review retains Stage 3's local result while leaving Stage 4 open.
+Next establish the current upper composed-field transition and ordered source
+handoff, checking actual scalar blend behavior and active domains. Do not weld the
+two numerical ends or fabricate a corner to satisfy endpoint presence. Production
+runtime remains unchanged and E4 overall remains open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

@@ -1,0 +1,10 @@
+
+running 1 test
+test sfcc::private_arc_a::stage4_component_b::stage4_component_b_request_scope_cleans_up ... 
+thread 'sfcc::private_arc_a::stage4_component_b::stage4_component_b_request_scope_cleans_up' (3550225) panicked at kernel/src/sfcc/stage4_component_b.rs:384:9:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.00s
+

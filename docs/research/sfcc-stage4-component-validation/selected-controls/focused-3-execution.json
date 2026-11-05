@@ -1,0 +1,13 @@
+{
+  "step": "focused-3",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round25-component-validation/selected-controls/kernel-tests",
+    "exposure_b_compiled_original_source_retains_required_continuation",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 57.04566637499374,
+  "elapsedSeconds": 0.6859357909997925,
+  "exitCode": 0,
+  "timedOut": false
+}

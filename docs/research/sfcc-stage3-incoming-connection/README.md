@@ -205,3 +205,9 @@ has not been rerun or shown to pass by this feature-only campaign.
 Production remains unchanged. Current-HEAD integration, native/WASM equivalence,
 transformed-family tests, complete torture models, later blend handoff and general
 multi-sheet reconstruction remain open. No browser or visual acceptance was run.
+
+The [subsequent Stage 4 attempt](../sfcc-stage4-component-validation/README.md)
+reidentifies current source charts and retains this local repair, but complete
+source admission refuses on their unresolved upper ends. No component mesh was
+constructed; geometry and interface checks remain not reached. The next source
+obligation is the actual upper transition and ordered continuation/handoff.

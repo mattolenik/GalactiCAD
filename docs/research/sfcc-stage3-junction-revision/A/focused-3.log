@@ -1,0 +1,6 @@
+
+running 1 test
+test sfcc::trim::exposure_a_endpoint_tests::exposure_a_uncertain_endpoint_cannot_snap_to_an_existing_corner ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.00s
+

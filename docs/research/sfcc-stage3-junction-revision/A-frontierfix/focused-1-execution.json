@@ -1,0 +1,13 @@
+{
+  "step": "focused-1",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round23-junction-revision/A-frontierfix/kernel-tests",
+    "exposure_a_frontier_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 57.84996791699996,
+  "elapsedSeconds": 0.003864124999381602,
+  "exitCode": 0,
+  "timedOut": false
+}

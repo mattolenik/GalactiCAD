@@ -1,0 +1,8 @@
+{
+  "filter": "junction_revision_c_",
+  "tests": [
+    "sfcc::trim::junction_revision_c::junction_revision_c_captures_lower_frontier_without_changing_compilation",
+    "sfcc::trim::junction_revision_c::junction_revision_c_scope_resets_after_unwind"
+  ],
+  "exitCode": 0
+}

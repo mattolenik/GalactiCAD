@@ -1,0 +1,66 @@
+{
+  "scope": "Stage3 second competing revision; isolated historical native feature diagnostics",
+  "productionRuntimeCommit": "421f5a9",
+  "stage3Complete": false,
+  "selectedRuntimeCandidate": null,
+  "validatedPremises": [
+    "source-junction location and numerical association",
+    "bounded conditional local source zero-locus/domain equivalence",
+    "original vs final raw-parameter frontier provenance",
+    "observation-preserving lossless causal capture"
+  ],
+  "unproved": [
+    "ordered incoming-arc connection",
+    "generated-carrier/source-junction association sufficient for attachment",
+    "complete incident feature arrangement",
+    "full component correctness",
+    "current native/WASM transfer"
+  ],
+  "executions": [
+    {
+      "candidate": "A-frontierfix",
+      "buildSeconds": 13.834076708000794,
+      "focusedSeconds": 4.680503498999315,
+      "passingControlTests": 8,
+      "fullSourcePreservationTest": "FAIL",
+      "requiredUpperCoverage": true,
+      "lowerSourceIncidencePreserved": false,
+      "runtimeRepairAccepted": false,
+      "sourceManifest": "A-frontierfix/manifest.json"
+    },
+    {
+      "candidate": "B",
+      "buildSeconds": 14.329775250000239,
+      "focusedSeconds": 2.113941124998746,
+      "passingControlTests": 6,
+      "fullSourcePreservationTest": "FAIL",
+      "requiredUpperCoverage": true,
+      "lowerSourceIncidencePreserved": false,
+      "runtimeRepairAccepted": false,
+      "sourceManifest": "B/manifest.json"
+    },
+    {
+      "candidate": "C-compact",
+      "buildSeconds": 15.771661332999429,
+      "focusedSeconds": 2.1550833330002206,
+      "passingControlTests": 7,
+      "fullSourcePreservationTest": "FAIL",
+      "requiredUpperCoverage": true,
+      "lowerSourceIncidencePreserved": false,
+      "runtimeRepairAccepted": false,
+      "sourceManifest": "C-compact/manifest.json"
+    }
+  ],
+  "initialFailures": [
+    "C macro build error",
+    "C-fixed missing test variables build error",
+    "C-buildfix 512KiB encoded capture cap exceeded"
+  ],
+  "capture": {
+    "encodedBytes": 438866,
+    "queries": 165,
+    "probeAttempts": 1009,
+    "equalToOversizedEvidenceExceptProcessLocalAddresses": true,
+    "observationPreservesGeometry": true
+  }
+}

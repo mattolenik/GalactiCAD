@@ -1,0 +1,220 @@
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -205,9 +205,19 @@
+ /// Parameters retain the original raw curve frame, even when a closed run wraps.
+ #[derive(Clone, Copy, Debug, PartialEq)]
+ pub struct TrimFrontier {
++    // Unknown bisection can discard the true junction; retain the original search container.
++    pub initial_alive: f64,
++    pub initial_other: f64,
++    pub initial_other_status: FrontierOtherStatus,
+     pub alive: f64,
+     pub other: f64,
++    pub other_status: FrontierOtherStatus,
+     pub reason: FrontierReason,
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum FrontierOtherStatus {
++    Inactive,
++    Unknown,
+ }
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum FrontierReason {
+@@ -257,16 +267,26 @@
+ ) -> (f64, Option<TrimFrontier>) {
+     let mut a = t_alive;
+     let mut d = t_other;
++    let initial_status = if other_uncertain {
++        FrontierOtherStatus::Unknown
++    } else {
++        FrontierOtherStatus::Inactive
++    };
++    let mut other_status = initial_status;
+     let mut reason = other_uncertain.then_some(FrontierReason::UndecidableClassification);
+-    let result = |a, d, reason: Option<FrontierReason>| {
++    let result = |a, d, other_status, reason: Option<FrontierReason>| {
+         (
+             a,
+             if super::shared_twisted_proof::exposure_a::legacy_mode() {
+                 None
+             } else {
+                 reason.map(|reason| TrimFrontier {
++                    initial_alive: t_alive,
++                    initial_other: t_other,
++                    initial_other_status: initial_status,
+                     alive: a,
+                     other: d,
++                    other_status,
+                     reason,
+                 })
+             },
+@@ -275,21 +295,25 @@
+     for _ in 0..limit {
+         let m = (a + d) / 2.;
+         if curve.param_distance(a, d) < tol.corner_merge_tol / 4. {
+-            return result(a, d, reason);
++            return result(a, d, other_status, reason);
+         }
+         if m == a || m == d || !m.is_finite() {
+-            return result(a, d, Some(FrontierReason::Stagnation));
++            return result(a, d, other_status, Some(FrontierReason::Stagnation));
+         }
+         match classify(m) {
+             Ok(true) => a = m,
+-            Ok(false) => d = m,
++            Ok(false) => {
++                d = m;
++                other_status = FrontierOtherStatus::Inactive;
++            }
+             Err(()) => {
+                 d = m;
++                other_status = FrontierOtherStatus::Unknown;
+                 reason = Some(FrontierReason::UndecidableClassification);
+             }
+         }
+     }
+-    result(a, d, Some(FrontierReason::WorkLimit))
++    result(a, d, other_status, Some(FrontierReason::WorkLimit))
+ }
+ 
+ /// Retain known-alive intervals; undecidable truncations have no corner authority.
+@@ -376,19 +400,27 @@
+         if first.t0 == params[0] && last.t1 == params[params.len() - 1] {
+             runs.pop();
+             runs.remove(0);
+-            runs.push(TrimmedRun {
+-                curve_idx,
+-                t0: last.t0 - curve.param_wrap.unwrap_or(0.),
+-                t1: first.t1,
+-                full_closed: false,
+-                frontiers: [last.frontiers[0], first.frontiers[1]],
+-            });
++            runs.push(join_wrapped_runs(
++                first,
++                last,
++                curve.param_wrap.unwrap_or(0.),
++            ));
+         }
+     }
+     let has_frontier = runs
+         .iter()
+         .any(|run| run.frontiers.iter().any(Option::is_some));
+     (runs, usize::from(unresolved.get() || has_frontier))
++}
++
++fn join_wrapped_runs(first: TrimmedRun, last: TrimmedRun, wrap: f64) -> TrimmedRun {
++    TrimmedRun {
++        curve_idx: first.curve_idx,
++        t0: last.t0 - wrap,
++        t1: first.t1,
++        full_closed: false,
++        frontiers: [last.frontiers[0], first.frontiers[1]],
++    }
+ }
+ 
+ pub struct TrimResult {
+@@ -1100,8 +1132,12 @@
+             assert_eq!(
+                 frontier,
+                 Some(TrimFrontier {
++                    initial_alive: alive,
++                    initial_other: other,
++                    initial_other_status: FrontierOtherStatus::Inactive,
+                     alive,
+                     other,
++                    other_status: FrontierOtherStatus::Inactive,
+                     reason: FrontierReason::WorkLimit
+                 })
+             );
+@@ -1122,4 +1158,90 @@
+         assert_eq!(end, 0.);
+         assert!(frontier.other > 0. && frontier.other < 1.);
+     }
+-}
++    #[test]
++    fn exposure_a_frontier_keeps_initial_container_when_unknown_bisection_discards_junction() {
++        let c = make_segment_curve(0, -1, [0, 1], 0., 0., 0., 1., 0., 0.);
++        let mut tol =
++            crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 1.);
++        tol.corner_merge_tol = 0.04;
++        let initial = 0.2426778243;
++        for sign in [1., -1.] {
++            let map = |t: f64| if sign > 0. { t } else { 1. - t };
++            let classify = |t: f64| if map(t) > 0.01 { Ok(true) } else { Err(()) };
++            let (_, frontier) =
++                bisect_transition_bounded(&classify, &c, map(initial), map(0.), true, &tol, 40);
++            let frontier = frontier.unwrap();
++            let junction = map(0.);
++            assert_eq!(frontier.initial_alive, map(initial));
++            assert_eq!(frontier.initial_other, junction);
++            assert_eq!(frontier.initial_other_status, FrontierOtherStatus::Unknown);
++            assert_eq!(frontier.other_status, FrontierOtherStatus::Unknown);
++            assert!(
++                junction < frontier.alive.min(frontier.other)
++                    || junction > frontier.alive.max(frontier.other),
++                "the adversarial true junction is outside the final bracket"
++            );
++            assert!(
++                junction >= frontier.initial_alive.min(frontier.initial_other)
++                    && junction <= frontier.initial_alive.max(frontier.initial_other)
++            );
++        }
++        // An initially inactive sample may later meet uncertainty; preserve both facts.
++        let (_, frontier) =
++            bisect_transition_bounded(&|_| Err(()), &c, initial, 0., false, &tol, 40);
++        let frontier = frontier.unwrap();
++        assert_eq!(frontier.initial_other_status, FrontierOtherStatus::Inactive);
++        assert_eq!(frontier.other_status, FrontierOtherStatus::Unknown);
++    }
++
++    #[test]
++    fn exposure_a_frontier_wrap_keeps_both_raw_search_containers() {
++        let c = make_segment_curve(0, -1, [0, 1], 0., 0., 0., 1., 0., 0.);
++        let mut tol =
++            crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 1.);
++        tol.corner_merge_tol = 0.04;
++        let (_, first_end) = bisect_transition_bounded(
++            &|t| if t < 0.23 { Ok(true) } else { Err(()) },
++            &c,
++            0.,
++            0.2426778243,
++            true,
++            &tol,
++            40,
++        );
++        let (_, last_start) = bisect_transition_bounded(
++            &|t| if t > 0.77 { Ok(true) } else { Err(()) },
++            &c,
++            1.,
++            1. - 0.2426778243,
++            true,
++            &tol,
++            40,
++        );
++        let first_end = first_end.unwrap();
++        let last_start = last_start.unwrap();
++        let first = TrimmedRun {
++            curve_idx: 7,
++            t0: 0.,
++            t1: first_end.alive,
++            full_closed: false,
++            frontiers: [None, Some(first_end)],
++        };
++        let last = TrimmedRun {
++            curve_idx: 7,
++            t0: last_start.alive,
++            t1: 1.,
++            full_closed: false,
++            frontiers: [Some(last_start), None],
++        };
++        let joined = join_wrapped_runs(first, last, 1.);
++        assert_eq!(joined.curve_idx, 7);
++        assert!(joined.t0 < 0. && joined.t1 > 0.);
++        assert_eq!(joined.frontiers, [Some(last_start), Some(first_end)]);
++        assert!(
++            joined.frontiers[0].unwrap().initial_other > 0.,
++            "wrapping run coordinates must not translate the original raw-frame search container"
++        );
++        assert_eq!(joined.frontiers[1].unwrap().initial_other, 0.2426778243);
++    }
++}

@@ -165,3 +165,9 @@ gate and all negative controls. The next repair must:
 No candidate is selected for stage 4. The later outer-round continuation,
 intermediate-chamfer issue, complete component and native/WASM/GPU obligations
 remain open. Current production meshing logic remains at `421f5a9`.
+
+The [next executed revision](../sfcc-stage3-junction-revision/README.md) establishes
+source-junction location and conditional local source equivalence, and corrects
+parameter provenance after showing the final numerical bracket excludes the real
+junction. Incoming-arc connection remains unproved; the preservation gate still
+fails. This does not change the rejection of the first-round candidates above.

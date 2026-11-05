@@ -1,0 +1,7 @@
+{
+  "filter": "exposure_a_frontier_",
+  "tests": [
+    "sfcc::trim::exposure_a_endpoint_tests::exposure_a_frontier_retains_raw_orientation_and_work_exhaustion"
+  ],
+  "exitCode": 0
+}

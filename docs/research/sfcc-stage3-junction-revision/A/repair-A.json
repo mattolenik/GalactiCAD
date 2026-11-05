@@ -1,0 +1,743 @@
+{
+  "aliasCompiledCoverage": [
+    {
+      "branchSign": 1,
+      "checkedQueries": [
+        {
+          "associationUpperHex": "3d8c889ccdcf02a6",
+          "parameterHex": "403ee8e4327990e6",
+          "pointHex": [
+            "c01ae2e593703647",
+            "400587399116b17a",
+            "c020e82730a46319"
+          ]
+        },
+        {
+          "associationUpperHex": "3d8c53d755503dfd",
+          "parameterHex": "403ee8f3b8a16308",
+          "pointHex": [
+            "c01ae2ddfa8c36c6",
+            "400587401ecf7248",
+            "c020e82a35dc5abc"
+          ]
+        },
+        {
+          "associationUpperHex": "3d8c4da5c3f1554b",
+          "parameterHex": "403ee9033ec93529",
+          "pointHex": [
+            "c01ae2d661a6e079",
+            "40058746ac882f17",
+            "c020e82d3b137607"
+          ]
+        },
+        {
+          "associationUpperHex": "3d8c4481691ecb95",
+          "parameterHex": "403ee912c4f1074a",
+          "pointHex": [
+            "c01ae2cec8c03363",
+            "4005874d3a40e7dd",
+            "c020e8304049b4fc"
+          ]
+        },
+        {
+          "associationUpperHex": "3d8c58e7b64d6ee9",
+          "parameterHex": "403ee9224b18d96c",
+          "pointHex": [
+            "c01ae2c72fd82f80",
+            "40058753c7f99c9b",
+            "c020e833457f1799"
+          ]
+        }
+      ],
+      "cornerEnds": [
+        13,
+        -1
+      ],
+      "curve": 40,
+      "indexingPiece": 30,
+      "ownParameterRangeHex": [
+        "403ee8e4327990e6",
+        "403ee9224b18d96c"
+      ],
+      "requiredHeightHex": [
+        "400587399116b17c",
+        "40058753c7f99c9b"
+      ],
+      "sourceDeterminantLowerHex": "402d05789930be7d",
+      "sourcePair": [
+        30,
+        15
+      ],
+      "sourceRoles": [
+        10,
+        30,
+        15
+      ]
+    }
+  ],
+  "baselineCorners": 77,
+  "baselineCoverage": [],
+  "baselineCurves": 81,
+  "baselineFamilies": [
+    {
+      "curves": 1,
+      "sourcePair": [
+        0,
+        30
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        1,
+        2
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        2,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        7,
+        15
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        7,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 3,
+      "sourcePair": [
+        10,
+        15
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        10,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        13,
+        21
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        13,
+        22
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        13,
+        23
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        13,
+        24
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        13,
+        25
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        13,
+        26
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 13,
+      "sourcePair": [
+        15,
+        30
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 4,
+      "sourcePair": [
+        15,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        18,
+        20
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 6,
+      "sourcePair": [
+        18,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 6,
+      "sourcePair": [
+        20,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        21,
+        22
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        21,
+        26
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        22,
+        23
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        23,
+        24
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        24,
+        25
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        25,
+        26
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 12,
+      "sourcePair": [
+        30,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 8,
+      "sourcePair": [
+        38,
+        39
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        69,
+        70
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        72,
+        73
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    }
+  ],
+  "baselineFingerprint": "9875508341830920921",
+  "baselineUnresolvedTrims": 29,
+  "candidateCorners": 39,
+  "candidateCurves": 80,
+  "candidateFamilies": [
+    {
+      "curves": 1,
+      "sourcePair": [
+        0,
+        30
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        1,
+        2
+      ],
+      "unwiredEnds": 2,
+      "unwiredStarts": 2
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        2,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 2
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        7,
+        15
+      ],
+      "unwiredEnds": 2,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        7,
+        31
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 2
+    },
+    {
+      "curves": 3,
+      "sourcePair": [
+        10,
+        15
+      ],
+      "unwiredEnds": 2,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        10,
+        31
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 2
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        13,
+        21
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        13,
+        22
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        13,
+        23
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        13,
+        24
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        13,
+        25
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        13,
+        26
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 0
+    },
+    {
+      "curves": 15,
+      "sourcePair": [
+        15,
+        30
+      ],
+      "unwiredEnds": 10,
+      "unwiredStarts": 4
+    },
+    {
+      "curves": 4,
+      "sourcePair": [
+        15,
+        31
+      ],
+      "unwiredEnds": 3,
+      "unwiredStarts": 4
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        18,
+        20
+      ],
+      "unwiredEnds": 2,
+      "unwiredStarts": 2
+    },
+    {
+      "curves": 4,
+      "sourcePair": [
+        18,
+        31
+      ],
+      "unwiredEnds": 4,
+      "unwiredStarts": 4
+    },
+    {
+      "curves": 4,
+      "sourcePair": [
+        20,
+        31
+      ],
+      "unwiredEnds": 4,
+      "unwiredStarts": 2
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        21,
+        22
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        21,
+        26
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        22,
+        23
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        23,
+        24
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        24,
+        25
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        25,
+        26
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 6,
+      "sourcePair": [
+        30,
+        31
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 2
+    },
+    {
+      "curves": 8,
+      "sourcePair": [
+        38,
+        39
+      ],
+      "unwiredEnds": 8,
+      "unwiredStarts": 4
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        68,
+        69
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        69,
+        70
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 1,
+      "sourcePair": [
+        71,
+        72
+      ],
+      "unwiredEnds": 0,
+      "unwiredStarts": 1
+    },
+    {
+      "curves": 2,
+      "sourcePair": [
+        72,
+        73
+      ],
+      "unwiredEnds": 1,
+      "unwiredStarts": 1
+    }
+  ],
+  "candidateFingerprint": "173445137647524408",
+  "candidateUnresolvedTrims": 89,
+  "componentAccepted": false,
+  "floatingEvaluatorTotalityProved": false,
+  "laterBlendHandoffProved": false,
+  "lowerJoint": {
+    "baselinePointHex": [
+      "c022b7c9d907b15a",
+      "c003efb1a33e9e36",
+      "40158f2508500325"
+    ],
+    "candidateNearbyCorners": [
+      {
+        "allRequiredPairs": false,
+        "corner": 13,
+        "distanceHex": "0000000000000000",
+        "sourcePairs": [
+          [
+            10,
+            15
+          ],
+          [
+            15,
+            30
+          ]
+        ]
+      }
+    ],
+    "identityPremise": "same original expression and unchanged stratum extraction; compare carrier-pair identities and geometry, not candidate curve/corner IDs",
+    "preserved": false,
+    "requiredSourcePairs": [
+      [
+        10,
+        15
+      ],
+      [
+        10,
+        31
+      ],
+      [
+        15,
+        30
+      ],
+      [
+        15,
+        31
+      ],
+      [
+        30,
+        31
+      ]
+    ],
+    "toleranceHex": "3f08e1bb109e4a0e"
+  },
+  "physicalCompiledCoverage": [
+    {
+      "branchSign": 1,
+      "checkedQueries": [
+        {
+          "associationUpperHex": "3dd897eea4e5620c",
+          "parameterHex": "403ef7fe672b0066",
+          "pointHex": [
+            "c01ae2e593715f10",
+            "400587399116b17d",
+            "c020e82730a3ed21"
+          ]
+        },
+        {
+          "associationUpperHex": "3dd878588723b1e0",
+          "parameterHex": "403ef803c7d60882",
+          "pointHex": [
+            "c01ae2ddfa8d4e06",
+            "400587401ecf8024",
+            "c020e82a35dbebbb"
+          ]
+        },
+        {
+          "associationUpperHex": "3dd859f0a5d2969e",
+          "parameterHex": "403ef8092881109e",
+          "pointHex": [
+            "c01ae2d661a7f0e8",
+            "40058746ac884192",
+            "c020e82d3b1309bd"
+          ]
+        },
+        {
+          "associationUpperHex": "3dd83a0ff1b7e277",
+          "parameterHex": "403ef80e892c18ba",
+          "pointHex": [
+            "c01ae2cec8c147b9",
+            "4005874d3a40f5b9",
+            "c020e83040494725"
+          ]
+        },
+        {
+          "associationUpperHex": "3dd81aa915554809",
+          "parameterHex": "403ef813e9d720d6",
+          "pointHex": [
+            "c01ae2c72fd95275",
+            "40058753c7f99c99",
+            "c020e833457ea3f2"
+          ]
+        }
+      ],
+      "cornerEnds": [
+        13,
+        -1
+      ],
+      "curve": 20,
+      "indexingPiece": 30,
+      "ownParameterRangeHex": [
+        "403ef7fe672b0066",
+        "403ef813e9d720d6"
+      ],
+      "requiredHeightHex": [
+        "400587399116b17c",
+        "40058753c7f99c9b"
+      ],
+      "sourceDeterminantLowerHex": "402d05789930be7d",
+      "sourcePair": [
+        10,
+        15
+      ],
+      "sourceRoles": [
+        10,
+        30,
+        15
+      ]
+    }
+  ],
+  "scope": "actual original-source compiled interval plus continuous ideal-source certificate; not component reconstruction",
+  "unchangedAssociationEpsilonHex": "3e997a9ab0c2db32"
+}

@@ -1383,6 +1383,29 @@ require justified junction/attachment resolution for unresolved parameter fronti
 Ordinary nearest snapping, forced alive status or weaker preservation checks would
 undo the correction. Stage 3 remains open; production meshing logic is unchanged.
 
+### Stage 3 junction premises and connection-container correction
+
+The next three-agent revision and fourth review establish bounded premises rather
+than an accepted runtime repair. A derives a genuine source junction within
+`1.9033e-13` mm of the old lower corner; B proves conditional local equality of
+the native and parent-field zero sets with the same compound carrier. Neither
+proves incoming-arc connectivity or grants attachment authority.
+
+C's lossless causal capture shows why preserving only the final bisection bracket
+is insufficient: the missing raw trace starts near the junction at parameter zero,
+but its final positive/unknown bracket excludes zero. A was corrected to retain
+the original classification interval and its status separately from the final
+numerical cutoff, with bidirectional and wrap controls. The compound flank exhausts
+its finite probes while the native flank succeeds. The retained alias itself had
+been snapped from a raw start farther away, so its endpoint is not independent
+connection evidence.
+
+Final focused campaigns pass A's eight, B's six and C's seven controls, then each
+fails the unchanged original-source lower-incidence gate. Upper continuation
+remains represented. No candidate enters component integration or production.
+[Executed revision, bounded claims and next connection contract](sfcc-stage3-junction-revision/README.md)
+preserve the patches, all unsuccessful captures and the fourth review.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

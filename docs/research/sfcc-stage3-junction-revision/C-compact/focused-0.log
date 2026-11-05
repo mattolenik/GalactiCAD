@@ -1,0 +1,11 @@
+
+running 2 tests
+test sfcc::trim::junction_revision_c::junction_revision_c_captures_lower_frontier_without_changing_compilation ... ok
+test sfcc::trim::junction_revision_c::junction_revision_c_scope_resets_after_unwind ... 
+thread 'sfcc::trim::junction_revision_c::junction_revision_c_scope_resets_after_unwind' (499765) panicked at kernel/src/sfcc/junction_revision_c.rs:456:9:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 326 filtered out; finished in 1.43s
+

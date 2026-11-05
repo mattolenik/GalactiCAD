@@ -1,0 +1,80 @@
+--- a/gcad-wasm/kernel/src/sfcc/junction_revision_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/junction_revision_c.rs
+@@ -321,6 +321,62 @@
+     })
+ }
+ 
++const ATTEMPT_FIELDS: [&str; 11] = [
++    "deltaHex",
++    "displacementHex",
++    "domain",
++    "firstPredicate",
++    "fullResidualHex",
++    "level",
++    "normalErrorHex",
++    "oppositeResidualHex",
++    "ownResidualHex",
++    "pointHex",
++    "sign",
++];
++fn compact_attempts(report: &Value) -> Value {
++    let mut evidence = report.clone();
++    for query in evidence["queries"].as_array_mut().unwrap() {
++        let Some(flanks) = query["flanks"].as_array_mut() else {
++            continue;
++        };
++        for flank in flanks {
++            for attempt in flank["attempts"].as_array_mut().unwrap() {
++                assert_eq!(attempt.as_object().unwrap().len(), ATTEMPT_FIELDS.len());
++                let row: Vec<_> = ATTEMPT_FIELDS
++                    .iter()
++                    .map(|key| attempt.get(*key).unwrap().clone())
++                    .collect();
++                *attempt = json!(row);
++            }
++        }
++    }
++    json!({"encoding":"sfcc-junction-c-columnar-attempts-v1", "attemptFields":ATTEMPT_FIELDS,"evidence":evidence})
++}
++fn expand_attempts(compact: &Value) -> Value {
++    assert_eq!(compact["encoding"], "sfcc-junction-c-columnar-attempts-v1");
++    assert_eq!(compact["attemptFields"], json!(ATTEMPT_FIELDS));
++    let mut evidence = compact["evidence"].clone();
++    for query in evidence["queries"].as_array_mut().unwrap() {
++        let Some(flanks) = query["flanks"].as_array_mut() else {
++            continue;
++        };
++        for flank in flanks {
++            for attempt in flank["attempts"].as_array_mut().unwrap() {
++                let row = attempt.as_array().unwrap();
++                assert_eq!(row.len(), ATTEMPT_FIELDS.len());
++                let object: serde_json::Map<String, Value> = ATTEMPT_FIELDS
++                    .iter()
++                    .zip(row)
++                    .map(|(key, v)| ((*key).into(), v.clone()))
++                    .collect();
++                *attempt = Value::Object(object);
++            }
++        }
++    }
++    evidence
++}
++
+ #[test]
+ fn junction_revision_c_captures_lower_frontier_without_changing_compilation() {
+     let fixture: Value =
+@@ -361,7 +417,13 @@
+         "observationalFingerprintEqual":before.fingerprint()==after.fingerprint(),"explicitPublicCurveCornerRefineValuesEqual":equal,
+         "lowerJoint":{"preserved":preserved,"nearestCorner":nearest.id,"pointHex":([nearest.x,nearest.y,nearest.z]).map(hex),"distanceHex":hex(distance([nearest.x,nearest.y,nearest.z],lower())),"expectedSourcePairs":expected,"actualSourcePairs":actual,"incidentEnds":nearest.curve_ends},"runtimeCandidateAccepted":false,"unresolvedBefore":before_diag.unresolved_trims,"unresolvedAfter":after_diag.unresolved_trims,
+         "noJunctionAuthorityGranted":true,"intervalEquivalenceEstablished":false})});
+-    let bytes = serde_json::to_vec_pretty(&report).unwrap();
++    let compact = compact_attempts(&report);
++    assert_eq!(
++        serde_json::to_vec(&expand_attempts(&compact)).unwrap(),
++        serde_json::to_vec(&report).unwrap(),
++        "columnar evidence must expand to exactly the original canonical JSON bytes"
++    );
++    let bytes = serde_json::to_vec(&compact).unwrap();
+     std::fs::write(
+         std::env::var("SFCC_JUNCTION_C_RECEIPT").expect("receipt path required"),
+         &bytes,

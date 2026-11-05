@@ -6,8 +6,12 @@ Stage 2 has [exact early replay and a bounded source continuation proof](../rese
 [executed causal localization to finite-flank trimming](../research/sfcc-endpoint-lineage/README.md).
 Stages 1–2 are complete for this witness. Stage 3's
 [first competing repair round](../research/sfcc-stage3-exposure-repairs/README.md)
-restores the target interval but fails lower-junction preservation; neither candidate
-is selected. Stages 3–5 remain open. Current production baseline:
+restores the target interval but fails lower-junction preservation. The
+[next revision](../research/sfcc-stage3-junction-revision/README.md) establishes
+source-junction location, conditional local source equivalence and corrected
+original/final parameter provenance, but still does not prove incoming-arc
+connection or restore its attachment. Neither candidate is selected.
+Stages 3–5 remain open. Current production baseline:
 `421f5a9`. This expands the next five steps of
 [E4 in the critical-repairs plan](sfcc-critical-repairs.md), then defines the
 handoff to the remaining E4 work, E5 and E6. It does not supersede their acceptance

@@ -1,0 +1,7 @@
+{
+  "filter": "junction_b_",
+  "tests": [
+    "sfcc::trim::exposure_b_tests::junction_b_local_source_equivalence_is_bound_to_actual_occurrences"
+  ],
+  "exitCode": 0
+}

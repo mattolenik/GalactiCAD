@@ -1,0 +1,124 @@
+[
+  {
+    "label": "A",
+    "sourceInputs": 159,
+    "sourceHashMismatches": [],
+    "binaryHashMatches": true,
+    "discovery": [
+      {
+        "filter": "exposure_a_junction_",
+        "count": 3
+      },
+      {
+        "filter": "exposure_a_frontier_",
+        "count": 1
+      },
+      {
+        "filter": "exposure_a_rejects_",
+        "count": 1
+      },
+      {
+        "filter": "exposure_a_uncertain_",
+        "count": 1
+      },
+      {
+        "filter": "exposure_a_original_",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "label": "A-frontierfix",
+    "sourceInputs": 159,
+    "sourceHashMismatches": [],
+    "binaryHashMatches": true,
+    "discovery": [
+      {
+        "filter": "exposure_a_junction_",
+        "count": 3
+      },
+      {
+        "filter": "exposure_a_frontier_",
+        "count": 3
+      },
+      {
+        "filter": "exposure_a_rejects_",
+        "count": 1
+      },
+      {
+        "filter": "exposure_a_uncertain_",
+        "count": 1
+      },
+      {
+        "filter": "exposure_a_original_",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "label": "B",
+    "sourceInputs": 159,
+    "sourceHashMismatches": [],
+    "binaryHashMatches": true,
+    "discovery": [
+      {
+        "filter": "junction_b_",
+        "count": 1
+      },
+      {
+        "filter": "exposure_b_controls_",
+        "count": 5
+      },
+      {
+        "filter": "exposure_b_compiled_original_source_retains_required_continuation",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "label": "C",
+    "sourceInputs": 160,
+    "sourceHashMismatches": [],
+    "binaryHashMatches": null,
+    "discovery": []
+  },
+  {
+    "label": "C-fixed",
+    "sourceInputs": 160,
+    "sourceHashMismatches": [],
+    "binaryHashMatches": null,
+    "discovery": []
+  },
+  {
+    "label": "C-buildfix",
+    "sourceInputs": 160,
+    "sourceHashMismatches": [],
+    "binaryHashMatches": true,
+    "discovery": [
+      {
+        "filter": "junction_revision_c_",
+        "count": 2
+      }
+    ]
+  },
+  {
+    "label": "C-compact",
+    "sourceInputs": 160,
+    "sourceHashMismatches": [],
+    "binaryHashMatches": true,
+    "discovery": [
+      {
+        "filter": "junction_revision_c_",
+        "count": 2
+      },
+      {
+        "filter": "exposure_b_controls_",
+        "count": 5
+      },
+      {
+        "filter": "exposure_b_compiled_original_source_retains_required_continuation",
+        "count": 1
+      }
+    ]
+  }
+]

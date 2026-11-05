@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round23-junction-revision/C-compact/kernel-tests",
+    "exposure_b_compiled_original_source_retains_required_continuation",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 58.338408707999406,
+  "elapsedSeconds": 0.7184609579999233,
+  "exitCode": 101,
+  "timedOut": false
+}

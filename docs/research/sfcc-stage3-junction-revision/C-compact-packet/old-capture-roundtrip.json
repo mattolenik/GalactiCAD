@@ -1,0 +1,12 @@
+{
+  "input": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round23-junction-revision/C-buildfix/junction-C.json",
+  "originalBytes": 1048028,
+  "encodedBytes": 438859,
+  "queryCount": 165,
+  "attemptCount": 1009,
+  "originalFileSha256": "d3f9c5534c218b102d476eeb4eb8a5c1a991bd182b983c87f9c123b5ffc58fbd",
+  "originalCanonicalSha256": "ff53b4b2baf5e8d9cd3d20b13e1754885374e3523d9569bd5c0f6fe2040059f6",
+  "expandedCanonicalSha256": "ff53b4b2baf5e8d9cd3d20b13e1754885374e3523d9569bd5c0f6fe2040059f6",
+  "semanticExact": true,
+  "scope": "static saved-evidence encoding self-check; no build or geometry run"
+}

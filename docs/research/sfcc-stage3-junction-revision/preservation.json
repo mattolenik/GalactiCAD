@@ -1,0 +1,54 @@
+{
+  "sourceAndPatchChecks": [
+    {
+      "label": "A",
+      "inputs": 159,
+      "flatPatchReproducesExecutedSource": true,
+      "manifestSha256": "12e85d0799f2ff1377095801fd9895aae65f1c996c169a3f7570cb4f12daa8f9"
+    },
+    {
+      "label": "B",
+      "inputs": 159,
+      "flatPatchReproducesExecutedSource": true,
+      "manifestSha256": "00db2eb62d7188c7b17c02ddfa2863a8712e7f37abe99af34788bc1e778035a8"
+    },
+    {
+      "label": "C",
+      "inputs": 160,
+      "flatPatchReproducesExecutedSource": true,
+      "manifestSha256": "2e115fb264a521b56128f8f2970ee30a2186943092460daac8ffedcd0a116d80"
+    },
+    {
+      "label": "C-fixed",
+      "inputs": 160,
+      "flatPatchReproducesExecutedSource": true,
+      "manifestSha256": "1c1bf66a9e77d7c51b615926fbf0d6ddfa9d09ebaa3ef040de0bbed7638b8439"
+    },
+    {
+      "label": "C-buildfix",
+      "inputs": 160,
+      "flatPatchReproducesExecutedSource": true,
+      "manifestSha256": "ad2fb1bd0ab028ebbaedfabed1ada92eeb1c0757a2ac17d593bd9321c84062e5"
+    },
+    {
+      "label": "A-frontierfix",
+      "inputs": 159,
+      "flatPatchReproducesExecutedSource": true,
+      "manifestSha256": "6f56f3e99ad706126b6962cf4293e13397c209ca107a5439c54bc245086f9b33"
+    },
+    {
+      "label": "C-compact",
+      "inputs": 160,
+      "flatPatchReproducesExecutedSource": true,
+      "manifestSha256": "c5a694db959d8cd8b8fbe9c103c0e2e0f7096c6fa275f122ab56da75e6662a3f"
+    }
+  ],
+  "AFrontierCorrectionPreservesBothReceipts": true,
+  "compactReplay": {
+    "encodedBytes": 438866,
+    "queries": 165,
+    "probeAttempts": 1009,
+    "equalToOversizedEvidenceExceptProcessLocalAddresses": true,
+    "observationPreservesGeometry": true
+  }
+}

@@ -1,0 +1,472 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/junction_revision_c.rs
+@@ -0,0 +1,376 @@
++use super::*;
++use crate::sfcc::feature_set::compile_feature_set;
++use crate::{
++    scene_bridge::build_csg_tree_from_json, tolerances::resolve_tolerances, tuning::SfccTuning,
++};
++use serde_json::{json, Value};
++use std::cell::RefCell;
++
++#[derive(Default)]
++struct Capture {
++    enabled: bool,
++    selected: Vec<usize>,
++    source: Vec<Value>,
++    raw: Vec<Value>,
++    queries: Vec<Value>,
++    frontiers: Vec<Value>,
++    runs: Vec<Value>,
++}
++thread_local! { static CAPTURE: RefCell<Capture> = RefCell::new(Capture::default()); }
++struct Scope;
++impl Drop for Scope {
++    fn drop(&mut self) {
++        CAPTURE.with(|c| *c.borrow_mut() = Capture::default());
++    }
++}
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn lower() -> [f64; 3] {
++    [0xc022b7c9d907b15a, 0xc003efb1a33e9e36, 0x40158f2508500325].map(f64::from_bits)
++}
++fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
++    (a[0] - b[0]).hypot(a[1] - b[1]).hypot(a[2] - b[2])
++}
++fn selected(curve: &FeatureCurve) -> bool {
++    CAPTURE.with(|c| {
++        let c = c.borrow();
++        c.enabled && c.selected.contains(&curve.id)
++    })
++}
++fn status(result: Result<bool, ()>) -> &'static str {
++    match result {
++        Ok(true) => "positive",
++        Ok(false) => "negative",
++        Err(()) => "unknown",
++    }
++}
++
++pub(super) fn begin(tree: &SfccTree<'_>, raw: &[FeatureCurve], tol: &ResolvedTolerances) {
++    if !CAPTURE.with(|c| c.borrow().enabled) {
++        return;
++    }
++    let pairs = [[10, 15], [10, 31], [15, 30], [15, 31], [30, 31]];
++    let mut selected_ids = Vec::new();
++    let mut rows = Vec::new();
++    for (index, curve) in raw.iter().enumerate() {
++        let mut pair = curve.adjacent_strata;
++        pair.sort();
++        if !pairs.contains(&pair) {
++            continue;
++        }
++        let p = lower();
++        let projection = curve.project(p[0], p[1], p[2]);
++        if projection.1 > tol.probe_delta * 4. {
++            continue;
++        }
++        assert!(selected_ids.len() < 16, "bounded raw source-family capture");
++        selected_ids.push(curve.id);
++        rows.push(json!({"rawIndex":index,"rawId":curve.id,"sourcePair":curve.adjacent_strata,
++            "rangeHex":[hex(curve.t_min),hex(curve.t_max)],"closed":curve.closed,"native":curve.native,
++            "lowerProjectionHex":[hex(projection.0),hex(projection.1)],
++            "lowerProjectedPointHex":curve.point_at(projection.0).map(hex),
++            "rawEndpointHex":[curve.point_at(curve.t_min).map(hex),curve.point_at(curve.t_max).map(hex)]}));
++    }
++    let source =
++        [10, 15, 30, 31].map(|id| tree.strata[id].junction_revision_c_identity(0).unwrap());
++    assert_eq!(source[0]["domain"][0]["path"], json!([0, 0, 0, 0, 1]));
++    assert_eq!(source[2]["field"]["path"], json!([0, 0, 0, 0]));
++    assert_eq!(source[3]["compoundPresent"], true);
++    CAPTURE.with(|c| {
++        let mut c = c.borrow_mut();
++        c.selected = selected_ids;
++        c.raw = rows;
++        c.source = source.into();
++    });
++}
++
++fn field(s: &Stratum, p: [f64; 3], tol: &ResolvedTolerances) -> Value {
++    let raw = s.raw_field(p[0], p[1], p[2]);
++    json!({"source":s.id,"valueHex":hex(raw.value),"gradientHex":raw.gradient.map(hex),
++        "normalHex":s.normal(p[0],p[1],p[2]).map(hex),"domain":s.domain_contains(p,tol.curve_eps*8.)})
++}
++
++// Mirror only the numeric probe acceptance predicates, then compare its verdict
++// to the production helper. The receipt is sampled evidence, never a certificate.
++fn probes(
++    tree: &SfccTree<'_>,
++    s: &Stratum,
++    other: &Stratum,
++    p: [f64; 3],
++    direction: [f64; 3],
++    nt: f64,
++    tol: &ResolvedTolerances,
++) -> Value {
++    let length = direction[0].hypot(direction[1]).hypot(direction[2]);
++    let scale = p.into_iter().map(f64::abs).fold(1., f64::max);
++    let resolution = (tol.curve_eps * 32.).max(32. * f64::EPSILON * scale);
++    let mut rows = Vec::new();
++    let mut delta = tol.probe_delta;
++    let mut accepted = false;
++    let mut stop = "work_limit";
++    if !length.is_finite()
++        || length == 0.
++        || !resolution.is_finite()
++        || resolution <= 0.
++        || !delta.is_finite()
++        || delta <= 0.
++    {
++        stop = "invalid_input";
++    } else {
++        'levels: for level in 0..64 {
++            if delta * length <= resolution {
++                stop = "resolution_floor";
++                break;
++            }
++            for sign in [1., -1.] {
++                let q = s.project(
++                    p[0] + sign * delta * direction[0],
++                    p[1] + sign * delta * direction[1],
++                    p[2] + sign * delta * direction[2],
++                );
++                let displacement = distance(q, p);
++                let own = s.raw_field(q[0], q[1], q[2]).normalized_equation();
++                let opposite = other.raw_field(q[0], q[1], q[2]).normalized_equation();
++                let full = tree.f(q[0], q[1], q[2]);
++                let sample =
++                    crate::sfcc::field_branches::sample_tree(tree.root, q).normalized_equation();
++                let normal = s.normal(q[0], q[1], q[2]);
++                let error = sample.map(|v| distance(v.gradient, normal));
++                let domain = s.domain_contains(q, tol.curve_eps * 8.);
++                let reason = if !q.iter().all(|v| v.is_finite()) {
++                    "nonfinite_projection"
++                } else if !displacement.is_finite() || displacement <= resolution {
++                    "unresolved_displacement"
++                } else if own.is_none() {
++                    "own_normalization"
++                } else if opposite.is_none() {
++                    "opposite_normalization"
++                } else if own.unwrap().value.abs() > tol.curve_eps * 8. {
++                    "own_residual"
++                } else if opposite.unwrap().value.abs() <= resolution {
++                    "opposite_separation"
++                } else if !domain {
++                    "source_domain"
++                } else if !full.is_finite() || full.abs() > delta * 0.2 {
++                    "full_residual"
++                } else if error.is_none() {
++                    "full_normalization"
++                } else if !error.unwrap().is_finite() || error.unwrap() > nt {
++                    "normal_disagreement"
++                } else {
++                    "accepted"
++                };
++                rows.push(json!({"level":level,"sign":sign,"deltaHex":hex(delta),"pointHex":q.map(hex),
++                    "firstPredicate":reason,"displacementHex":hex(displacement),"ownResidualHex":own.map(|v|hex(v.value)),
++                    "oppositeResidualHex":opposite.map(|v|hex(v.value)),"domain":domain,"fullResidualHex":hex(full),"normalErrorHex":error.map(hex)}));
++                if reason == "accepted" {
++                    accepted = true;
++                    stop = "positive";
++                    break 'levels;
++                }
++            }
++            let next = delta * 0.5;
++            if next == delta || next == 0. {
++                stop = "stagnation";
++                break;
++            }
++            delta = next;
++        }
++    }
++    let actual = flank_survives(
++        tree,
++        s,
++        other,
++        p[0],
++        p[1],
++        p[2],
++        direction[0],
++        direction[1],
++        direction[2],
++        tol,
++        nt,
++        64,
++    );
++    assert_eq!(
++        actual,
++        if accepted { Ok(true) } else { Err(()) },
++        "diagnostic must reproduce probe verdict"
++    );
++    json!({"source":s.id,"directionHex":direction.map(hex),"resolutionHex":hex(resolution),"status":status(actual),"stop":stop,"attempts":rows})
++}
++
++pub(super) fn query(
++    tree: &SfccTree<'_>,
++    curve: &FeatureCurve,
++    t: f64,
++    result: Result<bool, ()>,
++    tol: &ResolvedTolerances,
++) {
++    if !selected(curve) {
++        return;
++    }
++    let Some(p) = curve.point_at_checked(t) else {
++        return;
++    };
++    if distance(p, lower()) > tol.probe_delta * 4. {
++        return;
++    }
++    let [a, b] = curve.adjacent_strata.map(|id| &tree.strata[id]);
++    let full = tree.f(p[0], p[1], p[2]);
++    let rounded = tree.f(p[0] as f32 as f64, p[1] as f32 as f64, p[2] as f32 as f64);
++    let na = a.normal(p[0], p[1], p[2]);
++    let nb = b.normal(p[0], p[1], p[2]);
++    let gap = distance(na, nb);
++    let tangent = curve.tangent_at(t);
++    let first = if !full.is_finite() {
++        "nonfinite_full"
++    } else if full.abs() > tol.surface_tol {
++        "full_residual"
++    } else if !rounded.is_finite() {
++        "nonfinite_rounded"
++    } else if rounded.abs() > tol.surface_tol {
++        "rounded_residual"
++    } else if !a.domain_contains(p, tol.curve_eps * 8.) {
++        "first_source_domain"
++    } else if !b.domain_contains(p, tol.curve_eps * 8.) {
++        "second_source_domain"
++    } else if !na.iter().chain(nb.iter()).all(|v| v.is_finite()) {
++        "nonfinite_normals"
++    } else if gap <= 64. * f64::EPSILON {
++        "coincident_normals"
++    } else if !tangent.iter().all(|v| v.is_finite()) || tangent.iter().all(|&v| v == 0.) {
++        "invalid_tangent"
++    } else {
++        "flank_search"
++    };
++    let flank = if first == "flank_search" {
++        let cross = |n: [f64; 3]| {
++            [
++                n[1] * tangent[2] - n[2] * tangent[1],
++                n[2] * tangent[0] - n[0] * tangent[2],
++                n[0] * tangent[1] - n[1] * tangent[0],
++            ]
++        };
++        Some([
++            probes(tree, a, b, p, cross(na), (gap * 0.25).min(0.1), tol),
++            probes(tree, b, a, p, cross(nb), (gap * 0.25).min(0.1), tol),
++        ])
++    } else {
++        None
++    };
++    let row = json!({"rawId":curve.id,"parameterHex":hex(t),"pointHex":p.map(hex),"status":status(result),"firstStage":first,
++        "fullResidualHex":hex(full),"roundedResidualHex":hex(rounded),"normalGapHex":hex(gap),
++        "sourceFields":[field(a,p,tol),field(b,p,tol)],"nativeAliasFields":[field(&tree.strata[10],p,tol),field(&tree.strata[30],p,tol)],"flanks":flank});
++    CAPTURE.with(|c| {
++        let mut c = c.borrow_mut();
++        assert!(c.queries.len() < 256, "bounded query capture");
++        c.queries.push(row);
++    });
++}
++
++pub(super) fn frontier(
++    curve: &FeatureCurve,
++    original: [f64; 2],
++    final_pair: [f64; 2],
++    unresolved: bool,
++    reason: &str,
++    tol: &ResolvedTolerances,
++) {
++    if !selected(curve) || distance(curve.point_at(final_pair[0]), lower()) > tol.probe_delta * 4. {
++        return;
++    }
++    let row = json!({"rawId":curve.id,"sourcePair":curve.adjacent_strata,"originalAliveOtherHex":original.map(hex),
++        "finalAliveOtherHex":final_pair.map(hex),"finalPointHex":final_pair.map(|t|curve.point_at(t).map(hex)),
++        "parameterOrientation":(original[1]-original[0]).signum(),"unresolved":unresolved,"stop":reason});
++    CAPTURE.with(|c| {
++        let mut c = c.borrow_mut();
++        assert!(c.frontiers.len() < 64);
++        c.frontiers.push(row);
++    });
++}
++pub(super) fn runs(
++    curve: &FeatureCurve,
++    index: usize,
++    runs: &[TrimmedRun],
++    tol: &ResolvedTolerances,
++) {
++    if !selected(curve) {
++        return;
++    }
++    let relevant:Vec<_>=runs.iter().filter(|r|[r.t0,r.t1].into_iter().any(|t|distance(curve.point_at(t),lower())<=tol.probe_delta*4.)).map(|r|json!({"rangeHex":[hex(r.t0),hex(r.t1)],"unresolvedEnds":r.unresolved_ends,"endpointsHex":[curve.point_at(r.t0).map(hex),curve.point_at(r.t1).map(hex)]})).collect();
++    CAPTURE.with(|c|c.borrow_mut().runs.push(json!({"rawId":curve.id,"rawIndex":index,"sourcePair":curve.adjacent_strata,"runs":relevant})));
++}
++
++fn snapshot(f: &crate::sfcc::feature_set::SfccFeatureSet) -> Value {
++    json!({
++        "curves":f.curves.iter().map(|c| {
++            let traced=c.traced_carriers().map(|(a,b,r)|json!({
++                "storedCarrierIds":[a.id,b.id],
++                "refinementHex":[hex(r.curve_eps),hex(r.min_cross),hex(r.max_displacement)]
++            }));
++            json!({"id":c.id,"kind":format!("{:?}",c.kind()),"native":c.native,
++                "owner":c.owner_node_id,"closed":c.closed,"wrapHex":c.param_wrap.map(hex),
++                "rangeHex":[hex(c.t_min),hex(c.t_max)],"strata":c.adjacent_strata,
++                "ends":[c.corner_start,c.corner_end],"indexingHex":c.index_polyline.iter().copied().map(hex).collect::<Vec<_>>(),
++                "traced":traced})
++        }).collect::<Vec<_>>(),
++        "corners":f.corners.iter().map(|c|json!({"id":c.id,"pointHex":[hex(c.x),hex(c.y),hex(c.z)],
++            "strata":c.strata,"ends":c.curve_ends})).collect::<Vec<_>>(),
++        "unresolvedBranchPaths":f.unresolved_branch_paths,
++    })
++}
++
++#[test]
++fn junction_revision_c_captures_lower_frontier_without_changing_compilation() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root = build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap()).unwrap();
++    let size =
++        fixture["cube"]["max"][0].as_f64().unwrap() - fixture["cube"]["min"][0].as_f64().unwrap();
++    let tol = resolve_tolerances(&SfccTuning::default(), 3_f64.sqrt() * size);
++    let (before, before_diag) = compile_feature_set(&root, &tol);
++    CAPTURE.with(|c| c.borrow_mut().enabled = true);
++    let guard = Scope;
++    let (after, after_diag) = compile_feature_set(&root, &tol);
++    let report=CAPTURE.with(|c| {let c=c.borrow();json!({"scope":"test-only original-source lower-junction finite-query and frontier capture; no certificate or runtime repair",
++        "sourceConfigSha256":fixture["sourceConfigSha256"],"lowerPointHex":lower().map(hex),"tolerancesHex":{"probeDelta":hex(tol.probe_delta),"curveEps":hex(tol.curve_eps),"cornerMerge":hex(tol.corner_merge_tol)},
++        "sources":c.source,"rawCurves":c.raw,"queries":c.queries,"frontiers":c.frontiers,"runs":c.runs,
++        "observationalFingerprintEqual":before.fingerprint()==after.fingerprint(),"explicitPublicCurveCornerRefineValuesEqual":equal,
++        "lowerJoint":{"preserved":preserved,"nearestCorner":nearest.id,"pointHex":[nearest.x,nearest.y,nearest.z].map(hex),"distanceHex":hex(distance([nearest.x,nearest.y,nearest.z],lower())),"expectedSourcePairs":expected,"actualSourcePairs":actual,"incidentEnds":nearest.curve_ends},"runtimeCandidateAccepted":false,"unresolvedBefore":before_diag.unresolved_trims,"unresolvedAfter":after_diag.unresolved_trims,
++        "noJunctionAuthorityGranted":true,"intervalEquivalenceEstablished":false})});
++    let bytes = serde_json::to_vec_pretty(&report).unwrap();
++    std::fs::write(
++        std::env::var("SFCC_JUNCTION_C_RECEIPT").expect("receipt path required"),
++        &bytes,
++    )
++    .unwrap();
++    assert!(
++        bytes.len() <= 512 * 1024,
++        "capture exceeds declared 512KiB cap"
++    );
++    assert!(
++        equal,
++        "observing queries must preserve explicit compiled values"
++    );
++    assert_eq!(before.fingerprint(), after.fingerprint());
++    assert_eq!(before_diag.unresolved_trims, after_diag.unresolved_trims);
++    assert!(!report["queries"].as_array().unwrap().is_empty());
++    assert!(report["rawCurves"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .any(|r| r["sourcePair"] == json!([31, 10]) || r["sourcePair"] == json!([10, 31])));
++    drop(guard);
++    assert!(!CAPTURE.with(|c| c.borrow().enabled));
++}
++#[test]
++fn junction_revision_c_scope_resets_after_unwind() {
++    let result = std::panic::catch_unwind(|| {
++        CAPTURE.with(|c| c.borrow_mut().enabled = true);
++        let _guard = Scope;
++        panic!("scope control");
++    });
++    assert!(result.is_err());
++    assert!(!CAPTURE.with(|c| c.borrow().enabled));
++}
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -223,20 +223,27 @@
+     other_unresolved: bool,
+     tol: &ResolvedTolerances,
+ ) -> (f64, bool) {
++    let finish = |a, d, unresolved, reason| {
++        #[cfg(all(test, feature = "serde"))]
++        junction_revision_c::frontier(curve, [t_alive,t_other], [a,d], unresolved, reason, tol);
++        #[cfg(not(all(test, feature = "serde")))]
++        let _ = (d, reason);
++        (a, unresolved)
++    };
+     let mut a = t_alive;
+     let mut d = t_other;
+     for _ in 0..40 {
+         let m = (a + d) / 2.0;
+         if curve.param_distance(a, d) < tol.corner_merge_tol / 4.0 {
+-            return (a, other_unresolved);
++            return finish(a, d, other_unresolved, "distance_stop");
+         }
+         match classify(m) {
+             Ok(true) => a = m,
+             Ok(false) => d = m,
+-            Err(()) => return (a, true),
+-        }
+-    }
+-    (a, true)
++            Err(()) => return finish(a, m, true, "unknown_midpoint"),
++        }
++    }
++    finish(a, d, true, "work_limit")
+ }
+ 
+ /// Classify sampled runs while retaining unresolved endpoints as open, reported
+@@ -253,6 +260,8 @@
+     let unresolved = std::cell::Cell::new(false);
+     let classify = |t| {
+         let result = curve_point_status(tree, curve, t, tol);
++        #[cfg(all(test, feature = "serde"))]
++        junction_revision_c::query(tree, curve, t, result, tol);
+         if result.is_err() {
+             unresolved.set(true);
+         }
+@@ -508,6 +517,8 @@
+     native_corners: &[SfccCorner],
+     tol: &ResolvedTolerances,
+ ) -> TrimResult {
++    #[cfg(all(test, feature = "serde"))]
++    junction_revision_c::begin(tree, raw_curves, tol);
+     let mut candidates: Vec<Candidate> = Vec::new();
+     let add_candidate = |candidates: &mut Vec<Candidate>, x: f64, y: f64, z: f64| -> usize {
+         for (i, c) in candidates.iter().enumerate() {
+@@ -612,6 +623,8 @@
+     };
+     for (ci, curve) in raw_curves.iter().enumerate() {
+         let (runs, unresolved) = trim_curve(tree, curve, ci, tol);
++        #[cfg(all(test, feature = "serde"))]
++        junction_revision_c::runs(curve, ci, &runs, tol);
+         unresolved_trims += unresolved;
+         for run in runs {
+             all_runs.push(run);
+@@ -916,3 +929,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="exposure_b_controls.rs"]
+ mod exposure_b_controls;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "junction_revision_c.rs"]
++mod junction_revision_c;
+--- a/gcad-wasm/kernel/src/strata.rs
++++ b/gcad-wasm/kernel/src/strata.rs
+@@ -1252,3 +1252,20 @@
+             "field":field,"domain":domain,"compoundPresent":self.compound.is_some(),"compoundTermsIncluded":false}))
+     }
+ }
++
++#[cfg(all(test, feature = "serde"))]
++impl Stratum {
++    pub(crate) fn junction_revision_c_identity(&self, depth: usize) -> Option<serde_json::Value> {
++        if depth > 4 { return None; }
++        let mut result = self.graph_capture_identity_b()?;
++        if let Some(compound) = &self.compound {
++            if compound.terms.len() > 8 { return None; }
++            let terms = compound.terms.iter().map(|(s,w)| {
++                Some(serde_json::json!({"weightHex":format!("{:016x}",w.to_bits()),"source":s.junction_revision_c_identity(depth+1)?}))
++            }).collect::<Option<Vec<_>>>()?;
++            result["compoundTermsIncluded"] = serde_json::json!(true);
++            result["compound"] = serde_json::json!({"offsetHex":format!("{:016x}",compound.offset.to_bits()),"terms":terms});
++        }
++        Some(result)
++    }
++}

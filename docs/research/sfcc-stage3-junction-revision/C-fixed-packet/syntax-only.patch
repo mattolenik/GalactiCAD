@@ -1,0 +1,11 @@
+--- a/gcad-wasm/kernel/src/sfcc/junction_revision_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/junction_revision_c.rs
+@@ -337,7 +337,7 @@
+         "sourceConfigSha256":fixture["sourceConfigSha256"],"lowerPointHex":lower().map(hex),"tolerancesHex":{"probeDelta":hex(tol.probe_delta),"curveEps":hex(tol.curve_eps),"cornerMerge":hex(tol.corner_merge_tol)},
+         "sources":c.source,"rawCurves":c.raw,"queries":c.queries,"frontiers":c.frontiers,"runs":c.runs,
+         "observationalFingerprintEqual":before.fingerprint()==after.fingerprint(),"explicitPublicCurveCornerRefineValuesEqual":equal,
+-        "lowerJoint":{"preserved":preserved,"nearestCorner":nearest.id,"pointHex":[nearest.x,nearest.y,nearest.z].map(hex),"distanceHex":hex(distance([nearest.x,nearest.y,nearest.z],lower())),"expectedSourcePairs":expected,"actualSourcePairs":actual,"incidentEnds":nearest.curve_ends},"runtimeCandidateAccepted":false,"unresolvedBefore":before_diag.unresolved_trims,"unresolvedAfter":after_diag.unresolved_trims,
++        "lowerJoint":{"preserved":preserved,"nearestCorner":nearest.id,"pointHex":([nearest.x,nearest.y,nearest.z]).map(hex),"distanceHex":hex(distance([nearest.x,nearest.y,nearest.z],lower())),"expectedSourcePairs":expected,"actualSourcePairs":actual,"incidentEnds":nearest.curve_ends},"runtimeCandidateAccepted":false,"unresolvedBefore":before_diag.unresolved_trims,"unresolvedAfter":after_diag.unresolved_trims,
+         "noJunctionAuthorityGranted":true,"intervalEquivalenceEstablished":false})});
+     let bytes = serde_json::to_vec_pretty(&report).unwrap();
+     std::fs::write(

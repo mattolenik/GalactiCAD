@@ -1,0 +1,15 @@
+
+running 1 test
+test sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_original_compilation_retains_the_required_source_interval ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_original_compilation_retains_the_required_source_interval' (504485) panicked at kernel/src/sfcc/exposure_a_tests.rs:239:5:
+material collateral failure: original lower source junction must retain its incident source pairs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_original_compilation_retains_the_required_source_interval
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 328 filtered out; finished in 1.75s
+

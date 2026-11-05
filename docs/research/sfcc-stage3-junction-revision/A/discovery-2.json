@@ -1,0 +1,7 @@
+{
+  "filter": "exposure_a_rejects_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_rejects_wrong_sources_hidden_extensions_and_insufficient_budget"
+  ],
+  "exitCode": 0
+}

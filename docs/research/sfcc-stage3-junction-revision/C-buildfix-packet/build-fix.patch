@@ -1,0 +1,31 @@
+--- a/gcad-wasm/kernel/src/sfcc/junction_revision_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/junction_revision_c.rs
+@@ -333,6 +333,28 @@
+     CAPTURE.with(|c| c.borrow_mut().enabled = true);
+     let guard = Scope;
+     let (after, after_diag) = compile_feature_set(&root, &tol);
++    let equal = snapshot(&before) == snapshot(&after);
++    let nearest = after
++        .corners
++        .iter()
++        .min_by(|a, b| {
++            distance([a.x, a.y, a.z], lower()).total_cmp(&distance([b.x, b.y, b.z], lower()))
++        })
++        .expect("retained original lower junction");
++    let mut actual: Vec<_> = nearest
++        .curve_ends
++        .iter()
++        .map(|&(id, _)| {
++            let mut pair = after.curves[id].adjacent_strata;
++            pair.sort();
++            pair
++        })
++        .collect();
++    actual.sort();
++    actual.dedup();
++    let expected = [[10, 15], [10, 31], [15, 30], [15, 31], [30, 31]];
++    let preserved = distance([nearest.x, nearest.y, nearest.z], lower()) <= tol.corner_merge_tol
++        && expected.iter().all(|p| actual.contains(p));
+     let report=CAPTURE.with(|c| {let c=c.borrow();json!({"scope":"test-only original-source lower-junction finite-query and frontier capture; no certificate or runtime repair",
+         "sourceConfigSha256":fixture["sourceConfigSha256"],"lowerPointHex":lower().map(hex),"tolerancesHex":{"probeDelta":hex(tol.probe_delta),"curveEps":hex(tol.curve_eps),"cornerMerge":hex(tol.corner_merge_tol)},
+         "sources":c.source,"rawCurves":c.raw,"queries":c.queries,"frontiers":c.frontiers,"runs":c.runs,

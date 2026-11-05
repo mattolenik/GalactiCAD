@@ -1,0 +1,1 @@
+Syntax-only correction to frozen C: parenthesize array expression in json! macro. All other source bytes unchanged. No runtime logic/test assertion change. Original handoff and filters apply; no builds or tests run by agent.

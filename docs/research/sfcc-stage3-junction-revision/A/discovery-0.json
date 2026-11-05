@@ -1,0 +1,9 @@
+{
+  "filter": "exposure_a_junction_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::junction::tests::exposure_a_junction_rejects_invalid_meridian_and_vertical_offset",
+    "sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_junction_location_is_source_bound_but_not_arc_authority",
+    "sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_junction_rejects_changed_source_and_ancestor_conditions"
+  ],
+  "exitCode": 0
+}

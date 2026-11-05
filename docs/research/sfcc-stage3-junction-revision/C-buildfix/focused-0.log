@@ -1,0 +1,19 @@
+
+running 2 tests
+test sfcc::trim::junction_revision_c::junction_revision_c_captures_lower_frontier_without_changing_compilation ... 
+thread 'sfcc::trim::junction_revision_c::junction_revision_c_captures_lower_frontier_without_changing_compilation' (487250) panicked at kernel/src/sfcc/junction_revision_c.rs:370:5:
+capture exceeds declared 512KiB cap
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sfcc::trim::junction_revision_c::junction_revision_c_scope_resets_after_unwind ... 
+thread 'sfcc::trim::junction_revision_c::junction_revision_c_scope_resets_after_unwind' (487272) panicked at kernel/src/sfcc/junction_revision_c.rs:394:9:
+scope control
+ok
+
+failures:
+
+failures:
+    sfcc::trim::junction_revision_c::junction_revision_c_captures_lower_frontier_without_changing_compilation
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 1.41s
+

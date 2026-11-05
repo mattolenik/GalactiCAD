@@ -1,0 +1,7 @@
+{
+  "filter": "exposure_a_uncertain_",
+  "tests": [
+    "sfcc::trim::exposure_a_endpoint_tests::exposure_a_uncertain_endpoint_cannot_snap_to_an_existing_corner"
+  ],
+  "exitCode": 0
+}

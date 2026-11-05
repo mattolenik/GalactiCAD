@@ -1,0 +1,37 @@
+{
+  "associationUpperHex": "3d4ac93571664160",
+  "attachmentTransportProved": false,
+  "axialDerivativeLowerHex": "3feaa027f059dcd9",
+  "baselinePointHex": [
+    "c022b7c9d907b15a",
+    "c003efb1a33e9e36",
+    "40158f2508500325"
+  ],
+  "branchSign": 1,
+  "generatedChamferAffineEquationExactlyIdentical": false,
+  "grooveEdge": 2,
+  "otherEdgeDistanceMarginHex": "3feffffffffffff1",
+  "rootHeightHex": [
+    "c003efb1a33e9e3b",
+    "c003efb1a33e9e31"
+  ],
+  "rootImageHex": [
+    [
+      "c022b7c9d907b162",
+      "c003efb1a33e9e3b",
+      "40158f25085002a0"
+    ],
+    [
+      "c022b7c9d907b106",
+      "c003efb1a33e9e31",
+      "40158f2508500356"
+    ]
+  ],
+  "scope": "source junction existence/location only; no incoming-arc attachment authority",
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ],
+  "transverseDeterminantLowerHex": "402d05789930be7d"
+}

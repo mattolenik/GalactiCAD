@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::junction::tests::exposure_a_junction_rejects_invalid_meridian_and_vertical_offset ... ok
+test sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_junction_location_is_source_bound_but_not_arc_authority ... ok
+test sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_junction_rejects_changed_source_and_ancestor_conditions ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 326 filtered out; finished in 1.95s
+

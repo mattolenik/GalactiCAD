@@ -1,0 +1,15 @@
+
+running 1 test
+test sfcc::trim::connection_b_tests::connection_b_preserves_every_admitted_query_authority_after_dedup ... 
+thread 'sfcc::trim::connection_b_tests::connection_b_preserves_every_admitted_query_authority_after_dedup' (640648) panicked at kernel/src/sfcc/connection_b_tests.rs:266:5:
+legacy sampled dedup must not erase certified query authority or transfer it without proof
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sfcc::trim::connection_b_tests::connection_b_preserves_every_admitted_query_authority_after_dedup
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 330 filtered out; finished in 0.67s
+

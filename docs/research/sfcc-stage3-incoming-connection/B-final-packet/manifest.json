@@ -1,0 +1,683 @@
+{
+  "source": "/tmp/sfcc-stage3-r3-b-final",
+  "base": "/tmp/sfcc-stage3-base",
+  "files": [
+    {
+      "path": "gcad-wasm/Cargo.lock",
+      "sha256": "2fb8a8700e3c88f11323dede3f35c5a83ec8ff57ee5e20c8f998fd8892469025"
+    },
+    {
+      "path": "gcad-wasm/Cargo.toml",
+      "sha256": "1291209c0af81ae668275cc3d3743f31913e0bb5ea26b4112edfcff18d439db6"
+    },
+    {
+      "path": "gcad-wasm/fixtures/housing-crease-neighborhoods.json",
+      "sha256": "246e407c97b83ef817af655cee0e68fafd1712ed2476f84d0918940edc233965"
+    },
+    {
+      "path": "gcad-wasm/fixtures/housing-hole-boundaries.json",
+      "sha256": "66225206b6bd4bab92a4430dae52e1b14d235041bc8a6066b3dd67c5b63df1fc"
+    },
+    {
+      "path": "gcad-wasm/fixtures/housing-main-bore-gpu.json",
+      "sha256": "7f818eb68e4ecbabcfaadc155dafecf2a0d1c459238eaf69e46cf19a057471e1"
+    },
+    {
+      "path": "gcad-wasm/fixtures/sfcc-collateral-creases.json",
+      "sha256": "44f6ab37baeab95874797dfe5bed84c53bcbe00dd28db5399ff22ecd1dcf2aa2"
+    },
+    {
+      "path": "gcad-wasm/fixtures/sfcc-housing-rotated-baseline.json",
+      "sha256": "6d1c9f4990bbbc6009a2bc90e45769fb909957ca42baddc22cdef499ea97bdc2"
+    },
+    {
+      "path": "gcad-wasm/fixtures/sfcc-terminal-controls.json",
+      "sha256": "065c15aa1bda13ff46a0de5b01fff9e29185f4dc0d20e0645354772839863ccc"
+    },
+    {
+      "path": "gcad-wasm/kernel/Cargo.toml",
+      "sha256": "47d4892846a0af30794ef9b8f03fc4a3cdbc0ffde50670527be470ffe5339b1d"
+    },
+    {
+      "path": "gcad-wasm/kernel/build.rs",
+      "sha256": "502f8cdfbf16e2c651b894196915f4233d41a55551ad66b9fc886a0cc42e75f3"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/analytical_feature_audit.rs",
+      "sha256": "8ee449e371d7188603a0f945b69b26314c14e726ffa943ecdc7e09bbc710ec61"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/blend_analytic_bench.rs",
+      "sha256": "8bfd000879ea164660c3fffa1045c95e7e324c65aac64879672b83fba72fe62b"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/exclusion_probe.rs",
+      "sha256": "76ba3400e3b0fb22f28fb3f714c4dd65c9082052bb24dfb6c0a627e1e3b28656"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/feature_preservation_audit.rs",
+      "sha256": "b5ec640655ec088fc714b05b5f50619094e8e673924beb615664711a030c02c0"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/lever1_bench.rs",
+      "sha256": "b71efb5bc60fee88a7178c2c8ddd6cffca3f0ca35ae77a232c27d42955d88396"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_construction_diagnosis.rs",
+      "sha256": "51f60bb9c71f13d439ffa42753d2d6e0aa159f5f980a69e11783a086fe962fe2"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_cost_bench.rs",
+      "sha256": "629ecff6a8c636adc1946410132fdf62c3871fef856d3eee538460a8917022cf"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_discovery_bench.rs",
+      "sha256": "804bb18ff2aa9d21ac4d2f78ae55dab82748447e0ef2437bb0ccf953bacf7cbd"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_exclusion_profile.rs",
+      "sha256": "5ed5a4ef9e20e6e333855f3cbc2e2f67ddb64f50072c97b79fd3f30d96c1ca93"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_failure_diagnosis.rs",
+      "sha256": "50f3dbd47d8a81f8a9b4abb1e7ef10fc2fc6eb8e1bf101e356d4aedeca2f7986"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_loft_seam_diagnosis.rs",
+      "sha256": "aac2ca530d303108b6a414d3f1919b3264bc7d4757fb17afd541582dd08a0495"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_mesh_geometry_audit.rs",
+      "sha256": "c6db967d839721a61f365037dd9522dc02c6f47afcfd01db4e146b80be28e1f4"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_quality_bench.rs",
+      "sha256": "cfc310bacf3c3e1d3fe10cbbff1e56fc4457170a45e4f63eb7375d18f0d0bd46"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/sfcc_reliability_bench.rs",
+      "sha256": "8a7ae7d8392333c673073744055791d4e40f31767d6fd1bd003c01dbf7c8a381"
+    },
+    {
+      "path": "gcad-wasm/kernel/examples/smoothcrit_analytic_bench.rs",
+      "sha256": "49f0f96dc43f719163a38c5525d91301fa4e18eac6d26a3075fbebeca92a1308"
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/exposure-b-baseline.json",
+      "sha256": "d5b17e74919e89b05ba04e2e8ac4d5ba17252c544941d69aa76227a7b77c36f0"
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/shared-arc-full-knob.json",
+      "sha256": "b5aaa791fc88c94a0753d8429d167d79c48d3a257b09228d9d71ed0160f9a082"
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/shared-arc-round14-a-face.json",
+      "sha256": "7ff2b80bc96763cdaf15c69b492c7b7de03e13b45c0257c444142c5cca32aa10"
+    },
+    {
+      "path": "gcad-wasm/kernel/fixtures/storage-a-round16-refusal.json",
+      "sha256": "ff894391158465c9c92f3d4ec85e5d39f4bde31c3ac493d51a1f318724fbe77d"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/codegen.rs",
+      "sha256": "a553da4919d9c763507a21dd61d6ce11254e90fb014a82e6b2320f764b312317"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/lib.rs",
+      "sha256": "13a61451f369d0281af653308b6621dc1f2dee75abcaf64a9f959d7172587551"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/math/grid.rs",
+      "sha256": "72b4409fc927ac9e7fb45fe677b12c87c89e1e223bbede8426fc91c3fe5c4526"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/math/mod.rs",
+      "sha256": "70a4552b25798e323f1fb15021820fe495a59a106c594ce85de962bdab31871f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/math/similarity.rs",
+      "sha256": "ba8373996fb47786bc1ae600c43157e4424a73cc9c81a3a7a965cb07bcae6290"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/parity.rs",
+      "sha256": "5be7d4d5a79b01b5d4db50d50fa7eb893381480d60174d9fda49927786466c33"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/mod.rs",
+      "sha256": "048139cce02913f4d4f2a29ce15f14654078a8db43e1c3a10f95d62fb0c6adc8"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/polygon2d.rs",
+      "sha256": "a442f1e3ba065987212c04b632d658bc8a18d4eba5cb9a6b734055fbbeb9cc30"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/shapes.rs",
+      "sha256": "17fedcce617102370b7d0df7c68bbd44b66abca09ce9583de1e58b8a07461ebc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/primitives/smin.rs",
+      "sha256": "3f4e4329ec2f25534d3d5d10ea9030a692edd1fcd1e9c15fe9449cd9ba7c2711"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/scene.rs",
+      "sha256": "cd2490a6c6fce95b09d316bef0a8f248e5378c0386045b3c8660770270b0a00b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/scene_bridge.rs",
+      "sha256": "d639a7b3db05510ae6987e3fe2deb59c1cdd7fbbcbe5a4d505149d2b1fd1c4b6"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sdf/enclosure.rs",
+      "sha256": "e20bc7de7d54a695584ab0366268bf5f19ce28d81196caca34bafd9923f78ab3"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sdf.rs",
+      "sha256": "27b93efde99b42cf0a2fa13b54ce90e12f2e9624ebe2504a52942cc986734a9e"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/adaptive_refine.rs",
+      "sha256": "50ab45093cf73d66071688780b31e80a00f55e9731b2184664a88523091f5bdb"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/assembly.rs",
+      "sha256": "50228b3af63615617bce0952d2f4ff9f138db7be2a39fbd87681c1efe981bd76"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/blend_surfaces.rs",
+      "sha256": "731f64c1fd34673aa4083c9e207796d8a3a713878bd762cbccc36d676363681f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/box_arrangement.rs",
+      "sha256": "cb6cee84d267f57310bb858533743fd7faffb4b4867bc7d5714c292864634442"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/branch_surfaces.rs",
+      "sha256": "d44f8d17829d487d6877f77b9656c4472ce80dc80fe7ec9135e4fe572477c986"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cancel.rs",
+      "sha256": "3e69b037a8110db35b692dd5edafabb37837a44d9ff5f40761aaa42940416440"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "80d769dd344609d15b73ec1716350a6a7213b750232511b37be38e1a67b49803"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/connection_b.rs",
+      "sha256": "909e0f069612df2fb07653e9cb215d66f54467278a767b25d14d0a3cfe93247f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/connection_b_tests.rs",
+      "sha256": "3d63bab51a73762177eed725a120e555d82b94697345093a3d06653372bdd68b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/coplanar_sign_reuse_tests.rs",
+      "sha256": "d03e920c59b32aa035c4673c73a2347e2812e8db633b6628cc6e56fb54b59192"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_branch_c.rs",
+      "sha256": "2f48b0cd65edc8703ebc79f709205d04d269a88e623ab47cd5ed01da4147b058"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_branch_c_tests.rs",
+      "sha256": "38ff70483fbf860bb5b37e4b6e2471dddb19fa888d275fada44069a068f19a83"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs",
+      "sha256": "69837e492c5d19d2a44b59312939caee5df5b5b3e26ddeda02d3b38cd9b1f331"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_transport_a_tests.rs",
+      "sha256": "773c60da25568bcc7388abac9efe27bcbd47b2bb603e57cd516b2d8f971e7548"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/diagnosis.rs",
+      "sha256": "57170ab149d34d88d5d83a8e281a83fae1e5ca42fe7035bad67a52355503f380"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "sha256": "a9401e1cee1bffb5eabb66cd14b16000ff14b3c81322e0aeb2237bbba8ce8058"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_b_controls.rs",
+      "sha256": "398da9f41296e9e435768e6151e8e300cef5e32abc66ea8c98adb8e2bbfe85d2"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_b_tests.rs",
+      "sha256": "4806a2a0e562b2449fd7afca40a9aa239895821544982102ad8c2ff75cc57e81"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/face_contour.rs",
+      "sha256": "0dbe4197e759ff719b8a866f4e3bb75580df9c6dc2ca05e7aac624b9618f09f7"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_chain.rs",
+      "sha256": "b6d14bb094aa8928e225ec1c0a6b1aa880cf13fd31e7b905acda9da385dfda7c"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+      "sha256": "83a7a0b41831082d56281b4dbdf2b829d0f75beb3677f1f7c46be28fff15318c"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_overlap.rs",
+      "sha256": "6ac4d5cea58217f986e89b5781761dd9f309ff864efd0888bcaa035776da16bc"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/feature_set.rs",
+      "sha256": "916d55e83382fd9bb748986c02a2b74facefb9b9eeb0bae1274765fbb1c5ed75"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "ec9fd8e56516fd909ea55c9350b52af162fee5f5dfa3310f41a3488a43da900e"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/graph_capture_b.rs",
+      "sha256": "5d86a4473f7d662d5b052c3aef810c674079bfe9b39f995ac4e3f57350c38e80"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/junction_a.rs",
+      "sha256": "5f376b71ea4024623647e111efa6b38d9c226cdc8bbe8397ab5103dc329733b2"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/local_coverage.rs",
+      "sha256": "dddc422c2f6676e4b9ebcd132d98340d34b8c2d2d85d563dd119a674fba182a2"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/loft_seam.rs",
+      "sha256": "e48d6659986e2a3b87b7a40ae2d31d9af6c2ba42e268c5759e5fee40cf42097b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/manifold_check.rs",
+      "sha256": "98d532c37eaed880114e7cda3eaa2766150587c2bd5461f6f415d052c5552ab3"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/mesh_edit.rs",
+      "sha256": "67eacc4d36b89286e47043a3a1cb96ceb6d87e046ef4a676f348c2e2fc43fc08"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/mod.rs",
+      "sha256": "03b0577394d676aa9c5944c6d448fea75c4666d489a579ae61f40acced2a0362"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/newton.rs",
+      "sha256": "3d0326d2bc18c1f1e880875fbcd4e54bc08a613a329d076ffb8abf1b3ccd4d2f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/normal_fidelity.rs",
+      "sha256": "c2edf0475629620c37ba22198e51b416facf8038bbee8edbd05e87d860cd9974"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/normal_fidelity_tests.rs",
+      "sha256": "63ca2da48d187d663072728d7c2581760b63cbe350907dad0ed726fc6c2f03cd"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/octree.rs",
+      "sha256": "efa109ce7a3104b3db3b44c7c8bcd6536e81ad1b2a5d5707549a364fda7dbfe4"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/patch_triangulate.rs",
+      "sha256": "02caf4c6403c336aca8566072584da73d5d95cfe108590d29fc6e7a09710cf94"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/perf.rs",
+      "sha256": "b69457d9e0736fc994f783e0fff43225f5b546d1ed2b817271ac5049d8edb24d"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/pipeline.rs",
+      "sha256": "5b324c58449c158bc2257f3860ce9d8314b9855aa2290d5f90dc08b8f3ae6a10"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/point_table.rs",
+      "sha256": "66d3a52242303c6f85d8cf7eb48152f40043ee549278a84ee3e8be6a6bb42af4"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/predicates.rs",
+      "sha256": "c778c0e4b91a6c65d3721705fff7e75bc3b9b003fc8e03a02bf5cafa7ca304c5"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/predicates_reference.rs",
+      "sha256": "f78fbef729fe77f8ae9d9af45b435722bbf671ecabbce0772fdbb4c09626cb9f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "sha256": "f3278a868df4cce42a8486518df81c61928e86ac7243e91cc26ec1e6aa5381b4"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs",
+      "sha256": "f52ed5d8a96a9a97b48619d27313506385ede4afda2a187fc376fe011d595658"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_arc_a_tests.rs",
+      "sha256": "690aacea79b73223a0c66b72391bda3c2dbc9782c8d8d64872e0ba21a6bc28b1"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_storage_observation.rs",
+      "sha256": "c28e3c6e8a97d90b84ee39ea6e3352f3a374cd14e7fb720f758a26a98ea1312c"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/private_storage_observation_tests.rs",
+      "sha256": "560697b191dc867021d53b70603b3ad2da8d1f88c452f8dfc8e00d462346418c"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/provenance.rs",
+      "sha256": "3373abfeaf3f9a734b01188db31053066ff33215d189b4561c1512496d0cb6b9"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/quality_remesh.rs",
+      "sha256": "6d97772e4fb9b58109ffb0cb067a03bd24f94b554a33e808764c1c1a5f4a3ff3"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/refine_criteria.rs",
+      "sha256": "423926b0daef5f54558c4875073963fc4bbc3d95fc7eadc45a982f6ba1cd4896"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/same_sweep_control.rs",
+      "sha256": "3f58079d0d4bcebf875cad7f96175ff194626748aaff444b9cb80e03bc1c9f24"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/sdf_simd.rs",
+      "sha256": "5c5b3513250909fa3d4c675e5c59b8ea7acbd7bafd002818f8a086ba5d3d53ae"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/seam_trace.rs",
+      "sha256": "c56d0dc980319aa12bef584f9ee788a04515c8eec859b1cb0a4b0b81f6ad4a30"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/segment_exposure.rs",
+      "sha256": "1e03fc5f0ce6cbcac674d3498032f194ca361ae6c4f6ae98aa870616ab7775bd"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_arc_first_piece_tests.rs",
+      "sha256": "f84fa8f1bbbfbf3d1c4b649a94dab14ae9262cf8d54bbeb5892e5e01ef8133ce"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+      "sha256": "74196ae89fb00ac91d83d1d44033856af0646dc47e4e92711a2d378ff6389a01"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_correlated_gate_c.rs",
+      "sha256": "02bf9a6cc773e4794944f86140a36a1685e3f46902209e716bf503df2ef0dd1f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_twisted_proof.rs",
+      "sha256": "fcb3d2924fc28dc6d0d9186d35791b9ead98f963fa778a1dd1435b1c5595153a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/sliver_flip.rs",
+      "sha256": "a6f4a336feb051f473317dc96a7c386ff611a859af0931730c22e3494bd06c94"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_pair_eligibility_tests.rs",
+      "sha256": "1536828eaea051e0498c09c37bff254c84a9a532d2c76b19d6d2cbc8974f68c6"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a.rs",
+      "sha256": "ce285f08aa60d20b13b5a208163da5a7bba129ea60be9cda8dfb506e47a0426f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/source_storage_a_tests.rs",
+      "sha256": "11d93972f6960527cebeae243c7d1685b46a161d6ea4594b960ad16ea4d18c6b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/spatial_index.rs",
+      "sha256": "4d9e9a8bfc8ef71c794b2b17369dc8816e87a3c95974488fb07e1032a7f7ef9d"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/surface_patch.rs",
+      "sha256": "28bca4ca87f339d9db721058734b9e4a605fd868696e2538265513cacd7b3c11"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/surface_refine.rs",
+      "sha256": "17c2e2c03673487d89f3efa8c76176fc683e795dc3fd0f97ff7e3ed1b627e090"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/tree.rs",
+      "sha256": "490e51a541a5b25f923a58800ce74cc5c57565660bd14ec7225f3a44ac8a5590"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/triangle_quality.rs",
+      "sha256": "5d0ac3025431b8b82abcead5de3e07fb6ebba1f21bff5de388942e7d1d7a8e00"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "67fd9c793d4ae2fb0a447155dfc6e84f3ad375f914bfab06d4777c4d8f4bd10e"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/typed_face_root.rs",
+      "sha256": "6b5449f627f1241417a3da7d90acb517bc06a65a37ccbeb7b57ea2d2d21d5c74"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/typed_face_root_tests.rs",
+      "sha256": "c337a9614d0d700f7b260446ac418ca60c342b0a9f4c3edf8996f0ff120686e5"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/validation.rs",
+      "sha256": "9468a78898176534691c7ce760f8f3dc66109aaa6d8a94558753430b50a75037"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/worker.rs",
+      "sha256": "d14abde44832450e55dce838d71105810d4058efb422eeb6e8e834043677c64b"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "be5c0a8d116df0fbef5bc589e0a1eed40319f8e15bd230c38265f09cef67e4c7"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/tolerances.rs",
+      "sha256": "fb75477635d5f3a9c884e494b3f356b17eb88eaee2893c55e42ee8c2de8ec119"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/tuning.rs",
+      "sha256": "c80cadbdcd9f8a56cafa924be5d3e2ccadbf8507b5eb87ca93ccd389368c9f46"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/analytical_completeness.rs",
+      "sha256": "267a95b324c2e708651e1c5348ba3f5eac2eb90bfa64266df475e4ff51bb4276"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/blend_curvature_analytic.rs",
+      "sha256": "ad8ffe70c46fa4cf5e18b6bb3e74f7c00d999d4ec37defb9f4b13b5228257506"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/blend_field_coverage.rs",
+      "sha256": "ed0010bbe4768ee227dea6f9472f100a89959bf44c39dca3b62643eb310cad49"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/box_arrangement_contract.rs",
+      "sha256": "49fb82fca15182ecf3747ef6d7336b8709780f6db45d9e4551809236968345f5"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/branch_seams.rs",
+      "sha256": "c2bd3e54c46652aa9cb911ca3a7c6ceaa226833f5f87c44b7cbc5b7e4f6a8cb5"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/cancel.rs",
+      "sha256": "10df165559792364651d5cbd53c6cbd85f12cd4a4d2f0d6fe9f28892ea423706"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/chamfer_seams.rs",
+      "sha256": "8125152276d07a8758b6e665e1e2e974b33c25743894d5472b44f7465878ab3a"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/composite_subtract.rs",
+      "sha256": "e009076c4c7743e65fd7c9a39169a9b4007805dc092b1baac0ffe19e21c3aedc"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/contour_parity.rs",
+      "sha256": "a0056ae37cd92198146bd0b3274079593fd357fb60adcec91c04192dbd40bf5b"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/coverage_obstruction.rs",
+      "sha256": "37cf5cfe5a4a2a176a68261e39060229fff6bea1c5185d8ad1d66a05ec3ad12b"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/curve_index.rs",
+      "sha256": "03c86c568d7cef0f84e458292cb10f1a995cafc7b44067f56dbbe5326e2e5462"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/diagnosis_contract.rs",
+      "sha256": "9ab496ba3b6fb3cd62c52a978ec015ef2916d396e6a2c9a2c5827eee25995a33"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/discovery_contract.rs",
+      "sha256": "37bb3f5825a9cd2d7de0246c243ce7ba953e20f4546d149b4f8a56586048a703"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/feature_preservation.rs",
+      "sha256": "f672053e8baa6bbf15ef4209e6e5e45499554b40f2f6bedfef7dd978671a4683"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/feature_trimming.rs",
+      "sha256": "2c47331ca647f4145c1ab34ce1627168244da5d4c2e592a63f542da6b0d42ae9"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/features_parity.rs",
+      "sha256": "254eb5cf7ad888d89dc30a155453cfa4a97a6cf7c2889d7d49f89cf90a99a5f4"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/field_bounds.rs",
+      "sha256": "0cd2d3c7dc5c1fa8cf454c606fa188e93a0fb6c88a6a4aaef2db4a4b9fd7a437"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/known_reconstruction_failures.rs",
+      "sha256": "512613f12e6294f1cd6ed62f8ed75d582305315e1033ea7d6adf89b61d1480b6"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/lever1_prune_parity.rs",
+      "sha256": "a4ac72a47d24b333eb67b4b9b3cf227c105fc50fde93d183e0bc19ce839b7724"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/loft_feature_identity.rs",
+      "sha256": "545c73dbfa700e049c0bf6e10ed369b11b199ac2c713b0ec2dbe6038311f1380"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/mesh_extrude_parity.rs",
+      "sha256": "884866ae3ad63a528c6c2cb1a53d1ae85bc2c807ef303837c045662cba4d920a"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/mesh_feat_parity.rs",
+      "sha256": "1d5d02b86a6c5c4f379c606b58a8980b3332f98037e45b27260cf23e2bdeb1d8"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/mesh_lathe_parity.rs",
+      "sha256": "0c7aef8fdc71930080c4590b6f50182900796e15e6a0751144596e5e2090f97c"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/mesh_loft_parity.rs",
+      "sha256": "05f632ff7e9d68ab9ffe897bccc224357ef905a6f1bdaa66003226775c536534"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/mesh_parity.rs",
+      "sha256": "2b392e433c51095067d95ceab526622e43fd2cb3911ec292324199d23fd52b0b"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/numerical_exclusion.rs",
+      "sha256": "fa208e8291d61ac4dabf859e00371996b3137fdb2bc0cfa6bf92c6f83a463997"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/octree_decide_partition.rs",
+      "sha256": "2999efaa85a2cd49bff779c3d3cbc762c4a65103d8e38f1ee74d91308a0c41e0"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/octree_feat_parity.rs",
+      "sha256": "b85df1bcab69799bbe146084a65411f01dfc3dd6f58de2afb4db5816515f1213"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/octree_parity.rs",
+      "sha256": "4829040de0ba52b0dc3e471c3d843ed78fa89053bd20757931917d134db2a8fb"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/octree_resumable.rs",
+      "sha256": "5a637fcfe5b5ec3c929ca193a1e47990ef4f4f5325329037714cf36661f12749"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/octree_session.rs",
+      "sha256": "93bc02cae31fce8c7746c04795800dac4637194eca101cc3e85a383f236e39f8"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/output_geometry.rs",
+      "sha256": "f7a371a3f7097838e5770d5f1a161461a7e62219d7cdc2963f1d31e49367309a"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/primitive_scale.rs",
+      "sha256": "0a0d5fc2f919b4f85b97c0736c6cb685cca5fee1fc1900a5d16c83e322b3b996"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/reliability.rs",
+      "sha256": "f49bcff33f64439d04afaedf5e0e59054454e17881a1ba26582f3b9dd07e82d3"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/scene_bridge_parity.rs",
+      "sha256": "cbf210990b8293debdefc9c44c254b2e331fb4fbf2a0c412da11ca23946ce66d"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/scene_transforms.rs",
+      "sha256": "ea29845e410466c6476cd3d768eb43319d4a1dd34d3a2f34ebf7738e4e4226ff"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/sdf_parity.rs",
+      "sha256": "942f53ae1fa120560aca355ae40d9ade50eab1cccb6876ba5218d09cf7ef8167"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/seams_parity.rs",
+      "sha256": "550590fa50dfe645a531946026b97cc2691b30aa5a7246ec26e7087ccf1ae3f2"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/smoothcrit_analytic.rs",
+      "sha256": "9d50a8a7bd25e03c2f9c3bff7bfa1e2e82ad2a734c5c45c60bbf70c01b05c6fa"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/spatial_partition.rs",
+      "sha256": "29ad376e37dab6fefb57f59c5cc4f38f709e8770bf04d61193cab6594a1948d7"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/strata_parity.rs",
+      "sha256": "abb70dc898b41bf1ef6b8e6249b4e2704436efa7a6add6f3a259c77aeb843ed4"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/support/discovery.rs",
+      "sha256": "54f117daf8c3707343ee3efdf6b3fba0ae85d23ef7992744ed3ee20598c95dc6"
+    },
+    {
+      "path": "gcad-wasm/kernel/tests/worker_partition.rs",
+      "sha256": "14dea89e063c011dcb5b2bfcce055a792dcd7bb8a3d8e9fcaefb70f543afb429"
+    },
+    {
+      "path": "gcad-wasm/rust-toolchain.toml",
+      "sha256": "7ba34e591bcc248d6d9884f79b0dc4d1c8843b1c919a3c2db7eed3da73981b9c"
+    },
+    {
+      "path": "gcad-wasm/wasm/Cargo.toml",
+      "sha256": "7531b68bf9b60491b5d0c75faad54be41127477a3c3b858d5617db84da0b82eb"
+    },
+    {
+      "path": "gcad-wasm/wasm/src/lib.rs",
+      "sha256": "b4fcf74f7557f13a37cabedea9ff15064a404c189cd27562a643c800f32d1527"
+    }
+  ],
+  "changedInputs": [
+    "gcad-wasm/kernel/fixtures/exposure-b-baseline.json",
+    "gcad-wasm/kernel/src/sfcc/connection_b.rs",
+    "gcad-wasm/kernel/src/sfcc/connection_b_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/correlated_branch_c.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_b_controls.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_b_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+    "gcad-wasm/kernel/src/sfcc/feature_set.rs",
+    "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+    "gcad-wasm/kernel/src/sfcc/junction_a.rs",
+    "gcad-wasm/kernel/src/sfcc/segment_exposure.rs",
+    "gcad-wasm/kernel/src/sfcc/shared_twisted_proof.rs",
+    "gcad-wasm/kernel/src/sfcc/trim.rs",
+    "gcad-wasm/kernel/src/strata.rs"
+  ],
+  "changedSinceExecutedB": [
+    "gcad-wasm/kernel/src/sfcc/connection_b.rs",
+    "gcad-wasm/kernel/src/sfcc/connection_b_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+    "gcad-wasm/kernel/src/sfcc/trim.rs"
+  ],
+  "patchSha256": "42ca077476b0fe2d80f4609df420f44123d660ab38c763793daca24cc8a2fcfe",
+  "authorExecutedGeometry": false
+}

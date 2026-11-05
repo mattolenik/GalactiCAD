@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round24-incoming-connection/A/kernel-tests",
+    "exposure_a_frontier_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.08304195800156,
+  "elapsedSeconds": 0.0038598329992964864,
+  "exitCode": 0,
+  "timedOut": false
+}

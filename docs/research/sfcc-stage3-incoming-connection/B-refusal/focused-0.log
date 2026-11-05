@@ -1,0 +1,19 @@
+
+running 2 tests
+test sfcc::trim::connection_b_tests::connection_b_refusal_injection_must_preserve_original_run ... 
+thread 'sfcc::trim::connection_b_tests::connection_b_refusal_injection_must_preserve_original_run' (698294) panicked at kernel/src/sfcc/connection_b_tests.rs:426:5:
+certificate-install refusal silently deleted an existing source-family run
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sfcc::trim::connection_b_tests::connection_b_refusal_injection_scope_resets_after_unwind ... 
+thread 'sfcc::trim::connection_b_tests::connection_b_refusal_injection_scope_resets_after_unwind' (698363) panicked at kernel/src/sfcc/connection_b_tests.rs:436:9:
+scope control
+ok
+
+failures:
+
+failures:
+    sfcc::trim::connection_b_tests::connection_b_refusal_injection_must_preserve_original_run
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 334 filtered out; finished in 2.41s
+

@@ -1,0 +1,122 @@
+--- a/gcad-wasm/kernel/src/sfcc/connection_b_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/connection_b_tests.rs
+@@ -8,6 +8,8 @@
+ #[derive(Default)]
+ struct Capture {
+     enabled: bool,
++    refuse_next: bool,
++    refusals: Vec<Value>,
+     cases: Vec<(Connection, FeatureCurve, Vec<Stratum>)>,
+ }
+ thread_local! {static CAPTURE:RefCell<Capture>=RefCell::new(Capture::default());}
+@@ -35,6 +37,24 @@
+                 .push((proof.clone(), raw[*id].clone(), tree.strata.clone()));
+         }
+     });
++}
++pub(super) fn inject_refusal(
++    src: &FeatureCurve,
++    t0: f64,
++    t1: f64,
++    connections: [Option<&Connection>; 2],
++) -> bool {
++    CAPTURE.with(|capture| {
++        let mut capture=capture.borrow_mut();
++        if !capture.refuse_next || connections.iter().all(Option::is_none){return false;}
++        capture.refuse_next=false;
++        capture.refusals.push(json!({"injected":true,"reason":"forced admitted-certificate remake refusal",
++            "rawCurve":src.id,"sourcePair":src.adjacent_strata,"discardedRunRangeHex":[hex(t0),hex(t1)],
++            "discardedRunEndpointHex":[src.point_at(t0).map(hex),src.point_at(t1).map(hex)],
++            "connections":connections.map(|p|p.map(|p|json!({"source":p.source,"rawPrefixRangeHex":p.raw_range.map(hex),
++                "sourceChordErrorHex":hex(p.source_chord_error),"epsilonHex":hex(p.epsilon)})))}));
++        true
++    })
+ }
+ fn fixture() -> (crate::sdf::CsgNode, ResolvedTolerances) {
+     let f: Value =
+@@ -349,3 +369,74 @@
+     });
+     assert!(connection_b::resolver_enabled());
+ }
++
++#[test]
++fn connection_b_refusal_injection_must_preserve_original_run() {
++    let (root, tol) = fixture();
++    let (parent, parent_diag) =
++        connection_b::with_resolver_disabled(|| compile_feature_set(&root, &tol));
++    let (accepted, accepted_diag) = compile_feature_set(&root, &tol);
++    let _scope = Scope;
++    CAPTURE.with(|c| {
++        let mut c = c.borrow_mut();
++        c.enabled = true;
++        c.refuse_next = true;
++    });
++    let (injected, injected_diag) = compile_feature_set(&root, &tol);
++    let (refusals, cases) = CAPTURE.with(|c| {
++        let mut c = c.borrow_mut();
++        (
++            std::mem::take(&mut c.refusals),
++            std::mem::take(&mut c.cases),
++        )
++    });
++    let baseline = families(&parent);
++    let before = families(&accepted);
++    let after = families(&injected);
++    let pair: Option<[usize; 2]> = refusals.first().map(|r| {
++        let mut p = [
++            r["sourcePair"][0].as_u64().unwrap() as usize,
++            r["sourcePair"][1].as_u64().unwrap() as usize,
++        ];
++        p.sort();
++        p
++    });
++    let original_run_retained = pair.is_some_and(|p| {
++        let old = baseline.get(&p).map_or(0, Vec::len);
++        let new = after.get(&p).map_or(0, Vec::len);
++        old > 0 && new >= old
++    });
++    let report = json!({"scope":"test-only forced remake refusal; not a naturally observed geometry failure",
++        "injections":refusals,"parentCounts":[parent.curves.len(),parent.corners.len(),parent_diag.unresolved_trims],
++        "acceptedCounts":[accepted.curves.len(),accepted.corners.len(),accepted_diag.unresolved_trims],
++        "injectedCounts":[injected.curves.len(),injected.corners.len(),injected_diag.unresolved_trims],
++        "affectedSourcePair":pair,"parentFamily":pair.and_then(|p|baseline.get(&p)),
++        "acceptedFamily":pair.and_then(|p|before.get(&p)),"injectedFamily":pair.and_then(|p|after.get(&p)),
++        "originalRunRetained":original_run_retained,
++        "allAdmittedAuthoritiesRetained":cases.iter().all(|(p,_,_)|retained(&injected,p)),
++        "requiredBehavior":"refuse the proposal and preserve the original truncated run, or explicitly refuse the whole transaction"});
++    let path = std::path::PathBuf::from(std::env::var("SFCC_CONNECTION_B_RECEIPT").unwrap())
++        .with_file_name("connection-B-refusal.json");
++    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    assert_eq!(
++        refusals.len(),
++        1,
++        "one actual admitted connection must reach the injected refusal"
++    );
++    assert!(
++        original_run_retained,
++        "certificate-install refusal silently deleted an existing source-family run"
++    );
++}
++#[test]
++fn connection_b_refusal_injection_scope_resets_after_unwind() {
++    let _ = std::panic::catch_unwind(|| {
++        let _scope = Scope;
++        CAPTURE.with(|c| c.borrow_mut().refuse_next = true);
++        panic!("scope control");
++    });
++    CAPTURE.with(|c| {
++        let c = c.borrow();
++        assert!(!c.enabled && !c.refuse_next && c.refusals.is_empty() && c.cases.is_empty());
++    });
++}
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -401,6 +401,8 @@
+     endpoints: [Option<[f64; 3]>; 2],
+     connections: [Option<&Connection>; 2],
+ ) -> Option<FeatureCurve> {
++    #[cfg(all(test,feature="serde"))]
++    if connection_b_tests::inject_refusal(src,t0,t1,connections) {return None;}
+     if src.connection_identity_b().iter().any(Option::is_some) && !full_closed {
+         return None;
+     }

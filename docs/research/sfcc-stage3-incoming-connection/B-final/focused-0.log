@@ -1,0 +1,15 @@
+
+running 6 tests
+test sfcc::feature_curves::connection_endpoint_tests_b::connection_b_chord_returns_exact_join_under_cancellation ... ok
+test sfcc::trim::connection_b_tests::connection_b_conservative_refusal_preserves_other_source_families ... ok
+test sfcc::trim::connection_b_tests::connection_b_original_prefix_has_uniform_source_bound_and_checked_chord_queries ... ok
+test sfcc::trim::connection_b_tests::connection_b_preserves_every_admitted_query_authority_after_dedup ... ok
+test sfcc::trim::connection_b_tests::connection_b_rejects_wrong_source_branch_container_and_unchecked_remake ... ok
+test sfcc::trim::connection_b_tests::connection_b_resolver_disabled_scope_restores_after_unwind ... 
+thread 'sfcc::trim::connection_b_tests::connection_b_resolver_disabled_scope_restores_after_unwind' (667691) panicked at kernel/src/sfcc/connection_b_tests.rs:348:49:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 328 filtered out; finished in 4.02s
+

@@ -1,0 +1,7 @@
+{
+  "filter": "connection_b_original_prefix_",
+  "tests": [
+    "sfcc::trim::connection_b_tests::connection_b_original_prefix_has_uniform_source_bound_and_checked_chord_queries"
+  ],
+  "exitCode": 0
+}

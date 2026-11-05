@@ -1,0 +1,144 @@
+{
+  "notProved": [
+    "common-intersection connectivity",
+    "ordered raw-parameter transport",
+    "genuine source junction",
+    "whole physical arc"
+  ],
+  "rows": [
+    {
+      "attachmentTransportAuthorized": false,
+      "boxHex": [
+        [
+          "c022b7c9e5c4feb3",
+          "c003efb1d633d399",
+          "40158f24eed56873"
+        ],
+        [
+          "c022b7c9cc4a6401",
+          "c003efb1704968d3",
+          "40158f2521ca9dd7"
+        ]
+      ],
+      "curve": 44,
+      "end": 0,
+      "endpointUnwired": false,
+      "intrinsicBranchSign": 1,
+      "junctionDistanceHex": "0000000000000000",
+      "orderedRawFrontier": "not retained by this candidate",
+      "parameterHex": "0000000000000000",
+      "pointHex": [
+        "c022b7c9d907b15a",
+        "c003efb1a33e9e36",
+        "40158f2508500325"
+      ],
+      "refusal": null,
+      "retainedAliases": [
+        {
+          "corner": 13,
+          "curve": 60,
+          "end": 0,
+          "parameterHex": "0000000000000000",
+          "pointHex": [
+            "c022b7c9d907b15a",
+            "c003efb1a33e9e36",
+            "40158f2508500325"
+          ],
+          "sourcePair": [
+            31,
+            30
+          ]
+        }
+      ],
+      "sourceIdentities": [
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "1010a3170"
+            }
+          ],
+          "field": null,
+          "id": 10,
+          "leafIndex": 1,
+          "localIndex": 3,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        },
+        {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "rootAddressProcessLocal": "1010a3170"
+            }
+          ],
+          "field": {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "rootAddressProcessLocal": "1010a3170"
+          },
+          "id": 30,
+          "leafIndex": 18446744073709551615,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        },
+        {
+          "compoundPresent": true,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0
+              ],
+              "rootAddressProcessLocal": "1010a3170"
+            }
+          ],
+          "field": null,
+          "id": 31,
+          "leafIndex": 18446744073709551615,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        }
+      ],
+      "sourceJunctionCertificate": "not implemented",
+      "sourcePair": [
+        31,
+        10
+      ],
+      "visitedSourceBoxes": 1,
+      "zeroLocusEquivalent": true
+    }
+  ],
+  "runtimeTransportPerformed": false,
+  "scope": "bounded equality of native/round-field zero loci and inherited domains; same common compound is retained"
+}

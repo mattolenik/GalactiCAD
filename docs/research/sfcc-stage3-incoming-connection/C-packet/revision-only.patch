@@ -1,0 +1,402 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/connection_c.rs
+@@ -0,0 +1,282 @@
++use super::*;
++use crate::{
++    scene_bridge::build_csg_tree_from_json,
++    sfcc::feature_set::compile_feature_set,
++    strata::{CarrierKind, StratumIdentity},
++    tolerances::resolve_tolerances,
++    tuning::SfccTuning,
++};
++use serde_json::{json, Value};
++use std::cell::RefCell;
++
++#[derive(Default)]
++struct Capture {
++    enabled: bool,
++    raw: Option<FeatureCurve>,
++    source: Vec<Value>,
++}
++thread_local! { static CAPTURE: RefCell<Capture> = RefCell::new(Capture::default()); }
++struct Scope;
++impl Drop for Scope {
++    fn drop(&mut self) {
++        CAPTURE.with(|c| *c.borrow_mut() = Capture::default());
++    }
++}
++fn hex(v: f64) -> String {
++    format!("{:016x}", v.to_bits())
++}
++fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
++    (a[0] - b[0]).hypot(a[1] - b[1]).hypot(a[2] - b[2])
++}
++fn lower() -> [f64; 3] {
++    [0xc022b7c9d907b15a, 0xc003efb1a33e9e36, 0x40158f2508500325].map(f64::from_bits)
++}
++
++pub(super) fn capture(tree: &SfccTree<'_>, raw: &[FeatureCurve]) {
++    if !CAPTURE.with(|c| c.borrow().enabled) {
++        return;
++    }
++    let native = tree
++        .strata
++        .iter()
++        .find(|s| {
++            s.local_index == 3
++                && s.graph_capture_identity_b().is_some_and(|v| {
++                    v["field"].is_null() && v["domain"][0]["path"] == json!([0, 0, 0, 0, 1])
++                })
++        })
++        .unwrap()
++        .id;
++    let candidates: Vec<_> = raw
++        .iter()
++        .filter(|c| c.adjacent_strata.contains(&native))
++        .filter(|c| {
++            c.adjacent_strata
++                .iter()
++                .any(|&i| tree.strata[i].kind == CarrierKind::Compound)
++        })
++        .filter(|c| {
++            c.point_at_checked(c.t_min)
++                .is_some_and(|p| distance(p, lower()) < 1e-5)
++        })
++        .collect();
++    assert_eq!(
++        candidates.len(),
++        1,
++        "exact source occurrence and incoming endpoint select one raw trace"
++    );
++    let selected = candidates[0];
++    CAPTURE.with(|c| {
++        let mut c = c.borrow_mut();
++        assert!(c.raw.is_none(), "one bounded observer invocation");
++        c.source = selected
++            .adjacent_strata
++            .iter()
++            .map(|&i| tree.strata[i].graph_capture_identity_b().unwrap())
++            .collect();
++        c.raw = Some(selected.clone());
++    });
++}
++
++fn pointwise_postconditions(curve: &FeatureCurve, t: f64, p: [f64; 3]) -> Value {
++    let (a, b, r) = curve.traced_carriers().unwrap();
++    let seed = curve.original_seed_c(t);
++    let fa = a.raw_field(p[0], p[1], p[2]).normalized_equation().unwrap();
++    let fb = b.raw_field(p[0], p[1], p[2]).normalized_equation().unwrap();
++    let dot = (0..3).map(|i| fa.gradient[i] * fb.gradient[i]).sum::<f64>();
++    let det = 1. - dot * dot;
++    let accepted = fa.value.abs() <= r.curve_eps
++        && fb.value.abs() <= r.curve_eps
++        && det > r.min_cross * r.min_cross
++        && distance(seed, p) <= r.max_displacement;
++    json!({"accepted":accepted,"parameterHex":hex(t),"pointHex":p.map(hex),"seedHex":seed.map(hex),
++        "residualHex":[hex(fa.value),hex(fb.value)],"fullCrossSquaredHex":hex(det),
++        "seedDistanceHex":hex(distance(seed,p)),"displacementCapHex":hex(r.max_displacement)})
++}
++
++#[test]
++fn connection_c_actual_source_pinned_queries_have_order_without_attachment_authority() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root = build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap()).unwrap();
++    let size =
++        fixture["cube"]["max"][0].as_f64().unwrap() - fixture["cube"]["min"][0].as_f64().unwrap();
++    let tol = resolve_tolerances(&SfccTuning::default(), 3_f64.sqrt() * size);
++    let scope = Scope;
++    CAPTURE.with(|c| c.borrow_mut().enabled = true);
++    let (features, diag) = compile_feature_set(&root, &tol);
++    let (curve, source) = CAPTURE.with(|c| {
++        let mut c = c.borrow_mut();
++        (c.raw.take().unwrap(), c.source.clone())
++    });
++    drop(scope);
++    let params = classification_params(&curve, &tol);
++    let range = [params[0], params[1]];
++    assert!(range[0] == 0. && range[1] > 0. && range[1] < 1.);
++    let p0 = range[1] * 0.25;
++    let p1 = range[1] * 0.75;
++    let q0 = curve.shared_checked_point(p0).unwrap();
++    let q1 = curve.shared_checked_point(p1).unwrap();
++    let forward = [
++        pointwise_postconditions(&curve, p0, q0),
++        pointwise_postconditions(&curve, p1, q1),
++    ];
++    let swapped = [
++        pointwise_postconditions(&curve, p0, q1),
++        pointwise_postconditions(&curve, p1, q0),
++    ];
++    let mut rows = Vec::new();
++    for i in 0..=32 {
++        let t = range[0] + (range[1] - range[0]) * i as f64 / 32.;
++        let seed = curve.height_pinned_seed_c(range, t).unwrap();
++        let pinned = curve.height_pinned_point_c(range, t);
++        let old = curve.point_at_checked(t);
++        rows.push(json!({"parameterHex":hex(t),"seedHeightHex":hex(seed[1]),
++            "pinnedHex":pinned.map(|p|p.map(hex)),"originalHex":old.map(|p|p.map(hex)),
++            "heightBitsPreserved":pinned.map(|p|p[1].to_bits()==seed[1].to_bits()),
++            "pinnedOnSourceDomains":pinned.map(|p|curve.adjacent_strata.iter().all(|&id|features.strata[id].domain_contains(p,tol.curve_eps*8.))),
++            "queryDifferenceHex":pinned.zip(old).map(|(p,q)|hex(distance(p,q)))}));
++    }
++    let pinned: Vec<_> = (0..=32)
++        .map(|i| {
++            curve.height_pinned_point_c(range, range[0] + (range[1] - range[0]) * i as f64 / 32.)
++        })
++        .collect();
++    let heights: Vec<_> = pinned.iter().flatten().map(|p| p[1]).collect();
++    let direction =
++        (curve.original_seed_c(range[1])[1] - curve.original_seed_c(range[0])[1]).signum();
++    let ordered = heights.windows(2).all(|w| direction * (w[1] - w[0]) >= 0.);
++    let report = json!({"scope":"test-only actual-source query alternative; no source admission, attachment or runtime change",
++        "rawCurve":curve.id,"sourcePair":curve.adjacent_strata,"sourceIdentities":source,"originalClassificationRangeHex":range.map(hex),
++        "originalCurveRangeHex":[hex(curve.t_min),hex(curve.t_max)],"sourceConfigSha256":fixture["sourceConfigSha256"],
++        "pointwiseForward":forward,"pointwiseSwapped":swapped,"swappedHeightOrderReversed":(q1[1]-q0[1])*(q0[1]-q1[1])<0.,
++        "counterexampleMeaning":"pointwise residual, conditioning and displacement postconditions permit reversed outputs; actual Newton behavior is not claimed reversed",
++        "pinnedQueries":rows,"pinnedAllQueriesSucceeded":pinned.iter().all(Option::is_some),"pinnedSuccessfulHeightsOrdered":ordered,
++        "orderClaim":"non-strict height order for successful queries by monotone rounded seed interpolation and exact height preservation; no floating evaluator totality",
++        "runtimeFeatureFingerprint":features.fingerprint().to_string(),"unresolvedTrims":diag.unresolved_trims,
++        "sourceConnectionCertified":false,"junctionAttachmentAuthorized":false,"productionQueryChanged":false});
++    let path = std::env::var("SFCC_CONNECTION_C_RECEIPT").expect("root receipt required");
++    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    assert!(forward
++        .iter()
++        .chain(&swapped)
++        .all(|v| v["accepted"] == true));
++    assert_ne!(q0[1], q1[1]);
++    assert!(
++        pinned.iter().all(Option::is_some),
++        "actual narrow source interval must support the proposed query"
++    );
++    assert!(rows.iter().all(|r| r["heightBitsPreserved"] == true));
++    assert!(ordered);
++    assert!(curve
++        .height_pinned_point_c(range, range[1].next_up())
++        .is_none());
++}
++
++fn ident(id: usize) -> StratumIdentity {
++    StratumIdentity {
++        id,
++        owner_node_id: -1,
++        leaf_index: 0,
++        local_index: 0,
++        sign: 1.,
++    }
++}
++fn line(ys: &[f64]) -> FeatureCurve {
++    let a = Stratum::plane(ident(0), 1., 0., 0., 0.);
++    let b = Stratum::plane(ident(1), 0., 0., 1., 0.);
++    make_traced_curve(
++        0,
++        [0, 1],
++        ys.iter().flat_map(|&y| [0., y, 0.]).collect(),
++        false,
++        a,
++        b,
++        crate::sfcc::feature_curves::TracedRefine {
++            curve_eps: 1e-12,
++            min_cross: 1e-3,
++            max_displacement: 0.1,
++        },
++        -1,
++    )
++}
++#[test]
++fn connection_c_pinned_height_handles_rounding_plateaus_and_rejects_reversals() {
++    for ys in [
++        vec![1., 1f64.next_up(), 1f64.next_up().next_up()],
++        vec![1f64.next_up().next_up(), 1f64.next_up(), 1.],
++    ] {
++        let c = line(&ys);
++        let direction = (ys[2] - ys[0]).signum();
++        let mut seen = Vec::new();
++        for i in 0..=128 {
++            let t = i as f64 / 64.;
++            let q = c.height_pinned_point_c([0., 2.], t).unwrap();
++            seen.push(q[1]);
++        }
++        assert!(seen.windows(2).all(|w| direction * (w[1] - w[0]) >= 0.));
++        assert!(
++            seen.windows(2).any(|w| w[1] == w[0]),
++            "rounded order cannot promise strict increase"
++        );
++        for (i, &y) in ys.iter().enumerate() {
++            assert_eq!(
++                c.height_pinned_point_c([0., 2.], i as f64).unwrap()[1].to_bits(),
++                y.to_bits()
++            );
++        }
++    }
++    let reversed = line(&[1., 2., 1.]);
++    assert!(reversed.height_pinned_point_c([0., 2.], 0.5).is_none());
++    assert!(reversed.height_pinned_point_c([0., 1.], 0.5).is_some());
++    let a = Stratum::plane(ident(0), 1., 0., 0., 0.);
++    let b = Stratum::plane(ident(1), 0., 1., 0., 0.);
++    assert!(
++        crate::sfcc::newton::project_to_carrier_pair_at_height_c(
++            &a,
++            &b,
++            [0., 0., 0.],
++            1e-12,
++            1e-3,
++            0.1
++        )
++        .is_none(),
++        "full carrier rank does not imply XZ rank"
++    );
++    let z = Stratum::plane(ident(1), 0., 0., 1., 0.);
++    assert!(
++        crate::sfcc::newton::project_to_carrier_pair_at_height_c(
++            &a,
++            &z,
++            [1., 2., 1.],
++            1e-12,
++            1e-3,
++            0.
++        )
++        .is_none(),
++        "fixed displacement budget"
++    );
++}
++
++#[test]
++fn connection_c_original_lerp_can_reverse_one_ulp_while_pinned_chart_does_not() {
++    // Arithmetic control only: this is not a measured reversal on the knob trace.
++    let a = f64::from_bits(0xc003efb1a33e9e36);
++    let b = f64::from_bits(0xc003f141205bc01a);
++    let t = [
++        f64::from_bits(0x3fe0000000000a8d),
++        f64::from_bits(0x3fe0000000000a8e),
++    ];
++    let curve = line(&[a, b]);
++    let old = t.map(|t| curve.original_seed_c(t)[1]);
++    let pinned = t.map(|t| curve.height_pinned_point_c([0., 1.], t).unwrap()[1]);
++    assert!(b < a && t[0] < t[1]);
++    assert!(
++        old[1] > old[0],
++        "the old convex-combination evaluation reverses one ulp"
++    );
++    assert!(
++        pinned[1] <= pinned[0],
++        "the fixed-difference chart retains non-strict order"
++    );
++}
+--- a/gcad-wasm/kernel/src/sfcc/feature_curves.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature_curves.rs
+@@ -363,6 +363,42 @@
+         let (_,_,refine)=self.traced_carriers()?;
+         projection_box_contains(seed,q,refine.max_displacement).then_some(q)
+     }
++    /// Test-only alternative query: monotone height chart, with explicit failures.
++    /// This does not admit a source family or certify complete arc connection.
++    #[cfg(test)]
++    pub(crate) fn height_pinned_seed_c(&self, range: [f64; 2], t: f64) -> Option<[f64; 3]> {
++        let Geom::Traced(td) = &self.geom else { return None; };
++        if self.closed || td.n < 2 || td.samples.len() != 3 * td.n
++            || !range.iter().chain([&t]).all(|v| v.is_finite())
++            || range[0] < self.t_min || range[1] > self.t_max || range[0] >= range[1]
++            || range[0] < 0. || range[1] > (td.n-1) as f64 || t < range[0] || t > range[1] {
++            return None;
++        }
++        let mut direction = 0.;
++        for i in range[0].floor() as usize..range[1].ceil() as usize {
++            let a = td.samples[3*i+1]; let b = td.samples[3*(i+1)+1];
++            let delta = b-a;
++            if !a.is_finite() || !b.is_finite() || !delta.is_finite() || delta == 0. { return None; }
++            if direction != 0. && direction != delta.signum() { return None; }
++            direction = delta.signum();
++        }
++        let i = (t.floor() as usize).min(td.n-2);
++        let a = td.samples[3*i+1]; let b = td.samples[3*(i+1)+1];
++        let mut seed = self.interpolated_point(t);
++        // Fixed-difference multiplication/addition is monotone; clamping joins knots.
++        let fraction = (t-i as f64).clamp(0.,1.);
++        seed[1] = if fraction == 1. { b } else { (a + (b-a)*fraction).clamp(a.min(b),a.max(b)) };
++        seed.iter().all(|v|v.is_finite()).then_some(seed)
++    }
++    #[cfg(test)]
++    pub(crate) fn height_pinned_point_c(&self, range:[f64;2], t:f64)->Option<[f64;3]> {
++        let seed = self.height_pinned_seed_c(range,t)?;
++        let (sa,sb,refine) = self.traced_carriers()?;
++        super::newton::project_to_carrier_pair_at_height_c(&sa,&sb,seed,
++            refine.curve_eps,refine.min_cross,refine.max_displacement)
++    }
++    #[cfg(test)]
++    pub(crate) fn original_seed_c(&self,t:f64)->[f64;3] { self.interpolated_point(t) }
+     pub fn tangent_at(&self, t: f64) -> [f64; 3] {
+         match &self.geom {
+             Geom::Segment { tan, .. } => *tan,
+--- a/gcad-wasm/kernel/src/sfcc/newton.rs
++++ b/gcad-wasm/kernel/src/sfcc/newton.rs
+@@ -70,6 +70,49 @@
+         }
+         let q = accepted?;
+         [x, y, z] = q;
++    }
++    None
++}
++
++/// Experimental query primitive: source admission remains a separate obligation.
++/// Every successful output keeps the supplied height bit-for-bit.
++#[cfg(test)]
++pub(crate) fn project_to_carrier_pair_at_height_c(
++    sa: &Stratum,
++    sb: &Stratum,
++    seed: [f64; 3],
++    eps: f64,
++    min_cross: f64,
++    max_displacement: f64,
++) -> Option<[f64; 3]> {
++    if seed.iter().any(|v| !v.is_finite()) || !eps.is_finite() || eps <= 0.
++        || !min_cross.is_finite() || min_cross < 0.
++        || !max_displacement.is_finite() || max_displacement < 0. {
++        return None;
++    }
++    let mut p = seed;
++    for _ in 0..24 {
++        let a = sa.raw_field(p[0], p[1], p[2]).normalized_equation()?;
++        let b = sb.raw_field(p[0], p[1], p[2]).normalized_equation()?;
++        let det = a.gradient[0] * b.gradient[2] - a.gradient[2] * b.gradient[0];
++        if !det.is_finite() || det.abs() <= min_cross { return None; }
++        if a.value.abs() <= eps && b.value.abs() <= eps { return Some(p); }
++        let dx = (a.value * b.gradient[2] - a.gradient[2] * b.value) / det;
++        let dz = (a.gradient[0] * b.value - a.value * b.gradient[0]) / det;
++        let before = a.value.abs().max(b.value.abs());
++        let mut alpha = 1.;
++        let mut accepted = None;
++        for _ in 0..8 {
++            let q = [p[0] - alpha * dx, seed[1], p[2] - alpha * dz];
++            let displacement = (q[0] - seed[0]).hypot(q[2] - seed[2]);
++            if q.iter().all(|v| v.is_finite()) && displacement <= max_displacement {
++                let qa = sa.raw_field(q[0], q[1], q[2]).normalized_equation()?;
++                let qb = sb.raw_field(q[0], q[1], q[2]).normalized_equation()?;
++                if qa.value.abs().max(qb.value.abs()) < before { accepted = Some(q); break; }
++            }
++            alpha *= 0.5;
++        }
++        p = accepted?;
+     }
+     None
+ }
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -508,6 +508,9 @@
+     native_corners: &[SfccCorner],
+     tol: &ResolvedTolerances,
+ ) -> TrimResult {
++    #[cfg(all(test, feature="serde"))]
++    connection_c::capture(tree, raw_curves);
++
+     let mut candidates: Vec<Candidate> = Vec::new();
+     let add_candidate = |candidates: &mut Vec<Candidate>, x: f64, y: f64, z: f64| -> usize {
+         for (i, c) in candidates.iter().enumerate() {
+@@ -916,3 +919,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="exposure_b_controls.rs"]
+ mod exposure_b_controls;
++
++#[cfg(all(test, feature="serde"))]
++#[path="connection_c.rs"]
++mod connection_c;

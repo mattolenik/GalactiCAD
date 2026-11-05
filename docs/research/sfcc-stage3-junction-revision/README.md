@@ -168,3 +168,9 @@ candidate patch; the frontier correction is already included in A's final patch.
 No complete component, current-HEAD transfer, native/WASM parity, GPU evaluation,
 transform campaign or visual acceptance is established here. General multi-sheet
 reconstruction and the later blend handoff remain open.
+
+The [subsequent incoming-connection round](../sfcc-stage3-incoming-connection/README.md)
+implements a source-derived replacement chart and selects a bounded local repair
+after original-source, collateral and late-refusal preservation checks pass.
+That result advances Stage 3; it does not retroactively turn the premise-only
+candidates in this report into accepted reconstruction repairs.

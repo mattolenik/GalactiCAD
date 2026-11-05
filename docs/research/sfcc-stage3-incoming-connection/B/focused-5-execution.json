@@ -1,0 +1,13 @@
+{
+  "step": "focused-5",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round24-incoming-connection/B/kernel-tests",
+    "connection_b_preserves_every_admitted_query_authority_after_dedup",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 55.68377837499975,
+  "elapsedSeconds": 0.6711747919998743,
+  "exitCode": 101,
+  "timedOut": false
+}

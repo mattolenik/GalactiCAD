@@ -9,9 +9,14 @@ Stages 1–2 are complete for this witness. Stage 3's
 restores the target interval but fails lower-junction preservation. The
 [next revision](../research/sfcc-stage3-junction-revision/README.md) establishes
 source-junction location, conditional local source equivalence and corrected
-original/final parameter provenance, but still does not prove incoming-arc
-connection or restore its attachment. Neither candidate is selected.
-Stages 3–5 remain open. Current production baseline:
+original/final parameter provenance. The subsequent
+[incoming-connection round](../research/sfcc-stage3-incoming-connection/README.md)
+selects A-rollback for the bounded Stage 3 witness: its source-derived chart
+restores the lower attachment, retains upper continuation, preserves non-target
+families and rolls back an injected late refusal. All 12 focused tests pass.
+Stage 3's local exit is satisfied; Stages 4–5 remain open. The original private
+graph guard and complete component have not yet been rerun on this selection.
+Current production baseline:
 `421f5a9`. This expands the next five steps of
 [E4 in the critical-repairs plan](sfcc-critical-repairs.md), then defines the
 handoff to the remaining E4 work, E5 and E6. It does not supersede their acceptance
@@ -212,6 +217,13 @@ explicitly. A net improvement in triangle counts is not a selection criterion.
 Preserve the rejected alternatives. Commit the isolated experimental patch,
 fixture and evidence; do not enable it in production at this stage.
 
+**Executed selection:** [A-rollback](../research/sfcc-stage3-incoming-connection/README.md)
+contains the reviewed A-final runtime and a matching late-refusal preservation
+regression. B's chord theorem is retained, but its runtime is rejected after an
+executed injected refusal deletes a source-family run. C remains a query prototype.
+The source-derived replacement chart establishes the bounded connection; it does
+not prove the old Newton parameterization monotone or close the whole component.
+
 ## 4. Validate the whole affected component
 
 **Question:** does the local repair produce a valid replacement in its complete
@@ -228,6 +240,14 @@ Freeze the selected integration, rerun its focused controls, then run one bounde
 private reconstruction of the full selected component. Every selected cell must
 succeed; a new first failure becomes the next focused witness. Do not interpret
 passing the original cell as completion of the component.
+
+For the selected A packet, first reidentify feature/component obligations by source
+occurrence and geometry. Dense curve IDs, ranges, corner incidence, fingerprint,
+query semantics and inline storage changed. Regenerate dependent faces, pins and
+source intervals; reuse old 198/396 results only after demonstrating identical
+inputs. Re-establish complete storage/reservation/lifecycle bounds before the new
+component run. The selected isolated source is the captured Stage 1 baseline plus
+the archived flat A-rollback patch, not a patch applied directly to current HEAD.
 
 Check these independently:
 

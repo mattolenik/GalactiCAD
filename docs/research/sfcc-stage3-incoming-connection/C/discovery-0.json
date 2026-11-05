@@ -1,0 +1,9 @@
+{
+  "filter": "connection_c_",
+  "tests": [
+    "sfcc::trim::connection_c::connection_c_actual_source_pinned_queries_have_order_without_attachment_authority",
+    "sfcc::trim::connection_c::connection_c_original_lerp_can_reverse_one_ulp_while_pinned_chart_does_not",
+    "sfcc::trim::connection_c::connection_c_pinned_height_handles_rounding_plateaus_and_rejects_reversals"
+  ],
+  "exitCode": 0
+}

@@ -1,0 +1,34 @@
+{
+  "admittedConnections": 1,
+  "afterSymmetricFamily": [
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[[\"4022b7c9d907b298\",\"c003efb1a33e9e36\",\"c0158f2508500496\"],null],\"indexPolylineHex\":[\"4022b7c9d907b298\",\"c003efb1a33e9e36\",\"c0158f2508500496\",\"4022b60f0f2bb2c2\",\"c003f33cd77ac4f1\",\"c0158fd342f55a46\",\"4022b3dbf695c5c0\",\"c003f7bf047fe5bd\",\"c01590afbf928a27\",\"4022ad92ea38a838\",\"c00404a40f89e337\",\"c015931f1ac92017\",\"40229b9c25241605\",\"c004299768b791f1\",\"c01599ddc26b37ca\",\"4021c99694821e38\",\"c005e5d5c19e0355\",\"c015cfa74cde9fe6\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4014000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,7],\"wrapHex\":null}",
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,[\"40191a4952caed9b\",\"c003efb1ae58309b\",\"4021943e321263e8\"]],\"indexPolylineHex\":[\"401bbc76aa90a56b\",\"c005e5dc372f0892\",\"401f2d483310aa74\",\"401b229b8fb30d15\",\"c0056c415d6aa680\",\"4020159cfb8f5600\",\"4019c081b1f4728b\",\"c00464c6477ebcec\",\"402120ec9f27ec2f\",\"40191a4952caed9b\",\"c003efb1ae58309b\",\"4021943e321263e8\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4008000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,7],\"wrapHex\":null}",
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,null],\"indexPolylineHex\":[\"4022b7c873181d80\",\"c003efb48084c3d2\",\"c0158f25957c7651\",\"4022b76c0d863dd7\",\"c003f071c823d1b8\",\"c0158f4a0115c8e1\",\"4022b67c1b78cd08\",\"c003f25d637959e5\",\"c0158fa86c2eedc7\",\"4022b52c2c1a3ce8\",\"c003f50dd388cec8\",\"c015902c3f5978e0\",\"4022b355d72b8808\",\"c003f8d2020a1393\",\"c01590e41642767c\",\"4022b0c3550771fd\",\"c003fe1896097a4e\",\"c01591e40ed459d4\",\"4022ad29560ef80f\",\"c004057cd1069f21\",\"c0159347a8970e2e\",\"4022a81e61a80915\",\"c0040fd8bb26c120\",\"c015953413311a80\",\"4022a10ebe7dc2f2\",\"c0041e5ee6e9588b\",\"c01597dac72fbabe\",\"4022972b7fef3275\",\"c00432bf2734bbe5\",\"c0159b7be5a1403c\",\"40228952c7e54eac\",\"c0044f5b3bf315d3\",\"c015a067015a6aac\",\"402275ee8ed76876\",\"c004779321f66ba4\",\"c015a6f712142de1\",\"40225ac65568a260\",\"c004b0351ce93b49\",\"c015af822b8d8722\",\"402234bf312b8fe0\",\"c005002537cc6f77\",\"c015ba2c5bdb9cbf\",\"4021ff858f2cd7c8\",\"c005715dd74173d6\",\"c015c677f8a04030\",\"4021c99662bd2a10\",\"c005e5d62e5b6ab7\",\"c015cfa74ef0f4b5\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"402e000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,7],\"wrapHex\":null}"
+  ],
+  "allAdmittedAuthoritiesRetained": true,
+  "beforeSymmetricFamily": [
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[[\"4022b7c9d907b298\",\"c003efb1a33e9e36\",\"c0158f2508500496\"],null],\"indexPolylineHex\":[\"4022b7c9d907b298\",\"c003efb1a33e9e36\",\"c0158f2508500496\",\"4022b60f0f2bb2c2\",\"c003f33cd77ac4f1\",\"c0158fd342f55a46\",\"4022b3dbf695c5c0\",\"c003f7bf047fe5bd\",\"c01590afbf928a27\",\"4022ad92ea38a838\",\"c00404a40f89e337\",\"c015931f1ac92017\",\"40229b9c25241605\",\"c004299768b791f1\",\"c01599ddc26b37ca\",\"4021c99694821e38\",\"c005e5d5c19e0355\",\"c015cfa74cde9fe6\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4014000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,7],\"wrapHex\":null}",
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,[\"40191a4952caed9b\",\"c003efb1ae58309b\",\"4021943e321263e8\"]],\"indexPolylineHex\":[\"401bbc76aa90a56b\",\"c005e5dc372f0892\",\"401f2d483310aa74\",\"401b229b8fb30d15\",\"c0056c415d6aa680\",\"4020159cfb8f5600\",\"4019c081b1f4728b\",\"c00464c6477ebcec\",\"402120ec9f27ec2f\",\"40191a4952caed9b\",\"c003efb1ae58309b\",\"4021943e321263e8\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4008000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,7],\"wrapHex\":null}",
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,null],\"indexPolylineHex\":[\"4022b7c873181d80\",\"c003efb48084c3d2\",\"c0158f25957c7651\",\"4022b76c0d863dd7\",\"c003f071c823d1b8\",\"c0158f4a0115c8e1\",\"4022b67c1b78cd08\",\"c003f25d637959e5\",\"c0158fa86c2eedc7\",\"4022b52c2c1a3ce8\",\"c003f50dd388cec8\",\"c015902c3f5978e0\",\"4022b355d72b8808\",\"c003f8d2020a1393\",\"c01590e41642767c\",\"4022b0c3550771fd\",\"c003fe1896097a4e\",\"c01591e40ed459d4\",\"4022ad29560ef80f\",\"c004057cd1069f21\",\"c0159347a8970e2e\",\"4022a81e61a80915\",\"c0040fd8bb26c120\",\"c015953413311a80\",\"4022a10ebe7dc2f2\",\"c0041e5ee6e9588b\",\"c01597dac72fbabe\",\"4022972b7fef3275\",\"c00432bf2734bbe5\",\"c0159b7be5a1403c\",\"40228952c7e54eac\",\"c0044f5b3bf315d3\",\"c015a067015a6aac\",\"402275ee8ed76876\",\"c004779321f66ba4\",\"c015a6f712142de1\",\"40225ac65568a260\",\"c004b0351ce93b49\",\"c015af822b8d8722\",\"402234bf312b8fe0\",\"c005002537cc6f77\",\"c015ba2c5bdb9cbf\",\"4021ff858f2cd7c8\",\"c005715dd74173d6\",\"c015c677f8a04030\",\"4021c99662bd2a10\",\"c005e5d62e5b6ab7\",\"c015cfa74ef0f4b5\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"402e000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,7],\"wrapHex\":null}"
+  ],
+  "changedSourceFamilies": [
+    [
+      10,
+      31
+    ]
+  ],
+  "disabledCounts": [
+    76,
+    40,
+    83
+  ],
+  "disabledFingerprint": "13394982552569873070",
+  "enabledCounts": [
+    76,
+    40,
+    83
+  ],
+  "enabledFingerprint": "4081213461585591560",
+  "scope": "same-binary resolver-disabled/current exact family comparison; source IDs bound by unchanged extraction",
+  "symmetricFamilyPreserved": true
+}

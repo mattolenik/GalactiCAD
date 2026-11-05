@@ -1,0 +1,725 @@
+{
+  "counterexampleMeaning": "pointwise residual, conditioning and displacement postconditions permit reversed outputs; actual Newton behavior is not claimed reversed",
+  "junctionAttachmentAuthorized": false,
+  "orderClaim": "non-strict height order for successful queries by monotone rounded seed interpolation and exact height preservation; no floating evaluator totality",
+  "originalClassificationRangeHex": [
+    "0000000000000000",
+    "3fcf10112358e75d"
+  ],
+  "originalCurveRangeHex": [
+    "0000000000000000",
+    "404d000000000000"
+  ],
+  "pinnedAllQueriesSucceeded": true,
+  "pinnedQueries": [
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c9d8fe38a0",
+        "c003efb1a35b4fe4",
+        "40158f250876112c"
+      ],
+      "parameterHex": "0000000000000000",
+      "pinnedHex": [
+        "c022b7c9d8fe38a0",
+        "c003efb1a35b4fe4",
+        "40158f250876112c"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efb1a35b4fe4"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c92864f9cb",
+        "c003efb30d20c220",
+        "40158f254e126f6f"
+      ],
+      "parameterHex": "3f7f10112358e75d",
+      "pinnedHex": [
+        "c022b7c92864f9cb",
+        "c003efb30d20c220",
+        "40158f254e126f6f"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efb30d20c220"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c877cbbaf8",
+        "c003efb476e6345c",
+        "40158f2593aecdb5"
+      ],
+      "parameterHex": "3f8f10112358e75d",
+      "pinnedHex": [
+        "c022b7c877cbbaf8",
+        "c003efb476e6345b",
+        "40158f2593aecdb5"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efb476e6345b"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c7c7327c24",
+        "c003efb5e0aba698",
+        "40158f25d94b2bf8"
+      ],
+      "parameterHex": "3f974c0cda82ad86",
+      "pinnedHex": [
+        "c022b7c7c7327c24",
+        "c003efb5e0aba697",
+        "40158f25d94b2bf8"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efb5e0aba697"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c716993d4f",
+        "c003efb74a7118d3",
+        "40158f261ee78a3c"
+      ],
+      "parameterHex": "3f9f10112358e75d",
+      "pinnedHex": [
+        "c022b7c716993d4f",
+        "c003efb74a7118d3",
+        "40158f261ee78a3c"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efb74a7118d3"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c665fffe7a",
+        "c003efb8b4368b0f",
+        "40158f266483e880"
+      ],
+      "parameterHex": "3fa36a0ab617909a",
+      "pinnedHex": [
+        "c022b7c665fffe7a",
+        "c003efb8b4368b0e",
+        "40158f266483e880"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efb8b4368b0e"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c5b566bfa7",
+        "c003efba1dfbfd4a",
+        "40158f26aa2046c4"
+      ],
+      "parameterHex": "3fa74c0cda82ad86",
+      "pinnedHex": [
+        "c022b7c5b566bfa7",
+        "c003efba1dfbfd4a",
+        "40158f26aa2046c4"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efba1dfbfd4a"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c504cd80d2",
+        "c003efbb87c16f86",
+        "40158f26efbca508"
+      ],
+      "parameterHex": "3fab2e0efeedca71",
+      "pinnedHex": [
+        "c022b7c504cd80d2",
+        "c003efbb87c16f86",
+        "40158f26efbca508"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efbb87c16f86"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c4543441fe",
+        "c003efbcf186e1c1",
+        "40158f273559034c"
+      ],
+      "parameterHex": "3faf10112358e75d",
+      "pinnedHex": [
+        "c022b7c4543441fe",
+        "c003efbcf186e1c1",
+        "40158f273559034c"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efbcf186e1c1"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c3a39b032a",
+        "c003efbe5b4c53fe",
+        "40158f277af56190"
+      ],
+      "parameterHex": "3fb17909a3e20224",
+      "pinnedHex": [
+        "c022b7c3a39b032a",
+        "c003efbe5b4c53fd",
+        "40158f277af56190"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efbe5b4c53fd"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c2f301c456",
+        "c003efbfc511c639",
+        "40158f27c091bfd4"
+      ],
+      "parameterHex": "3fb36a0ab617909a",
+      "pinnedHex": [
+        "c022b7c2f301c456",
+        "c003efbfc511c639",
+        "40158f27c091bfd4"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efbfc511c639"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c242688581",
+        "c003efc12ed73875",
+        "40158f28062e1e18"
+      ],
+      "parameterHex": "3fb55b0bc84d1f10",
+      "pinnedHex": [
+        "c022b7c242688581",
+        "c003efc12ed73874",
+        "40158f28062e1e18"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efc12ed73874"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c191cf46ac",
+        "c003efc2989caab0",
+        "40158f284bca7c5c"
+      ],
+      "parameterHex": "3fb74c0cda82ad86",
+      "pinnedHex": [
+        "c022b7c191cf46ac",
+        "c003efc2989caab0",
+        "40158f284bca7c5c"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efc2989caab0"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c0e13607d9",
+        "c003efc402621cec",
+        "40158f289166daa0"
+      ],
+      "parameterHex": "3fb93d0decb83bfc",
+      "pinnedHex": [
+        "c022b7c0e13607d9",
+        "c003efc402621cec",
+        "40158f289166daa0"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efc402621cec"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7c0309cc905",
+        "c003efc56c278f27",
+        "40158f28d70338e4"
+      ],
+      "parameterHex": "3fbb2e0efeedca71",
+      "pinnedHex": [
+        "c022b7c0309cc905",
+        "c003efc56c278f27",
+        "40158f28d70338e4"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efc56c278f27"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7bf80038a30",
+        "c003efc6d5ed0163",
+        "40158f291c9f9728"
+      ],
+      "parameterHex": "3fbd1f10112358e7",
+      "pinnedHex": [
+        "c022b7bf80038a30",
+        "c003efc6d5ed0163",
+        "40158f291c9f9728"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efc6d5ed0163"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7becf6a4b5b",
+        "c003efc83fb2739e",
+        "40158f29623bf56c"
+      ],
+      "parameterHex": "3fbf10112358e75d",
+      "pinnedHex": [
+        "c022b7becf6a4b5b",
+        "c003efc83fb2739f",
+        "40158f29623bf56c"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efc83fb2739f"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7be1ed10c88",
+        "c003efc9a977e5db",
+        "40158f29a7d853b0"
+      ],
+      "parameterHex": "3fc080891ac73ae9",
+      "pinnedHex": [
+        "c022b7be1ed10c88",
+        "c003efc9a977e5da",
+        "40158f29a7d853b0"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efc9a977e5da"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7bd6e37cdb3",
+        "c003efcb133d5816",
+        "40158f29ed74b1f4"
+      ],
+      "parameterHex": "3fc17909a3e20224",
+      "pinnedHex": [
+        "c022b7bd6e37cdb3",
+        "c003efcb133d5816",
+        "40158f29ed74b1f4"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efcb133d5816"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7bcbd9e8edf",
+        "c003efcc7d02ca52",
+        "40158f2a33111038"
+      ],
+      "parameterHex": "3fc2718a2cfcc95f",
+      "pinnedHex": [
+        "c022b7bcbd9e8edf",
+        "c003efcc7d02ca52",
+        "40158f2a33111038"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efcc7d02ca52"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7bc0d05500b",
+        "c003efcde6c83c8d",
+        "40158f2a78ad6e7d"
+      ],
+      "parameterHex": "3fc36a0ab617909a",
+      "pinnedHex": [
+        "c022b7bc0d05500b",
+        "c003efcde6c83c8d",
+        "40158f2a78ad6e7d"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efcde6c83c8d"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7bb5c6c1137",
+        "c003efcf508daec9",
+        "40158f2abe49ccc0"
+      ],
+      "parameterHex": "3fc4628b3f3257d5",
+      "pinnedHex": [
+        "c022b7bb5c6c1137",
+        "c003efcf508daec9",
+        "40158f2abe49ccc0"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efcf508daec9"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7baabd2d263",
+        "c003efd0ba532104",
+        "40158f2b03e62b05"
+      ],
+      "parameterHex": "3fc55b0bc84d1f10",
+      "pinnedHex": [
+        "c022b7baabd2d263",
+        "c003efd0ba532105",
+        "40158f2b03e62b05"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efd0ba532105"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b9fb39938e",
+        "c003efd224189340",
+        "40158f2b49828948"
+      ],
+      "parameterHex": "3fc6538c5167e64b",
+      "pinnedHex": [
+        "c022b7b9fb39938e",
+        "c003efd224189340",
+        "40158f2b49828948"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efd224189340"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b94aa054ba",
+        "c003efd38dde057b",
+        "40158f2b8f1ee78b"
+      ],
+      "parameterHex": "3fc74c0cda82ad86",
+      "pinnedHex": [
+        "c022b7b94aa054ba",
+        "c003efd38dde057c",
+        "40158f2b8f1ee78b"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efd38dde057c"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b89a0715e6",
+        "c003efd4f7a377b8",
+        "40158f2bd4bb45d1"
+      ],
+      "parameterHex": "3fc8448d639d74c1",
+      "pinnedHex": [
+        "c022b7b89a0715e6",
+        "c003efd4f7a377b8",
+        "40158f2bd4bb45d1"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efd4f7a377b8"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b7e96dd711",
+        "c003efd66168e9f4",
+        "40158f2c1a57a414"
+      ],
+      "parameterHex": "3fc93d0decb83bfc",
+      "pinnedHex": [
+        "c022b7b7e96dd711",
+        "c003efd66168e9f3",
+        "40158f2c1a57a414"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efd66168e9f3"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b738d4983d",
+        "c003efd7cb2e5c2f",
+        "40158f2c5ff40258"
+      ],
+      "parameterHex": "3fca358e75d30336",
+      "pinnedHex": [
+        "c022b7b738d4983d",
+        "c003efd7cb2e5c2f",
+        "40158f2c5ff40258"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efd7cb2e5c2f"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b6883b5969",
+        "c003efd934f3ce6b",
+        "40158f2ca590609d"
+      ],
+      "parameterHex": "3fcb2e0efeedca71",
+      "pinnedHex": [
+        "c022b7b6883b5969",
+        "c003efd934f3ce6b",
+        "40158f2ca590609d"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efd934f3ce6b"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b5d7a21a94",
+        "c003efda9eb940a6",
+        "40158f2ceb2cbee0"
+      ],
+      "parameterHex": "3fcc268f880891ac",
+      "pinnedHex": [
+        "c022b7b5d7a21a94",
+        "c003efda9eb940a6",
+        "40158f2ceb2cbee0"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efda9eb940a6"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b52708dbc0",
+        "c003efdc087eb2e2",
+        "40158f2d30c91d24"
+      ],
+      "parameterHex": "3fcd1f10112358e7",
+      "pinnedHex": [
+        "c022b7b52708dbc0",
+        "c003efdc087eb2e2",
+        "40158f2d30c91d24"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efdc087eb2e2"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b4766f9cec",
+        "c003efdd7244251e",
+        "40158f2d76657b68"
+      ],
+      "parameterHex": "3fce17909a3e2022",
+      "pinnedHex": [
+        "c022b7b4766f9cec",
+        "c003efdd7244251e",
+        "40158f2d76657b68"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "0000000000000000",
+      "seedHeightHex": "c003efdd7244251e"
+    },
+    {
+      "heightBitsPreserved": true,
+      "originalHex": [
+        "c022b7b3c5d65e18",
+        "c003efdedc09975a",
+        "40158f2dbc01d9ac"
+      ],
+      "parameterHex": "3fcf10112358e75d",
+      "pinnedHex": [
+        "c022b7b3c5d65e18",
+        "c003efdedc099759",
+        "40158f2dbc01d9ac"
+      ],
+      "pinnedOnSourceDomains": true,
+      "queryDifferenceHex": "3cc0000000000000",
+      "seedHeightHex": "c003efdedc099759"
+    }
+  ],
+  "pinnedSuccessfulHeightsOrdered": true,
+  "pointwiseForward": [
+    {
+      "accepted": true,
+      "displacementCapHex": "3fb47ae147ae147b",
+      "fullCrossSquaredHex": "3f8c2f9ab36e8700",
+      "parameterHex": "3faf10112358e75d",
+      "pointHex": [
+        "c022b7c4543441fe",
+        "c003efbcf186e1c1",
+        "40158f273559034c"
+      ],
+      "residualHex": [
+        "3e1066a100425f0c",
+        "3e1263fe6fe12a59"
+      ],
+      "seedDistanceHex": "0000000000000000",
+      "seedHex": [
+        "c022b7c4543441fe",
+        "c003efbcf186e1c1",
+        "40158f273559034c"
+      ]
+    },
+    {
+      "accepted": true,
+      "displacementCapHex": "3fb47ae147ae147b",
+      "fullCrossSquaredHex": "3f8c2f9aa7d38300",
+      "parameterHex": "3fc74c0cda82ad86",
+      "pointHex": [
+        "c022b7b94aa054ba",
+        "c003efd38dde057b",
+        "40158f2b8f1ee78b"
+      ],
+      "residualHex": [
+        "3e21c2a9af76c422",
+        "3e275b4b16697047"
+      ],
+      "seedDistanceHex": "0000000000000000",
+      "seedHex": [
+        "c022b7b94aa054ba",
+        "c003efd38dde057b",
+        "40158f2b8f1ee78b"
+      ]
+    }
+  ],
+  "pointwiseSwapped": [
+    {
+      "accepted": true,
+      "displacementCapHex": "3fb47ae147ae147b",
+      "fullCrossSquaredHex": "3f8c2f9aa7d38300",
+      "parameterHex": "3faf10112358e75d",
+      "pointHex": [
+        "c022b7b94aa054ba",
+        "c003efd38dde057b",
+        "40158f2b8f1ee78b"
+      ],
+      "residualHex": [
+        "3e21c2a9af76c422",
+        "3e275b4b16697047"
+      ],
+      "seedDistanceHex": "3f192e1aecd1ffc4",
+      "seedHex": [
+        "c022b7c4543441fe",
+        "c003efbcf186e1c1",
+        "40158f273559034c"
+      ]
+    },
+    {
+      "accepted": true,
+      "displacementCapHex": "3fb47ae147ae147b",
+      "fullCrossSquaredHex": "3f8c2f9ab36e8700",
+      "parameterHex": "3fc74c0cda82ad86",
+      "pointHex": [
+        "c022b7c4543441fe",
+        "c003efbcf186e1c1",
+        "40158f273559034c"
+      ],
+      "residualHex": [
+        "3e1066a100425f0c",
+        "3e1263fe6fe12a59"
+      ],
+      "seedDistanceHex": "3f192e1aecd1ffc4",
+      "seedHex": [
+        "c022b7b94aa054ba",
+        "c003efd38dde057b",
+        "40158f2b8f1ee78b"
+      ]
+    }
+  ],
+  "productionQueryChanged": false,
+  "rawCurve": 235,
+  "runtimeFeatureFingerprint": "13394982552569873070",
+  "scope": "test-only actual-source query alternative; no source admission, attachment or runtime change",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceConnectionCertified": false,
+  "sourceIdentities": [
+    {
+      "compoundPresent": true,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0
+          ],
+          "rootAddressProcessLocal": "10193bec0"
+        }
+      ],
+      "field": null,
+      "id": 31,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "rootAddressProcessLocal": "10193bec0"
+        }
+      ],
+      "field": null,
+      "id": 10,
+      "leafIndex": 1,
+      "localIndex": 3,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    }
+  ],
+  "sourcePair": [
+    31,
+    10
+  ],
+  "swappedHeightOrderReversed": true,
+  "unresolvedTrims": 83
+}

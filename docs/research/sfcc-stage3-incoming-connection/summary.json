@@ -1,0 +1,73 @@
+{
+  "selectedPacket": "A-rollback",
+  "selectedRuntime": "A-final; rollback addition is test-only",
+  "stage3LocalWitnessAccepted": true,
+  "wholeComponentAccepted": false,
+  "productionAccepted": false,
+  "productionRuntimeCommit": "421f5a9",
+  "sourceBaseline": "captured Stage1 source (156 inputs), not current production",
+  "selectedInputCount": 164,
+  "selectedManifestSha256": "65f54f4edec452d5332d1e921f5b7d99de536ae38df422912acc304120fee487",
+  "selectedBinarySha256": "41b6fe3b1dbb1cd345509cf287db205f95c6815b861908d222b61396a250d045",
+  "validation": {
+    "A-rollback": {
+      "testsPassed": 12,
+      "testsFailed": 0,
+      "requiredUpperCoverage": true,
+      "requiredLowerMemberships": true,
+      "nonTargetFamiliesUnchanged": true,
+      "lateRefusalRestoresExactParentGeometry": true
+    },
+    "B-final": {
+      "focusedTestsPassed": 13,
+      "selected": false,
+      "reason": "caller can discard run on remake refusal"
+    },
+    "B-refusal": {
+      "forcedFailurePreservation": "FAIL",
+      "scopeCleanup": "PASS",
+      "naturallyObservedFailure": false,
+      "curvesBefore": 76,
+      "curvesAfter": 75,
+      "unresolvedBefore": 83,
+      "unresolvedAfter": 83
+    },
+    "C": {
+      "controlsPassed": 8,
+      "originalLowerGate": "FAIL",
+      "runtimeChanged": false
+    }
+  },
+  "featureOutcome": {
+    "parent": {
+      "curves": 76,
+      "corners": 40,
+      "unresolvedTrims": 83,
+      "unwiredEnds": 77
+    },
+    "selected": {
+      "curves": 76,
+      "corners": 40,
+      "unresolvedTrims": 83,
+      "unwiredEnds": 76
+    },
+    "changedSourceFamilies": [
+      [
+        10,
+        31
+      ]
+    ],
+    "lowerJunctionPositionUnchanged": true
+  },
+  "notEstablished": [
+    "original private graph guard now passes",
+    "whole component and outside-interface validity",
+    "f64/f32 mesh validity and contacts",
+    "current-HEAD port",
+    "native/WASM or GPU parity",
+    "transformed-source families",
+    "full-model acceptance",
+    "general multi-sheet reconstruction"
+  ],
+  "next": "Reidentify component/feature obligations from source; regenerate dependent face/pin/query/storage inputs; bounded whole-component validation"
+}

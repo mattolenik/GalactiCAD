@@ -1,0 +1,53 @@
+{
+  "checks": [
+    {
+      "label": "C",
+      "inputs": 160,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "A",
+      "inputs": 163,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "A-checked",
+      "inputs": 163,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "A-audit",
+      "inputs": 163,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "A-final",
+      "inputs": 163,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "B",
+      "inputs": 163,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "B-final",
+      "inputs": 163,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "B-refusal",
+      "inputs": 163,
+      "flatPatchRestoresExecutedSource": true
+    },
+    {
+      "label": "A-rollback",
+      "inputs": 164,
+      "flatPatchRestoresExecutedSource": true
+    }
+  ],
+  "unexecuted": [
+    "A-transactional; superseded by fail-closed A-final before build"
+  ],
+  "rollbackTestRevisionPreservesNormalReceipts": true
+}

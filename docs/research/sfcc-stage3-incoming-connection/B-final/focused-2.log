@@ -1,0 +1,10 @@
+
+running 5 tests
+test sfcc::trim::exposure_b_controls::exposure_b_controls_floor_budget_and_redundant_sheet_are_unknown ... ok
+test sfcc::trim::exposure_b_controls::exposure_b_controls_hidden_capped_and_coincident_are_not_promoted ... ok
+test sfcc::trim::exposure_b_controls::exposure_b_controls_true_vanishing_angle_terminal_is_not_promoted ... ok
+test sfcc::trim::exposure_b_controls::exposure_b_controls_unknown_transition_does_not_become_resolved ... ok
+test sfcc::trim::exposure_b_controls::exposure_b_controls_unresolved_end_cannot_snap_to_nearby_existing_corner ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 329 filtered out; finished in 0.00s
+

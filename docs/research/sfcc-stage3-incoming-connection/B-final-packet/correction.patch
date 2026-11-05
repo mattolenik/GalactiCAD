@@ -1,0 +1,203 @@
+--- a/gcad-wasm/kernel/src/sfcc/connection_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/connection_b.rs
+@@ -262,3 +262,27 @@
+             && b.connection_same_source_b(&self.carriers[1])
+     }
+ }
++
++#[cfg(test)]
++thread_local! {static DISABLED: std::cell::Cell<bool> = const {std::cell::Cell::new(false)};}
++pub(crate) fn resolver_enabled() -> bool {
++    #[cfg(test)]
++    {
++        return !DISABLED.with(std::cell::Cell::get);
++    }
++    #[cfg(not(test))]
++    {
++        true
++    }
++}
++#[cfg(test)]
++pub(crate) fn with_resolver_disabled<T>(f: impl FnOnce() -> T) -> T {
++    struct Reset(bool);
++    impl Drop for Reset {
++        fn drop(&mut self) {
++            DISABLED.with(|c| c.set(self.0));
++        }
++    }
++    let _reset = Reset(DISABLED.with(|c| c.replace(true)));
++    f()
++}
+--- a/gcad-wasm/kernel/src/sfcc/connection_b_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/connection_b_tests.rs
+@@ -266,3 +266,86 @@
+     assert!(cases.iter().all(|(p,_,_)|retained(&f,p)),
+         "legacy sampled dedup must not erase certified query authority or transfer it without proof");
+ }
++
++fn families(f: &SfccFeatureSet) -> std::collections::BTreeMap<[usize; 2], Vec<String>> {
++    let mut result = std::collections::BTreeMap::<[usize; 2], Vec<String>>::new();
++    for c in &f.curves {
++        let mut pair = c.adjacent_strata;
++        pair.sort();
++        let corners = [c.corner_start, c.corner_end].map(|id| {
++            (id >= 0).then(|| {
++                let p = &f.corners[id as usize];
++                [hex(p.x), hex(p.y), hex(p.z)]
++            })
++        });
++        let refine = c
++            .traced_carriers()
++            .map(|(_, _, r)| [hex(r.curve_eps), hex(r.min_cross), hex(r.max_displacement)]);
++        let row = json!({"sourcePair":c.adjacent_strata,"kind":c.kind() as u8,"closed":c.closed,
++            "native":c.native,"owner":c.owner_node_id,"rangeHex":[hex(c.t_min),hex(c.t_max)],
++            "wrapHex":c.param_wrap.map(hex),"indexPolylineHex":c.index_polyline.iter().copied().map(hex).collect::<Vec<_>>(),
++            "cornersHex":corners,"refineHex":refine,"connectionModeBits":c.connection_identity_b()});
++        result
++            .entry(pair)
++            .or_default()
++            .push(serde_json::to_string(&row).unwrap());
++    }
++    for rows in result.values_mut() {
++        rows.sort();
++    }
++    result
++}
++#[test]
++fn connection_b_conservative_refusal_preserves_other_source_families() {
++    let (root, tol) = fixture();
++    let (old, old_diag) = connection_b::with_resolver_disabled(|| compile_feature_set(&root, &tol));
++    let _scope = Scope;
++    CAPTURE.with(|c| c.borrow_mut().enabled = true);
++    let (new, new_diag) = compile_feature_set(&root, &tol);
++    let cases = CAPTURE.with(|c| std::mem::take(&mut c.borrow_mut().cases));
++    let before = families(&old);
++    let after = families(&new);
++    let keys: std::collections::BTreeSet<_> = before.keys().chain(after.keys()).copied().collect();
++    let changed: Vec<_> = keys
++        .into_iter()
++        .filter(|k| before.get(k) != after.get(k))
++        .collect();
++    let symmetric_preserved = before.get(&[7, 31]) == after.get(&[7, 31]);
++    let all_authorities = cases.iter().all(|(p, _, _)| retained(&new, p));
++    let report = json!({"scope":"same-binary resolver-disabled/current exact family comparison; source IDs bound by unchanged extraction",
++        "disabledFingerprint":old.fingerprint().to_string(),"enabledFingerprint":new.fingerprint().to_string(),
++        "disabledCounts":[old.curves.len(),old.corners.len(),old_diag.unresolved_trims],
++        "enabledCounts":[new.curves.len(),new.corners.len(),new_diag.unresolved_trims],
++        "changedSourceFamilies":changed,"symmetricFamilyPreserved":symmetric_preserved,
++        "allAdmittedAuthoritiesRetained":all_authorities,"admittedConnections":cases.len(),
++        "beforeSymmetricFamily":before.get(&[7,31]),"afterSymmetricFamily":after.get(&[7,31])});
++    let path = std::path::PathBuf::from(std::env::var("SFCC_CONNECTION_B_RECEIPT").unwrap())
++        .with_file_name("connection-B-collateral.json");
++    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    assert_eq!(
++        old.fingerprint(),
++        13394982552569873070,
++        "disabled candidate must reproduce parent B"
++    );
++    assert!(
++        symmetric_preserved,
++        "ordinary resolved symmetric attachment is left unchanged"
++    );
++    assert_eq!(
++        changed,
++        vec![[10, 31]],
++        "only the missing source family may change in this experiment"
++    );
++    assert!(
++        !cases.is_empty() && all_authorities,
++        "no new authority may be lost by later dedup"
++    );
++}
++#[test]
++fn connection_b_resolver_disabled_scope_restores_after_unwind() {
++    assert!(connection_b::resolver_enabled());
++    let _ = std::panic::catch_unwind(|| {
++        connection_b::with_resolver_disabled(|| panic!("scope control"))
++    });
++    assert!(connection_b::resolver_enabled());
++}
+--- a/gcad-wasm/kernel/src/sfcc/feature_curves.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature_curves.rs
+@@ -15,6 +15,12 @@
+ use std::rc::Rc;
+ 
+ const TAU: f64 = 2.0 * PI;
++
++fn connection_chord_component_b(a:f64,b:f64,f:f64)->f64 {
++    if f==0. {return a;}
++    if f==1. {return b;}
++    (a+f*(b-a)).clamp(a.min(b),a.max(b))
++}
+ 
+ /// Per-thread memo for [`FeatureCurve::axis_plane_crossings`], keyed
+ /// `(curve_id, axis, coord.to_bits())` and scoped to one feature-set `run_id`:
+@@ -431,7 +437,7 @@
+                     let q = std::array::from_fn(|k| {
+                         let a = td.samples[3 * i + k];
+                         let b = td.samples[3 * (i + 1) + k];
+-                        (a + f * (b - a)).clamp(a.min(b), a.max(b))
++                        connection_chord_component_b(a,b,f)
+                     });
+                     (q.iter().all(|x| x.is_finite())
+                         && [&td.sa, &td.sb].into_iter().all(|s| {
+@@ -1096,3 +1102,17 @@
+             }
+     }
+ }
++
++#[cfg(test)]
++mod connection_endpoint_tests_b {
++    use super::*;
++    #[test]
++    fn connection_b_chord_returns_exact_join_under_cancellation() {
++        let a=-1.;let b=2f64.powi(-60);
++        assert_ne!((a+1.*(b-a)).clamp(a.min(b),a.max(b)).to_bits(),b.to_bits());
++        assert_eq!(connection_chord_component_b(a,b,1.).to_bits(),b.to_bits());
++        assert_eq!(connection_chord_component_b(-0.,b,0.).to_bits(),(-0f64).to_bits());
++        assert_eq!(connection_chord_component_b(b,a,0.).to_bits(),b.to_bits());
++        assert_eq!(connection_chord_component_b(b,a,1.).to_bits(),a.to_bits());
++    }
++}
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -681,9 +681,29 @@
+         }
+     }
+ 
++    // Existing ordinary attachments are a reason to abstain, never proof authority.
++    let mut represented=std::collections::BTreeSet::new();
++    let connection_snap_radius=(tol.corner_merge_tol*2.).max(tol.probe_delta*2.5);
++    if connection_b::resolver_enabled() {
++        for run in &all_runs {
++            if run.full_closed {continue;}
++            let curve=&raw_curves[run.curve_idx];
++            let mut pair=curve.adjacent_strata;pair.sort();
++            for (end,t) in [run.t0,run.t1].into_iter().enumerate() {
++                if run.unresolved_ends[end] {continue;}
++                let q=curve.point_at(t);
++                let candidate=nearest_candidate(&candidates,q,connection_snap_radius,|c| {
++                    curve.adjacent_strata.iter().all(|&id|tree.strata[id]
++                        .raw_field(c.x,c.y,c.z).normalized_equation()
++                        .is_some_and(|v|v.value.abs()<=tol.curve_eps*8.))
++                });
++                if candidate>=0 {represented.insert((pair[0],pair[1],candidate));}
++            }
++        }
++    }
+     let mut connections: Vec<(usize, usize, i64, Connection)> = Vec::new();
+     let mut connection_attempts = 0usize;
+-    if tree.strata.len() <= 256 {
++    if connection_b::resolver_enabled() && tree.strata.len() <= 256 {
+         for run in &mut all_runs {
+             let curve = &raw_curves[run.curve_idx];
+             for end in 0..2 {
+@@ -722,6 +742,8 @@
+                                 continue;
+                             }
+                             for (id, c) in candidates.iter().enumerate() {
++                                let mut pair=curve.adjacent_strata;pair.sort();
++                                if represented.contains(&(pair[0],pair[1],id as i64)){continue;}
+                                 let corner = [c.x, c.y, c.z];
+                                 if (0..3).any(|k| (corner[k] - point[k]).abs() > tol.curve_eps) {
+                                     continue;

@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::trim::connection_c::connection_c_actual_source_pinned_queries_have_order_without_attachment_authority ... ok
+test sfcc::trim::connection_c::connection_c_original_lerp_can_reverse_one_ulp_while_pinned_chart_does_not ... ok
+test sfcc::trim::connection_c::connection_c_pinned_height_handles_rounding_plateaus_and_rejects_reversals ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 327 filtered out; finished in 0.70s
+

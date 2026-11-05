@@ -1,0 +1,7 @@
+{
+  "filter": "exposure_b_compiled_original_source_retains_required_continuation",
+  "tests": [
+    "sfcc::trim::exposure_b_tests::exposure_b_compiled_original_source_retains_required_continuation"
+  ],
+  "exitCode": 0
+}

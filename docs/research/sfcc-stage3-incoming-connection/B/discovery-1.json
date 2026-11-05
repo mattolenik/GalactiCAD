@@ -1,0 +1,7 @@
+{
+  "filter": "connection_b_rejects_",
+  "tests": [
+    "sfcc::trim::connection_b_tests::connection_b_rejects_wrong_source_branch_container_and_unchecked_remake"
+  ],
+  "exitCode": 0
+}

@@ -1,0 +1,7 @@
+{
+  "filter": "connection_b_preserves_every_admitted_query_authority_after_dedup",
+  "tests": [
+    "sfcc::trim::connection_b_tests::connection_b_preserves_every_admitted_query_authority_after_dedup"
+  ],
+  "exitCode": 0
+}

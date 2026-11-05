@@ -1,0 +1,80 @@
+{
+  "acceptedCounts": [
+    76,
+    40,
+    83
+  ],
+  "acceptedFamily": [
+    "{\"closed\":false,\"connectionModeBits\":[4497260507715263282,null],\"cornersHex\":[[\"c022b7c9d907b15a\",\"c003efb1a33e9e36\",\"40158f2508500325\"],null],\"indexPolylineHex\":[\"c022b7c9d907b15a\",\"c003efb1a33e9e36\",\"40158f2508500325\",\"c022b7b3c5d65e18\",\"c003efdedc09975a\",\"40158f2dbc01d9ac\",\"c022b76ee255953a\",\"c003f06bfb43f1ef\",\"40158f48e37cb0e4\",\"c022b65afbb59d32\",\"c003f2a143069e2f\",\"40158fb570a49067\",\"c022b4d8b4f8e006\",\"c003f5b8e7308ddd\",\"4015904ceef44289\",\"c022b2bbe3df70a3\",\"c003fa0db0483eba\",\"4015912014008476\",\"c022afc6b05a7485\",\"c004001ef2169826\",\"40159245d2b12287\",\"c022aba27f23c3fb\",\"c004089f62b67725\",\"401593dd6a470466\",\"c022a5d604b10589\",\"c004148a18b99ba8\",\"40159610dcc20660\",\"c0229db75bf7dc9c\",\"c00425405cb6ec88\",\"4015991789fb443e\",\"c022925887dafee6\",\"c0043cb44296f559\",\"40159d382685c1ec\",\"c022826c26229d22\",\"c0045da601b125d9\",\"4015a2c815fe7c58\",\"c0226c1f47cd68b0\",\"c0048bfd4681661b\",\"4015aa23935913c2\",\"c0224ce467c14ad8\",\"c004cd4d3c793769\",\"4015b3944e884487\",\"c022212ab2764f79\",\"c005299bc92b74a6\",\"4015bf0f3d429092\",\"c021e3fdcf50dd60\",\"c005ac96643a7967\",\"4015cb9442e94519\",\"c021c994c65177a6\",\"c005e5d9b026b74a\",\"4015cfa78f8fb17d\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4030000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,10],\"wrapHex\":null}",
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,[\"c0191a49447b0437\",\"c003efb1a33e9e36\",\"c021943e39017bdd\"]],\"indexPolylineHex\":[\"c01bbc7397212389\",\"c005e5d9bbe16465\",\"c01f2d4d6be3fe53\",\"c01ac538c517b319\",\"c00524b3589ee6d3\",\"c0205f44a9108f77\",\"c0195b33a44f8064\",\"c0041cf871586a3f\",\"c02167e7141e75fd\",\"c0191a49447b0437\",\"c003efb1a33e9e36\",\"c021943e39017bdd\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4008000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,10],\"wrapHex\":null}"
+  ],
+  "affectedSourcePair": [
+    10,
+    31
+  ],
+  "allAdmittedAuthoritiesRetained": false,
+  "injectedCounts": [
+    75,
+    40,
+    83
+  ],
+  "injectedFamily": [
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,[\"c0191a49447b0437\",\"c003efb1a33e9e36\",\"c021943e39017bdd\"]],\"indexPolylineHex\":[\"c01bbc7397212389\",\"c005e5d9bbe16465\",\"c01f2d4d6be3fe53\",\"c01ac538c517b319\",\"c00524b3589ee6d3\",\"c0205f44a9108f77\",\"c0195b33a44f8064\",\"c0041cf871586a3f\",\"c02167e7141e75fd\",\"c0191a49447b0437\",\"c003efb1a33e9e36\",\"c021943e39017bdd\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4008000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,10],\"wrapHex\":null}"
+  ],
+  "injections": [
+    {
+      "connections": [
+        {
+          "epsilonHex": "3e697a9ab0c2db32",
+          "rawPrefixRangeHex": [
+            "0000000000000000",
+            "3fcf10112358e75d"
+          ],
+          "source": [
+            10,
+            30,
+            15,
+            31
+          ],
+          "sourceChordErrorHex": "3e4a958c4193bcda"
+        },
+        null
+      ],
+      "discardedRunEndpointHex": [
+        [
+          "c022b7c9d8fe38a0",
+          "c003efb1a35b4fe4",
+          "40158f250876112c"
+        ],
+        [
+          "c021c994c65177a6",
+          "c005e5d9b026b74a",
+          "4015cfa78f8fb17d"
+        ]
+      ],
+      "discardedRunRangeHex": [
+        "0000000000000000",
+        "402c9eedca718a2d"
+      ],
+      "injected": true,
+      "rawCurve": 235,
+      "reason": "forced admitted-certificate remake refusal",
+      "sourcePair": [
+        31,
+        10
+      ]
+    }
+  ],
+  "originalRunRetained": false,
+  "parentCounts": [
+    76,
+    40,
+    83
+  ],
+  "parentFamily": [
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,[\"c0191a49447b0437\",\"c003efb1a33e9e36\",\"c021943e39017bdd\"]],\"indexPolylineHex\":[\"c01bbc7397212389\",\"c005e5d9bbe16465\",\"c01f2d4d6be3fe53\",\"c01ac538c517b319\",\"c00524b3589ee6d3\",\"c0205f44a9108f77\",\"c0195b33a44f8064\",\"c0041cf871586a3f\",\"c02167e7141e75fd\",\"c0191a49447b0437\",\"c003efb1a33e9e36\",\"c021943e39017bdd\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"4008000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,10],\"wrapHex\":null}",
+    "{\"closed\":false,\"connectionModeBits\":[null,null],\"cornersHex\":[null,null],\"indexPolylineHex\":[\"c022b7c877cbbaf8\",\"c003efb476e6345c\",\"40158f2593aecdb5\",\"c022b76ee255953a\",\"c003f06bfb43f1ef\",\"40158f48e37cb0e4\",\"c022b65afbb59d32\",\"c003f2a143069e2f\",\"40158fb570a49067\",\"c022b4d8b4f8e006\",\"c003f5b8e7308ddd\",\"4015904ceef44289\",\"c022b2bbe3df70a3\",\"c003fa0db0483eba\",\"4015912014008476\",\"c022afc6b05a7485\",\"c004001ef2169826\",\"40159245d2b12287\",\"c022aba27f23c3fb\",\"c004089f62b67725\",\"401593dd6a470466\",\"c022a5d604b10589\",\"c004148a18b99ba8\",\"40159610dcc20660\",\"c0229db75bf7dc9c\",\"c00425405cb6ec88\",\"4015991789fb443e\",\"c022925887dafee6\",\"c0043cb44296f559\",\"40159d382685c1ec\",\"c022826c26229d22\",\"c0045da601b125d9\",\"4015a2c815fe7c58\",\"c0226c1f47cd68b0\",\"c0048bfd4681661b\",\"4015aa23935913c2\",\"c0224ce467c14ad8\",\"c004cd4d3c793769\",\"4015b3944e884487\",\"c022212ab2764f79\",\"c005299bc92b74a6\",\"4015bf0f3d429092\",\"c021e3fdcf50dd60\",\"c005ac96643a7967\",\"4015cb9442e94519\",\"c021c994c65177a6\",\"c005e5d9b026b74a\",\"4015cfa78f8fb17d\"],\"kind\":2,\"native\":false,\"owner\":-1,\"rangeHex\":[\"0000000000000000\",\"402e000000000000\"],\"refineHex\":[\"3e697a9ab0c2db32\",\"3fa1de58c9f7dc27\",\"3fb47ae147ae147b\"],\"sourcePair\":[31,10],\"wrapHex\":null}"
+  ],
+  "requiredBehavior": "refuse the proposal and preserve the original truncated run, or explicitly refuse the whole transaction",
+  "scope": "test-only forced remake refusal; not a naturally observed geometry failure"
+}

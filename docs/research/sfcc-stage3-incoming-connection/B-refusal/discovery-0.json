@@ -1,0 +1,8 @@
+{
+  "filter": "connection_b_refusal_injection_",
+  "tests": [
+    "sfcc::trim::connection_b_tests::connection_b_refusal_injection_must_preserve_original_run",
+    "sfcc::trim::connection_b_tests::connection_b_refusal_injection_scope_resets_after_unwind"
+  ],
+  "exitCode": 0
+}

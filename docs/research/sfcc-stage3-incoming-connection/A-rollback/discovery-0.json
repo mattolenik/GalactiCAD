@@ -1,0 +1,9 @@
+{
+  "filter": "connection_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::connection_a::tests::connection_a_compiled_chart_connects_and_preserves_order",
+    "sfcc::trim::connection_rollback_a::connection_a_rollback_late_refusal_preserves_original_geometry",
+    "sfcc::trim::connection_rollback_a::connection_a_rollback_scope_restores_after_unwind"
+  ],
+  "exitCode": 0
+}

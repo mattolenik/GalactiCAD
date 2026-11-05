@@ -1406,6 +1406,30 @@ remains represented. No candidate enters component integration or production.
 [Executed revision, bounded claims and next connection contract](sfcc-stage3-junction-revision/README.md)
 preserve the patches, all unsuccessful captures and the fourth review.
 
+### Stage 3 local incoming-connection repair selected
+
+The [incoming-connection implementation and fourth review](sfcc-stage3-incoming-connection/README.md)
+select A-rollback for the bounded local witness. The source-derived parameterized
+prefix restores the missing lower `[10,31]` attachment while retaining upper
+continuation. Compared with the same-binary adaptive parent, all non-target source
+families remain unchanged; counts remain 76 curves, 40 corners and 83 unresolved
+trims, with unwired ends reduced from 77 to 76. The unchanged original-source gate
+and all 12 focused tests pass, including exact rollback after a forced late remake
+refusal. Production meshing is unchanged.
+
+Both first runtime alternatives exposed a legacy-dedup interaction that could
+discard a new certificate. Conservative refusal before mutation now preserves
+already represented families. B-final's 13 focused passes still did not establish
+acceptance: connected-code review and an injected refusal demonstrate silent
+whole-run deletion on a failed remake. B remains rejected; its continuous chord
+bound remains useful evidence. No duplicate edge or sampled certificate transfer
+was accepted.
+
+Stage 3's local witness exit is satisfied. Stage 4 must regenerate the affected
+source/face/pin/query/storage obligations and validate the complete component and
+its interfaces; the old private graph guard has not been rerun on this selection.
+Current-HEAD/native-WASM integration, full torture cases and E4 overall remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

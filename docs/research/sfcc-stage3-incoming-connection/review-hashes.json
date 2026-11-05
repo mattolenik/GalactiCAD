@@ -1,0 +1,250 @@
+[
+  {
+    "job": "A",
+    "source": "/tmp/sfcc-stage3-r3-a",
+    "inputsVerified": 163,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 3,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "A-audit",
+    "source": "/tmp/sfcc-stage3-r3-a-audit",
+    "inputsVerified": 163,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 3,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "A-checked",
+    "source": "/tmp/sfcc-stage3-r3-a-checked",
+    "inputsVerified": 163,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 3,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "A-final",
+    "source": "/tmp/sfcc-stage3-r3-a-final",
+    "inputsVerified": 163,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 3,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "B",
+    "source": "/tmp/sfcc-stage3-r3-b",
+    "inputsVerified": 163,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 101,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "B-final",
+    "source": "/tmp/sfcc-stage3-r3-b-final",
+    "inputsVerified": 163,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 6,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "C",
+    "source": "/tmp/sfcc-stage3-r3-c",
+    "inputsVerified": 160,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 3,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 101,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "B-refusal",
+    "source": "/tmp/sfcc-stage3-r3-b-refusal",
+    "inputsVerified": 163,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 2,
+        "exitCode": 101,
+        "timedOut": false
+      }
+    ]
+  },
+  {
+    "job": "A-rollback",
+    "source": "/tmp/sfcc-stage3-r3-a-rollback",
+    "inputsVerified": 164,
+    "binaryVerified": true,
+    "executions": [
+      {
+        "tests": 3,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 5,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 3,
+        "exitCode": 0,
+        "timedOut": false
+      },
+      {
+        "tests": 1,
+        "exitCode": 0,
+        "timedOut": false
+      }
+    ],
+    "changedInputsFromAFinal": [
+      "gcad-wasm/kernel/src/sfcc/connection_a.rs",
+      "gcad-wasm/kernel/src/sfcc/connection_rollback_a.rs",
+      "gcad-wasm/kernel/src/sfcc/trim.rs"
+    ],
+    "connectionAndOriginalGateReceiptsEqualAFinal": true
+  }
+]

@@ -1,0 +1,379 @@
+{
+  "compiledCornerCount": 40,
+  "compiledCurveCount": 76,
+  "connections": [
+    {
+      "allOriginalSeedsErrorHex": "3e4a958f856d930b",
+      "endsHex": [
+        [
+          "c022b7c9d907b15a",
+          "c003efb1a33e9e36",
+          "40158f2508500325"
+        ],
+        [
+          "c022b7b3c5d65e18",
+          "c003efdedc09975a",
+          "40158f2dbc01d9ac"
+        ]
+      ],
+      "epsilonHex": "3e697a9ab0c2db32",
+      "generatedLevelErrorHex": "3cb0000000000001",
+      "heightHex": [
+        "c003efdedc09975a",
+        "c003efb1a33e9e31"
+      ],
+      "queryAuthorityRetained": true,
+      "radialDeltaHex": [
+        "bf20f54c1d6f6004",
+        "bf20f54c1d6b9ffb"
+      ],
+      "rawCurve": 235,
+      "rawRangeHex": [
+        "0000000000000000",
+        "3fcf10112358e75d"
+      ],
+      "source": [
+        10,
+        30,
+        15,
+        31
+      ],
+      "sourceChordErrorHex": "3e4a958c4193bcda"
+    }
+  ],
+  "fullComponentAccepted": false,
+  "queries": [
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "0000000000000000",
+      "pointHex": [
+        "c022b7c9d907b15a",
+        "c003efb1a33e9e36",
+        "40158f2508500325"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fa0000000000000",
+      "pointHex": [
+        "c022b7c9286e26c0",
+        "c003efb30d04f5ff",
+        "40158f254ded91d9"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fb0000000000000",
+      "pointHex": [
+        "c022b7c877d49c26",
+        "c003efb476cb4dc8",
+        "40158f25938b208d"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fb8000000000000",
+      "pointHex": [
+        "c022b7c7c73b118c",
+        "c003efb5e091a591",
+        "40158f25d928af42"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fc0000000000000",
+      "pointHex": [
+        "c022b7c716a186f2",
+        "c003efb74a57fd5a",
+        "40158f261ec63df6"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fc4000000000000",
+      "pointHex": [
+        "c022b7c66607fc58",
+        "c003efb8b41e5524",
+        "40158f266463ccaa"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fc8000000000000",
+      "pointHex": [
+        "c022b7c5b56e71be",
+        "c003efba1de4aced",
+        "40158f26aa015b5e"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fcc000000000000",
+      "pointHex": [
+        "c022b7c504d4e724",
+        "c003efbb87ab04b6",
+        "40158f26ef9eea13"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fd0000000000000",
+      "pointHex": [
+        "c022b7c4543b5c8a",
+        "c003efbcf1715c7f",
+        "40158f27353c78c7"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fd2000000000000",
+      "pointHex": [
+        "c022b7c3a3a1d1ef",
+        "c003efbe5b37b448",
+        "40158f277ada077b"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fd4000000000000",
+      "pointHex": [
+        "c022b7c2f3084755",
+        "c003efbfc4fe0c11",
+        "40158f27c077962f"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fd6000000000000",
+      "pointHex": [
+        "c022b7c2426ebcbb",
+        "c003efc12ec463da",
+        "40158f28061524e3"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fd8000000000000",
+      "pointHex": [
+        "c022b7c191d53221",
+        "c003efc2988abba4",
+        "40158f284bb2b398"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fda000000000000",
+      "pointHex": [
+        "c022b7c0e13ba787",
+        "c003efc40251136d",
+        "40158f289150424c"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fdc000000000000",
+      "pointHex": [
+        "c022b7c030a21ced",
+        "c003efc56c176b36",
+        "40158f28d6edd100"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fde000000000000",
+      "pointHex": [
+        "c022b7bf80089253",
+        "c003efc6d5ddc2ff",
+        "40158f291c8b5fb4"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe0000000000000",
+      "pointHex": [
+        "c022b7becf6f07b9",
+        "c003efc83fa41ac8",
+        "40158f296228ee68"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe1000000000000",
+      "pointHex": [
+        "c022b7be1ed57d1f",
+        "c003efc9a96a7291",
+        "40158f29a7c67d1d"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe2000000000000",
+      "pointHex": [
+        "c022b7bd6e3bf285",
+        "c003efcb1330ca5a",
+        "40158f29ed640bd1"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe3000000000000",
+      "pointHex": [
+        "c022b7bcbda267eb",
+        "c003efcc7cf72223",
+        "40158f2a33019a85"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe4000000000000",
+      "pointHex": [
+        "c022b7bc0d08dd51",
+        "c003efcde6bd79ec",
+        "40158f2a789f2939"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe5000000000000",
+      "pointHex": [
+        "c022b7bb5c6f52b7",
+        "c003efcf5083d1b6",
+        "40158f2abe3cb7ee"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe6000000000000",
+      "pointHex": [
+        "c022b7baabd5c81d",
+        "c003efd0ba4a297f",
+        "40158f2b03da46a2"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe7000000000000",
+      "pointHex": [
+        "c022b7b9fb3c3d83",
+        "c003efd224108148",
+        "40158f2b4977d556"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe8000000000000",
+      "pointHex": [
+        "c022b7b94aa2b2e8",
+        "c003efd38dd6d911",
+        "40158f2b8f15640a"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fe9000000000000",
+      "pointHex": [
+        "c022b7b89a09284e",
+        "c003efd4f79d30da",
+        "40158f2bd4b2f2be"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fea000000000000",
+      "pointHex": [
+        "c022b7b7e96f9db4",
+        "c003efd6616388a3",
+        "40158f2c1a508173"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3feb000000000000",
+      "pointHex": [
+        "c022b7b738d6131a",
+        "c003efd7cb29e06c",
+        "40158f2c5fee1027"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fec000000000000",
+      "pointHex": [
+        "c022b7b6883c8880",
+        "c003efd934f03836",
+        "40158f2ca58b9edb"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fed000000000000",
+      "pointHex": [
+        "c022b7b5d7a2fde6",
+        "c003efda9eb68fff",
+        "40158f2ceb292d8f"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fee000000000000",
+      "pointHex": [
+        "c022b7b52709734c",
+        "c003efdc087ce7c8",
+        "40158f2d30c6bc44"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3fef000000000000",
+      "pointHex": [
+        "c022b7b4766fe8b2",
+        "c003efdd72433f91",
+        "40158f2d76644af8"
+      ]
+    },
+    {
+      "curve": 45,
+      "end": 0,
+      "parameterHex": "3ff0000000000000",
+      "pointHex": [
+        "c022b7b3c5d65e18",
+        "c003efdedc09975a",
+        "40158f2dbc01d9ac"
+      ]
+    }
+  ],
+  "scope": "continuous source connector and uniform chord/seed error; actual installed checked chord queries",
+  "sourceFidelityToleranceHex": "3e697a9ab0c2db32"
+}

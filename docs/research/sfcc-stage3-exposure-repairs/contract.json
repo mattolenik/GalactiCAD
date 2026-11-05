@@ -1,0 +1,28 @@
+{
+  "task": "Stage3 competing source-level exposure/continuation repairs",
+  "baseline": "restored exact156-input Stage1 source",
+  "productionRuntime": "421f5a9 unchanged",
+  "mainHead": "a49df56",
+  "targetHeightInterval": [
+    2.6910277686167188,
+    2.69107776861672
+  ],
+  "targetSource": "original complete twisted knob, pinned shared-arc-full-knob fixture",
+  "required": "actual compiled source graph preserves regular continuation and source/ordered interval identity; unsupported outcomes explicit; no fabricated terminal",
+  "forbidden": [
+    "runtime model IDs or coordinates",
+    "global probe factor adjustment as repair",
+    "unknown promoted to alive without evidence",
+    "degree-guard relaxation",
+    "duplicate alias geometry",
+    "endpoint nudge",
+    "tolerance/cap widening"
+  ],
+  "execution": {
+    "rootOnlyHeavyJobs": true,
+    "buildSeconds": 120,
+    "focusedCampaignSeconds": 60,
+    "noOctreeOrPrivateOrFullExportAtThisStage": true
+  },
+  "evidence": "old-fails/new-passes plus hidden/capped, real terminal, distinct-source, conditioning and exhausted-budget controls; actual supported scope declared"
+}

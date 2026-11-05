@@ -1359,6 +1359,30 @@ proof is unavailable. A global probe-factor reduction, duplicate edge or relaxed
 degree guard does not close the obligation. Later blend continuation, complete
 component reconstruction and production acceptance remain open.
 
+### Stage 3 repair candidates rejected by preservation checks
+
+The first three-agent repair round and fourth review produced no accepted patch.
+A adds source-bound positive exposure for a restricted parametric ancestor class;
+B adds numerically bounded adaptive probing. Both propagate uncertain ends through
+splitting, snapping and wiring, and both restore the required upper compiled
+interval. Both also lose required source incidence at the existing lower joint:
+A loses three source-pair memberships and B loses `[10,31]`. The joint position is
+unchanged, so renumbering or a wider matching tolerance cannot explain the failure.
+Some memberships may describe equivalent geometry; no candidate supplies the
+source/interval transport proof needed to retire or rebind them.
+
+C's executed counterfactual proves reporting uncertainty alone leaves the compiled
+geometry unchanged, while unresolved trims increase from 29 to 89. A separate
+baseline regression fails the upper interval as expected. A's source-selection
+and orientation measurement errors were corrected without runtime changes; the
+lower preservation failure remains. An initial stale-cache zero-test run is
+explicitly excluded and subsequent builds require cache cleanup and test discovery.
+
+[Reviewed candidates, actual results and next contract](sfcc-stage3-exposure-repairs/README.md)
+require justified junction/attachment resolution for unresolved parameter frontiers.
+Ordinary nearest snapping, forced alive status or weaker preservation checks would
+undo the correction. Stage 3 remains open; production meshing logic is unchanged.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

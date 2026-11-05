@@ -1,0 +1,143 @@
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -80,6 +80,9 @@
+             }
+         }
+     }
++    // Test-only counterfactual: honest uncertainty alone must not be confused with a repair.
++    #[cfg(all(test, feature = "serde"))]
++    if !uncertain && exposure_c_tests::relabel_exhausted_search() { return Err(()); }
+     if uncertain { Err(()) } else { Ok(false) }
+ }
+ 
+@@ -818,3 +821,7 @@
+         keep.into_iter().enumerate().map(|(i, c)| SfccCorner { id: i, ..c }).collect();
+     TrimResult { curves: out, corners: final_corners, unresolved_trims }
+ }
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "exposure_c_tests.rs"]
++mod exposure_c_tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/exposure_c_tests.rs
+@@ -0,0 +1,120 @@
++//! Counterexample to treating uncertainty reporting alone as a continuation repair.
++use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
++use serde_json::{json, Value};
++use std::cell::Cell;
++
++thread_local! {
++    static RELABEL: Cell<bool> = const { Cell::new(false) };
++    static CHANGED: Cell<usize> = const { Cell::new(0) };
++}
++pub(super) fn relabel_exhausted_search() -> bool {
++    if RELABEL.with(Cell::get) {
++        CHANGED.with(|n| n.set(n.get().checked_add(1).expect("bounded test calls")));
++        true
++    } else {
++        false
++    }
++}
++fn with_unknown<T>(run: impl FnOnce() -> T) -> (T, usize) {
++    struct Reset;
++    impl Drop for Reset {
++        fn drop(&mut self) {
++            RELABEL.with(|v| v.set(false));
++        }
++    }
++    assert!(!RELABEL.with(Cell::get), "nested counterfactual scope");
++    RELABEL.with(|v| v.set(true));
++    CHANGED.with(|v| v.set(0));
++    let _reset = Reset;
++    let value = run();
++    (value, CHANGED.with(Cell::get))
++}
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn snapshot(f: &SfccFeatureSet) -> Value {
++    json!({
++        "curves":f.curves.iter().map(|c| {
++            let traced=c.traced_carriers().map(|(a,b,r)|json!({
++                "storedCarrierIds":[a.id,b.id],
++                "refinementHex":[hex(r.curve_eps),hex(r.min_cross),hex(r.max_displacement)]
++            }));
++            json!({"id":c.id,"kind":format!("{:?}",c.kind()),"native":c.native,
++                "owner":c.owner_node_id,"closed":c.closed,"wrapHex":c.param_wrap.map(hex),
++                "rangeHex":[hex(c.t_min),hex(c.t_max)],"strata":c.adjacent_strata,
++                "ends":[c.corner_start,c.corner_end],"indexingHex":c.index_polyline.iter().copied().map(hex).collect::<Vec<_>>(),
++                "traced":traced})
++        }).collect::<Vec<_>>(),
++        "corners":f.corners.iter().map(|c|json!({"id":c.id,"pointHex":[hex(c.x),hex(c.y),hex(c.z)],
++            "strata":c.strata,"ends":c.curve_ends})).collect::<Vec<_>>(),
++        "unresolvedBranchPaths":f.unresolved_branch_paths,
++    })
++}
++
++#[test]
++fn exposure_c_uncertainty_relabel_does_not_repair_original_compiled_endpoint() {
++    let config: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(config["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let size =
++        config["cube"]["max"][0].as_f64().unwrap() - config["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        (3. * size * size).sqrt(),
++    );
++    let (baseline, before_diag) = compile_feature_set(&root, &tol);
++    assert_eq!(baseline.fingerprint(), 9875508341830920921);
++    let ((counterfactual, after_diag), relabeled) =
++        with_unknown(|| compile_feature_set(&root, &tol));
++    let equal = snapshot(&baseline) == snapshot(&counterfactual);
++    let before = &baseline.corners[27];
++    let after = &counterfactual.corners[27];
++    let required = [2.6910277686167188, 2.69107776861672];
++    let same_endpoint = [before.x, before.y, before.z].map(f64::to_bits)
++        == [after.x, after.y, after.z].map(f64::to_bits);
++    let same_curve_endpoint =
++        counterfactual.curves[20].corner_end == 27 && counterfactual.curves[33].corner_end == 27;
++    let receipt = json!({
++        "scope":"test-only counterfactual: relabel exhausted finite flank searches as unknown, with existing run/wiring consumers unchanged",
++        "sourceConfigSha256":config["sourceConfigSha256"],
++        "baselineFingerprint":baseline.fingerprint().to_string(),"counterfactualFingerprint":counterfactual.fingerprint().to_string(),
++        "compiledPublicCurveCornerAndRefineValuesExactlyEqual":equal,
++        "comparisonIncludes":["curve id/kind/native/owner/closed/wrap/range/strata/end links/indexing arrays","stored traced carrier IDs/refinement scalars","corner ids/positions/strata/incidences","unresolved branch paths"],
++        "hiddenGeometryArgument":"only exhausted result tag is changed; boolean classification is unchanged, so constructor inputs/control flow remain unchanged; no standalone hidden-source snapshot claim",
++        "reclassifiedExhaustedSearches":relabeled,
++        "baselineUnresolvedTrims":before_diag.unresolved_trims,"counterfactualUnresolvedTrims":after_diag.unresolved_trims,
++        "corner27Hex":[hex(after.x),hex(after.y),hex(after.z)],"endpointExactlyUnchanged":same_endpoint,
++        "targetCurveEndpointsUnchanged":same_curve_endpoint,
++        "requiredPositiveHeightIntervalHex":required.map(hex),"targetEndpointBelowRequiredInterval":after.y<required[0],
++        "geometryRepairSucceeded":false,"productionRuntimePatchProposed":false,"publicationReady":false,
++    });
++    let bytes = serde_json::to_vec_pretty(&receipt).unwrap();
++    assert!(bytes.len() < 65536);
++    std::fs::write(
++        std::env::var("SFCC_EXPOSURE_C_RECEIPT").expect("root-owned receipt path"),
++        bytes,
++    )
++    .unwrap();
++    assert!(relabeled > 0);
++    assert!(after_diag.unresolved_trims > before_diag.unresolved_trims);
++    assert!(
++        equal,
++        "relabeling only the error tag must preserve the actual compiled graph"
++    );
++    assert!(same_endpoint && same_curve_endpoint && after.y < required[0]);
++    assert!(!RELABEL.with(Cell::get));
++}
++
++#[test]
++fn exposure_c_counterfactual_scope_cleans_up_after_unwind() {
++    assert!(!relabel_exhausted_search());
++    let result = std::panic::catch_unwind(|| {
++        with_unknown(|| {
++            assert!(relabel_exhausted_search());
++            panic!("intentional control");
++        })
++    });
++    assert!(result.is_err());
++    assert!(!relabel_exhausted_search());
++}

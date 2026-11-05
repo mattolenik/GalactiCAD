@@ -1,0 +1,6 @@
+{
+  "testOnlyHookRemovalRestoresBaselineExactly": true,
+  "productionPatchProposed": false,
+  "authorExecutedGeometry": false,
+  "counterexampleScope": "unknown-only relabeling preserves boolean decisions; executable confirmation pending root"
+}

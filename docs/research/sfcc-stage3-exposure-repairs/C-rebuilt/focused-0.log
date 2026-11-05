@@ -1,0 +1,11 @@
+
+running 2 tests
+test sfcc::trim::exposure_c_tests::exposure_c_counterfactual_scope_cleans_up_after_unwind ... 
+thread 'sfcc::trim::exposure_c_tests::exposure_c_counterfactual_scope_cleans_up_after_unwind' (239271) panicked at kernel/src/sfcc/exposure_c_tests.rs:115:13:
+intentional control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::trim::exposure_c_tests::exposure_c_uncertainty_relabel_does_not_repair_original_compiled_endpoint ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 320 filtered out; finished in 1.99s
+

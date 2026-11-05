@@ -1,0 +1,8 @@
+{
+  "historicalBase": "3abea38c93679fff5e6e7c600b23d8a0f46974a6",
+  "restoredSource": "/tmp/sfcc-stage3-base",
+  "verifiedInputCount": 156,
+  "mainHead": "a49df56",
+  "runtimeBaseline": "421f5a9",
+  "scope": "Stage3 isolated competing repairs; no main runtime mutation"
+}

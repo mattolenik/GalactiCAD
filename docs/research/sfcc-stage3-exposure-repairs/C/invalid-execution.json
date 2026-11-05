@@ -1,0 +1,7 @@
+{
+  "valid": false,
+  "reason": "Shared target Cargo cache reused baseline binary; requestedfilterdiscovered0tests",
+  "geometryTestExecuted": false,
+  "candidateSourceUnchanged": true,
+  "correction": "clean onlytask-owned kernelreleasecachebeforebuild andrequirepositive testdiscovery"
+}

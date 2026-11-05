@@ -1,0 +1,32 @@
+{
+  "baselineFingerprint": "9875508341830920921",
+  "baselineUnresolvedTrims": 29,
+  "comparisonIncludes": [
+    "curve id/kind/native/owner/closed/wrap/range/strata/end links/indexing arrays",
+    "stored traced carrier IDs/refinement scalars",
+    "corner ids/positions/strata/incidences",
+    "unresolved branch paths"
+  ],
+  "compiledPublicCurveCornerAndRefineValuesExactlyEqual": true,
+  "corner27Hex": [
+    "c01ae303f75efc73",
+    "4005871f5a33c661",
+    "c020e81b1b90e888"
+  ],
+  "counterfactualFingerprint": "9875508341830920921",
+  "counterfactualUnresolvedTrims": 89,
+  "endpointExactlyUnchanged": true,
+  "geometryRepairSucceeded": false,
+  "hiddenGeometryArgument": "only exhausted result tag is changed; boolean classification is unchanged, so constructor inputs/control flow remain unchanged; no standalone hidden-source snapshot claim",
+  "productionRuntimePatchProposed": false,
+  "publicationReady": false,
+  "reclassifiedExhaustedSearches": 732,
+  "requiredPositiveHeightIntervalHex": [
+    "400587399116b17c",
+    "40058753c7f99c9b"
+  ],
+  "scope": "test-only counterfactual: relabel exhausted finite flank searches as unknown, with existing run/wiring consumers unchanged",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "targetCurveEndpointsUnchanged": true,
+  "targetEndpointBelowRequiredInterval": true
+}

@@ -1,0 +1,25 @@
+{
+  "source": "/tmp/sfcc-stage3-c",
+  "base": "/tmp/sfcc-stage3-base",
+  "scope": "rejected insufficient repair, test-only original-source counterexample",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "e33fe3d9f5ef712c37ec330407900eca4f5195cb952e49d67ce49b2b9b73bbfa",
+      "baseSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_c_tests.rs",
+      "sha256": "ae2d2d6ab40ac2f3b6da8b4d782fd504d8fa095923357e64277d3178b5b8f103",
+      "baseSha256": null
+    }
+  ],
+  "patchSha256": "4b2c746d372f19ec59ff6992d42b7be04f69afa89598eab72959aa0960103df9",
+  "tests": {
+    "filter": "exposure_c_",
+    "expectedTests": 2,
+    "receiptEnvironment": "SFCC_EXPOSURE_C_RECEIPT"
+  },
+  "runtimeRepair": false,
+  "authorExecutedGeometry": false
+}

@@ -1,0 +1,35 @@
+{
+  "source": "/tmp/sfcc-stage3-b",
+  "base": "/tmp/sfcc-stage3-base",
+  "scope": "bounded numerical exposure candidate with explicit unresolved ends; author execution pending",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/fixtures/exposure-b-baseline.json",
+      "sha256": "d5b17e74919e89b05ba04e2e8ac4d5ba17252c544941d69aa76227a7b77c36f0",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_b_controls.rs",
+      "sha256": "398da9f41296e9e435768e6151e8e300cef5e32abc66ea8c98adb8e2bbfe85d2",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_b_tests.rs",
+      "sha256": "7fb559c85805b79f6187ce7ea8d1018b70c0500e2b501b03e2e13857223a07a4",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/segment_exposure.rs",
+      "sha256": "fe81c7e6b84b5fbb8924eb28af1999ccab5c79ec3676776bb01e92041fcc634f",
+      "baseSha256": "a24bd1053d560b61a02e98a010e4a1c18d7e34e88d08b075e412eec01ed5bf5f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "3f4867c408109b100a3f6789dc6083f426894dac8d844fcc13c0068dc0364e25",
+      "baseSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    }
+  ],
+  "patchSha256": "19bc4d671d92e2a00dfb0320fe602a6c5582e4d7245a349eb718845251080054",
+  "baselineRegressionPatchSha256": "3aed029043cd8eab633ad93588fe225e3f9c375502c095c74213f61c3f2de517",
+  "authorExecutedGeometry": false
+}

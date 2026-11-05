@@ -1,0 +1,42 @@
+[
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/std/Cargo.toml",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/std/src/collections/hash/map.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/std/src/hash/random.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/slice.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/boxed.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/alloc/src/sync.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/raw.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/neon.rs",
+    "matches": true
+  },
+  {
+    "path": "/opt/homebrew/Cellar/rust/1.99.0_1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/sse2.rs",
+    "matches": true
+  }
+]

@@ -1,0 +1,17 @@
+
+running 1 test
+test sfcc::trim::exposure_b_tests::exposure_b_compiled_original_source_retains_required_continuation ... 
+thread 'sfcc::trim::exposure_b_tests::exposure_b_compiled_original_source_retains_required_continuation' (302680) panicked at kernel/src/sfcc/exposure_b_tests.rs:262:5:
+assertion `left == right` failed: repair must preserve the existing lower source junction, not merely advance the upper endpoint
+  left: Bool(false)
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sfcc::trim::exposure_b_tests::exposure_b_compiled_original_source_retains_required_continuation
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 325 filtered out; finished in 0.70s
+

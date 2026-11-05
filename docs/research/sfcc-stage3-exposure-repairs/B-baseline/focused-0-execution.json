@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round22-exposure-repair/B-baseline/kernel-tests",
+    "exposure_b_compiled_original_source_retains_required_continuation",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.81309537499874,
+  "elapsedSeconds": 0.9943140420000418,
+  "exitCode": 101,
+  "timedOut": false
+}

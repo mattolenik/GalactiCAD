@@ -1,0 +1,9 @@
+{
+  "filter": "exposure_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_original_compilation_retains_the_required_source_interval",
+    "sfcc::shared_twisted_proof::exposure_a::tests::exposure_a_rejects_wrong_sources_hidden_extensions_and_insufficient_budget",
+    "sfcc::trim::exposure_a_endpoint_tests::exposure_a_uncertain_endpoint_cannot_snap_to_an_existing_corner"
+  ],
+  "exitCode": 0
+}

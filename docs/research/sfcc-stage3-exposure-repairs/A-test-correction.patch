@@ -1,0 +1,74 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a_tests.rs
+@@ -45,6 +45,7 @@
+     f: &SfccFeatureSet,
+     pair: [usize; 2],
+     sign: i8,
++    expected_source: [usize; 3],
+     height: [f64; 2],
+     eps: f64,
+ ) -> Vec<Value> {
+@@ -83,7 +84,7 @@
+             let Some(proof) = prove(root, &f.strata, pair, p, eps) else {
+                 continue;
+             };
+-            if proof.sign != sign {
++            if proof.sign != sign || proof.source != expected_source {
+                 continue;
+             }
+             let branch = branch_at(
+@@ -97,13 +98,13 @@
+             let rank =
+                 support(&f.strata, &branch, interval(height[0], height[1]).unwrap()).unwrap();
+             let checks:Option<Vec<_>>=[ta,ta+(tb-ta)*0.25,(ta+tb)*0.5,ta+(tb-ta)*0.75,tb].into_iter().map(|t|{
+-                let p=c.point_at_checked(t)?;let q=prove(root, &f.strata,pair,p,eps)?;if q.sign!=sign{return None;}
++                let p=c.point_at_checked(t)?;let q=prove(root, &f.strata,pair,p,eps)?;if q.sign!=sign || q.source!=expected_source{return None;}
+                 Some(json!({"parameterHex":encode(t),"pointHex":p.map(encode),"associationUpperHex":encode(q.distance_upper)}))
+             }).collect();
+             let Some(checks) = checks else {
+                 continue;
+             };
+-            matches.push(json!({"curve":c.id,"sourcePair":c.adjacent_strata,"cornerEnds":[c.corner_start,c.corner_end],"indexingPiece":i,"ownParameterRangeHex":[encode(ta),encode(tb)],"requiredHeightHex":height.map(encode),"sourceDeterminantLowerHex":encode(rank),"checkedQueries":checks}));
++            matches.push(json!({"curve":c.id,"sourcePair":c.adjacent_strata,"sourceRoles":expected_source,"branchSign":sign,"cornerEnds":[c.corner_start,c.corner_end],"indexingPiece":i,"ownParameterRangeHex":[encode(ta),encode(tb)],"requiredHeightHex":height.map(encode),"sourceDeterminantLowerHex":encode(rank),"checkedQueries":checks}));
+         }
+     }
+     matches
+@@ -171,6 +172,7 @@
+         &old,
+         [10, 15],
+         proof.sign,
++        proof.source,
+         height,
+         tol.curve_eps * 8.,
+     );
+@@ -179,6 +181,7 @@
+         &new,
+         [10, 15],
+         proof.sign,
++        proof.source,
+         height,
+         tol.curve_eps * 8.,
+     );
+@@ -187,6 +190,7 @@
+         &new,
+         [30, 15],
+         proof.sign,
++        proof.source,
+         height,
+         tol.curve_eps * 8.,
+     );
+@@ -219,10 +223,12 @@
+     );
+     for row in physical.iter().chain(&alias) {
+         let c = &new.curves[row["curve"].as_u64().unwrap() as usize];
++        let start = c.point_at_checked(c.t_min).unwrap();
+         let end = c.point_at_checked(c.t_max).unwrap();
+-        assert!(end[1] > height[1]);
++        let (upper, corner) = if start[1] > end[1] { (start, c.corner_start) } else { (end, c.corner_end) };
++        assert!(upper[1] > height[1]);
+         assert_eq!(
+-            c.corner_end, -1,
++            corner, -1,
+             "unknown upper transition must not become an authoritative corner"
+         );
+     }

@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round22-exposure-repair/A-measured/kernel-tests",
+    "exposure_a_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.79493916699903,
+  "elapsedSeconds": 2.308728459000122,
+  "exitCode": 101,
+  "timedOut": false
+}

@@ -1,0 +1,11 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a_tests.rs
+@@ -150,7 +150,7 @@
+     }
+     (
+         preserved,
+-        json!({"baselinePointHex":[baseline.x,baseline.y,baseline.z].map(encode),"requiredSourcePairs":required,"candidateNearbyCorners":nearby,"toleranceHex":encode(tolerance),"preserved":preserved,"identityPremise":"same original expression and unchanged stratum extraction; compare carrier-pair identities and geometry, not candidate curve/corner IDs"}),
++        json!({"baselinePointHex":([baseline.x,baseline.y,baseline.z].map(encode)),"requiredSourcePairs":required,"candidateNearbyCorners":nearby,"toleranceHex":encode(tolerance),"preserved":preserved,"identityPremise":"same original expression and unchanged stratum extraction; compare carrier-pair identities and geometry, not candidate curve/corner IDs"}),
+     )
+ }
+ #[test]

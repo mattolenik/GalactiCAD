@@ -1,0 +1,50 @@
+{
+  "source": "/tmp/sfcc-stage3-a",
+  "base": "/tmp/sfcc-stage3-base",
+  "scope": "source-positive exposure candidate with per-end uncertainty; unexecuted and lower-joint collateral gate required",
+  "files": [
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/correlated_branch_c.rs",
+      "sha256": "2f48b0cd65edc8703ebc79f709205d04d269a88e623ab47cd5ed01da4147b058",
+      "baseSha256": "8f4688e61a024cf1ec2938a5f2481c82e4dcf520fa51b24d50dc63d083f91864"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "sha256": "f4c2af26b4798c5026b557125faeb494590a18efa64b4a59ab277cb40363175e",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/exposure_a_tests.rs",
+      "sha256": "a38ca917b57366ea1a54ad965908f61f2c48cb607b596301b10d5ee038ef54b7",
+      "baseSha256": null
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+      "sha256": "ec9fd8e56516fd909ea55c9350b52af162fee5f5dfa3310f41a3488a43da900e",
+      "baseSha256": "1df45c6e2b48449076e6d2c87d7d8ac6a2dec6a32736ed1f4835cb2f355dec8a"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/segment_exposure.rs",
+      "sha256": "0ca8771bb74d1b2ea8fcffe59e70754883f87dd5bb1208f4764b853fe4b602aa",
+      "baseSha256": "a24bd1053d560b61a02e98a010e4a1c18d7e34e88d08b075e412eec01ed5bf5f"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/shared_twisted_proof.rs",
+      "sha256": "5dabfa881e300de658d0011beb398514710cdb89b26a4b9461ab814926915669",
+      "baseSha256": "f3a300801f1dfcf1f6316f68456c06aa927ebc1cc0d9f127a85c66045dfb4a04"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/sfcc/trim.rs",
+      "sha256": "7492c0de6e5ac73664610ca126ae7cf93dd11eb9fdee23901b8c8ad6ad0dc401",
+      "baseSha256": "8bb9e8ba7364ab9166cb5ad2744da5be69c42179b44261f7d80bc5a767bb00aa"
+    },
+    {
+      "path": "gcad-wasm/kernel/src/strata.rs",
+      "sha256": "a5ae9ecc42068fed8534239ac485afbc84082d18194c897344fde728d8b55082",
+      "baseSha256": "6a5d4fc888e95e261ed6a3f0f9d52716709b22419336a127624b15997eb981f1"
+    }
+  ],
+  "patchSha256": "e87a0c7de94c1c2226a95300f3573efb1f86c0259a3f35414a159097fcc1817e",
+  "handoffSha256": "8f7ccd0cbc879c241f47f17123faa4f81528dc1b2170a94c943bb35b761e0d3e",
+  "authorExecutedGeometry": false
+}

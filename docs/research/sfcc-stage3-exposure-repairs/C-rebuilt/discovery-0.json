@@ -1,0 +1,8 @@
+{
+  "filter": "exposure_c_",
+  "tests": [
+    "sfcc::trim::exposure_c_tests::exposure_c_counterfactual_scope_cleans_up_after_unwind",
+    "sfcc::trim::exposure_c_tests::exposure_c_uncertainty_relabel_does_not_repair_original_compiled_endpoint"
+  ],
+  "exitCode": 0
+}

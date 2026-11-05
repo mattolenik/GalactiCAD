@@ -1,0 +1,117 @@
+{
+  "aliasPiece": null,
+  "checkedCompiledIntervals": [],
+  "collateral": {
+    "baseline": {
+      "corners": 77,
+      "curves": 81,
+      "unresolvedTrims": 29,
+      "unwiredEnds": 2
+    },
+    "baselineSourceReceiptSha256": "6acd91cc9a04c34ac394bf669ec1d54ba487ab4ad8ed18559a9b7e894c4a3543",
+    "baselineUncertaintyReceiptSha256": "396c3225a8ecd3fcd27ecfd8270c7317bfda2b09ebf68d82e96003cf924c5266",
+    "candidate": {
+      "corners": 77,
+      "curves": 81,
+      "unresolvedTrims": 29,
+      "unwiredEnds": 2
+    },
+    "changedSourceFamilies": [],
+    "comparison": "pair-labelled indexing geometry, ranges and wired-end presence; final IDs may renumber"
+  },
+  "compiledCoverage": false,
+  "cornerCount": 77,
+  "curveCount": 81,
+  "featureFingerprint": "9875508341830920921",
+  "heightHex": [
+    "400587399116b17c",
+    "40058753c7f99c9b"
+  ],
+  "lowerJoint": {
+    "actualSourcePairs": [
+      [
+        10,
+        15
+      ],
+      [
+        10,
+        31
+      ],
+      [
+        15,
+        30
+      ],
+      [
+        15,
+        31
+      ],
+      [
+        30,
+        31
+      ]
+    ],
+    "distanceHex": "0000000000000000",
+    "expectedSourcePairs": [
+      [
+        10,
+        15
+      ],
+      [
+        10,
+        31
+      ],
+      [
+        15,
+        30
+      ],
+      [
+        15,
+        31
+      ],
+      [
+        30,
+        31
+      ]
+    ],
+    "incidentEnds": [
+      [
+        20,
+        0
+      ],
+      [
+        33,
+        0
+      ],
+      [
+        39,
+        0
+      ],
+      [
+        42,
+        1
+      ],
+      [
+        60,
+        0
+      ]
+    ],
+    "nearestCorner": 26,
+    "pointHex": [
+      "c022b7c9d907b15a",
+      "c003efb1a33e9e36",
+      "40158f2508500325"
+    ],
+    "preserved": true,
+    "toleranceHex": "3f08e1bb109e4a0e"
+  },
+  "physicalPiece": null,
+  "scope": "actual original feature compilation and represented interval retention; no component reconstruction",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceIds": [
+    10,
+    30,
+    15
+  ],
+  "unresolvedTrims": 29,
+  "wholeComponentAccepted": false
+}

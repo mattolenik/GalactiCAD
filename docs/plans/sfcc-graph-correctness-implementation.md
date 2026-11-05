@@ -4,7 +4,10 @@ Status: stage 1 implemented and mechanically validated, November 3, 2026;
 [executed capture and limitations](../research/sfcc-graph-rejection-capture/README.md).
 Stage 2 has [exact early replay and a bounded source continuation proof](../research/sfcc-endpoint-obligation/README.md), followed by
 [executed causal localization to finite-flank trimming](../research/sfcc-endpoint-lineage/README.md).
-Stages 1–2 are complete for this witness; stages 3–5 remain open. Current production baseline:
+Stages 1–2 are complete for this witness. Stage 3's
+[first competing repair round](../research/sfcc-stage3-exposure-repairs/README.md)
+restores the target interval but fails lower-junction preservation; neither candidate
+is selected. Stages 3–5 remain open. Current production baseline:
 `421f5a9`. This expands the next five steps of
 [E4 in the critical-repairs plan](sfcc-critical-repairs.md), then defines the
 handoff to the remaining E4 work, E5 and E6. It does not supersede their acceptance

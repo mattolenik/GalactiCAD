@@ -1,0 +1,15 @@
+{
+  "AFlatPatchSha256": "318ff56115cef882f5ebe5c3bcc0f65959ff6062101edc339fb5e5c43feb0904",
+  "AChangedInputs": [
+    "gcad-wasm/kernel/src/strata.rs",
+    "gcad-wasm/kernel/src/sfcc/correlated_branch_c.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_a_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/field_branches.rs",
+    "gcad-wasm/kernel/src/sfcc/segment_exposure.rs",
+    "gcad-wasm/kernel/src/sfcc/shared_twisted_proof.rs",
+    "gcad-wasm/kernel/src/sfcc/trim.rs"
+  ],
+  "AAllExecutedInputsReproduced": 158,
+  "acceptedForRuntime": false
+}

@@ -1,0 +1,793 @@
+{
+  "campaignChargedQueries": 2515,
+  "chargedAfterAdmission": 1240,
+  "controls": {
+    "actualNoRootDomain": {
+      "actualAxisInverse": true,
+      "boxBits": [
+        [
+          13845368948940641087,
+          4600141039766863872,
+          13836794045898162176
+        ],
+        [
+          13845368948940641087,
+          4600141040840605696,
+          13836794045361291264
+        ]
+      ],
+      "scope": "shared production root-image subgate, not full pin admission",
+      "sourceCertificate": true,
+      "strictRootInclusion": false
+    },
+    "directImageAssociation": {
+      "allowanceBits": 4510771306597374770,
+      "distanceUpperBits": [
+        4576781490847236255,
+        4476835784683836047
+      ],
+      "imageBits": [
+        [
+          13845437998270865420,
+          13845437998270865420
+        ],
+        [
+          4600141040268305570,
+          4600141040268308401
+        ],
+        [
+          13836794045644391989,
+          13836794045644391835
+        ]
+      ],
+      "otherActualOwnParameterBits": 4625478292286210048,
+      "otherActualPointBits": [
+        13845436660108259433,
+        4600197295198259531,
+        13836814175032030250
+      ],
+      "rejected": true,
+      "scope": "same direct point-to-image gate used by admission"
+    },
+    "hullOutsideActualFace": {
+      "actual_axis_inverse_bits": null,
+      "admitted_branch_sign": 1,
+      "allowance_bits": 4510771306597374770,
+      "charts": [
+        20,
+        33
+      ],
+      "claimed_plane_bits": 13845437998270865420,
+      "cylinder_bits": null,
+      "derivative_interval_bits": null,
+      "detail": "complete original bin domains and tangential data must fit; no clipping",
+      "face": [
+        0,
+        2876192,
+        1
+      ],
+      "face_rectangle_bits": [
+        [
+          13845437998270865420,
+          4601767783270945216,
+          13836923294371165604
+        ],
+        [
+          13845437998270865420,
+          4603328090505385389,
+          13836647097050268273
+        ]
+      ],
+      "final_charged_queries": 1275,
+      "gate": "face_hull_outside_rectangle",
+      "hull_bits": [
+        [
+          13845437998270865420,
+          4600141039766863872,
+          13836794045898162176
+        ],
+        [
+          13845437998270865420,
+          4600141040840605696,
+          13836794045361291264
+        ]
+      ],
+      "original_strict_residual_bits": 4497260507715263282,
+      "parameter_bits": [
+        4625461115962507714,
+        4625994206746845443
+      ],
+      "pin_to_root_upper_bits": null,
+      "point_bits": [
+        [
+          13845437998270865424,
+          4600141040268314566,
+          13836794045644391861
+        ],
+        [
+          13845437998270865439,
+          4600141040303780416,
+          13836794045644395323
+        ]
+      ],
+      "point_ids": [
+        34500,
+        34501
+      ],
+      "publication_authority": false,
+      "record_face": [
+        0,
+        2876192,
+        1
+      ],
+      "root_image_bits": null,
+      "rounding_boxes_bits": [
+        [
+          [
+            13845437998270865420,
+            4600141039766863872,
+            13836794045898162176
+          ],
+          [
+            13845437998270865420,
+            4600141040303734784,
+            13836794045361291264
+          ]
+        ],
+        [
+          [
+            13845437998270865420,
+            4600141040303734784,
+            13836794045898162176
+          ],
+          [
+            13845437998270865420,
+            4600141040840605696,
+            13836794045361291264
+          ]
+        ]
+      ],
+      "source_boxes": null,
+      "source_branch_u_bits": [
+        4619854808276319871,
+        4619854808276319878
+      ],
+      "source_native_field_cylinder": [
+        10,
+        30,
+        15
+      ],
+      "twisted_source_bits": null,
+      "typed_plane_bits": 13845437998270865420
+    },
+    "oldUnequalBinHelperRejected": true,
+    "originalBooleanOracleAgrees": true,
+    "sameSourceDifferentAdmission": {
+      "actual_axis_inverse_bits": null,
+      "admitted_branch_sign": 1,
+      "allowance_bits": 4510771306597374770,
+      "charts": [
+        20,
+        33
+      ],
+      "claimed_plane_bits": 13845437998270865420,
+      "cylinder_bits": null,
+      "derivative_interval_bits": null,
+      "detail": "plan and transport did not come from the same successful admission",
+      "face": [
+        0,
+        2875935,
+        1
+      ],
+      "face_rectangle_bits": null,
+      "final_charged_queries": 1275,
+      "gate": "face_admission_identity",
+      "hull_bits": null,
+      "original_strict_residual_bits": null,
+      "parameter_bits": [
+        4625461115962507714,
+        4625994206746845443
+      ],
+      "pin_to_root_upper_bits": null,
+      "point_bits": [
+        [
+          13845437998270865424,
+          4600141040268314566,
+          13836794045644391861
+        ],
+        [
+          13845437998270865439,
+          4600141040303780416,
+          13836794045644395323
+        ]
+      ],
+      "point_ids": [
+        34500,
+        34501
+      ],
+      "publication_authority": false,
+      "record_face": [
+        0,
+        2875935,
+        1
+      ],
+      "root_image_bits": null,
+      "rounding_boxes_bits": null,
+      "source_boxes": null,
+      "source_branch_u_bits": [
+        4619854808276319871,
+        4619854808276319878
+      ],
+      "source_native_field_cylinder": [
+        10,
+        30,
+        15
+      ],
+      "twisted_source_bits": null,
+      "typed_plane_bits": null
+    },
+    "twoRoots": {
+      "scope": "algebraic ((x-1)^2-e^2,y), e=2^-30; no full-scene claim",
+      "twoLocalInverses": [
+        true,
+        true
+      ],
+      "wholeDomainInverseRejected": true
+    },
+    "wrongAdmittedBranch": {
+      "actual_axis_inverse_bits": null,
+      "admitted_branch_sign": -1,
+      "allowance_bits": 4510771306597374770,
+      "charts": [
+        20,
+        33
+      ],
+      "claimed_plane_bits": 13845437998270865420,
+      "cylinder_bits": null,
+      "derivative_interval_bits": null,
+      "detail": "retained branch sign differs",
+      "face": [
+        0,
+        2875935,
+        1
+      ],
+      "face_rectangle_bits": null,
+      "final_charged_queries": 1275,
+      "gate": "face_admitted_branch",
+      "hull_bits": null,
+      "original_strict_residual_bits": null,
+      "parameter_bits": [
+        4625461115962507714,
+        4625994206746845443
+      ],
+      "pin_to_root_upper_bits": null,
+      "point_bits": [
+        [
+          13845437998270865424,
+          4600141040268314566,
+          13836794045644391861
+        ],
+        [
+          13845437998270865439,
+          4600141040303780416,
+          13836794045644395323
+        ]
+      ],
+      "point_ids": [
+        34500,
+        34501
+      ],
+      "publication_authority": false,
+      "record_face": [
+        0,
+        2875935,
+        1
+      ],
+      "root_image_bits": null,
+      "rounding_boxes_bits": null,
+      "source_boxes": null,
+      "source_branch_u_bits": [
+        4619854808276319871,
+        4619854808276319878
+      ],
+      "source_native_field_cylinder": [
+        10,
+        30,
+        15
+      ],
+      "twisted_source_bits": null,
+      "typed_plane_bits": null
+    },
+    "wrongPlaneWithinSameNormalBin": {
+      "actual_axis_inverse_bits": null,
+      "admitted_branch_sign": 1,
+      "allowance_bits": 4510771306597374770,
+      "charts": [
+        20,
+        33
+      ],
+      "claimed_plane_bits": 13845437998270865419,
+      "cylinder_bits": null,
+      "derivative_interval_bits": null,
+      "detail": "exact typed plane differs, irrespective of rounding bin",
+      "face": [
+        0,
+        2875935,
+        1
+      ],
+      "face_rectangle_bits": null,
+      "final_charged_queries": 1275,
+      "gate": "typed_face_plane",
+      "hull_bits": null,
+      "original_strict_residual_bits": null,
+      "parameter_bits": [
+        4625461115962507714,
+        4625994206746845443
+      ],
+      "pin_to_root_upper_bits": null,
+      "point_bits": [
+        [
+          13845437998270865424,
+          4600141040268314566,
+          13836794045644391861
+        ],
+        [
+          13845437998270865439,
+          4600141040303780416,
+          13836794045644395323
+        ]
+      ],
+      "point_ids": [
+        34500,
+        34501
+      ],
+      "publication_authority": false,
+      "record_face": [
+        0,
+        2875935,
+        1
+      ],
+      "root_image_bits": null,
+      "rounding_boxes_bits": null,
+      "source_boxes": null,
+      "source_branch_u_bits": [
+        4619854808276319871,
+        4619854808276319878
+      ],
+      "source_native_field_cylinder": [
+        10,
+        30,
+        15
+      ],
+      "twisted_source_bits": null,
+      "typed_plane_bits": 13845437998270865420
+    },
+    "wrongSourceOccurrence": {
+      "actual_axis_inverse_bits": null,
+      "admitted_branch_sign": 1,
+      "allowance_bits": 4510771306597374770,
+      "charts": [
+        20,
+        33
+      ],
+      "claimed_plane_bits": 13845437998270865420,
+      "cylinder_bits": null,
+      "derivative_interval_bits": null,
+      "detail": "current immutable source and admitted original charts differ",
+      "face": [
+        0,
+        2875935,
+        1
+      ],
+      "face_rectangle_bits": null,
+      "final_charged_queries": 1275,
+      "gate": "face_source_instance",
+      "hull_bits": null,
+      "original_strict_residual_bits": null,
+      "parameter_bits": [
+        4625461115962507714,
+        4625994206746845443
+      ],
+      "pin_to_root_upper_bits": null,
+      "point_bits": [
+        [
+          13845437998270865424,
+          4600141040268314566,
+          13836794045644391861
+        ],
+        [
+          13845437998270865439,
+          4600141040303780416,
+          13836794045644395323
+        ]
+      ],
+      "point_ids": [
+        34500,
+        34501
+      ],
+      "publication_authority": false,
+      "record_face": [
+        0,
+        2875935,
+        1
+      ],
+      "root_image_bits": null,
+      "rounding_boxes_bits": null,
+      "source_boxes": null,
+      "source_branch_u_bits": [
+        4619854808276319871,
+        4619854808276319878
+      ],
+      "source_native_field_cylinder": [
+        10,
+        30,
+        15
+      ],
+      "twisted_source_bits": null,
+      "typed_plane_bits": null
+    }
+  },
+  "finalChargedQueries": 1275,
+  "freshFingerprint": "9875508341830920921",
+  "publicationReady": false,
+  "savedWitness": {
+    "adaptiveRound": 0,
+    "face": {
+      "axis": 0,
+      "consumedForward": [
+        0,
+        0,
+        0
+      ],
+      "consumedReverse": [
+        0,
+        0,
+        0
+      ],
+      "consumers": [
+        {
+          "leaf": [
+            8,
+            42,
+            139,
+            105
+          ],
+          "side": 1
+        },
+        {
+          "leaf": [
+            8,
+            43,
+            139,
+            105
+          ],
+          "side": 0
+        }
+      ],
+      "coordinateBits": 13845437998270865420,
+      "key": 2875935,
+      "latticeMinimum": [
+        43,
+        139,
+        105
+      ],
+      "length": 1,
+      "pins": [
+        {
+          "chart": 20,
+          "parameterBits": 4625461115962507714,
+          "pointBits": [
+            13845437998270865424,
+            4600141040268314566,
+            13836794045644391861
+          ],
+          "pointId": 34500,
+          "typedKey": "Str(\"F0:2875935:20:16.938977439831\")"
+        },
+        {
+          "chart": 33,
+          "parameterBits": 4625994206746845443,
+          "pointBits": [
+            13845437998270865439,
+            4600141040303780416,
+            13836794045644395323
+          ],
+          "pointId": 34501,
+          "typedKey": "Str(\"F0:2875935:33:18.832896361390\")"
+        }
+      ],
+      "segments": [
+        [
+          34499,
+          34500
+        ],
+        [
+          34500,
+          34501
+        ],
+        [
+          34501,
+          34498
+        ]
+      ]
+    },
+    "featureFingerprint": "9875508341830920921",
+    "liveLattice": {
+      "maxDepth": 8,
+      "originBits": [
+        13848407119470511730,
+        13848772205100216761,
+        13848404044262182249
+      ],
+      "resolution": 256,
+      "sizeBits": 4629531531950843494,
+      "span": 257,
+      "stepBits": 4593502734931879526
+    },
+    "nativeAttempt": 0,
+    "originalCounts": {
+      "corners": 77,
+      "curves": 81,
+      "faces": 327372,
+      "leaves": 88510,
+      "pins": 5554,
+      "points": 61754,
+      "segments": 114823,
+      "strata": 74
+    },
+    "parentManifestSha256": "e18ac5dc5deff57801c90f6e449a79f288d55e7838c9e09e6e53486d23b2c49e",
+    "parentReceiptPath": "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round14-private-controls/A/private-receipt.json",
+    "parentReceiptSha256": "fc42a37ac53352de2eacc3571d7c33895d2371e98ef4da1db4aebbb9516f2b15",
+    "requestedCube": {
+      "max": [
+        13.7,
+        12.7,
+        13.7
+      ],
+      "min": [
+        -13.7,
+        -14.7,
+        -13.7
+      ]
+    },
+    "requestedTuning": {
+      "ambiguityResolution": "centerSample",
+      "blendCurvatureAnalytic": false,
+      "blendCurvatureDeg": 18,
+      "blendCurvatureRefine": true,
+      "boundsPaddingMm": 2,
+      "checkVertexLinks": true,
+      "cornerMergeTolDiagFraction": 1e-6,
+      "creaseAngleDeg": 30,
+      "curveChordTolMm": 0.02,
+      "debugOutput": false,
+      "depthMax": 8,
+      "depthMin": 5,
+      "edgeRootTolFraction": 0.001,
+      "enforceEdgeBalance": true,
+      "faceSnapEpsFraction": 0.05,
+      "failurePolicy": "partial",
+      "featureQueryInflate": 0.25,
+      "interiorVertexMode": "project",
+      "jitterRetries": 3,
+      "maxPolylinePointsPerCell": 16,
+      "maxTraceSteps": 20000,
+      "minDihedralDeg": 15,
+      "minTangencyAngleDeg": 2,
+      "normalVariationAnalytic": false,
+      "normalVariationDeg": 18,
+      "probeDeltaFactor": 10,
+      "profile": false,
+      "projectMaxIters": 8,
+      "qualityAudit": false,
+      "qualityMaxEditTrials": 10000,
+      "qualityRefinement": false,
+      "qualityRemeshing": false,
+      "qualityTriangulation": false,
+      "reRefineMaxRounds": 2,
+      "recoveryCull": true,
+      "seedCellSizeMm": 0,
+      "surfaceTolMm": 0.01,
+      "tangentialEpsilon": 0.05
+    },
+    "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+    "stage": "SERIAL_ROUND0_AFTER_CONTOUR_ALL_FACES_BEFORE_MESH_ALL_CELLS"
+  },
+  "scope": "focused REAL integrated typed-face gate and its shared numerical subgates; no private mesh",
+  "separateMismatchAdmissionChargedQueries": 1240,
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "successfulGate": {
+    "actual_axis_inverse_bits": [
+      [
+        4590148941457807195,
+        13826073728175355657
+      ],
+      [
+        13819041256642436145,
+        9223372036854775808
+      ]
+    ],
+    "admitted_branch_sign": 1,
+    "allowance_bits": 4510771306597374770,
+    "charts": [
+      20,
+      33
+    ],
+    "claimed_plane_bits": 13845437998270865420,
+    "cylinder_bits": [
+      0,
+      0,
+      0,
+      0,
+      4607182418800017408,
+      0,
+      4622269477551708570
+    ],
+    "derivative_interval_bits": [
+      [
+        [
+          13849941597898235920,
+          13849941597898235912
+        ],
+        [
+          13731475263877808133,
+          4508103227023032325
+        ],
+        [
+          13841297645525532676,
+          13841297644988661756
+        ]
+      ],
+      [
+        [
+          13826443436952765294,
+          13826443436805519669
+        ],
+        [
+          13835012542344477618,
+          13835012541917668980
+        ],
+        [
+          13829107484984162156,
+          13829107484836916514
+        ]
+      ]
+    ],
+    "detail": "",
+    "face": [
+      0,
+      2875935,
+      1
+    ],
+    "face_rectangle_bits": [
+      [
+        13845437998270865420,
+        4599558204703766528,
+        13836923294371165604
+      ],
+      [
+        13845437998270865420,
+        4601767783270945178,
+        13836647097050268273
+      ]
+    ],
+    "final_charged_queries": 1275,
+    "gate": "source_bound_unique_existing_root",
+    "hull_bits": [
+      [
+        13845437998270865420,
+        4600141039766863872,
+        13836794045898162176
+      ],
+      [
+        13845437998270865420,
+        4600141040840605696,
+        13836794045361291264
+      ]
+    ],
+    "original_strict_residual_bits": 4497260507715263282,
+    "parameter_bits": [
+      4625461115962507714,
+      4625994206746845443
+    ],
+    "pin_to_root_upper_bits": [
+      4423009271857744782,
+      4476835784683836047
+    ],
+    "point_bits": [
+      [
+        13845437998270865424,
+        4600141040268314566,
+        13836794045644391861
+      ],
+      [
+        13845437998270865439,
+        4600141040303780416,
+        13836794045644395323
+      ]
+    ],
+    "point_ids": [
+      34500,
+      34501
+    ],
+    "publication_authority": false,
+    "record_face": [
+      0,
+      2875935,
+      1
+    ],
+    "root_image_bits": [
+      [
+        13845437998270865420,
+        4600141040268305570,
+        13836794045644391989
+      ],
+      [
+        13845437998270865420,
+        4600141040268308401,
+        13836794045644391835
+      ]
+    ],
+    "rounding_boxes_bits": [
+      [
+        [
+          13845437998270865420,
+          4600141039766863872,
+          13836794045898162176
+        ],
+        [
+          13845437998270865420,
+          4600141040303734784,
+          13836794045361291264
+        ]
+      ],
+      [
+        [
+          13845437998270865420,
+          4600141040303734784,
+          13836794045898162176
+        ],
+        [
+          13845437998270865420,
+          4600141040840605696,
+          13836794045361291264
+        ]
+      ]
+    ],
+    "source_boxes": 1,
+    "source_branch_u_bits": [
+      4619854808276319871,
+      4619854808276319878
+    ],
+    "source_native_field_cylinder": [
+      10,
+      30,
+      15
+    ],
+    "twisted_source_bits": [
+      4607182418800017408,
+      0,
+      0,
+      0,
+      4607182418800017408,
+      0,
+      0,
+      0,
+      4607182418800017408,
+      0,
+      0,
+      0,
+      4607182418800017408,
+      0,
+      13835058055282163712,
+      0,
+      4620693217682128896,
+      4620693217682128896,
+      0,
+      4607182418800017408,
+      4619567317775286272,
+      4615828709385829946
+    ],
+    "typed_plane_bits": 13845437998270865420
+  }
+}

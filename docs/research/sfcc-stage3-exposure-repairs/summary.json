@@ -1,0 +1,66 @@
+{
+  "decision": "No candidate accepted; Stage3 remains open",
+  "baseline": {
+    "requiredIntervalCovered": false,
+    "lowerJointPreserved": true,
+    "curves": 81,
+    "corners": 77,
+    "unresolvedTrims": 29,
+    "unwiredEnds": 2
+  },
+  "A": {
+    "targetPhysicalCurves": [
+      20
+    ],
+    "targetAliasCurves": [
+      40
+    ],
+    "lowerJointPreserved": false,
+    "missingPairs": [
+      [
+        10,
+        31
+      ],
+      [
+        15,
+        31
+      ],
+      [
+        30,
+        31
+      ]
+    ],
+    "curves": 80,
+    "corners": 39,
+    "unresolvedTrims": 89,
+    "runtimeAccepted": false,
+    "additionalStaticIssue": "40-step bisection exhaustion does not markunknown",
+    "unwiredEnds": 92
+  },
+  "B": {
+    "requiredIntervalCovered": true,
+    "lowerJointPreserved": false,
+    "missingPairs": [
+      [
+        10,
+        31
+      ]
+    ],
+    "collateral": {
+      "corners": 40,
+      "curves": 76,
+      "unresolvedTrims": 83,
+      "unwiredEnds": 77
+    },
+    "runtimeAccepted": false
+  },
+  "C": {
+    "uncertaintyOnlyGeometryUnchanged": true,
+    "baselineUnresolved": 29,
+    "counterfactualUnresolved": 89,
+    "repair": false
+  },
+  "invalidExecution": "C first run used cachedbaselinebinary andran0tests; excluded. C-rebuilt valid. Allsubsequentbuilds clean task-ownedkernelcache and require testdiscovery.",
+  "fullMeshOrWasmOrGpuValidationRun": false,
+  "productionRuntimeChanged": false
+}

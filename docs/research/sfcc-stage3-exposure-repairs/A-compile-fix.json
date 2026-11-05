@@ -1,0 +1,8 @@
+{
+  "source": "/tmp/sfcc-stage3-a-buildfix",
+  "base": "/tmp/sfcc-stage3-a",
+  "scope": "syntax-only parentheses for json! array.map expression in test receipt",
+  "sha256": "55c3abb68f07cb512e93cd4262b53f9b203dace5cc51ffcf3f1a7dac5f0f383c",
+  "reviewerApproved": true,
+  "geometryTestsRanBeforeCorrection": false
+}

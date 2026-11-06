@@ -1,0 +1,13 @@
+{
+  "step": "focused-6",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round27-upper-closure/B/kernel-tests",
+    "stage4_c_complete_source_admission_gate",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 44.62142179199873,
+  "elapsedSeconds": 1.1299202919981326,
+  "exitCode": 101,
+  "timedOut": false
+}

@@ -1,0 +1,13 @@
+{
+  "step": "focused-7",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round27-upper-closure/A-component-fixed/kernel-tests",
+    "correlated_storage_staging_and_typed_lifecycle_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 39.080437333999726,
+  "elapsedSeconds": 0.006112625000241678,
+  "exitCode": 0,
+  "timedOut": false
+}

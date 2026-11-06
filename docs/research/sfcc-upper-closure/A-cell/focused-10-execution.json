@@ -1,0 +1,13 @@
+{
+  "step": "focused-10",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round27-upper-closure/A-cell/kernel-tests",
+    "stage4_component_b_topology_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 35.753835791998426,
+  "elapsedSeconds": 0.0059929580020252615,
+  "exitCode": 0,
+  "timedOut": false
+}

@@ -1,0 +1,424 @@
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs
+@@ -102,7 +102,7 @@
+         json!({"status":"complete_required_consumer_enumeration","typedPins":pin_count,"changedFaces":records,"requiredFaceIds":required.into_iter().collect::<Vec<_>>(),"leafConsumers":leaves,"includesIndirectPointUsers":true}),
+     )
+ }
+-fn live_digest(faces: &[HashMap<i64, FaceRecord>; 3], live: &PointTable) -> String {
++pub(super) fn live_digest(faces: &[HashMap<i64, FaceRecord>; 3], live: &PointTable) -> String {
+     let mut h = 0xcbf29ce484222325u64;
+     let mut word = |n: u64| {
+         for b in n.to_le_bytes() {
+@@ -181,6 +181,8 @@
+     cube: &SfccWorldCube,
+     tuning: &PipelineTuning,
+ ) -> bool {
++    #[cfg(test)]
++    if super::stage4_component_b::round0(tree, f, oct, faces, live, opts) { return true; }
+     if !REQUESTED.with(|r| r.replace(false)) {
+         return false;
+     }
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -0,0 +1,401 @@
++//! Test-only Stage 4 capture. Missing prerequisites stop before octree preparation.
++use super::*;
++use crate::math::grid::{stride_at_level, unpack_point};
++use crate::sdf::CsgNode;
++use crate::sfcc::{
++    cell_mesh::CellMeshOptions,
++    face_contour::FaceRecord,
++    octree::SfccOctree,
++    pipeline::{PipelineTuning, SfccWorldCube},
++    point_table::{PointKey, PointTable},
++    shared_arc_plan::{cell_faces, PrivateCandidate},
++    stage4_source_preflight_c::selected_pair_c,
++};
++use serde_json::{json, Value};
++use std::{
++    cell::RefCell,
++    collections::{BTreeMap, BTreeSet, HashMap},
++};
++
++const CAP: usize = 64 * 1024 * 1024;
++thread_local! { static REQUEST: RefCell<Option<(u64,[usize;2])>> = const { RefCell::new(None) }; }
++struct RequestScope;
++impl Drop for RequestScope {
++    fn drop(&mut self) {
++        REQUEST.with(|s| *s.borrow_mut() = None);
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = None);
++    }
++}
++fn request(fingerprint: u64, pair: [usize; 2]) -> RequestScope {
++    assert!(
++        DIAGNOSTIC.with(|s| s.borrow().is_none()),
++        "another diagnostic owns the capture"
++    );
++    REQUEST.with(|s| {
++        assert!(s.borrow().is_none());
++        *s.borrow_mut() = Some((fingerprint, pair));
++    });
++    RequestScope
++}
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn write_report(report: &Value) {
++    let bytes = serde_json::to_vec_pretty(report).expect("diagnostic serialization");
++    assert!(
++        bytes.len() <= CAP,
++        "Stage4 diagnostic64MiB cap; no truncated acceptance"
++    );
++    std::fs::write(
++        std::env::var("SFCC_STAGE4_COMPONENT_B_RECEIPT").expect("root receipt path"),
++        bytes,
++    )
++    .expect("receipt write");
++}
++fn source_rows(f: &SfccFeatureSet, ids: [usize; 2]) -> Value {
++    json!(ids.map(|id| {let c=&f.curves[id];json!({"chart":id,"sourcePair":c.adjacent_strata,
++        "sources":c.adjacent_strata.map(|s|f.strata[s].graph_capture_identity_b()),
++        "rangeHex":[hex(c.t_min),hex(c.t_max)],"cornerEnds":[c.corner_start,c.corner_end],
++        "endpointsHex":[c.point_at_checked(c.t_min).map(|p|p.map(hex)),c.point_at_checked(c.t_max).map(|p|p.map(hex))]})}))
++}
++
++// Counts and links describe an open component; closed-manifold acceptance is not assumed.
++fn topology(triangles: &[usize], point_count: usize) -> Result<Value, &'static str> {
++    if triangles.is_empty() {
++        return Err("empty_candidate_mesh");
++    }
++    if point_count > 4096 || triangles.len() > 3 * 4096 || triangles.len() % 3 != 0 {
++        return Err("component_geometry_cap");
++    }
++    let mut edges: BTreeMap<[usize; 2], Vec<[usize; 2]>> = BTreeMap::new();
++    let mut links: BTreeMap<usize, BTreeMap<usize, BTreeSet<usize>>> = BTreeMap::new();
++    let mut faces = BTreeSet::new();
++    let mut duplicates = 0;
++    for t in triangles.chunks_exact(3) {
++        if t.iter().any(|&p| p >= point_count) || t[0] == t[1] || t[1] == t[2] || t[2] == t[0] {
++            return Err("invalid_triangle_index");
++        }
++        let mut key = [t[0], t[1], t[2]];
++        key.sort();
++        if !faces.insert(key) {
++            duplicates += 1;
++        }
++        for i in 0..3 {
++            let (v, a, b) = (t[i], t[(i + 1) % 3], t[(i + 2) % 3]);
++            let mut e = [v, a];
++            e.sort();
++            edges.entry(e).or_default().push([v, a]);
++            let link = links.entry(v).or_default();
++            link.entry(a).or_default().insert(b);
++            link.entry(b).or_default().insert(a);
++        }
++    }
++    let boundary: Vec<_> = edges
++        .values()
++        .filter(|uses| uses.len() == 1)
++        .map(|uses| uses[0])
++        .collect();
++    let boundary_vertices: BTreeSet<_> = boundary.iter().flatten().copied().collect();
++    let mut bad_links = Vec::new();
++    for (&v, link) in &links {
++        let start = *link.keys().next().ok_or("empty_vertex_link")?;
++        let mut todo = vec![start];
++        let mut seen = BTreeSet::new();
++        while let Some(n) = todo.pop() {
++            if seen.insert(n) {
++                todo.extend(link[&n].iter().copied());
++            }
++        }
++        let ones = link.values().filter(|ns| ns.len() == 1).count();
++        let degrees = link.values().all(|ns| ns.len() == 2 || ns.len() == 1);
++        let shape = if boundary_vertices.contains(&v) {
++            ones == 2
++        } else {
++            ones == 0 && link.len() >= 3
++        };
++        if seen.len() != link.len() || !degrees || !shape {
++            bad_links.push(v);
++        }
++    }
++    let nonmanifold = edges.values().filter(|uses| uses.len() > 2).count();
++    let misoriented = edges
++        .values()
++        .filter(|uses| uses.len() == 2 && uses[0] != [uses[1][1], uses[1][0]])
++        .count();
++    Ok(
++        json!({"scope":"indexed open-component combinatorics only; no geometric or outside-contact verdict",
++        "triangles":triangles.len()/3,"usedVertices":links.len(),"edges":edges.len(),"boundaryEdges":boundary,
++        "duplicateFaces":duplicates,"nonManifoldEdges":nonmanifold,"misorientedInternalEdges":misoriented,
++        "invalidVertexLinks":bad_links,"localTopologyValid":duplicates==0&&nonmanifold==0&&misoriented==0&&bad_links.is_empty()}),
++    )
++}
++
++fn candidate_inventory(
++    candidate: &PrivateCandidate,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++) -> Result<Value, &'static str> {
++    let candidate_topology = topology(&candidate.triangles, candidate.points.count())?;
++    let selected: BTreeSet<_> = candidate.receipt.consumers.iter().copied().collect();
++    if selected.len() > 256 {
++        return Err("leaf_consumer_cap");
++    }
++    let mut required = BTreeSet::new();
++    for cell in &oct.leaves {
++        if selected.contains(&[cell.level as i64, cell.ix, cell.iy, cell.iz]) {
++            required.extend(cell_faces(oct, faces, cell));
++        }
++    }
++    if required.len() > 1536 {
++        return Err("required_face_cap");
++    }
++    let mut consumers: BTreeMap<_, Vec<([i64; 4], usize, bool)>> = BTreeMap::new();
++    for cell in &oct.leaves {
++        let id = [cell.level as i64, cell.ix, cell.iy, cell.iz];
++        let stride = stride_at_level(&oct.lat, cell.level);
++        let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
++        for face in cell_faces(oct, faces, cell)
++            .into_iter()
++            .filter(|f| required.contains(f))
++        {
++            let g = unpack_point(&oct.lat, face.1);
++            let side = if g[face.0] == base[face.0] {
++                0
++            } else if g[face.0] == base[face.0] + stride {
++                1
++            } else {
++                return Err("consumer_face_plane");
++            };
++            let row = consumers.entry(face).or_default();
++            if row.len() >= 2 {
++                return Err("too_many_face_consumers");
++            }
++            row.push((id, side, selected.contains(&id)));
++        }
++    }
++    let mut interface_rows = Vec::new();
++    let mut expected = BTreeMap::<[usize; 2], usize>::new();
++    let mut binding_failures = Vec::new();
++    for face in &required {
++        let uses = consumers.get(face).ok_or("missing_required_consumers")?;
++        let inside: Vec<_> = uses.iter().filter(|u| u.2).collect();
++        if inside.len() != 1 {
++            continue;
++        }
++        let r = &faces[face.0][&face.1];
++        let mut bindings = BTreeMap::new();
++        for id in r
++            .segments
++            .iter()
++            .flat_map(|s| [s.a, s.b])
++            .chain(r.pins.iter().map(|p| p.point_id))
++        {
++            if id >= live.count() {
++                return Err("invalid_frontier_point");
++            }
++            let mapped = match live.key_at(id) {
++                PointKey::Num(k) => candidate.points.lookup(*k),
++                PointKey::Str(k) => candidate.points.lookup_str(k),
++                PointKey::Unkeyed => None,
++            };
++            let identical = mapped.is_some_and(|p| {
++                [live.x(id), live.y(id), live.z(id)].map(f64::to_bits)
++                    == [
++                        candidate.points.x(p),
++                        candidate.points.y(p),
++                        candidate.points.z(p),
++                    ]
++                    .map(f64::to_bits)
++            });
++            if !identical {
++                binding_failures.push(id);
++            }
++            if let Some(mapped) = mapped {
++                bindings.insert(id, mapped);
++            }
++        }
++        for s in &r.segments {
++            if let (Some(&a), Some(&b)) = (bindings.get(&s.a), bindings.get(&s.b)) {
++                let e = if inside[0].1 == 1 { [b, a] } else { [a, b] };
++                *expected.entry(e).or_default() += 1;
++            }
++        }
++        interface_rows.push(json!({"face":face,"consumers":uses,"outsideLeafPresent":uses.iter().any(|u|!u.2),
++            "oldSegments":r.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>(),"pointBindings":bindings}));
++    }
++    let boundary: Vec<[usize; 2]> =
++        serde_json::from_value(candidate_topology["boundaryEdges"].clone())
++            .map_err(|_| "boundary_encoding")?;
++    let mut actual = BTreeMap::new();
++    for edge in boundary {
++        *actual.entry(edge).or_insert(0usize) += 1;
++    }
++    let matching = actual == expected && binding_failures.is_empty();
++    let points:Vec<_>=(0..candidate.points.count()).map(|p|json!({"id":p,"positionHex":[hex(candidate.points.x(p)),hex(candidate.points.y(p)),hex(candidate.points.z(p))],
++        "normalHex":[hex(candidate.points.nx(p)),hex(candidate.points.ny(p)),hex(candidate.points.nz(p))],"key":format!("{:?}",candidate.points.key_at(p))})).collect();
++    Ok(
++        json!({"completeCandidateGeometry":true,"points":points,"triangles":candidate.triangles,
++        "topology":candidate_topology,"requiredFaceIds":required,"frontierFaces":interface_rows,
++        "frontierBindingFailures":binding_failures,"orientedBoundaryMatchesOriginalFaceSegments":matching,
++        "sameStageOutsideTrianglesAvailable":false,"outsideContactAudit":"not_reached_no_same_stage_outside_mesh_at_this_barrier",
++        "fullComponentAccepted":false,"publicationReady":false}),
++    )
++}
++
++pub(super) fn round0(
++    tree: &CsgNode,
++    f: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++) -> bool {
++    let Some((fingerprint, expected_ids)) = REQUEST.with(|s| s.borrow_mut().take()) else {
++        return false;
++    };
++    let before = super::diagnostic::live_digest(faces, live);
++    let mut report = json!({"stage":"SERIAL_ROUND0_AFTER_CONTOUR_ALL_FACES_BEFORE_MESH_ALL_CELLS",
++        "expectedFingerprint":fingerprint.to_string(),"fingerprint":f.fingerprint().to_string(),
++        "liveDigestBefore":before,"constructionAttempted":false,"fullComponentAccepted":false,"publicationReady":false});
++    let selected = selected_pair_c(f);
++    let storage_scope = crate::sfcc::private_storage_observation::begin();
++    DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"finalChargedQueries":0})));
++    report["outcome"] = match selected {
++        Err(reason) => json!({"kind":"refusal","reason":reason}),
++        Ok(ids) if ids != expected_ids || f.fingerprint() != fingerprint => {
++            json!({"kind":"refusal","reason":"preflight_source_drift","selected":ids})
++        }
++        Ok(ids) => {
++            report["sources"] = source_rows(f, ids);
++            report["constructionAttempted"] = json!(true);
++            match crate::sfcc::shared_arc_plan::construct_private(
++                tree, f, ids, oct, faces, live, opts,
++            ) {
++                Err(refusal) => json!({"kind":"refusal","refusal":refusal}),
++                Ok(candidate) => {
++                    report["candidateInventory"] =
++                        match candidate_inventory(&candidate, oct, faces, live) {
++                            Ok(v) => v,
++                            Err(e) => json!({"status":"refused","reason":e}),
++                        };
++                    json!({"kind":"private_candidate_publication_blocked","receipt":candidate.receipt,"plan":candidate.plan})
++                }
++            }
++        }
++    };
++    report["admissionAndQueryEvidence"] = DIAGNOSTIC
++        .with(|s| s.borrow_mut().take())
++        .unwrap_or(Value::Null);
++    report["storageReservation"] = json!(storage_scope.take());
++    report["liveDigestAfter"] = json!(super::diagnostic::live_digest(faces, live));
++    report["liveStatePreserved"] = json!(report["liveDigestBefore"] == report["liveDigestAfter"]);
++    report["stoppedBeforeProductionCellMeshingAndPostassembly"] = json!(true);
++    write_report(&report);
++    true
++}
++
++#[test]
++fn stage4_component_b_original_source_attempt() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let cube = SfccWorldCube {
++        min_x: fixture["cube"]["min"][0].as_f64().unwrap(),
++        min_y: fixture["cube"]["min"][1].as_f64().unwrap(),
++        min_z: fixture["cube"]["min"][2].as_f64().unwrap(),
++        size: fixture["cube"]["max"][0].as_f64().unwrap()
++            - fixture["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let tuning = PipelineTuning::default();
++    let effective = super::diagnostic::effective_tuning(&tuning);
++    for (key, value) in effective.as_object().unwrap() {
++        let requested = &fixture["tuning"][key];
++        if value.is_number() && requested.is_number() {
++            assert_eq!(
++                value.as_f64(),
++                requested.as_f64(),
++                "fixture/native tuning drift: {key}"
++            );
++        } else {
++            assert_eq!(value, requested, "fixture/native tuning drift: {key}");
++        }
++    }
++    let context = crate::sfcc::pipeline::build_pipeline_context(&root, &cube, &tuning);
++    let f = &context.features;
++    let selected = selected_pair_c(f);
++    let mut report = json!({"stage":"FEATURE_SOURCE_PREFLIGHT_BEFORE_OCTREE","sourceConfigSha256":fixture["sourceConfigSha256"],
++        "fingerprint":f.fingerprint().to_string(),"effectiveTuning":super::diagnostic::effective_tuning(&tuning),
++        "constructionAttempted":false,"octreeBuilt":false,"facesPrepared":false,"fullComponentAccepted":false,"publicationReady":false});
++    let ids = match selected {
++        Ok(ids) => ids,
++        Err(reason) => {
++            report["outcome"] = json!({"kind":"refusal","reason":reason});
++            write_report(&report);
++            return;
++        }
++    };
++    report["sources"] = source_rows(f, ids);
++    match super::admit(f, ids, tuning.curve_chord_tol_mm) {
++        Err(refusal) => {
++            report["outcome"] = json!({"kind":"refusal","refusal":refusal});
++            report["topologyAndInterfaceAudits"] = json!("not_reached_no_private_candidate");
++            write_report(&report);
++            return;
++        }
++        Ok((_, _)) => {}
++    }
++    let _scope = request(f.fingerprint(), ids);
++    drop(context);
++    let result = crate::sfcc::pipeline::run_sfcc_pipeline(&root, &cube, &tuning);
++    assert!(
++        result.cancelled,
++        "private diagnostic must stop before publication"
++    );
++    let report: Value = serde_json::from_slice(
++        &std::fs::read(std::env::var("SFCC_STAGE4_COMPONENT_B_RECEIPT").unwrap()).unwrap(),
++    )
++    .unwrap();
++    assert_eq!(report["liveStatePreserved"], true);
++    assert_eq!(report["publicationReady"], false);
++}
++
++#[test]
++fn stage4_component_b_topology_controls() {
++    let tetra = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3];
++    let closed = topology(&tetra, 4).unwrap();
++    assert_eq!(closed["localTopologyValid"], true);
++    assert!(closed["boundaryEdges"].as_array().unwrap().is_empty());
++    let disk = topology(&[0, 1, 2, 0, 2, 3], 4).unwrap();
++    assert_eq!(disk["localTopologyValid"], true);
++    assert_eq!(disk["boundaryEdges"].as_array().unwrap().len(), 4);
++    let bowtie = topology(&[0, 1, 2, 0, 3, 4], 5).unwrap();
++    assert_eq!(bowtie["localTopologyValid"], false);
++    assert_eq!(bowtie["invalidVertexLinks"], json!([0]));
++    let reversed = topology(&[0, 1, 2, 0, 3, 2], 4).unwrap();
++    assert_eq!(reversed["misorientedInternalEdges"], 1);
++    let duplicate = topology(&[0, 1, 2, 0, 2, 1], 3).unwrap();
++    assert_eq!(duplicate["duplicateFaces"], 1);
++    assert!(topology(&[], 0).is_err());
++    assert!(topology(&[0, 1, 4], 4).is_err());
++    assert!(topology(&[0, 1], 4).is_err());
++}
++#[test]
++fn stage4_component_b_request_scope_cleans_up() {
++    let result = std::panic::catch_unwind(|| {
++        let _scope = request(1, [2, 3]);
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"active":true})));
++        panic!("scope control")
++    });
++    assert!(result.is_err());
++    assert!(REQUEST.with(|s| s.borrow().is_none()));
++    assert!(DIAGNOSTIC.with(|s| s.borrow().is_none()));
++    let unrelated = json!({"owner":"unrelated diagnostic"});
++    DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(unrelated.clone()));
++    let refused = std::panic::catch_unwind(|| request(2, [3, 4]));
++    assert!(refused.is_err());
++    assert!(REQUEST.with(|s| s.borrow().is_none()));
++    assert_eq!(DIAGNOSTIC.with(|s| s.borrow_mut().take()), Some(unrelated));
++}

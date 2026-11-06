@@ -1485,6 +1485,36 @@ Next establish source-bound activation/closure and ordered native-to-outgoing
 transport with ambiguity, query and transaction refusals preserved. Production
 runtime and component geometry remain unchanged/unvalidated respectively.
 
+### Upper handoff admitted; fresh component reaches lower and budget refusals
+
+The [upper closure implementation and fourth review](sfcc-upper-closure/README.md)
+select A-cell for the bounded upper handoff and sampler integration. Canonical
+incoming/outgoing spans meet at the proved event, actual boundary queries are
+associated, and positive closure remains separate from discovery ownership. A
+synthetic counterexample shows the old private admission could accept an incoming-
+only event despite a proved successor; the new source-event inventory guard
+rejects that omission. All 26 focused checks and the non-test library build pass.
+
+The first real component attempt passed source admission and fresh face/pin/storage
+gates but refused in the original upper cell because its arc sampler ignored the
+qualified closure. Exact local replay establishes old-None/new-Some behavior with
+all query, box, chord and resource checks retained. Updating those three sampler
+uses permits reconstruction to progress beyond the upper event.
+
+The next attempt records 199 leaf consumers, 1,000 required faces, 198 successful
+typed-face certificates, 396 pin bounds and a 20,243,822-byte combined reservation.
+It first records `path_nodes_lt_two` at lower cell `[8,51,116,172]` for lifted
+chart 75, unwired at corner 13. Subsequent validation of 838 successful generated
+queries reaches the unchanged 16,384 cap and returns `TotalCap`, masking that
+earlier graph refusal in the top-level reason. Both are retained in chronology.
+The complete candidate is discarded; live digest `aa6ab69dfb79125d` is unchanged.
+
+Next establish the lower event's required lifted continuation and independently
+audit query reservation/spend, inverse/cache cost and failure precedence. No
+reuse of the upper closure by source IDs alone, gate relaxation or cap increase
+is justified. Full-component geometry, interfaces, source-patch ownership and
+production acceptance remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

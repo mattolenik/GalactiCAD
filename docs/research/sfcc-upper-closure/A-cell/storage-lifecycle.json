@@ -1,0 +1,466 @@
+{
+  "arithmetic": {
+    "combinedOverflow": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging.combined",
+          "lhs": 18446744073709551104,
+          "operation": "checked_add_overflow",
+          "rhs": 16777216
+        },
+        "input": "Formula"
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 36028797018963967,
+      "key_bytes_prefix": 0,
+      "needed_point_count": 0,
+      "point_key_bytes": 0,
+      "scope": "synthetic combined staging overflow",
+      "staged_bytes": null,
+      "staged_items": 36028797018963967,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 18446744073709551104,
+        "key_bytes_times_4": 0,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "exactStagingCap": {
+      "allowed": true,
+      "cap": 67108864,
+      "failure": null,
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 97280,
+      "key_bytes_prefix": 0,
+      "needed_point_count": 0,
+      "point_key_bytes": 0,
+      "scope": "synthetic exact staging cap",
+      "staged_bytes": 67108864,
+      "staged_items": 97280,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 49807360,
+        "key_bytes_times_4": 0,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "itemsProductOverflow": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging.items",
+          "lhs": 36028797018963968,
+          "operation": "checked_mul_overflow",
+          "rhs": 512
+        },
+        "input": "Formula"
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 36028797018963968,
+      "key_bytes_prefix": 0,
+      "needed_point_count": 0,
+      "point_key_bytes": 0,
+      "scope": "synthetic items product overflow",
+      "staged_bytes": null,
+      "staged_items": 36028797018963968,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": null,
+        "key_bytes_times_4": 0,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "keyProductOverflow": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging.key_bytes",
+          "lhs": 4611686018427387904,
+          "operation": "checked_mul_overflow",
+          "rhs": 4
+        },
+        "input": "Formula"
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 0,
+      "key_bytes_prefix": 4611686018427387904,
+      "needed_point_count": 0,
+      "point_key_bytes": 4611686018427387904,
+      "scope": "synthetic key product overflow",
+      "staged_bytes": null,
+      "staged_items": 0,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 0,
+        "key_bytes_times_4": null,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "keySumOverflow": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging.key_sum",
+          "lhs": 18446744073709551615,
+          "operation": "checked_add_overflow",
+          "rhs": 1
+        },
+        "input": {
+          "PointKey": {
+            "bytes": 1,
+            "point": 3
+          }
+        }
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 0,
+      "key_bytes_prefix": 18446744073709551615,
+      "needed_point_count": 0,
+      "point_key_bytes": null,
+      "scope": "synthetic key sum overflow",
+      "staged_bytes": null,
+      "staged_items": 0,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 0,
+        "key_bytes_times_4": null,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "overStagingCap": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging",
+          "lhs": 67109376,
+          "operation": "64MiB_cap",
+          "rhs": 67108864
+        },
+        "input": "Formula"
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 97281,
+      "key_bytes_prefix": 0,
+      "needed_point_count": 0,
+      "point_key_bytes": 0,
+      "scope": "synthetic staging over cap",
+      "staged_bytes": 67109376,
+      "staged_items": 97281,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 49807872,
+        "key_bytes_times_4": 0,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "pinSumOverflow": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging.pin_sum",
+          "lhs": 18446744073709551615,
+          "operation": "checked_add_overflow",
+          "rhs": 1
+        },
+        "input": {
+          "Face": {
+            "axis": 0,
+            "key": 1,
+            "length": 1,
+            "pins": 1,
+            "segments": 18446744073709551615
+          }
+        }
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 18446744073709551615,
+      "key_bytes_prefix": 0,
+      "needed_point_count": 0,
+      "point_key_bytes": 0,
+      "scope": "synthetic pin sum overflow",
+      "staged_bytes": null,
+      "staged_items": null,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": null,
+        "key_bytes_times_4": 0,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "pointsProductOverflow": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging.points",
+          "lhs": 18446744073709551615,
+          "operation": "checked_mul_overflow",
+          "rhs": 1024
+        },
+        "input": {
+          "PointCount": 18446744073709551615
+        }
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 0,
+      "key_bytes_prefix": 0,
+      "needed_point_count": 18446744073709551615,
+      "point_key_bytes": 0,
+      "scope": "synthetic points product overflow",
+      "staged_bytes": null,
+      "staged_items": 0,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 0,
+        "key_bytes_times_4": 0,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": null
+      }
+    },
+    "segmentSumOverflow": {
+      "allowed": false,
+      "cap": 67108864,
+      "failure": {
+        "arithmetic": {
+          "category": "staging.segment_sum",
+          "lhs": 18446744073709551615,
+          "operation": "checked_add_overflow",
+          "rhs": 1
+        },
+        "input": {
+          "Face": {
+            "axis": 1,
+            "key": 2,
+            "length": 1,
+            "pins": 0,
+            "segments": 1
+          }
+        }
+      },
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 18446744073709551615,
+      "key_bytes_prefix": 0,
+      "needed_point_count": 0,
+      "point_key_bytes": 0,
+      "scope": "synthetic segment sum overflow",
+      "staged_bytes": null,
+      "staged_items": null,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": null,
+        "key_bytes_times_4": 0,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 0
+      }
+    },
+    "valid": {
+      "allowed": true,
+      "cap": 67108864,
+      "failure": null,
+      "fixed_helper_bytes": 17301504,
+      "historical_round16_staged_bytes": null,
+      "items_prefix": 19,
+      "key_bytes_prefix": 107,
+      "needed_point_count": 3,
+      "point_key_bytes": 107,
+      "scope": "synthetic count-only staging control; no geometry claim",
+      "staged_bytes": 17314732,
+      "staged_items": 19,
+      "terms": {
+        "helper_16384_times_1024": 16777216,
+        "items_times_512": 9728,
+        "key_bytes_times_4": 428,
+        "pieces_128_times_4096": 524288,
+        "points_times_1024": 3072
+      }
+    }
+  },
+  "historicalRound16StagedBytes": null,
+  "nativeStorage": {
+    "bound": 9455,
+    "boundScope": "one native report/state/row-buffer with explicit temporary layouts; excludes JSON trees, serialization, unrelated diagnostics and RSS",
+    "failureSize": 48,
+    "inputSize": 48,
+    "ledgerSize": 32,
+    "maximumRows": 32,
+    "observationCellSize": 504,
+    "observedCapacity": 32,
+    "reportSize": 184,
+    "rowAlignment": 8,
+    "rowBufferNeverGrew": true,
+    "rowSize": 104,
+    "stagingFailureSize": 96,
+    "stagingReportSize": 312,
+    "termArraySize": 80,
+    "termsSize": 80,
+    "unchangedReservation": 16384
+  },
+  "publicationReady": false,
+  "scope": "focused checked staging and native typed-resource lifecycle; all counts/source here synthetic, no geometry execution",
+  "typedLifecycle": {
+    "afterAbandonedScope": {
+      "source": null,
+      "staging": null
+    },
+    "dropClearsState": true,
+    "jsonExpansionOnlyAfterTake": true,
+    "newSourceDropsPriorLedgerBeforeInspect": true,
+    "replacementOverflow": {
+      "source": {
+        "accounting_overhead_bytes": 16384,
+        "allowed": false,
+        "cap": 67108864,
+        "combined_bytes": null,
+        "complete": true,
+        "failure": {
+          "category": "combined",
+          "lhs": 18446744073709551615,
+          "operation": "checked_add_overflow",
+          "rhs": 344
+        },
+        "feature_inline_bytes": 344,
+        "ledger": {
+          "owned_reservation": 0,
+          "rows": []
+        },
+        "native_report_storage_bound": 9455,
+        "native_row_capacity": 32,
+        "scope": "owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS",
+        "staged_bytes": 18446744073709551615,
+        "staged_semantics": "actual caller staged_bytes; not inferred from face count"
+      },
+      "staging": null
+    },
+    "sourceOneByteOver": {
+      "source": {
+        "accounting_overhead_bytes": 16384,
+        "allowed": false,
+        "cap": 67108864,
+        "combined_bytes": 67108865,
+        "complete": true,
+        "failure": {
+          "category": "combined",
+          "lhs": 67108865,
+          "operation": "64MiB_cap",
+          "rhs": 67108864
+        },
+        "feature_inline_bytes": 344,
+        "ledger": {
+          "owned_reservation": 0,
+          "rows": []
+        },
+        "native_report_storage_bound": 9455,
+        "native_row_capacity": 32,
+        "scope": "owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS",
+        "staged_bytes": 67092137,
+        "staged_semantics": "actual caller staged_bytes; not inferred from face count"
+      },
+      "staging": null
+    },
+    "stagingFailureBeforeSource": {
+      "source": null,
+      "staging": {
+        "allowed": false,
+        "cap": 67108864,
+        "failure": {
+          "arithmetic": {
+            "category": "staging.pin_sum",
+            "lhs": 18446744073709551615,
+            "operation": "checked_add_overflow",
+            "rhs": 1
+          },
+          "input": {
+            "Face": {
+              "axis": 0,
+              "key": 1,
+              "length": 1,
+              "pins": 1,
+              "segments": 18446744073709551615
+            }
+          }
+        },
+        "fixed_helper_bytes": 17301504,
+        "historical_round16_staged_bytes": null,
+        "items_prefix": 18446744073709551615,
+        "key_bytes_prefix": 0,
+        "needed_point_count": 0,
+        "point_key_bytes": 0,
+        "scope": "synthetic pre-source staging refusal",
+        "staged_bytes": null,
+        "staged_items": null,
+        "terms": {
+          "helper_16384_times_1024": 16777216,
+          "items_times_512": null,
+          "key_bytes_times_4": 0,
+          "pieces_128_times_4096": 524288,
+          "points_times_1024": 0
+        }
+      }
+    },
+    "success": {
+      "source": {
+        "accounting_overhead_bytes": 16384,
+        "allowed": true,
+        "cap": 67108864,
+        "combined_bytes": 67108864,
+        "complete": true,
+        "failure": null,
+        "feature_inline_bytes": 344,
+        "ledger": {
+          "owned_reservation": 0,
+          "rows": []
+        },
+        "native_report_storage_bound": 9455,
+        "native_row_capacity": 32,
+        "scope": "owned clone layouts with explicit allocation headroom plus supplied staging; excludes retained immutable Arc payloads and process RSS",
+        "staged_bytes": 67092136,
+        "staged_semantics": "actual caller staged_bytes; not inferred from face count"
+      },
+      "staging": {
+        "allowed": true,
+        "cap": 67108864,
+        "failure": null,
+        "fixed_helper_bytes": 17301504,
+        "historical_round16_staged_bytes": null,
+        "items_prefix": 0,
+        "key_bytes_prefix": 12447658,
+        "needed_point_count": 0,
+        "point_key_bytes": 12447658,
+        "scope": "synthetic exact combined boundary from the unchanged staging formula",
+        "staged_bytes": 67092136,
+        "staged_items": 0,
+        "terms": {
+          "helper_16384_times_1024": 16777216,
+          "items_times_512": 0,
+          "key_bytes_times_4": 49790632,
+          "pieces_128_times_4096": 524288,
+          "points_times_1024": 0
+        }
+      }
+    },
+    "takeClearsState": true
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round27-upper-closure/C/kernel-tests",
+    "closure_c_required_outgoing_source_obligation_cannot_be_omitted",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 53.67190166599903,
+  "elapsedSeconds": 1.1352927920015645,
+  "exitCode": 101,
+  "timedOut": false
+}

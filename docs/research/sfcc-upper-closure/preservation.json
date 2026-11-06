@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "label": "A",
+      "inputs": 169,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A-reviewed",
+      "inputs": 169,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A-minimal",
+      "inputs": 169,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A-component",
+      "inputs": 170,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A-component-fixed",
+      "inputs": 170,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "B",
+      "inputs": 170,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "C",
+      "inputs": 169,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A-cell",
+      "inputs": 172,
+      "flatPatchRestoresExecutedInputs": true
+    }
+  ],
+  "samplerIntegrationPreservesFreshTypedCertificatesAndStorage": true
+}

@@ -1,0 +1,17 @@
+
+running 1 test
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_c_tests::closure_c_required_outgoing_source_obligation_cannot_be_omitted ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_c_tests::closure_c_required_outgoing_source_obligation_cannot_be_omitted' (4024170) panicked at kernel/src/sfcc/closure_c_tests.rs:319:5:
+assertion `left == right` failed: passing declared endpoint/transport checks must not be mistaken for complete incident source coverage
+  left: Bool(true)
+ right: false
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_c_tests::closure_c_required_outgoing_source_obligation_cannot_be_omitted
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 346 filtered out; finished in 1.13s
+

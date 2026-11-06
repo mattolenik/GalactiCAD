@@ -204,3 +204,9 @@ binaries remain in local `.testresults`, not Git.
 
 Production is unchanged. Complete handoff, Stage 4 geometry/interfaces, current-HEAD
 integration, full-model acceptance and general multi-sheet reconstruction remain open.
+
+The [subsequent closure implementation](../sfcc-upper-closure/README.md) installs
+the source-bound upper event and outgoing prefix, strengthens incident coverage,
+and passes private-arc admission. A qualified cell-sampler integration gets past
+the upper cell. The fresh component still refuses at a lower lifted path and
+later reaches its query cap; no complete mesh acceptance follows.

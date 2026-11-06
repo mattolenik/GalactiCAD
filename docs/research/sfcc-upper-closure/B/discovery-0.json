@@ -1,0 +1,9 @@
+{
+  "filter": "closure_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_consumer_b::tests::closure_b_canonical_membership_is_not_consumed_trace_or_handoff_authority",
+    "sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_consumer_b::tests::closure_b_point_membership_cannot_hide_missing_incident_sources",
+    "sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_consumer_b::tests::closure_b_refuses_wrong_descriptor_registry_source_and_parameters"
+  ],
+  "exitCode": 0
+}

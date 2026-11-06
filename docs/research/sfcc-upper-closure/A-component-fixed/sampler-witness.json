@@ -1,0 +1,43 @@
+{
+  "schema": "sfcc-upper-cell-sampler-v1",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "fingerprint": "6620945114087557251",
+  "cell": [
+    7,
+    36,
+    79,
+    29
+  ],
+  "curve": 76,
+  "strata": [
+    38,
+    39
+  ],
+  "spanHex": [
+    "0000000000000000",
+    "3fd3b050a7455a20"
+  ],
+  "cellBoxHex": [
+    "c01b869b36dc59b2",
+    "40054206f7300bd0",
+    "c0212fb4cdee2703",
+    "c01a8b6803a9267f",
+    "4007386d5d967236",
+    "c020b21b34548d69"
+  ],
+  "options": {
+    "chordTolHex": "3f947ae147ae147b",
+    "interiorMode": "Project",
+    "maxPolylinePoints": 16,
+    "projectMaxIters": 8,
+    "qualityTriangulation": false,
+    "surfaceTolHex": "3f847ae147ae147b"
+  },
+  "pointHex": [
+    "c01ad793870bb97a",
+    "400590fc378b7a68",
+    "c020eca5cf1d23b4"
+  ],
+  "originalRefusal": "sample_in_cell_arc_none",
+  "scope": "local sampler inputs; not a full graph replay"
+}

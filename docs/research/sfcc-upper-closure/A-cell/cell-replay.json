@@ -1,0 +1,59 @@
+{
+  "actualParametersHex": [
+    "0000000000000000",
+    "3fd3b050a7455a20"
+  ],
+  "cell": [
+    7,
+    36,
+    79,
+    29
+  ],
+  "cellBoxHex": [
+    "c01b869b36dc59b2",
+    "40054206f7300bd0",
+    "c0212fb4cdee2703",
+    "c01a8b6803a9267f",
+    "4007386d5d967236",
+    "c020b21b34548d69"
+  ],
+  "componentReceiptSha256": "5aced0d5f9be02f6c4dd91477bdbc3478078f1130be5e732119f0637fc259ca7",
+  "correctedFailures": {
+    "chord": 0,
+    "curve": 0
+  },
+  "correctedPointCount": 0,
+  "correctedReturnedSome": true,
+  "legacyFailures": {
+    "chord": 0,
+    "curve": 1
+  },
+  "legacyPointCount": 0,
+  "legacyReturnedSome": false,
+  "ordinaryOwnership": [
+    false,
+    false
+  ],
+  "qualifiedClosure": [
+    true,
+    true
+  ],
+  "scope": "actual full-source local sampler replay only; fresh same fingerprint/checked queries; no full graph or component acceptance",
+  "sourceCurve": 76,
+  "sourceFingerprint": "6620945114087557251",
+  "sourcePair": [
+    38,
+    39
+  ],
+  "spanHex": [
+    "0000000000000000",
+    "3fd3b050a7455a20"
+  ],
+  "strictInsideMargin": 0.03855371741321889,
+  "transitionPointHex": [
+    "c01ad793870bb97a",
+    "400590fc378b7a68",
+    "c020eca5cf1d23b4"
+  ],
+  "wholeComponentAccepted": false
+}

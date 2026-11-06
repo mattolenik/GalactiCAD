@@ -1,0 +1,7 @@
+{
+  "filter": "closure_c_required_outgoing_source_obligation_cannot_be_omitted",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_c_tests::closure_c_required_outgoing_source_obligation_cannot_be_omitted"
+  ],
+  "exitCode": 0
+}

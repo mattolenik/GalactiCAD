@@ -1,0 +1,82 @@
+{
+  "completeAdmission": {
+    "accepted": true,
+    "alias": 39,
+    "chargedQueries": 1238,
+    "events": 64,
+    "physical": 20
+  },
+  "declaredCurveEnds": [
+    [
+      20,
+      1
+    ],
+    [
+      39,
+      1
+    ]
+  ],
+  "declaredMetadataInternallyConsistent": true,
+  "declaredStrata": [
+    10,
+    15,
+    30
+  ],
+  "eventAssociationUpperHex": "3d5d007caf8132d2",
+  "eventPointHex": [
+    "c01ad793870bb97a",
+    "400590fc378b7a68",
+    "c020eca5cf1d23b4"
+  ],
+  "incoming": [
+    20,
+    39
+  ],
+  "narrowEndpointResult": {
+    "accepted": true,
+    "endpoint": {
+      "additional_constraints": [],
+      "corner": 55,
+      "endpoint_scope": "retained parameter endpoint; physical continuation not established",
+      "outgoing": [
+        [
+          20,
+          1
+        ],
+        [
+          39,
+          1
+        ]
+      ],
+      "position_bits": [
+        13842613433302497658,
+        4613252806248987240,
+        13844325451425457076
+      ],
+      "strata": [
+        10,
+        15,
+        30
+      ]
+    }
+  },
+  "originalFeatureFingerprintPreserved": true,
+  "originalFingerprint": "11178391811374638840",
+  "physicalIncidentEndsAfterAliasRemoval": 1,
+  "positiveTransverseMinor": 0.3309738820352631,
+  "requiredBehavior": "a known continuing source crease cannot be accepted as an incoming-only terminal after alias removal",
+  "scope": "test-only omission of proved outgoing source obligation; not a naturally produced feature set",
+  "sourceCompleteHandoff": false,
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceContinuationProved": true,
+  "sourcePhiRange": [
+    0.0,
+    0.5
+  ],
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ],
+  "syntheticCorner": 55
+}

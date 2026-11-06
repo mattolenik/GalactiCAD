@@ -1,0 +1,6 @@
+
+running 1 test
+test sfcc::private_storage_observation::tests::correlated_storage_staging_and_typed_lifecycle_controls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 352 filtered out; finished in 0.00s
+

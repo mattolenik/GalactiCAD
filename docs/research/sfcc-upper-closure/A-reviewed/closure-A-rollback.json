@@ -1,0 +1,11 @@
+{
+  "baselineFingerprint": "11178391811374638840",
+  "counts": [
+    101,
+    55
+  ],
+  "exactPublicGeometryEqual": true,
+  "injectedFingerprint": "11178391811374638840",
+  "refusedProposals": 2,
+  "scope": "test-only refusal after complete preflight before publication"
+}

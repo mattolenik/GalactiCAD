@@ -1,31 +1,22 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: stage 1 implemented and mechanically validated, November 3, 2026;
-[executed capture and limitations](../research/sfcc-graph-rejection-capture/README.md).
-Stage 2 has [exact early replay and a bounded source continuation proof](../research/sfcc-endpoint-obligation/README.md), followed by
-[executed causal localization to finite-flank trimming](../research/sfcc-endpoint-lineage/README.md).
-Stages 1–2 are complete for this witness. Stage 3's
-[first competing repair round](../research/sfcc-stage3-exposure-repairs/README.md)
-restores the target interval but fails lower-junction preservation. The
-[next revision](../research/sfcc-stage3-junction-revision/README.md) establishes
-source-junction location, conditional local source equivalence and corrected
-original/final parameter provenance. The subsequent
-[incoming-connection round](../research/sfcc-stage3-incoming-connection/README.md)
-selects A-rollback for the bounded Stage 3 witness: its source-derived chart
-restores the lower attachment, retains upper continuation, preserves non-target
-families and rolls back an injected late refusal. All 12 focused tests pass.
-Stage 3's local exit is satisfied. The
-[Stage 4 validation attempt](../research/sfcc-stage4-component-validation/README.md)
-reidentifies the current source charts but refuses with `endpoint_missing` before
-octree or component construction: both upper ends remain unresolved. The original
-private graph guard and geometric/interface checks were not reached. Stages 4–5
-remain open; the next prerequisite is the current upper source transition and
-ordered handoff, without relaxing complete-arc admission.
-The [upper-handoff investigation](../research/sfcc-upper-handoff/README.md) now
-proves regular continuation through those cutoffs and validates an intermediate-
-chamfer scalar correction that recovers an outgoing feature. Complete admission
-still refuses. Next implement source-bound activation/closure authority and ordered
-incoming/outgoing transport, preserving discovery ownership and rollback.
+Status: the selected [A-cell upper handoff and sampler repair](../research/sfcc-upper-closure/README.md)
+passes 26 focused checks, the non-test build and private-arc admission. Fresh
+component reconstruction progresses beyond the original upper-cell refusal, then records a lower
+lifted-path failure followed by query-cap exhaustion during validation. **Stage 4
+and production acceptance remain open.** Next establish the lower event's required
+continuation and audit private query costs/accounting without weakening guards.
+
+Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
+[local source obligation](../research/sfcc-endpoint-obligation/README.md) and
+[finite-flank cause](../research/sfcc-endpoint-lineage/README.md). Stage 3 selected
+the [bounded lower connection repair](../research/sfcc-stage3-incoming-connection/README.md).
+The [initial component attempt](../research/sfcc-stage4-component-validation/README.md)
+then exposed unresolved upper ends. The [upper-source investigation](../research/sfcc-upper-handoff/README.md)
+proved continuation and corrected intermediate-chamfer evaluation; the current
+closure implementation supplies the qualified handoff and its cell consumer.
+These are bounded witness results, not general mesh correctness.
+
 Current production baseline:
 `421f5a9`. This expands the next five steps of
 [E4 in the critical-repairs plan](sfcc-critical-repairs.md), then defines the
@@ -259,7 +250,7 @@ inputs. Re-establish complete storage/reservation/lifecycle bounds before the ne
 component run. The selected isolated source is the captured Stage 1 baseline plus
 the archived flat A-rollback patch, not a patch applied directly to current HEAD.
 
-**Current attempted result:** [source admission refuses](../research/sfcc-stage4-component-validation/README.md)
+**Initial attempted result:** [source admission refuses](../research/sfcc-stage4-component-validation/README.md)
 on the correctly identified physical/alias pair `[20,38]`, both with range `[0,31]`
 and upper corner `-1`. Their upper numerical points differ by about 0.0023014 mm.
 The unchanged private gate rejects before transport, octree, faces, staging or
@@ -284,6 +275,29 @@ Keep the lower repair fixed, revalidate both representations and their incident
 patch topology together, then rerun complete-arc admission before component work.
 No endpoint welding, invented corner, smaller obligation or unproved domain waiver
 is authorized by the remaining refusal.
+
+**Latest executed result:** [A-cell upper closure and sampler integration](../research/sfcc-upper-closure/README.md)
+closes the bounded upper source event and passes private-arc admission, including
+required outgoing incidence and ownership-qualified queries. A captured local
+sampler replay establishes the old domain-only failure and preserves query, box,
+chord and budget refusals. The full component then has a fresh 199-leaf/1,000-face
+consumer inventory, 198 typed-face certificates and 396 pin bounds, with an actual
+20,243,822-byte combined reservation under the unchanged 64 MiB cap.
+
+Construction still fails at `[8,51,116,172]`: `path_nodes_lt_two` for lifted chart
+75, which is unwired at lower corner 13. Post-meshing generated-query validation
+then reaches the 16,384 cap and returns `TotalCap`; retain both failures in this
+order rather than treating the returned budget error as the first geometric
+failure. All 838 recorded generated queries themselves succeeded. The candidate
+is discarded and live state remains unchanged. Full geometry/interface/source-
+patch acceptance has not been reached.
+
+Keep the selected upper repair. Derive the lower chamfer-region event's source
+arrangement and ordered lifted continuation; matching lifted stratum IDs do not
+permit reuse of the upper proof. Separately inspect reservation versus performed
+queries, cache/inverse costs and failure reporting order. No cap increase or
+unproved validation skip follows from the observed exhaustion. Resume the bounded
+component attempt only after the relevant justified corrections.
 
 Check these independently:
 

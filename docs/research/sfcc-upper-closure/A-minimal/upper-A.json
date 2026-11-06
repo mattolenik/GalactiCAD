@@ -1,0 +1,311 @@
+{
+  "attachmentAuthorized": false,
+  "branchSign": 1,
+  "currentUpperEndpoints": [
+    {
+      "chart": 20,
+      "corner": -1,
+      "fullFieldAtNumericalPointHex": "3e97c81278400000",
+      "idealNativeZeroExtensionResidualHex": [
+        "3e97c810939fffff",
+        "3e97c81094200001"
+      ],
+      "parameterHex": "403f000000000000",
+      "pointHex": [
+        "c01ad5086af889ea",
+        "4005932d3cf8b455",
+        "c020eda7e56734e0"
+      ],
+      "sourcePair": [
+        10,
+        15
+      ]
+    },
+    {
+      "chart": 39,
+      "corner": -1,
+      "fullFieldAtNumericalPointHex": "3e6562c6ed000000",
+      "idealNativeZeroExtensionResidualHex": [
+        "3e6286acdbffffff",
+        "3e6286ace1000001"
+      ],
+      "parameterHex": "403f000000000000",
+      "pointHex": [
+        "c01ad6c85ba6f8fb",
+        "400591ab49aebf9d",
+        "c020ecf65baed00e"
+      ],
+      "sourcePair": [
+        30,
+        15
+      ]
+    }
+  ],
+  "featureFingerprint": "11178391811374638840",
+  "floatingQueryTotalityProved": false,
+  "heightDerivativeLowerHex": "3ff212b77ab37f9b",
+  "liftedTransverseMinorLowerHex": "3fe543cbcad1c5ff",
+  "marginOrder": [
+    "other profile edges",
+    "native finite cap",
+    "cylinder finite cap",
+    "inner round competitor",
+    "groove/chamfer dominance",
+    "cap cutter dominance"
+  ],
+  "optionalLongerInterval": {
+    "coversHeightThree": true,
+    "endHeightHex": [
+      "400a9ebe4cb00c33",
+      "400a9ebe4cb00c75"
+    ],
+    "phiMax": 0.5,
+    "sourceMarginsLowerHex": [
+      "3fc8655cffda4921",
+      "3ff4f3810acb79b0",
+      "40193ce042b2de6b",
+      "3fe6917e98954f27",
+      "4005ef9fcdbfb97b",
+      "3ff4f3810acb79ae"
+    ],
+    "transverseMinorLowerHex": "3fd52ead13cafbc6"
+  },
+  "optionalLongerIntervalRefused": false,
+  "orderedIdealCreaseContinues": true,
+  "phiRangeHex": [
+    "0000000000000000",
+    "3f847ae147ae147b"
+  ],
+  "samples": [
+    {
+      "fullFieldHex": "8000000000000000",
+      "imageHex": [
+        [
+          "c01ad793870bbac2",
+          "400590fc378b7a4f",
+          "c020eca5cf1d2457"
+        ],
+        [
+          "c01ad793870bb832",
+          "400590fc378b7a81",
+          "c020eca5cf1d2310"
+        ]
+      ],
+      "operandLevelHex": [
+        "bce999999999999d",
+        "0000000000000000"
+      ],
+      "phiHex": "0000000000000000",
+      "pointHex": [
+        "c01ad793870bb97a",
+        "400590fc378b7a68",
+        "c020eca5cf1d23b4"
+      ],
+      "sphereLevelHex": [
+        "bfe999999999999a",
+        "bfe9999999999998"
+      ]
+    },
+    {
+      "fullFieldHex": "3ca0000000000000",
+      "imageHex": [
+        [
+          "c01ad0d01fa324a2",
+          "400596cf97212eb7",
+          "c020ef5357ae6017"
+        ],
+        [
+          "c01ad0d01fa32204",
+          "400596cf97212ee9",
+          "c020ef5357ae5eca"
+        ]
+      ],
+      "operandLevelHex": [
+        "bec4f8b4d209999c",
+        "bec4f8b4d13ccccb"
+      ],
+      "phiHex": "3f647ae147ae147b",
+      "pointHex": [
+        "c01ad0d01fa32353",
+        "400596cf97212ed0",
+        "c020ef5357ae5f70"
+      ],
+      "sphereLevelHex": [
+        "bfe989374ce4fcb2",
+        "bfe989374ce4fcaf"
+      ]
+    },
+    {
+      "fullFieldHex": "3cb0000000000000",
+      "imageHex": [
+        [
+          "c01aca0867ab197a",
+          "40059ca566471d63",
+          "c020f200a5da139c"
+        ],
+        [
+          "c01aca0867ab16aa",
+          "40059ca566471d9d",
+          "c020f200a5da1238"
+        ]
+      ],
+      "operandLevelHex": [
+        "bee4f8b2abfb3335",
+        "bee4f8b2abc7ffff"
+      ],
+      "phiHex": "3f747ae147ae147b",
+      "pointHex": [
+        "c01aca0867ab1812",
+        "40059ca566471d80",
+        "c020f200a5da12ea"
+      ],
+      "sphereLevelHex": [
+        "bfe978d506e65bc0",
+        "bfe978d506e65bbc"
+      ]
+    },
+    {
+      "fullFieldHex": "3ce8000000000000",
+      "imageHex": [
+        [
+          "c01abc6c127384a8",
+          "4005a85847b35ccf",
+          "c020f75a89628875"
+        ],
+        [
+          "c01abc6c127381e9",
+          "4005a85847b35d0d",
+          "c020f75a89628719"
+        ]
+      ],
+      "operandLevelHex": [
+        "bf04f8aa14e46669",
+        "bf04f8aa14d79998"
+      ],
+      "phiHex": "3f847ae147ae147b",
+      "pointHex": [
+        "c01abc6c12738348",
+        "4005a85847b35cee",
+        "c020f75a896287c7"
+      ],
+      "sphereLevelHex": [
+        "bfe95810a9e2ed1c",
+        "bfe95810a9e2ed17"
+      ]
+    }
+  ],
+  "scope": "bounded represented full-scalar source continuation; no trace attachment or complete private admission",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceIdentities": [
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "rootAddressProcessLocal": "7ba30a8210"
+        }
+      ],
+      "field": null,
+      "id": 10,
+      "leafIndex": 1,
+      "localIndex": 3,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "rootAddressProcessLocal": "7ba30a8210"
+        }
+      ],
+      "field": {
+        "branch": null,
+        "partners": [],
+        "path": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "rootAddressProcessLocal": "7ba30a8210"
+      },
+      "id": 30,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rootAddressProcessLocal": "7ba30a8210"
+        }
+      ],
+      "field": null,
+      "id": 15,
+      "leafIndex": 2,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    }
+  ],
+  "sourceMarginsLowerHex": [
+    "3fe3642a3a7698b1",
+    "4002473e8f8b7aa4",
+    "401d239f47c5bd51",
+    "3ff02e63e431c265",
+    "4007b3f2159065f4",
+    "4002473e8f8b7aa3"
+  ],
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ],
+  "transitionHeightHex": [
+    "400590fc378b7a53",
+    "400590fc378b7a75"
+  ],
+  "wholeComponentAccepted": false,
+  "wholeImageHex": [
+    [
+      "c01aeb0e44285027",
+      "400590fc378b7a4f",
+      "c021048fed1fc5c9"
+    ],
+    [
+      "c01a9e276914d959",
+      "4005b08b0b5e6185",
+      "c020e125af4fd9fa"
+    ]
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "event": [
+    -6.710523710337265,
+    2.69579356569675,
+    -8.46220252257067
+  ],
+  "outcome": {
+    "admitted": false,
+    "refusal": {
+      "detail": "proved continuing event requires its bound outgoing chart",
+      "originals": [
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 39,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "upper_event_incomplete"
+    }
+  },
+  "pair": [
+    20,
+    39
+  ],
+  "scope": "synthetic incoming-only corner after source clipping; construction disabled but new consumers active; not natural runtime output"
+}

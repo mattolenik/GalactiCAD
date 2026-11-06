@@ -1,0 +1,8 @@
+{
+  "filter": "upper_cell_",
+  "tests": [
+    "sfcc::cell_mesh::upper_cell_sampler_tests::upper_cell_actual_sampler_consumes_proved_closure",
+    "sfcc::cell_mesh::upper_cell_sampler_tests::upper_cell_unsupported_bad_query_source_and_budget_still_refuse"
+  ],
+  "exitCode": 0
+}

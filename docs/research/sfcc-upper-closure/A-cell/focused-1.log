@@ -1,0 +1,14 @@
+
+running 5 tests
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure::tests::closure_a_incoming_only_source_event_cannot_drop_successor ... ok
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure::tests::closure_a_install_identity_clone_ownership_and_own_query_guards ... ok
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure::tests::closure_a_missing_outgoing_authority_and_foreign_sources_refuse ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure::tests::closure_a_missing_outgoing_authority_and_foreign_sources_refuse' (4416239) panicked at kernel/src/sfcc/upper_closure_a.rs:1122:57:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure::tests::closure_a_original_three_chart_handoff_requires_complete_admission ... ok
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure::tests::closure_a_transaction_refusal_preserves_original_features ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 350 filtered out; finished in 9.58s
+

@@ -1,0 +1,229 @@
+{
+  "activationOwnQuery": {
+    "chart": 76,
+    "distanceHex": "3f6c7d305cafa4fd",
+    "parameterHex": "0000000000000000",
+    "verdict": {
+      "accepted": false,
+      "reason": "source_association"
+    }
+  },
+  "allowanceHex": "3e997a9ab0c2db32",
+  "canonicalEvents": [
+    {
+      "associationUpperHex": "3d5d007caf8132d2",
+      "canonicalClosureMembership": true,
+      "consumedTraceEvent": false,
+      "ordinaryDiscoveryOwned": [
+        false,
+        false
+      ],
+      "phiHex": "0000000000000000",
+      "pointHex": [
+        "c01ad793870bb97a",
+        "400590fc378b7a68",
+        "c020eca5cf1d23b4"
+      ]
+    },
+    {
+      "associationUpperHex": "3d5e54b427965c50",
+      "canonicalClosureMembership": true,
+      "consumedTraceEvent": false,
+      "ordinaryDiscoveryOwned": [
+        false,
+        false
+      ],
+      "phiHex": "3f40624dd2f1a9fc",
+      "pointHex": [
+        "c01ad63997ad4cec",
+        "400592264bd690cc",
+        "c020ed2eeefbc600"
+      ]
+    },
+    {
+      "associationUpperHex": "3d5fbe96244a9fbb",
+      "canonicalClosureMembership": true,
+      "consumedTraceEvent": false,
+      "ordinaryDiscoveryOwned": [
+        true,
+        true
+      ],
+      "phiHex": "3fd0000000000000",
+      "pointHex": [
+        "c017e873b88723ac",
+        "4007ff4ff2d78f18",
+        "c021ee4c3652f617"
+      ]
+    }
+  ],
+  "completeAdmission": {
+    "admitted": false,
+    "refusal": {
+      "detail": "admission reservation",
+      "originals": [
+        {
+          "corners": [
+            13,
+            -1
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            -1
+          ],
+          "id": 39,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "endpoint_missing"
+    }
+  },
+  "fingerprint": "11178391811374638840",
+  "graphChanged": false,
+  "handoffAuthorized": false,
+  "incomingCharts": [
+    20,
+    39
+  ],
+  "interiorOwnQuery": {
+    "chart": 76,
+    "checked": {
+      "associationUpperHex": "3e3afced987e14c4",
+      "chart": 76,
+      "parameterHex": "3fff53ef9ef1d746",
+      "phiHex": "3fd0000000000000",
+      "pointHex": [
+        "c017e873b8def275",
+        "4007ff4ff2912c00",
+        "c021ee4c3638f6f3"
+      ]
+    },
+    "parameterHex": "3fff53ef9ef1d746",
+    "proposedDistanceHex": "3e3afc784c04cb31",
+    "verdict": {
+      "accepted": true
+    }
+  },
+  "liftedSources": [
+    38,
+    39
+  ],
+  "orderedPrefixTransportEstablished": false,
+  "ordinaryOwnershipPredicateChanged": false,
+  "residualEpsilonHex": "3e697a9ab0c2db32",
+  "scope": "typed source closure and own-query association prototype; no chart remap, graph mutation or interval authority",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceIdentities": [
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": {
+            "kind": "Child(0)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "79dc8fc610"
+        }
+      ],
+      "field": {
+        "branch": {
+          "kind": "Child(0)",
+          "nativeBandHex": "3e997a9ab0c2db32",
+          "path": [
+            0,
+            0,
+            0
+          ]
+        },
+        "partners": [
+          1,
+          18446744073709551615,
+          1
+        ],
+        "path": [],
+        "rootAddressProcessLocal": "79dc8fc610"
+      },
+      "id": 38,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": {
+            "kind": "Child(1)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "79dc8fc610"
+        }
+      ],
+      "field": {
+        "branch": {
+          "kind": "Child(1)",
+          "nativeBandHex": "3e997a9ab0c2db32",
+          "path": [
+            0,
+            0,
+            0
+          ]
+        },
+        "partners": [
+          1,
+          18446744073709551615,
+          1
+        ],
+        "path": [],
+        "rootAddressProcessLocal": "79dc8fc610"
+      },
+      "id": 39,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    }
+  ]
+}

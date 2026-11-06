@@ -1,0 +1,173 @@
+{
+  "selectedExperimentalPacket": "A-cell",
+  "upperHandoffAccepted": true,
+  "completePrivateArcAdmissionPassed": true,
+  "completeComponentAccepted": false,
+  "stage4Complete": false,
+  "productionRuntimeChanged": false,
+  "tests": {
+    "A-cell": {
+      "focusedPassed": 26,
+      "focusedFailed": 0,
+      "nonTestSerdeLibraryCompile": "PASS"
+    },
+    "B": {
+      "pointClosureAndSourceLowerPassed": 17,
+      "normalAdmission": "FAIL endpoint_missing",
+      "runtimeHandoff": false
+    },
+    "C": {
+      "passedBeforeCounterexample": 3,
+      "requiredOmittedSuccessorRejection": "FAIL; old full private admission accepts incomplete synthetic star",
+      "naturallyProducedFailure": false
+    }
+  },
+  "featureCounts": {
+    "parent": [
+      101,
+      55,
+      74,
+      95
+    ],
+    "selected": [
+      101,
+      57,
+      74,
+      95
+    ],
+    "order": [
+      "curves",
+      "corners",
+      "strata",
+      "unresolvedTrims"
+    ]
+  },
+  "selectedFingerprint": "6620945114087557251",
+  "sourceEvents": [
+    {
+      "corner": 55,
+      "charts": [
+        17,
+        33,
+        84
+      ]
+    },
+    {
+      "corner": 56,
+      "charts": [
+        20,
+        39,
+        76
+      ]
+    }
+  ],
+  "constructorWork": {
+    "curveQueries": 453,
+    "sourceAttempts": 4,
+    "scope": "separate feature-construction phase, not private query ledger"
+  },
+  "firstComponentAttempt": {
+    "seconds": 29.737162999997963,
+    "cell": [
+      7,
+      36,
+      79,
+      29
+    ],
+    "refusal": "sample_in_cell_arc_none",
+    "outgoingChart": 76,
+    "all8OwnQueriesSucceeded": true,
+    "correctedByScopedSamplerIntegration": true
+  },
+  "secondComponentAttempt": {
+    "seconds": 30.389004833006766,
+    "leafConsumers": 199,
+    "requiredFaces": 1000,
+    "changedFaces": 198,
+    "typedPins": 396,
+    "freshTypedFaceCertificates": 198,
+    "combinedReservationBytes": 20243822,
+    "reservationCapBytes": 67108864,
+    "firstRecordedGraphFailure": {
+      "cell": [
+        8,
+        51,
+        116,
+        172
+      ],
+      "guard": "path_nodes_lt_two",
+      "operands": {
+        "chart": 75,
+        "nodeCount": 1,
+        "nodes": [
+          [
+            "4029f1f55d418dc3",
+            453
+          ]
+        ]
+      },
+      "featureCorner": 13
+    },
+    "returnedRefusal": {
+      "kind": "refusal",
+      "refusal": {
+        "detail": "chart 20 t 3ff34427bf0b6c12 point [13844912528201243500, 13835937944215421462, 4617459352479296014]: TotalCap",
+        "originals": [
+          {
+            "corners": [
+              13,
+              56
+            ],
+            "id": 20,
+            "range_bits": [
+              0,
+              4629418941960159232
+            ],
+            "strata": [
+              10,
+              15
+            ]
+          },
+          {
+            "corners": [
+              13,
+              56
+            ],
+            "id": 39,
+            "range_bits": [
+              0,
+              4629418941960159232
+            ],
+            "strata": [
+              30,
+              15
+            ]
+          }
+        ],
+        "reason": "retained_point_own_query"
+      }
+    },
+    "queryCharge": 16384,
+    "queryCap": 16384,
+    "generatedQueries": 838,
+    "allGeneratedQueriesSucceeded": true,
+    "liveDigestBefore": "aa6ab69dfb79125d",
+    "liveDigestAfter": "aa6ab69dfb79125d",
+    "liveStatePreserved": true,
+    "candidatePublished": false
+  },
+  "notEstablished": [
+    "complete lower chamfer event source/closure",
+    "complete component construction",
+    "complete generated-event validation",
+    "f64/f32 final component validity",
+    "component interfaces and same-stage outside contacts",
+    "two-dimensional patch ownership",
+    "current-HEAD/native-WASM/GPU/full-model acceptance"
+  ],
+  "next": [
+    "source-bound lower event proof and ordered chart75 continuation; do not reuse upper closure by source IDs alone",
+    "audit private query reservation vs actual work/cache/inverse costs and failure-report ordering without raising16384",
+    "rerun complete component after those obligations close"
+  ]
+}

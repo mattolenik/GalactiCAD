@@ -1,0 +1,2 @@
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/disk3s1s1  927G  758G  169G  82% /

@@ -1,0 +1,3197 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -174,7 +174,7 @@
+ 
+ // Bind the borrowed runtime tree to the immutable source copy without a hash
+ // collision premise or recursively formatting shared source graphs.
+-fn same_source(a: &CsgNode, b: &CsgNode, budget: &mut usize) -> bool {
++pub(crate) fn same_source(a: &CsgNode, b: &CsgNode, budget: &mut usize) -> bool {
+     if *budget == 0 {
+         return false;
+     }
+@@ -404,3 +404,6 @@
+ 
+ #[path="connection_a.rs"]
+ pub(crate) mod connection_a;
++
++#[path="upper_source_a.rs"]
++pub(crate) mod upper_source_a;
+--- a/gcad-wasm/kernel/src/sfcc/feature_curves.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature_curves.rs
+@@ -89,6 +89,8 @@
+     sb: Stratum,
+     refine: TracedRefine,
+     connection: Option<super::shared_twisted_proof::exposure_a::connection_a::ConnectionChart>,
++    upper:
++        Option<Box<super::shared_twisted_proof::exposure_a::upper_source_a::closure::UpperChart>>,
+ }
+ 
+ #[derive(Clone, Debug)]
+@@ -175,6 +177,101 @@
+ }
+ 
+ impl FeatureCurve {
++    pub(crate) fn upper_chart(
++        &self,
++    ) -> Option<&super::shared_twisted_proof::exposure_a::upper_source_a::closure::UpperChart> {
++        match &self.geom {
++            Geom::Traced(d) => d.upper.as_deref(),
++            _ => None,
++        }
++    }
++    pub(crate) fn upper_source_member(
++        &self,
++        strata: &[Stratum],
++        sid: usize,
++        t: f64,
++        p: [f64; 3],
++        eps: f64,
++    ) -> bool {
++        let Geom::Traced(d) = &self.geom else {
++            return false;
++        };
++        let Some(chart) = d.upper.as_ref() else {
++            return false;
++        };
++        self.adjacent_strata
++            .iter()
++            .zip([&d.sa, &d.sb])
++            .all(|(&id, s)| {
++                strata
++                    .get(id)
++                    .is_some_and(|registered| s.connection_same_source(registered))
++            })
++            && chart.member(strata, self.adjacent_strata, sid, t, p, eps)
++    }
++    pub(crate) fn with_upper_chart(
++        &self,
++        chart: super::shared_twisted_proof::exposure_a::upper_source_a::closure::UpperChart,
++        index: usize,
++        outgoing: bool,
++    ) -> Option<Self> {
++        let Geom::Traced(old) = &self.geom else {
++            return None;
++        };
++        if self.closed || old.upper.is_some() || index + 1 >= old.n {
++            return None;
++        }
++        let mut result = self.clone();
++        let Geom::Traced(d) = &mut result.geom else {
++            return None;
++        };
++        if !outgoing {
++            d.samples.truncate((index + 2) * 3);
++            d.n = index + 2;
++            result.t_max = (index + 1) as f64;
++        }
++        let a = chart.point(chart.span[0])?;
++        let b = chart.point(chart.span[1])?;
++        let start = index * 3;
++        d.samples[start..start + 3].copy_from_slice(&a);
++        d.samples[start + 3..start + 6].copy_from_slice(&b);
++        for q in [a, b] {
++            for s in [&d.sa, &d.sb] {
++                if s.raw_field(q[0], q[1], q[2])
++                    .normalized_equation()?
++                    .value
++                    .abs()
++                    > d.refine.curve_eps
++                {
++                    return None;
++                }
++            }
++        }
++        let join = if outgoing { b } else { a };
++        if project_to_carrier_pair(
++            &d.sa,
++            &d.sb,
++            join[0],
++            join[1],
++            join[2],
++            d.refine.curve_eps,
++            d.refine.min_cross,
++            d.refine.max_displacement,
++        ) != Some(join)
++        {
++            return None;
++        }
++        let (lo, hi) = chart.image(chart.span[0], chart.span[1])?;
++        if (0..3).any(|k| {
++            lo[k] < (a[k].min(b[k]) - d.refine.max_displacement).next_down()
++                || hi[k] > (a[k].max(b[k]) + d.refine.max_displacement).next_up()
++        }) {
++            return None;
++        }
++        d.upper = Some(Box::new(chart));
++        result.index_polyline = d.samples.clone();
++        Some(result)
++    }
+     pub(crate) fn install_connection_chart(
+         &mut self,
+         chart: super::shared_twisted_proof::exposure_a::connection_a::ConnectionChart,
+@@ -419,7 +516,7 @@
+             return p;
+         }
+         crate::sfcc::validation::curve_projection_failed();
+-        if matches!(&self.geom,Geom::Traced(td) if td.connection.is_some()&&(0.0..=1.0).contains(&t))
++        if matches!(&self.geom,Geom::Traced(td) if (td.connection.is_some()&&(0.0..=1.0).contains(&t))||td.upper.as_ref().is_some_and(|c|c.contains(t)))
+         {
+             return [f64::NAN; 3];
+         }
+@@ -473,6 +570,15 @@
+                 return None;
+             }
+             match &self.geom {
++                Geom::Traced(td) if td.upper.as_ref().is_some_and(|c| c.contains(t)) => {
++                    let q = td.upper.as_ref()?.point(t)?;
++                    let a = td.sa.raw_field(q[0], q[1], q[2]).normalized_equation()?;
++                    let b = td.sb.raw_field(q[0], q[1], q[2]).normalized_equation()?;
++                    (a.value.abs() <= td.refine.curve_eps
++                        && b.value.abs() <= td.refine.curve_eps
++                        && projection_box_contains(p, q, td.refine.max_displacement))
++                    .then_some(q)
++                }
+                 Geom::Traced(td) if td.connection.is_some() && (0.0..=1.0).contains(&t) => {
+                     let q = td.connection.as_ref()?.point(t)?;
+                     let a = td.sa.raw_field(q[0], q[1], q[2]).normalized_equation()?;
+@@ -546,6 +652,17 @@
+                 hi[k] = hi[k].max(ch[k]);
+             }
+         }
++        if let Some(chart) = td
++            .upper
++            .as_ref()
++            .filter(|c| a <= c.span[1] && b >= c.span[0])
++        {
++            let (cl, ch) = chart.image(a.max(chart.span[0]), b.min(chart.span[1]))?;
++            for k in 0..3 {
++                lo[k] = lo[k].min(cl[k]);
++                hi[k] = hi[k].max(ch[k]);
++            }
++        }
+         lo.iter()
+             .chain(&hi)
+             .all(|v| v.is_finite())
+@@ -561,6 +678,9 @@
+     }
+     pub fn tangent_at(&self, t: f64) -> [f64; 3] {
+         if let Geom::Traced(td) = &self.geom {
++            if let Some(chart) = td.upper.as_ref().filter(|c| c.contains(t)) {
++                return chart.tangent(t).unwrap_or([0.; 3]);
++            }
+             if let Some(chart) = td.connection.as_ref().filter(|_| (0.0..=1.0).contains(&t)) {
+                 return chart.tangent(t).unwrap_or([0.; 3]);
+             }
+@@ -1077,6 +1197,7 @@
+             sb,
+             refine,
+             connection: None,
++            upper: None,
+         })),
+     }
+ }
+@@ -1215,10 +1336,15 @@
+                     sb,
+                     refine,
+                     connection,
++                    upper,
+                 } = data.as_ref();
+                 ledger.inline_copy(n);
+                 ledger.inline_copy(refine);
+                 ledger.inline_copy(connection);
++                if let Some(chart) = upper {
++                    ledger.boxed::<super::shared_twisted_proof::exposure_a::upper_source_a::closure::UpperChart>("curve.upper_chart")?;
++                    ledger.inline_copy(chart.as_ref());
++                }
+                 ledger.vector("curve.traced_samples", samples)?;
+                 sa.private_owned_storage_a(ledger)?;
+                 sb.private_owned_storage_a(ledger)?;
+@@ -1269,6 +1395,8 @@
+                 }
+                 (Geom::Traced(a), Geom::Traced(b)) => {
+                     a.connection == b.connection
++                        && a.upper.as_ref().map(|c| c.words())
++                            == b.upper.as_ref().map(|c| c.words())
+                         && same(&a.samples, &b.samples)
+                         && a.n == b.n
+                         && same(
+--- a/gcad-wasm/kernel/src/sfcc/feature_set.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature_set.rs
+@@ -89,8 +89,19 @@
+         word(self.curves.len() as u64);
+         for curve in &self.curves {
+             word(curve.id as u64);
+-            if let Some(words)=curve.connection_identity(){word(0x434f4e4e454354);for value in words{word(value);}}
+-
++            if let Some(words) = curve.connection_identity() {
++                word(0x434f4e4e454354);
++                for value in words {
++                    word(value);
++                }
++            }
++
++            if let Some(chart) = curve.upper_chart() {
++                word(0x5550504552);
++                for value in chart.words() {
++                    word(value);
++                }
++            }
+             word(curve.kind() as u64);
+             word(curve.closed as u64);
+             word(curve.t_min.to_bits());
+@@ -142,14 +153,26 @@
+ 
+ /// Similarity transform of a local plane `n·local + off = 0` into world space:
+ /// `(R·n)·world + (s·off − (R·n)·t) = 0` (R·n stays unit).
+-fn world_plane(ident: StratumIdentity, sim: &Similarity, nx: f64, ny: f64, nz: f64, off: f64) -> Stratum {
++fn world_plane(
++    ident: StratumIdentity,
++    sim: &Similarity,
++    nx: f64,
++    ny: f64,
++    nz: f64,
++    off: f64,
++) -> Stratum {
+     let wn = sim.rotate_vector(nx, ny, nz);
+     let woff = -(wn[0] * sim.t[0] + wn[1] * sim.t[1] + wn[2] * sim.t[2]) + sim.s * off;
+     Stratum::plane(ident, wn[0], wn[1], wn[2], woff)
+ }
+ 
+ /// The 6 box face planes, order +x,−x,+y,−y,+z,−z (local_index 0..5).
+-fn build_box_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, half: [f64; 3]) -> Vec<Stratum> {
++fn build_box_strata(
++    leaf: &Leaf,
++    leaf_index: usize,
++    first_id: usize,
++    half: [f64; 3],
++) -> Vec<Stratum> {
+     let [px, py, pz] = leaf.pos;
+     let [hx, hy, hz] = half;
+     let mk = |i: usize, nx: f64, ny: f64, nz: f64, off: f64| {
+@@ -179,14 +202,24 @@
+ }
+ 
+ fn sid(id: usize, leaf_index: usize, local_index: usize, sign: f64) -> StratumIdentity {
+-    StratumIdentity { id, owner_node_id: -1, leaf_index, local_index, sign }
++    StratumIdentity {
++        id,
++        owner_node_id: -1,
++        leaf_index,
++        local_index,
++        sign,
++    }
+ }
+ 
+ /// On-locus refine tolerances for NATIVE traced curves (twisted-extrude helices,
+ /// curved loft morphs). Mirrors the hardcoded `projectToCarrierPair(…, 1e-10,
+ /// 1e-3, 0.5, …)` arguments in feature-set.mts's `makeTracedCurve` callbacks.
+ fn traced_native_refine() -> TracedRefine {
+-    TracedRefine { curve_eps: 1e-10, min_cross: 1e-3, max_displacement: 0.5 }
++    TracedRefine {
++        curve_eps: 1e-10,
++        min_cross: 1e-3,
++        max_displacement: 0.5,
++    }
+ }
+ 
+ /// Grow `diag` by the leaf's world-AABB diagonal (the TS `compileNativeFeatures`
+@@ -214,7 +247,13 @@
+ 
+ /// Cylinder strata: [mantle, cap +y, cap −y] (local_index 0,1,2), matching the
+ /// evaluator's `buildStrata` order in cpu-sdf.mts.
+-fn build_cylinder_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64, h: f64) -> Vec<Stratum> {
++fn build_cylinder_strata(
++    leaf: &Leaf,
++    leaf_index: usize,
++    first_id: usize,
++    r: f64,
++    h: f64,
++) -> Vec<Stratum> {
+     let [px, py, pz] = leaf.pos;
+     let a = leaf.sim.apply_point(px, py, pz);
+     let u = leaf.sim.rotate_vector(0.0, 1.0, 0.0);
+@@ -229,14 +268,34 @@
+             u[2],
+             leaf.sim.s * r,
+         ),
+-        world_plane(sid(first_id + 1, leaf_index, 1, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)),
+-        world_plane(sid(first_id + 2, leaf_index, 2, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py - h),
++        world_plane(
++            sid(first_id + 1, leaf_index, 1, leaf.sign),
++            &leaf.sim,
++            0.0,
++            1.0,
++            0.0,
++            -(py + h),
++        ),
++        world_plane(
++            sid(first_id + 2, leaf_index, 2, leaf.sign),
++            &leaf.sim,
++            0.0,
++            -1.0,
++            0.0,
++            py - h,
++        ),
+     ]
+ }
+ 
+ /// Cone strata: [mantle, base plane] (local_index 0,1). Half-angle from L=hypot(h,r):
+ /// sin = r/L, cos = h/L; apex at +h, axis `u` points apex→base (local −y).
+-fn build_cone_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64, h: f64) -> Vec<Stratum> {
++fn build_cone_strata(
++    leaf: &Leaf,
++    leaf_index: usize,
++    first_id: usize,
++    r: f64,
++    h: f64,
++) -> Vec<Stratum> {
+     let [px, py, pz] = leaf.pos;
+     let apex = leaf.sim.apply_point(px, py + h, pz);
+     let u = leaf.sim.rotate_vector(0.0, -1.0, 0.0);
+@@ -253,7 +312,14 @@
+             r / l,
+             h / l,
+         ),
+-        world_plane(sid(first_id + 1, leaf_index, 1, leaf.sign), &leaf.sim, 0.0, -1.0, 0.0, py),
++        world_plane(
++            sid(first_id + 1, leaf_index, 1, leaf.sign),
++            &leaf.sim,
++            0.0,
++            -1.0,
++            0.0,
++            py,
++        ),
+     ]
+ }
+ 
+@@ -280,12 +346,22 @@
+         match e.kind {
+             LatheEdgeKind::Plane => {
+                 let ny3 = if e.ny > 0.0 { 1.0 } else { -1.0 };
+-                out.push(world_plane(ident, &leaf.sim, 0.0, ny3, 0.0, -ny3 * (py + (e.y0 + e.y1) * 0.5)));
++                out.push(world_plane(
++                    ident,
++                    &leaf.sim,
++                    0.0,
++                    ny3,
++                    0.0,
++                    -ny3 * (py + (e.y0 + e.y1) * 0.5),
++                ));
+             }
+             LatheEdgeKind::Cylinder => {
+                 let flip = if e.nr > 0.0 { 1.0 } else { -1.0 };
+                 out.push(Stratum::cylinder(
+-                    StratumIdentity { sign: leaf.sign * flip, ..ident },
++                    StratumIdentity {
++                        sign: leaf.sign * flip,
++                        ..ident
++                    },
+                     a[0],
+                     a[1],
+                     a[2],
+@@ -302,10 +378,15 @@
+                 let dy = e.y1 - e.y0;
+                 let y_apex = e.y0 - e.r0 * (dy / dr);
+                 let apex = leaf.sim.apply_point(px, py + y_apex, pz);
+-                let uw = leaf.sim.rotate_vector(0.0, if dy * dr > 0.0 { 1.0 } else { -1.0 }, 0.0);
++                let uw = leaf
++                    .sim
++                    .rotate_vector(0.0, if dy * dr > 0.0 { 1.0 } else { -1.0 }, 0.0);
+                 let flip = if e.nr > 0.0 { 1.0 } else { -1.0 };
+                 out.push(Stratum::cone(
+-                    StratumIdentity { sign: leaf.sign * flip, ..ident },
++                    StratumIdentity {
++                        sign: leaf.sign * flip,
++                        ..ident
++                    },
+                     apex[0],
+                     apex[1],
+                     apex[2],
+@@ -344,7 +425,14 @@
+         let [nx2, nz2] = outward_edge_normal_2d(v1x - v0x, v1z - v0z, wind);
+         let ident = sid(first_id + i, leaf_index, i, leaf.sign);
+         if twist_rad == 0.0 {
+-            out.push(world_plane(ident, &leaf.sim, nx2, 0.0, nz2, -(nx2 * (px + v0x) + nz2 * (pz + v0z))));
++            out.push(world_plane(
++                ident,
++                &leaf.sim,
++                nx2,
++                0.0,
++                nz2,
++                -(nx2 * (px + v0x) + nz2 * (pz + v0z)),
++            ));
+         } else {
+             out.push(Stratum::twisted_side(
+                 ident,
+@@ -363,7 +451,14 @@
+             ));
+         }
+     }
+-    out.push(world_plane(sid(first_id + n, leaf_index, n, leaf.sign), &leaf.sim, 0.0, 1.0, 0.0, -(py + h)));
++    out.push(world_plane(
++        sid(first_id + n, leaf_index, n, leaf.sign),
++        &leaf.sim,
++        0.0,
++        1.0,
++        0.0,
++        -(py + h),
++    ));
+     out.push(world_plane(
+         sid(first_id + n + 1, leaf_index, n + 1, leaf.sign),
+         &leaf.sim,
+@@ -403,7 +498,12 @@
+ 
+ /// Match the same polygon's edges across cyclic starts and reversed winding.
+ /// Equality is exact: nearby profiles and different segmentations stay distinct.
+-pub(crate) fn equivalent_profile_edges(a: &[f64], wa: f64, b: &[f64], wb: f64) -> Option<Vec<usize>> {
++pub(crate) fn equivalent_profile_edges(
++    a: &[f64],
++    wa: f64,
++    b: &[f64],
++    wb: f64,
++) -> Option<Vec<usize>> {
+     if a.len() != b.len() || a.len() < 6 || a.len() % 2 != 0 || wa.abs() != 1. || wb.abs() != 1. {
+         return None;
+     }
+@@ -417,9 +517,25 @@
+         return None;
+     }
+     for start in 0..n {
+-        let vertex = |j| if wa == wb { (start + j) % n } else { (start + n - j) % n };
++        let vertex = |j| {
++            if wa == wb {
++                (start + j) % n
++            } else {
++                (start + n - j) % n
++            }
++        };
+         if (0..n).all(|j| a[2 * j..2 * j + 2] == b[2 * vertex(j)..2 * vertex(j) + 2]) {
+-            return Some((0..n).map(|j| if wa == wb { vertex(j) } else { vertex((j + 1) % n) }).collect());
++            return Some(
++                (0..n)
++                    .map(|j| {
++                        if wa == wb {
++                            vertex(j)
++                        } else {
++                            vertex((j + 1) % n)
++                        }
++                    })
++                    .collect(),
++            );
+         }
+     }
+     None
+@@ -437,12 +553,22 @@
+     let first = &profs[0];
+     let n = first.len() / 2;
+     let start = (0..n).min_by(|&a, &b| {
+-        first[2 * a].total_cmp(&first[2 * b]).then(first[2 * a + 1].total_cmp(&first[2 * b + 1]))
++        first[2 * a]
++            .total_cmp(&first[2 * b])
++            .then(first[2 * a + 1].total_cmp(&first[2 * b + 1]))
+     })?;
+-    Some((0..n).flat_map(|j| {
+-        let k = if winds[0] < 0. { (start + j) % n } else { (start + n - j) % n };
+-        [first[2 * k], first[2 * k + 1]]
+-    }).collect())
++    Some(
++        (0..n)
++            .flat_map(|j| {
++                let k = if winds[0] < 0. {
++                    (start + j) % n
++                } else {
++                    (start + n - j) % n
++                };
++                [first[2 * k], first[2 * k + 1]]
++            })
++            .collect(),
++    )
+ }
+ 
+ /// Side carriers of one loft segment between lower profile `a` and upper profile
+@@ -514,10 +640,20 @@
+     }
+     let mut evs: Vec<Ev> = Vec::with_capacity(na + nb);
+     for i in 0..na {
+-        evs.push(Ev { ang: a_ang[i], lower: true, vertex: a_ord[i], edge: a_se[i] });
++        evs.push(Ev {
++            ang: a_ang[i],
++            lower: true,
++            vertex: a_ord[i],
++            edge: a_se[i],
++        });
+     }
+     for k in 0..nb {
+-        evs.push(Ev { ang: b_ang[k], lower: false, vertex: b_ord[k], edge: b_se[k] });
++        evs.push(Ev {
++            ang: b_ang[k],
++            lower: false,
++            vertex: b_ord[k],
++            edge: b_se[k],
++        });
+     }
+     evs.sort_by(|x, y| {
+         x.ang
+@@ -631,7 +767,11 @@
+         let carriers = loft_seg_carriers(&profs[seg], winds[seg], &profs[seg + 1], winds[seg + 1]);
+         for car in &carriers {
+             let ident = sid(first_id + local, leaf_index, local, leaf.sign);
+-            if car.a_nx == car.b_nx && car.a_nz == car.b_nz && car.a_x == car.b_x && car.a_z == car.b_z {
++            if car.a_nx == car.b_nx
++                && car.a_nz == car.b_nz
++                && car.a_x == car.b_x
++                && car.a_z == car.b_z
++            {
+                 out.push(world_plane(
+                     ident,
+                     &leaf.sim,
+@@ -807,7 +947,12 @@
+     let mut out = Vec::new();
+     let seg_h = 2. * h / (profs.len() - 1) as f64;
+     for segment in 0..profs.len() - 1 {
+-        let matching = equivalent_profile_edges(&profs[segment], winds[segment], &profs[segment + 1], winds[segment + 1]);
++        let matching = equivalent_profile_edges(
++            &profs[segment],
++            winds[segment],
++            &profs[segment + 1],
++            winds[segment + 1],
++        );
+         for a in 0..profs[segment].len() / 2 {
+             for b in 0..profs[segment + 1].len() / 2 {
+                 if matching.as_ref().is_some_and(|edges| edges[a] != b) {
+@@ -863,7 +1008,13 @@
+ fn build_sphere_strata(leaf: &Leaf, leaf_index: usize, first_id: usize, r: f64) -> Vec<Stratum> {
+     let [px, py, pz] = leaf.pos;
+     let c = leaf.sim.apply_point(px, py, pz);
+-    vec![Stratum::sphere(sid(first_id, leaf_index, 0, leaf.sign), c[0], c[1], c[2], leaf.sim.s * r)]
++    vec![Stratum::sphere(
++        sid(first_id, leaf_index, 0, leaf.sign),
++        c[0],
++        c[1],
++        c[2],
++        leaf.sim.s * r,
++    )]
+ }
+ 
+ /// Per-leaf strata for the M4a shape subset, dispatched by shape. Shared by
+@@ -875,12 +1026,22 @@
+         Shape::Sphere { r } => build_sphere_strata(leaf, leaf_index, first_id, *r),
+         Shape::Cylinder { r, h } => build_cylinder_strata(leaf, leaf_index, first_id, *r, *h),
+         Shape::Cone { r, h } => build_cone_strata(leaf, leaf_index, first_id, *r, *h),
+-        Shape::Extrude { verts, wind, h, twist_rad } => {
+-            build_extrude_strata(leaf, leaf_index, first_id, verts, *wind, *h, *twist_rad)
+-        }
++        Shape::Extrude {
++            verts,
++            wind,
++            h,
++            twist_rad,
++        } => build_extrude_strata(leaf, leaf_index, first_id, verts, *wind, *h, *twist_rad),
+         Shape::Loft { profs, winds, h } => {
+             if let Some(profile) = constant_loft_profile(profs, winds) {
+-                build_loft_strata(leaf, leaf_index, first_id, &[profile.clone(), profile], &[-1.; 2], *h)
++                build_loft_strata(
++                    leaf,
++                    leaf_index,
++                    first_id,
++                    &[profile.clone(), profile],
++                    &[-1.; 2],
++                    *h,
++                )
+             } else {
+                 build_loft_strata(leaf, leaf_index, first_id, profs, winds, *h)
+             }
+@@ -909,14 +1070,17 @@
+     // per-edge emission below indexes profs[pi][j*2] with a single shared n, which
+     // would panic out-of-bounds). Uniform lofts keep the original path.
+     if !profs.iter().all(|p| p.len() == profs[0].len()) {
+-        return emit_loft_features_general(leaf, first_id, profs, winds, h, strata, curves, corners);
++        return emit_loft_features_general(
++            leaf, first_id, profs, winds, h, strata, curves, corners,
++        );
+     }
+     let [px, py, pz] = leaf.pos;
+     let m = profs.len();
+     let n = profs[0].len() / 2;
+     let seg_h = (2.0 * h) / (m as f64 - 1.0);
+     let y_of = |pi: usize| -h + pi as f64 * seg_h;
+-    let side_id = |seg: usize, j: i64| -> usize { first_id + seg * n + j.rem_euclid(n as i64) as usize };
++    let side_id =
++        |seg: usize, j: i64| -> usize { first_id + seg * n + j.rem_euclid(n as i64) as usize };
+     let cap_top = first_id + (m - 1) * n;
+     let cap_bottom = first_id + (m - 1) * n + 1;
+     let vert_scale = {
+@@ -950,7 +1114,11 @@
+             let strata_ids: Vec<usize> = if pi == 0 {
+                 vec![side_id(0, j as i64 - 1), side_id(0, j as i64), cap_bottom]
+             } else if pi == m - 1 {
+-                vec![side_id(m - 2, j as i64 - 1), side_id(m - 2, j as i64), cap_top]
++                vec![
++                    side_id(m - 2, j as i64 - 1),
++                    side_id(m - 2, j as i64),
++                    cap_top,
++                ]
+             } else {
+                 vec![
+                     side_id(pi - 1, j as i64 - 1),
+@@ -1025,7 +1193,9 @@
+                     valid = false;
+                     break;
+                 }
+-                let p = leaf.sim.apply_point(px + pt[0], py + y_of(seg) + t * seg_h, pz + pt[1]);
++                let p = leaf
++                    .sim
++                    .apply_point(px + pt[0], py + y_of(seg) + t * seg_h, pz + pt[1]);
+                 samples[i * 3] = p[0];
+                 samples[i * 3 + 1] = p[1];
+                 samples[i * 3 + 2] = p[2];
+@@ -1067,8 +1237,12 @@
+             curve.native = true;
+             curve.corner_start = corner_idx[seg][j] as i64;
+             curve.corner_end = corner_idx[seg + 1][j] as i64;
+-            corners[curve.corner_start as usize].curve_ends.push((curve_id, 0));
+-            corners[curve.corner_end as usize].curve_ends.push((curve_id, 1));
++            corners[curve.corner_start as usize]
++                .curve_ends
++                .push((curve_id, 0));
++            corners[curve.corner_end as usize]
++                .curve_ends
++                .push((curve_id, 1));
+             curves.push(curve);
+         }
+     }
+@@ -1084,7 +1258,11 @@
+             let v0z = profs[pi][j * 2 + 1];
+             let v1x = profs[pi][j2 * 2];
+             let v1z = profs[pi][j2 * 2 + 1];
+-            let mid = leaf.sim.apply_point(px + (v0x + v1x) / 2.0, py + y_of(pi), pz + (v0z + v1z) / 2.0);
++            let mid = leaf.sim.apply_point(
++                px + (v0x + v1x) / 2.0,
++                py + y_of(pi),
++                pz + (v0z + v1z) / 2.0,
++            );
+             let nb = strata[s_below - first_id].normal(mid[0], mid[1], mid[2]);
+             let na = strata[s_above - first_id].normal(mid[0], mid[1], mid[2]);
+             let dot = nb[0] * na[0] + nb[1] * na[1] + nb[2] * na[2];
+@@ -1094,13 +1272,26 @@
+             let curve_id = curves.len();
+             let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
+             let b = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
+-            let mut crease =
+-                make_segment_curve(curve_id, -1, [s_below, s_above], a[0], a[1], a[2], b[0], b[1], b[2]);
++            let mut crease = make_segment_curve(
++                curve_id,
++                -1,
++                [s_below, s_above],
++                a[0],
++                a[1],
++                a[2],
++                b[0],
++                b[1],
++                b[2],
++            );
+             crease.native = true;
+             crease.corner_start = corner_idx[pi][j] as i64;
+             crease.corner_end = corner_idx[pi][j2] as i64;
+-            corners[crease.corner_start as usize].curve_ends.push((curve_id, 0));
+-            corners[crease.corner_end as usize].curve_ends.push((curve_id, 1));
++            corners[crease.corner_start as usize]
++                .curve_ends
++                .push((curve_id, 0));
++            corners[crease.corner_end as usize]
++                .curve_ends
++                .push((curve_id, 1));
+             curves.push(crease);
+         }
+     }
+@@ -1130,8 +1321,12 @@
+             rim.native = true;
+             rim.corner_start = corner_idx[pi][j] as i64;
+             rim.corner_end = corner_idx[pi][j2] as i64;
+-            corners[rim.corner_start as usize].curve_ends.push((curve_id, 0));
+-            corners[rim.corner_end as usize].curve_ends.push((curve_id, 1));
++            corners[rim.corner_start as usize]
++                .curve_ends
++                .push((curve_id, 0));
++            corners[rim.corner_end as usize]
++                .curve_ends
++                .push((curve_id, 1));
+             curves.push(rim);
+         }
+     }
+@@ -1211,7 +1406,14 @@
+                 st.push(cap_top);
+             }
+             let id = corners.len();
+-            corners.push(SfccCorner { id, x: p[0], y: p[1], z: p[2], strata: st, curve_ends: Vec::new() });
++            corners.push(SfccCorner {
++                id,
++                x: p[0],
++                y: p[1],
++                z: p[2],
++                strata: st,
++                curve_ends: Vec::new(),
++            });
+             row.push(id);
+         }
+         corner_idx.push(row);
+@@ -1235,12 +1437,26 @@
+             }
+             let s_l = side_id(seg, (c + lc - 1) % lc);
+             let s_r = side_id(seg, c);
+-            let (n_alx, n_alz, c_al) =
+-                (cprev.a_nx, cprev.a_nz, cprev.a_nx * cprev.a_x + cprev.a_nz * cprev.a_z);
+-            let (n_arx, n_arz, c_ar) = (ccur.a_nx, ccur.a_nz, ccur.a_nx * ccur.a_x + ccur.a_nz * ccur.a_z);
+-            let (n_blx, n_blz, c_bl) =
+-                (cprev.b_nx, cprev.b_nz, cprev.b_nx * cprev.b_x + cprev.b_nz * cprev.b_z);
+-            let (n_brx, n_brz, c_br) = (ccur.b_nx, ccur.b_nz, ccur.b_nx * ccur.b_x + ccur.b_nz * ccur.b_z);
++            let (n_alx, n_alz, c_al) = (
++                cprev.a_nx,
++                cprev.a_nz,
++                cprev.a_nx * cprev.a_x + cprev.a_nz * cprev.a_z,
++            );
++            let (n_arx, n_arz, c_ar) = (
++                ccur.a_nx,
++                ccur.a_nz,
++                ccur.a_nx * ccur.a_x + ccur.a_nz * ccur.a_z,
++            );
++            let (n_blx, n_blz, c_bl) = (
++                cprev.b_nx,
++                cprev.b_nz,
++                cprev.b_nx * cprev.b_x + cprev.b_nz * cprev.b_z,
++            );
++            let (n_brx, n_brz, c_br) = (
++                ccur.b_nx,
++                ccur.b_nz,
++                ccur.b_nx * ccur.b_x + ccur.b_nz * ccur.b_z,
++            );
+             let q2_at = |t: f64| -> Option<[f64; 2]> {
+                 let m1x = (1.0 - t) * n_alx + t * n_blx;
+                 let m1z = (1.0 - t) * n_alz + t * n_blz;
+@@ -1294,7 +1510,9 @@
+                     let gate1 = ((1.0 - t) * ra.d + t * rb.d).abs() <= 1e-6 * vert_scale;
+                     let gate2 = a_set.contains(&ra.edge) && b_set.contains(&rb.edge);
+                     if gate1 && gate2 {
+-                        let wp = leaf.sim.apply_point(px + pt[0], py + seg_y0 + t * seg_h, pz + pt[1]);
++                        let wp =
++                            leaf.sim
++                                .apply_point(px + pt[0], py + seg_y0 + t * seg_h, pz + pt[1]);
+                         pts[i] = [wp[0], wp[1], wp[2]];
+                         valid[i] = true;
+                     }
+@@ -1395,7 +1613,11 @@
+             let v0z = profs[pi][e * 2 + 1];
+             let v1x = profs[pi][e2 * 2];
+             let v1z = profs[pi][e2 * 2 + 1];
+-            let mid = leaf.sim.apply_point(px + (v0x + v1x) / 2.0, py + y_of(pi), pz + (v0z + v1z) / 2.0);
++            let mid = leaf.sim.apply_point(
++                px + (v0x + v1x) / 2.0,
++                py + y_of(pi),
++                pz + (v0z + v1z) / 2.0,
++            );
+             let nbelow = strata[s_below - first_id].normal(mid[0], mid[1], mid[2]);
+             let nabove = strata[s_above - first_id].normal(mid[0], mid[1], mid[2]);
+             let dot = nbelow[0] * nabove[0] + nbelow[1] * nabove[1] + nbelow[2] * nabove[2];
+@@ -1419,31 +1641,34 @@
+             crease.native = true;
+             crease.corner_start = corner_idx[pi][e] as i64;
+             crease.corner_end = corner_idx[pi][e2] as i64;
+-            corners[crease.corner_start as usize].curve_ends.push((curve_id, 0));
+-            corners[crease.corner_end as usize].curve_ends.push((curve_id, 1));
++            corners[crease.corner_start as usize]
++                .curve_ends
++                .push((curve_id, 0));
++            corners[crease.corner_end as usize]
++                .curve_ends
++                .push((curve_id, 1));
+             curves.push(crease);
+         }
+     }
+ 
+     // Cap rim segments (caps are planar; rims are the end profiles' edges).
+-    for (cap, pi, seg, use_b) in [(cap_bottom, 0usize, 0usize, false), (cap_top, m - 1, m - 2, true)] {
++    for (cap, pi, seg, use_b) in [
++        (cap_bottom, 0usize, 0usize, false),
++        (cap_top, m - 1, m - 2, true),
++    ] {
+         let np = profs[pi].len() / 2;
+         for e in 0..np {
+             let e2 = (e + 1) % np;
+             // A cap edge can border several side patches as the closest
+             // feature of the opposite profile changes along it. Keep every
+             // candidate; domain/flank trimming selects its exposed interval.
+-            for (cc, _) in
+-                carriers[seg].iter().enumerate().filter(
+-                    |(_, car)| {
+-                        if use_b {
+-                            car.b_edge == e
+-                        } else {
+-                            car.a_edge == e
+-                        }
+-                    },
+-                )
+-            {
++            for (cc, _) in carriers[seg].iter().enumerate().filter(|(_, car)| {
++                if use_b {
++                    car.b_edge == e
++                } else {
++                    car.a_edge == e
++                }
++            }) {
+                 let s_side = side_id(seg, cc);
+                 let v0x = profs[pi][e * 2];
+                 let v0z = profs[pi][e * 2 + 1];
+@@ -1452,13 +1677,26 @@
+                 let curve_id = curves.len();
+                 let a = leaf.sim.apply_point(px + v0x, py + y_of(pi), pz + v0z);
+                 let bpt = leaf.sim.apply_point(px + v1x, py + y_of(pi), pz + v1z);
+-                let mut rim =
+-                    make_segment_curve(curve_id, -1, [s_side, cap], a[0], a[1], a[2], bpt[0], bpt[1], bpt[2]);
++                let mut rim = make_segment_curve(
++                    curve_id,
++                    -1,
++                    [s_side, cap],
++                    a[0],
++                    a[1],
++                    a[2],
++                    bpt[0],
++                    bpt[1],
++                    bpt[2],
++                );
+                 rim.native = true;
+                 rim.corner_start = corner_idx[pi][e] as i64;
+                 rim.corner_end = corner_idx[pi][e2] as i64;
+-                corners[rim.corner_start as usize].curve_ends.push((curve_id, 0));
+-                corners[rim.corner_end as usize].curve_ends.push((curve_id, 1));
++                corners[rim.corner_start as usize]
++                    .curve_ends
++                    .push((curve_id, 0));
++                corners[rim.corner_end as usize]
++                    .curve_ends
++                    .push((curve_id, 1));
+                 curves.push(rim);
+             }
+         }
+@@ -1502,8 +1740,9 @@
+                         }
+                     }
+                 }
+-                let stratum_of =
+-                    |axis: usize, positive: bool| first_id + axis * 2 + if positive { 0 } else { 1 };
++                let stratum_of = |axis: usize, positive: bool| {
++                    first_id + axis * 2 + if positive { 0 } else { 1 }
++                };
+                 // 8 corners.
+                 let corner_ids: Vec<usize> = (0..8)
+                     .map(|i| {
+@@ -1713,10 +1952,16 @@
+                 }
+                 all_strata.extend(strata);
+             }
+-            Shape::Extrude { verts, wind, h, twist_rad } => {
++            Shape::Extrude {
++                verts,
++                wind,
++                h,
++                twist_rad,
++            } => {
+                 let (wind, h, twist_rad) = (*wind, *h, *twist_rad);
+                 let verts = verts.clone();
+-                let strata = build_extrude_strata(leaf, leaf_index, first_id, &verts, wind, h, twist_rad);
++                let strata =
++                    build_extrude_strata(leaf, leaf_index, first_id, &verts, wind, h, twist_rad);
+                 track_leaf_diag(leaf, &mut diag);
+                 let [px, py, pz] = leaf.pos;
+                 let n = verts.len() / 2;
+@@ -1730,7 +1975,8 @@
+                     let (ca, sa) = (angle.cos(), angle.sin());
+                     let vx = verts[j * 2];
+                     let vz = verts[j * 2 + 1];
+-                    leaf.sim.apply_point(px + ca * vx - sa * vz, py + y, pz + sa * vx + ca * vz)
++                    leaf.sim
++                        .apply_point(px + ca * vx - sa * vz, py + y, pz + sa * vx + ca * vz)
+                 };
+                 let mut bottom_corner_ids: Vec<usize> = Vec::with_capacity(n);
+                 let mut top_corner_ids: Vec<usize> = Vec::with_capacity(n);
+@@ -1766,11 +2012,22 @@
+                     let mut curve = if twist_rad == 0.0 {
+                         let a = vertex_at(j, -h);
+                         let b = vertex_at(j, h);
+-                        make_segment_curve(curve_id, -1, [s_a, s_b], a[0], a[1], a[2], b[0], b[1], b[2])
++                        make_segment_curve(
++                            curve_id,
++                            -1,
++                            [s_a, s_b],
++                            a[0],
++                            a[1],
++                            a[2],
++                            b[0],
++                            b[1],
++                            b[2],
++                        )
+                     } else {
+                         let rho = verts[j * 2].hypot(verts[j * 2 + 1]);
+                         let max_step = 2.0 * (1.0 - 0.005 / rho.max(1e-6)).clamp(-1.0, 1.0).acos();
+-                        let nseg = ((twist_rad.abs() / max_step.max(1e-4)).ceil() as usize).clamp(8, 512);
++                        let nseg =
++                            ((twist_rad.abs() / max_step.max(1e-4)).ceil() as usize).clamp(8, 512);
+                         let mut samples = vec![0.0f64; (nseg + 1) * 3];
+                         for i in 0..=nseg {
+                             let p = vertex_at(j, -h + (2.0 * h * i as f64) / nseg as f64);
+@@ -1815,7 +2072,11 @@
+                             b[2],
+                         );
+                         rim.native = true;
+-                        let ids = if top { &top_corner_ids } else { &bottom_corner_ids };
++                        let ids = if top {
++                            &top_corner_ids
++                        } else {
++                            &bottom_corner_ids
++                        };
+                         rim.corner_start = ids[i] as i64;
+                         rim.corner_end = ids[j2] as i64;
+                         corners[ids[i]].curve_ends.push((curve_id, 0));
+@@ -1834,7 +2095,16 @@
+                 };
+                 let strata = build_loft_strata(leaf, leaf_index, first_id, &profs, &winds, h);
+                 track_leaf_diag(leaf, &mut diag);
+-                emit_loft_features(leaf, first_id, &profs, &winds, h, &strata, &mut curves, &mut corners);
++                emit_loft_features(
++                    leaf,
++                    first_id,
++                    &profs,
++                    &winds,
++                    h,
++                    &strata,
++                    &mut curves,
++                    &mut corners,
++                );
+                 all_strata.extend(strata);
+             }
+         }
+@@ -1862,7 +2132,9 @@
+ fn index_cell_size(tree: &SfccTree<'_>) -> f64 {
+     let mut diag = 1.0f64;
+     for lv in &tree.leaves {
+-        let d = (lv.aabb[3] - lv.aabb[0]).hypot(lv.aabb[4] - lv.aabb[1]).hypot(lv.aabb[5] - lv.aabb[2]);
++        let d = (lv.aabb[3] - lv.aabb[0])
++            .hypot(lv.aabb[4] - lv.aabb[1])
++            .hypot(lv.aabb[5] - lv.aabb[2]);
+         if d > diag {
+             diag = d;
+         }
+@@ -1876,7 +2148,10 @@
+ pub fn compile_feature_set(
+     root: &CsgNode,
+     tol: &ResolvedTolerances,
+-) -> (SfccFeatureSet, crate::sfcc::seam_trace::SeamTraceDiagnostics) {
++) -> (
++    SfccFeatureSet,
++    crate::sfcc::seam_trace::SeamTraceDiagnostics,
++) {
+     let native = compile_native_features(root);
+     // Mark native curves so the trim crease gate uses nativeCreaseCos for them.
+     let mut native_curves = native.curves;
+@@ -1945,14 +2220,15 @@
+     super::diagnosis::features("after_trim", tree.strata.len(), &trimmed.curves);
+     diagnostics.unresolved_trims += trimmed.unresolved_trims;
+ 
+-    let mut index = SfccSpatialIndex::new(index_cell_size(&tree));
++    let cell_size = index_cell_size(&tree);
++    let mut index = SfccSpatialIndex::new(cell_size);
+     for c in &trimmed.curves {
+         index.insert_curve(c);
+     }
+     for c in &trimmed.corners {
+         index.insert_corner(c.id, c.x, c.y, c.z);
+     }
+-    let fs = SfccFeatureSet {
++    let mut fs = SfccFeatureSet {
+         unresolved_branch_paths,
+         trace_diagnostics: diagnostics,
+         curves: trimmed.curves,
+@@ -1961,6 +2237,18 @@
+         strata: tree.strata,
+         run_id: next_feature_set_run_id(),
+     };
++    if super::shared_twisted_proof::exposure_a::upper_source_a::closure::connect(root, &mut fs, tol)
++        > 0
++    {
++        let mut index = SfccSpatialIndex::new(cell_size);
++        for c in &fs.curves {
++            index.insert_curve(c);
++        }
++        for c in &fs.corners {
++            index.insert_corner(c.id, c.x, c.y, c.z);
++        }
++        fs.index = index;
++    }
+     (fs, diagnostics)
+ }
+ 
+@@ -1971,25 +2259,43 @@
+ 
+     #[test]
+     fn equivalent_polygon_loft_does_not_exhaust_the_cartesian_branch_budget() {
+-        let profile: Vec<_> = (0..16).map(|i| {
+-            let angle = i as f64 * std::f64::consts::TAU / 16.;
+-            [2. * angle.cos(), 2. * angle.sin()]
+-        }).collect();
++        let profile: Vec<_> = (0..16)
++            .map(|i| {
++                let angle = i as f64 * std::f64::consts::TAU / 16.;
++                [2. * angle.cos(), 2. * angle.sin()]
++            })
++            .collect();
+         let mut upper = profile.clone();
+         upper.rotate_left(5);
+         upper.reverse();
+         let loft = crate::scene_bridge::build_csg_tree(&crate::scene_bridge::BridgeNode::Loft {
+-            node_id: 0, pos: [0.; 3], profiles: vec![profile, upper], h: 2.,
+-        }).unwrap();
++            node_id: 0,
++            pos: [0.; 3],
++            profiles: vec![profile, upper],
++            h: 2.,
++        })
++        .unwrap();
+         let root = CsgNode::Blend {
+             kind: crate::sdf::BlendKind::Smax,
+             mode: crate::primitives::smin::SminMode::Chamfer,
+-            r: 1., n: 4.,
+-            children: vec![loft, leaf_at(Shape::Cuboid { half: [10., 0.6, 10.] }, [0.; 3])],
++            r: 1.,
++            n: 4.,
++            children: vec![
++                loft,
++                leaf_at(
++                    Shape::Cuboid {
++                        half: [10., 0.6, 10.],
++                    },
++                    [0.; 3],
++                ),
++            ],
+         };
+         let mut tree = build_tree(&root, build_leaf_strata);
+         let (_, unresolved) = super::super::branch_surfaces::append_branch_pairs(&mut tree, 1e-8);
+-        assert!(unresolved.is_empty(), "16 equivalent edges must not require 256 independent edge pairs");
++        assert!(
++            unresolved.is_empty(),
++            "16 equivalent edges must not require 256 independent edge pairs"
++        );
+     }
+ 
+     #[test]
+@@ -2007,7 +2313,12 @@
+ 
+     #[test]
+     fn unit_box_has_12_segments_8_corners() {
+-        let tree = leaf_at(Shape::Cuboid { half: [1.0, 1.0, 1.0] }, [0.0, 0.0, 0.0]);
++        let tree = leaf_at(
++            Shape::Cuboid {
++                half: [1.0, 1.0, 1.0],
++            },
++            [0.0, 0.0, 0.0],
++        );
+         let fs = compile_native_features(&tree);
+         assert_eq!(fs.curves.len(), 12);
+         assert_eq!(fs.corners.len(), 8);
+@@ -2051,7 +2362,10 @@
+         assert_eq!(fs.curves.len(), 1);
+         assert_eq!(fs.corners.len(), 1);
+         assert_eq!(fs.strata.len(), 2);
+-        assert_eq!(fs.curves[0].kind(), crate::sfcc::feature_curves::CurveKind::Circle);
++        assert_eq!(
++            fs.curves[0].kind(),
++            crate::sfcc::feature_curves::CurveKind::Circle
++        );
+         assert_eq!(fs.curves[0].adjacent_strata, [0, 1]);
+         // Apex sits at +h, incident to the mantle only.
+         let apex = &fs.corners[0];
+@@ -2074,41 +2388,93 @@
+         // cuts the +x/+y/+z faces in three closed seam circles; the 12 box edges
+         // survive (sphere only carves near the +++ octant), 8 box corners stay.
+         let tree = crate::sdf::subtract(
+-            leaf_at(Shape::Cuboid { half: [10.0, 10.0, 10.0] }, [0.0, 0.0, 0.0]),
++            leaf_at(
++                Shape::Cuboid {
++                    half: [10.0, 10.0, 10.0],
++                },
++                [0.0, 0.0, 0.0],
++            ),
+             leaf_at(Shape::Sphere { r: 6.0 }, [5.0, 5.0, 5.0]),
+         );
+-        let tol = crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 36.0);
++        let tol =
++            crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 36.0);
+         let (fs, diag) = compile_feature_set(&tree, &tol);
+-        let segs =
+-            fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Segment).count();
+-        let traced =
+-            fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced).count();
++        let segs = fs
++            .curves
++            .iter()
++            .filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Segment)
++            .count();
++        let traced = fs
++            .curves
++            .iter()
++            .filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced)
++            .count();
+         assert_eq!(segs, 12, "12 surviving box edges");
+         assert_eq!(traced, 3, "3 traced seam circles (sphere ∩ +x/+y/+z faces)");
+         assert_eq!(fs.corners.len(), 8, "8 box corners survive");
+         assert!(diag.curves_traced >= 3, "tracer found the seam loops");
+         // The seam circles are closed loops on the sphere carrier (stratum 6).
+-        for c in fs.curves.iter().filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced) {
++        for c in fs
++            .curves
++            .iter()
++            .filter(|c| c.kind() == crate::sfcc::feature_curves::CurveKind::Traced)
++        {
+             assert!(c.closed, "seam circle is a closed loop");
+-            assert!(c.adjacent_strata.contains(&6), "seam adjacent to the sphere carrier");
++            assert!(
++                c.adjacent_strata.contains(&6),
++                "seam adjacent to the sphere carrier"
++            );
+         }
+     }
+ }
+ 
+ // Resource-only walk follows the derived Clone fields; no geometry evaluation.
+ impl SfccFeatureSet {
+-    pub(crate) fn private_owned_storage_a(&self,ledger:&mut super::source_storage_a::Ledger)->super::source_storage_a::Result<()> {
+-        let Self{unresolved_branch_paths,trace_diagnostics,curves,corners,index,strata,run_id}=self;
+-        let _: &Vec<Vec<usize>>=unresolved_branch_paths;let _: &Vec<FeatureCurve>=curves;let _: &Vec<SfccCorner>=corners;let _: &Vec<Stratum>=strata;
+-        ledger.inline_copy(trace_diagnostics);ledger.inline_copy(run_id);
+-        ledger.vector("features.unresolved_paths",unresolved_branch_paths)?;
+-        for path in unresolved_branch_paths{ledger.vector("features.unresolved_path",path)?;}
+-        ledger.vector("features.curves",curves)?;for curve in curves{curve.private_owned_storage_a(ledger)?;}
+-        ledger.vector("features.corners",corners)?;for corner in corners{
+-            let SfccCorner{id,x,y,z,strata,curve_ends}=corner;ledger.inline_copy(&(*id,*x,*y,*z));
+-            ledger.vector("corner.strata",strata)?;ledger.vector("corner.curve_ends",curve_ends)?;
+-        }
+-        ledger.vector("features.strata",strata)?;for stratum in strata{stratum.private_owned_storage_a(ledger)?;}
++    pub(crate) fn private_owned_storage_a(
++        &self,
++        ledger: &mut super::source_storage_a::Ledger,
++    ) -> super::source_storage_a::Result<()> {
++        let Self {
++            unresolved_branch_paths,
++            trace_diagnostics,
++            curves,
++            corners,
++            index,
++            strata,
++            run_id,
++        } = self;
++        let _: &Vec<Vec<usize>> = unresolved_branch_paths;
++        let _: &Vec<FeatureCurve> = curves;
++        let _: &Vec<SfccCorner> = corners;
++        let _: &Vec<Stratum> = strata;
++        ledger.inline_copy(trace_diagnostics);
++        ledger.inline_copy(run_id);
++        ledger.vector("features.unresolved_paths", unresolved_branch_paths)?;
++        for path in unresolved_branch_paths {
++            ledger.vector("features.unresolved_path", path)?;
++        }
++        ledger.vector("features.curves", curves)?;
++        for curve in curves {
++            curve.private_owned_storage_a(ledger)?;
++        }
++        ledger.vector("features.corners", corners)?;
++        for corner in corners {
++            let SfccCorner {
++                id,
++                x,
++                y,
++                z,
++                strata,
++                curve_ends,
++            } = corner;
++            ledger.inline_copy(&(*id, *x, *y, *z));
++            ledger.vector("corner.strata", strata)?;
++            ledger.vector("corner.curve_ends", curve_ends)?;
++        }
++        ledger.vector("features.strata", strata)?;
++        for stratum in strata {
++            stratum.private_owned_storage_a(ledger)?;
++        }
+         index.private_owned_storage_a(ledger)
+     }
+ }
+--- a/gcad-wasm/kernel/src/sfcc/field_branches.rs
++++ b/gcad-wasm/kernel/src/sfcc/field_branches.rs
+@@ -14,12 +14,16 @@
+     partners: std::sync::Arc<[usize]>,
+ }
+ impl FieldRef {
+-    pub(crate) fn is_plain(&self) -> bool { self.branch.is_none() && self.partners.is_empty() }
++    pub(crate) fn is_plain(&self) -> bool {
++        self.branch.is_none() && self.partners.is_empty()
++    }
+ 
+     pub(crate) fn plain_strict_descendant_of(&self, ancestor: &Self) -> bool {
+-        self.is_plain() && ancestor.is_plain()
++        self.is_plain()
++            && ancestor.is_plain()
+             && std::sync::Arc::ptr_eq(&self.root, &ancestor.root)
+-            && self.path.len() > ancestor.path.len() && self.path.starts_with(&ancestor.path)
++            && self.path.len() > ancestor.path.len()
++            && self.path.starts_with(&ancestor.path)
+     }
+ 
+     /// Experimental scope: outer Round/Soft has no sharp attachment at a
+@@ -30,23 +34,36 @@
+             match node {
+                 CsgNode::Leaf(_) => true,
+                 CsgNode::Min(c) | CsgNode::Max(c) => c.iter().all(supported),
+-                CsgNode::Blend { mode, r, children, .. } => children.len()==2
+-                    && r.is_finite() && *r>0.
+-                    && matches!(mode,SminMode::Round|SminMode::Soft|SminMode::Chamfer)
+-                    && children.iter().all(supported),
+-            }
+-        }
+-        self.is_plain() && matches!(self.node(),CsgNode::Blend {
++                CsgNode::Blend {
++                    mode, r, children, ..
++                } => {
++                    children.len() == 2
++                        && r.is_finite()
++                        && *r > 0.
++                        && matches!(mode, SminMode::Round | SminMode::Soft | SminMode::Chamfer)
++                        && children.iter().all(supported)
++                }
++            }
++        }
++        self.is_plain()
++            && matches!(self.node(),CsgNode::Blend {
+             mode:SminMode::Round|SminMode::Soft, r, children, ..
+-        } if r.is_finite() && *r>0. && children.len()==2) && supported(self.node())
+-    }
+-    pub(crate) fn semantic_identity(&self, context: &mut super::provenance::IdentityContext) -> u64 {
++        } if r.is_finite() && *r>0. && children.len()==2)
++            && supported(self.node())
++    }
++    pub(crate) fn semantic_identity(
++        &self,
++        context: &mut super::provenance::IdentityContext,
++    ) -> u64 {
+         use super::provenance::IdentityHash;
+-        let source = *context.roots.entry(std::sync::Arc::as_ptr(&self.root) as usize).or_insert_with(|| {
+-            let mut hash = IdentityHash::default();
+-            hash.include(&self.root);
+-            hash.0
+-        });
++        let source = *context
++            .roots
++            .entry(std::sync::Arc::as_ptr(&self.root) as usize)
++            .or_insert_with(|| {
++                let mut hash = IdentityHash::default();
++                hash.include(&self.root);
++                hash.0
++            });
+         let mut hash = IdentityHash::default();
+         hash.include(source);
+         hash.include(&self.path);
+@@ -66,8 +83,10 @@
+     }
+     pub(crate) fn is_plain_child_of(&self, parent: &Self, child: usize) -> bool {
+         std::sync::Arc::ptr_eq(&self.root, &parent.root)
+-            && self.branch.is_none() && parent.branch.is_none()
+-            && self.partners.is_empty() && parent.partners.is_empty()
++            && self.branch.is_none()
++            && parent.branch.is_none()
++            && self.partners.is_empty()
++            && parent.partners.is_empty()
+             && self.path.len() == parent.path.len() + 1
+             && self.path.starts_with(&parent.path)
+             && self.path.last() == Some(&child)
+@@ -76,7 +95,12 @@
+         self.branch.is_none().then(|| self.node())
+     }
+     pub fn new(root: std::sync::Arc<CsgNode>, path: Vec<usize>) -> Self {
+-        Self { root, path, branch: None, partners: std::sync::Arc::from([]) }
++        Self {
++            root,
++            path,
++            branch: None,
++            partners: std::sync::Arc::from([]),
++        }
+     }
+     pub(crate) fn with_branch(
+         mut self,
+@@ -91,9 +115,13 @@
+     }
+     pub fn sample(&self, p: [f64; 3]) -> FieldSample {
+         match &self.branch {
+-            Some((path, branch, _)) => {
+-                super::branch_surfaces::sample_override(self.node(), path, branch, &self.partners, p)
+-            }
++            Some((path, branch, _)) => super::branch_surfaces::sample_override(
++                self.node(),
++                path,
++                branch,
++                &self.partners,
++                p,
++            ),
+             None => sample_tree(self.node(), p),
+         }
+     }
+@@ -154,7 +182,11 @@
+         }
+         let mut node = self.root.as_ref();
+         for step in 0..=self.path.len() {
+-            if !query.raw(node).normalized_equation().is_some_and(|s| s.value.abs() <= tolerance) {
++            if !query
++                .raw(node)
++                .normalized_equation()
++                .is_some_and(|s| s.value.abs() <= tolerance)
++            {
+                 return false;
+             }
+             if step < self.path.len() {
+@@ -178,10 +210,16 @@
+ 
+ impl FieldSample {
+     pub(crate) fn constant(value: f64) -> Self {
+-        Self { value, gradient: [0.; 3] }
++        Self {
++            value,
++            gradient: [0.; 3],
++        }
+     }
+     pub(crate) fn scale(self, s: f64) -> Self {
+-        Self { value: self.value * s, gradient: self.gradient.map(|v| v * s) }
++        Self {
++            value: self.value * s,
++            gradient: self.gradient.map(|v| v * s),
++        }
+     }
+     pub(crate) fn add(self, b: Self) -> Self {
+         Self {
+@@ -216,23 +254,33 @@
+     fn hypot(self, b: Self) -> Self {
+         let value = self.value.hypot(b.value);
+         let gradient = if value > 1e-30 {
+-            std::array::from_fn(|k| (self.value * self.gradient[k] + b.value * b.gradient[k]) / value)
++            std::array::from_fn(|k| {
++                (self.value * self.gradient[k] + b.value * b.gradient[k]) / value
++            })
+         } else {
+             [0.; 3]
+         };
+         Self { value, gradient }
+     }
+     fn modulo(self, period: f64) -> Self {
+-        Self { value: self.value - period * (self.value / period).floor(), ..self }
++        Self {
++            value: self.value - period * (self.value / period).floor(),
++            ..self
++        }
+     }
+     /// Scale the equation and its Jacobian row together. This is not the
+     /// derivative of `value / |gradient|`; it is a preconditioned raw equation.
+     pub fn normalized_equation(self) -> Option<Self> {
+-        let magnitude = self.gradient[0].hypot(self.gradient[1]).hypot(self.gradient[2]);
++        let magnitude = self.gradient[0]
++            .hypot(self.gradient[1])
++            .hypot(self.gradient[2]);
+         if !self.value.is_finite() || !magnitude.is_finite() || magnitude <= 1e-30 {
+             return None;
+         }
+-        Some(Self { value: self.value / magnitude, gradient: self.gradient.map(|v| v / magnitude) })
++        Some(Self {
++            value: self.value / magnitude,
++            gradient: self.gradient.map(|v| v / magnitude),
++        })
+     }
+ }
+ 
+@@ -274,7 +322,9 @@
+ impl Drop for PointQuery<'_> {
+     fn drop(&mut self) {
+         self.entries.clear();
+-        if self.entries.capacity() == 0 { return; }
++        if self.entries.capacity() == 0 {
++            return;
++        }
+         // Nested queries can have their own workspace. Retain only the largest
+         // bounded allocation; never panic during thread-local destruction.
+         let _ = QUERY_WORKSPACE.try_with(|pool| {
+@@ -288,22 +338,36 @@
+ }
+ impl<'a> PointQuery<'a> {
+     fn new(point: [f64; 3]) -> Self {
+-        let entries = if super::perf::disabled(4) { Vec::new() } else {
++        let entries = if super::perf::disabled(4) {
++            Vec::new()
++        } else {
+             QUERY_WORKSPACE.with(|pool| std::mem::take(&mut *pool.borrow_mut()))
+         };
+         debug_assert!(entries.is_empty());
+-        if entries.capacity() > 0 { super::perf::add(17, 1); }
+-        Self { point, entries, nodes: std::marker::PhantomData }
++        if entries.capacity() > 0 {
++            super::perf::add(17, 1);
++        }
++        Self {
++            point,
++            entries,
++            nodes: std::marker::PhantomData,
++        }
+     }
+     fn slot(&mut self, node: &'a CsgNode) -> Option<usize> {
+-        if let Some(i) = self.entries.iter().position(|e| e.node == node as *const CsgNode as usize) {
++        if let Some(i) = self
++            .entries
++            .iter()
++            .position(|e| e.node == node as *const CsgNode as usize)
++        {
+             return Some(i);
+         }
+         if self.entries.len() >= 128 {
+             return None;
+         }
+         let i = self.entries.len();
+-        if self.entries.len() == self.entries.capacity() { super::perf::add(16, 1); }
++        if self.entries.len() == self.entries.capacity() {
++            super::perf::add(16, 1);
++        }
+         self.entries.push(QueryEntry {
+             node: node as *const CsgNode as usize,
+             scalar: None,
+@@ -389,8 +453,12 @@
+ pub fn sample_tree(node: &CsgNode, p: [f64; 3]) -> FieldSample {
+     sample_tree_using(node, p, &mut Uncached)
+ }
+-fn sample_tree_using<'a>(node: &'a CsgNode, p: [f64; 3], query: &mut impl Evaluation<'a>) -> FieldSample {
+-    super::perf::add(13,1);
++fn sample_tree_using<'a>(
++    node: &'a CsgNode,
++    p: [f64; 3],
++    query: &mut impl Evaluation<'a>,
++) -> FieldSample {
++    super::perf::add(13, 1);
+     match node {
+         CsgNode::Leaf(l) => sample_leaf(l, p),
+         CsgNode::Min(children) | CsgNode::Max(children) => {
+@@ -398,7 +466,13 @@
+             let child = winner(children, |child| query.scalar(child, p), is_min);
+             query.raw(child, p)
+         }
+-        CsgNode::Blend { kind, mode, r, n, children } => {
++        CsgNode::Blend {
++            kind,
++            mode,
++            r,
++            n,
++            children,
++        } => {
+             let sign = if *kind == BlendKind::Smin { 1. } else { -1. };
+             let mut pair = [0, 1];
+             if children.len() > 2 {
+@@ -438,7 +512,13 @@
+             let child = winner(children, |child| child.f(p), is_min);
+             sample_pruned(child, p)
+         }
+-        crate::sdf::Pruned::Blend { kind, mode, r, n, children } => {
++        crate::sdf::Pruned::Blend {
++            kind,
++            mode,
++            r,
++            n,
++            children,
++        } => {
+             let sign = if *kind == BlendKind::Smin { 1. } else { -1. };
+             let mut pair = [0, 1];
+             if children.len() > 2 {
+@@ -472,14 +552,23 @@
+     let local = l.sim.inv_apply_point(p[0], p[1], p[2]);
+     let [x, y, z] = std::array::from_fn(|k| local[k] - l.pos[k]);
+     let gradient = match &l.shape {
+-        Shape::Extrude { verts, wind, h, twist_rad } => {
++        Shape::Extrude {
++            verts,
++            wind,
++            h,
++            twist_rad,
++        } => {
+             let t = ((y + h) / (2. * h)).clamp(0., 1.);
+             let angle = twist_rad * t;
+             let (ca, sa) = (angle.cos(), angle.sin());
+             let (qx, qz) = (ca * x + sa * z, -sa * x + ca * z);
+             let profile = polygon_dist_2d(verts, *wind, qx, qz);
+             if profile.d > y.abs() - h {
+-                let k = if y > -*h && y < *h { twist_rad / (2. * h) } else { 0. };
++                let k = if y > -*h && y < *h {
++                    twist_rad / (2. * h)
++                } else {
++                    0.
++                };
+                 [
+                     ca * profile.gx - sa * profile.gz,
+                     k * (profile.gx * qz - profile.gz * qx),
+@@ -496,18 +585,29 @@
+             let a = polygon_dist_2d(&profs[i], winds[i], x, z);
+             let b = polygon_dist_2d(&profs[i + 1], winds[i + 1], x, z);
+             if a.d * (1. - t) + b.d * t > y.abs() - h {
+-                let gy =
+-                    if y > -*h && y < *h { (b.d - a.d) * (profs.len() - 1) as f64 / (2. * h) } else { 0. };
++                let gy = if y > -*h && y < *h {
++                    (b.d - a.d) * (profs.len() - 1) as f64 / (2. * h)
++                } else {
++                    0.
++                };
+                 [a.gx * (1. - t) + b.gx * t, gy, a.gz * (1. - t) + b.gz * t]
+             } else {
+                 [0., if y < 0. { -1. } else { 1. }, 0.]
+             }
+         }
+-        _ => return FieldSample { value: l.f(p), gradient: l.normal(p) },
++        _ => {
++            return FieldSample {
++                value: l.f(p),
++                gradient: l.normal(p),
++            }
++        }
+     };
+     FieldSample {
+         value: l.f(p),
+-        gradient: l.sim.rotate_vector(gradient[0], gradient[1], gradient[2]).map(|v| v * l.sign),
++        gradient: l
++            .sim
++            .rotate_vector(gradient[0], gradient[1], gradient[2])
++            .map(|v| v * l.sign),
+     }
+ }
+ 
+@@ -523,7 +623,9 @@
+     let q = std::f64::consts::FRAC_1_SQRT_2;
+     match mode {
+         SminMode::Chamfer => a.min(b).min(a.add(b).sub(r).scale(q)),
+-        SminMode::Round => r.max(a.min(b)).sub(r.sub(a).max(c(0.)).hypot(r.sub(b).max(c(0.)))),
++        SminMode::Round => r
++            .max(a.min(b))
++            .sub(r.sub(a).max(c(0.)).hypot(r.sub(b).max(c(0.)))),
+         SminMode::Soft => {
+             // The polynomial is differentiable at a == b even though this
+             // scalar spelling uses min/abs. Differentiating their independent
+@@ -538,7 +640,11 @@
+         SminMode::Stairs => {
+             let s = radius / n;
+             let u = b.sub(r);
+-            a.min(b).min(u.add(a).add(u.sub(a).add(c(s)).modulo(2. * s).sub(c(s)).abs()).scale(0.5))
++            a.min(b).min(
++                u.add(a)
++                    .add(u.sub(a).add(c(s)).modulo(2. * s).sub(c(s)).abs())
++                    .scale(0.5),
++            )
+         }
+         SminMode::Columns | SminMode::ColumnsI => {
+             if a.value >= radius || b.value >= radius {
+@@ -610,9 +716,16 @@
+                     assert_eq!(sample.value, regional.value);
+                     assert_eq!(sample.gradient, regional.gradient);
+                     let expected_normal = sample.normalized_equation().unwrap().gradient;
+-                    assert_eq!(tree.grad(p).1, expected_normal, "{mode:?} {kind:?} at {p:?}");
++                    assert_eq!(
++                        tree.grad(p).1,
++                        expected_normal,
++                        "{mode:?} {kind:?} at {p:?}"
++                    );
+                     assert_eq!(pruned.grad(p), tree.grad(p));
+-                    assert!((sample.value - tree.f(p)).abs() < 1e-12, "{mode:?} {kind:?} at {p:?}");
++                    assert!(
++                        (sample.value - tree.f(p)).abs() < 1e-12,
++                        "{mode:?} {kind:?} at {p:?}"
++                    );
+                     for k in 0..3 {
+                         let (mut a, mut b) = (p, p);
+                         a[k] -= 1e-6;
+@@ -632,9 +745,12 @@
+     #[test]
+     fn equation_scaling_preserves_residual_and_direction() {
+         for scale in [0.01, 1., 100.] {
+-            let a = FieldSample { value: 2. * scale, gradient: [3. * scale, 4. * scale, 0.] }
+-                .normalized_equation()
+-                .unwrap();
++            let a = FieldSample {
++                value: 2. * scale,
++                gradient: [3. * scale, 4. * scale, 0.],
++            }
++            .normalized_equation()
++            .unwrap();
+             assert!((a.value - 0.4).abs() < 1e-14);
+             assert!((a.gradient[0] - 0.6).abs() < 1e-14);
+             assert!((a.gradient[1] - 0.8).abs() < 1e-14);
+@@ -644,9 +760,18 @@
+     #[test]
+     fn singular_and_nonfinite_equations_are_explicit() {
+         for sample in [
+-            FieldSample { value: 0., gradient: [0.; 3] },
+-            FieldSample { value: f64::NAN, gradient: [1., 0., 0.] },
+-            FieldSample { value: 0., gradient: [f64::INFINITY, 0., 0.] },
++            FieldSample {
++                value: 0.,
++                gradient: [0.; 3],
++            },
++            FieldSample {
++                value: f64::NAN,
++                gradient: [1., 0., 0.],
++            },
++            FieldSample {
++                value: 0.,
++                gradient: [f64::INFINITY, 0., 0.],
++            },
+         ] {
+             assert!(sample.normalized_equation().is_none());
+         }
+@@ -956,61 +1081,102 @@
+ mod workspace_tests {
+     use super::*;
+     use crate::sdf::leaf_at;
+-    fn bits(s:FieldSample)->[u64;4] {[s.value.to_bits(),s.gradient[0].to_bits(),s.gradient[1].to_bits(),s.gradient[2].to_bits()]}
++    fn bits(s: FieldSample) -> [u64; 4] {
++        [
++            s.value.to_bits(),
++            s.gradient[0].to_bits(),
++            s.gradient[1].to_bits(),
++            s.gradient[2].to_bits(),
++        ]
++    }
+     #[test]
+     fn storage_reuse_never_reuses_point_or_node_values() {
+-        let mut tree=leaf_at(Shape::Sphere {r:1.},[0.;3]);
+-        let address=&tree as *const CsgNode as usize;
++        let mut tree = leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
++        let address = &tree as *const CsgNode as usize;
+         {
+-            let mut query=PointQuery::new([0.5,0.,0.]);
+-            assert_eq!(bits(query.raw(&tree)),bits(reference_sample_tree(&tree,[0.5,0.,0.])));
+-        }
+-        tree=leaf_at(Shape::Sphere {r:3.},[0.;3]);
+-        assert_eq!(address,&tree as *const CsgNode as usize);
+-        for p in [[0.5,0.,0.],[1.,0.,0.],[1.0000000000000002,0.,0.]] {
+-            let mut query=PointQuery::new(p);
++            let mut query = PointQuery::new([0.5, 0., 0.]);
++            assert_eq!(
++                bits(query.raw(&tree)),
++                bits(reference_sample_tree(&tree, [0.5, 0., 0.]))
++            );
++        }
++        tree = leaf_at(Shape::Sphere { r: 3. }, [0.; 3]);
++        assert_eq!(address, &tree as *const CsgNode as usize);
++        for p in [[0.5, 0., 0.], [1., 0., 0.], [1.0000000000000002, 0., 0.]] {
++            let mut query = PointQuery::new(p);
+             assert!(query.entries.is_empty());
+-            assert_eq!(bits(query.raw(&tree)),bits(reference_sample_tree(&tree,p)));
+-        }
+-        QUERY_WORKSPACE.with(|pool|assert!(pool.borrow().is_empty()));
++            assert_eq!(
++                bits(query.raw(&tree)),
++                bits(reference_sample_tree(&tree, p))
++            );
++        }
++        QUERY_WORKSPACE.with(|pool| assert!(pool.borrow().is_empty()));
+     }
+     #[test]
+     fn nested_queries_keep_independent_storage_and_unwind_clears_it() {
+-        let tree=leaf_at(Shape::Sphere {r:1.},[0.;3]);
+-        let mut outer=PointQuery::new([0.5,0.,0.]);
+-        let expected=bits(outer.raw(&tree));
++        let tree = leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
++        let mut outer = PointQuery::new([0.5, 0., 0.]);
++        let expected = bits(outer.raw(&tree));
+         {
+-            let mut inner=PointQuery::new([2.,0.,0.]);
+-            assert_eq!(bits(inner.raw(&tree)),bits(reference_sample_tree(&tree,[2.,0.,0.])));
+-        }
+-        assert_eq!(bits(outer.raw(&tree)),expected);
++            let mut inner = PointQuery::new([2., 0., 0.]);
++            assert_eq!(
++                bits(inner.raw(&tree)),
++                bits(reference_sample_tree(&tree, [2., 0., 0.]))
++            );
++        }
++        assert_eq!(bits(outer.raw(&tree)), expected);
+         drop(outer);
+-        let _=std::panic::catch_unwind(|| {
+-            let mut query=PointQuery::new([3.,0.,0.]);
++        let _ = std::panic::catch_unwind(|| {
++            let mut query = PointQuery::new([3., 0., 0.]);
+             query.raw(&tree);
+             panic!("test query unwind");
+         });
+         QUERY_WORKSPACE.with(|pool| {
+             assert!(pool.borrow().is_empty());
+-            assert!(pool.borrow().capacity()<=128);
++            assert!(pool.borrow().capacity() <= 128);
+         });
+     }
+ }
+ 
+ impl FieldRef {
+-    pub(crate) fn private_owned_storage_a(&self,ledger:&mut super::source_storage_a::Ledger)->super::source_storage_a::Result<()> {
+-        let Self{root,path,branch,partners}=self;let _: &Vec<usize>=path;
+-        ledger.shared("shared.source_root_handle",root)?;ledger.shared("shared.partners_handle",partners)?;
+-        ledger.vector("field.path",path)?;
+-        if let Some((path,kind,band))=branch {
+-            let _: &Vec<usize>=path;ledger.vector("field.override_path",path)?;ledger.inline_copy(band);
++    pub(crate) fn private_owned_storage_a(
++        &self,
++        ledger: &mut super::source_storage_a::Ledger,
++    ) -> super::source_storage_a::Result<()> {
++        let Self {
++            root,
++            path,
++            branch,
++            partners,
++        } = self;
++        let _: &Vec<usize> = path;
++        ledger.shared("shared.source_root_handle", root)?;
++        ledger.shared("shared.partners_handle", partners)?;
++        ledger.vector("field.path", path)?;
++        if let Some((path, kind, band)) = branch {
++            let _: &Vec<usize> = path;
++            ledger.vector("field.override_path", path)?;
++            ledger.inline_copy(band);
+             use super::branch_surfaces::FieldBranch::*;
+             // Exhaustive scalar payload audit: a new/owned variant must update this walk.
+             match kind {
+-                Child(a)|LatheEdge(a)|ExtrudeEdge(a)|LoftRegion(a)=>{let _:usize=*a;},
+-                Chamfer(a,b)|Pair(a,b)=>{let _:(usize,usize)=(*a,*b);},
+-                BoxFace(a)|CylinderPart(a)|ConePart(a)|ExtrudePart(a)|TwistRegion(a)|LoftPart(a)=>{let _:u8=*a;},
+-                LoftEdges{region,lower,upper}=>{let _:(usize,usize,usize)=(*region,*lower,*upper);},
++                Child(a) | LatheEdge(a) | ExtrudeEdge(a) | LoftRegion(a) => {
++                    let _: usize = *a;
++                }
++                Chamfer(a, b) | Pair(a, b) => {
++                    let _: (usize, usize) = (*a, *b);
++                }
++                BoxFace(a) | CylinderPart(a) | ConePart(a) | ExtrudePart(a) | TwistRegion(a)
++                | LoftPart(a) => {
++                    let _: u8 = *a;
++                }
++                LoftEdges {
++                    region,
++                    lower,
++                    upper,
++                } => {
++                    let _: (usize, usize, usize) = (*region, *lower, *upper);
++                }
+             }
+         }
+         Ok(())
+@@ -1019,18 +1185,34 @@
+ 
+ #[cfg(test)]
+ impl FieldRef {
+-    pub(crate) fn private_storage_clone_equal_a(&self,other:&Self)->bool {
+-        std::sync::Arc::ptr_eq(&self.root,&other.root)&&std::sync::Arc::ptr_eq(&self.partners,&other.partners)&&self.path==other.path&&match(&self.branch,&other.branch){(Some((a,k,x)),Some((b,l,y)))=>a==b&&k==l&&x.to_bits()==y.to_bits(),(None,None)=>true,_=>false}
+-    }
+-}
+-
+-#[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++    pub(crate) fn private_storage_clone_equal_a(&self, other: &Self) -> bool {
++        std::sync::Arc::ptr_eq(&self.root, &other.root)
++            && std::sync::Arc::ptr_eq(&self.partners, &other.partners)
++            && self.path == other.path
++            && match (&self.branch, &other.branch) {
++                (Some((a, k, x)), Some((b, l, y))) => {
++                    a == b && k == l && x.to_bits() == y.to_bits()
++                }
++                (None, None) => true,
++                _ => false,
++            }
++    }
++}
++
++#[cfg(all(feature = "serde", any(test, feature = "sfcc-profile")))]
+ impl FieldRef {
+-    pub(crate) fn graph_capture_identity_b(&self)->Option<serde_json::Value> {
+-        if self.path.len()>32||self.partners.len()>64||self.branch.as_ref().is_some_and(|b|b.0.len()>32){return None;}
+-        Some(serde_json::json!({"path":self.path,"partners":self.partners.as_ref(),
++    pub(crate) fn graph_capture_identity_b(&self) -> Option<serde_json::Value> {
++        if self.path.len() > 32
++            || self.partners.len() > 64
++            || self.branch.as_ref().is_some_and(|b| b.0.len() > 32)
++        {
++            return None;
++        }
++        Some(
++            serde_json::json!({"path":self.path,"partners":self.partners.as_ref(),
+             "branch":self.branch.as_ref().map(|(p,b,n)|serde_json::json!({"path":p,"kind":format!("{b:?}"),"nativeBandHex":format!("{:016x}",n.to_bits())})),
+-            "rootAddressProcessLocal":format!("{:x}",std::sync::Arc::as_ptr(&self.root)as usize)}))
++            "rootAddressProcessLocal":format!("{:x}",std::sync::Arc::as_ptr(&self.root)as usize)}),
++        )
+     }
+ }
+ 
+@@ -1039,3 +1221,55 @@
+         self.is_plain().then_some(self.root.as_ref())
+     }
+ }
++
++impl FieldRef {
++    pub(crate) fn upper_round_child_of(
++        &self,
++        parent: &Self,
++        cylinder: &Self,
++        child: usize,
++    ) -> bool {
++        if child > 1
++            || !self.path.is_empty()
++            || !parent.is_plain()
++            || !cylinder.is_plain()
++            || !super::shared_twisted_proof::exposure_a::same_source(
++                &self.root,
++                &parent.root,
++                &mut 64,
++            )
++            || !std::sync::Arc::ptr_eq(&parent.root, &cylinder.root)
++        {
++            return false;
++        }
++        let Some((path, branch, _)) = &self.branch else {
++            return false;
++        };
++        if !matches!(branch, super::branch_surfaces::FieldBranch::Child(i) if *i==child)
++            || path.len() != self.partners.len()
++            || parent.path.last() != Some(&0)
++            || parent.path[..parent.path.len() - 1] != path[..]
++            || cylinder.path.len() != path.len() + 1
++            || !cylinder.path.starts_with(path)
++            || cylinder.path.last() != Some(&1)
++        {
++            return false;
++        }
++        let mut node = self.root.as_ref();
++        for (&i, &partner) in path.iter().zip(self.partners.iter()) {
++            let children = match node {
++                CsgNode::Blend { children, .. }
++                    if children.len() == 2 && i < 2 && partner == 1 - i =>
++                {
++                    children
++                }
++                CsgNode::Max(children) if children.len() == 2 && i < 2 && partner == usize::MAX => {
++                    children
++                }
++                _ => return false,
++            };
++            node = &children[i];
++        }
++        matches!(node,CsgNode::Max(c) if c.len()==2)
++    }
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -189,7 +189,7 @@
+     if !super::shared_twisted_proof::correlated_c::transport_a::accepts(point, own, eps)
+         || curve.adjacent_strata.iter().any(|&sid| {
+             !f.strata.get(sid).is_some_and(|s| {
+-                s.domain_contains(point, eps)
++                (s.domain_contains(point, eps)||curve.upper_source_member(&f.strata,sid,t,point,eps))
+                     && s.raw_field(point[0], point[1], point[2])
+                         .normalized_equation()
+                         .is_some_and(|v| v.value.is_finite() && v.value.abs() <= eps)
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -40,9 +40,11 @@
+     let corner=usize::try_from(id).ok().and_then(|i|f.corners.get(i)).ok_or_else(||fail(f,ids,"endpoint_missing","no actual compiled junction"))?;
+     let p=[corner.x,corner.y,corner.z];
+     if !p.iter().all(|v|v.is_finite())||!ids.iter().all(|id|corner.curve_ends.iter().any(|&(c,_)|c==*id)){return Err(fail(f,ids,"endpoint_incidence","both original charts must remain incident"));}
++    if !super::shared_twisted_proof::exposure_a::upper_source_a::closure::event_complete(f,ids,corner,eps) {return Err(fail(f,ids,"upper_event_incomplete","proved continuing event requires its bound outgoing chart"));}
++    if corner.curve_ends.iter().any(|&(cid,_)|f.curves.get(cid).is_none_or(|c|c.adjacent_strata.iter().any(|s|!corner.strata.contains(s)))) {return Err(fail(f,ids,"endpoint_stratum_inventory","incident curve strata omitted"));}
+     for &sid in &corner.strata {
+         let Some(s)=f.strata.get(sid)else{return Err(fail(f,ids,"endpoint_stratum_missing",sid.to_string()));};
+-        if !s.domain_contains(p,eps)||!s.raw_field(p[0],p[1],p[2]).normalized_equation().is_some_and(|v|v.value.is_finite()&&v.value.abs()<=eps){return Err(fail(f,ids,"endpoint_constraint","actual original junction constraint fails unchanged numerical allowance"));}
++        if !(s.domain_contains(p,eps)||corner.curve_ends.iter().any(|&(cid,end)|f.curves.get(cid).is_some_and(|c|{let t=if end==0{c.t_min}else{c.t_max}; c.upper_source_member(&f.strata,sid,t,p,eps)})))||!s.raw_field(p[0],p[1],p[2]).normalized_equation().is_some_and(|v|v.value.is_finite()&&v.value.abs()<=eps){return Err(fail(f,ids,"endpoint_constraint","actual original junction constraint fails unchanged numerical allowance"));}
+     }
+     for &(id,end) in &corner.curve_ends {
+         let Some(c)=f.curves.get(id)else{return Err(fail(f,ids,"outgoing_chart_missing",id.to_string()));};
+@@ -732,7 +734,7 @@
+             })?;
+             if own.map(f64::to_bits) != point.map(f64::to_bits)
+                 || curve.adjacent_strata.iter().any(|&sid| {
+-                    !features.strata[sid].domain_contains(point, eps)
++                    !(features.strata[sid].domain_contains(point, eps)||curve.upper_source_member(&features.strata,sid,event.t,point,eps))
+                         || !features.strata[sid]
+                             .raw_field(point[0], point[1], point[2])
+                             .normalized_equation()
+--- a/gcad-wasm/kernel/src/sfcc/shared_correlated_gate_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_correlated_gate_c.rs
+@@ -401,7 +401,7 @@
+             })?;
+             for &sid in &curve.adjacent_strata {
+                 let st = &f.strata[sid];
+-                if !st.domain_contains(p, eps)
++                if !(st.domain_contains(p, eps)||curve.upper_source_member(&f.strata,sid,t,p,eps))
+                     || !st
+                         .raw_field(p[0], p[1], p[2])
+                         .normalized_equation()
+--- a/gcad-wasm/kernel/src/sfcc/upper_closure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_closure_a.rs
+@@ -0,0 +1,658 @@
++//! Source-bound three-chart transition. No discovery ownership predicate changes.
++use super::*;
++use crate::sfcc::{
++    feature_curves::FeatureCurve,
++    feature_set::{SfccCorner, SfccFeatureSet},
++};
++
++#[derive(Clone)]
++pub(crate) struct UpperChart {
++    cert: UpperCertificate,
++    /// Incoming last span or outgoing first span, in the remade chart.
++    pub span: [f64; 2],
++    outgoing: bool,
++    join_y: f64,
++    join_phi: f64,
++    ends: [[f64; 3]; 2],
++    source_pair: [usize; 2],
++    event_curves: [usize; 3],
++    original_curve: usize,
++    original_range: [f64; 2],
++    allowance: f64,
++}
++impl std::fmt::Debug for UpperChart {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_tuple("UpperChart").field(&self.words()).finish()
++    }
++}
++fn distance(point: [f64; 3], image: ([f64; 3], [f64; 3])) -> Option<f64> {
++    let mut sum = I::point(0.);
++    for k in 0..3 {
++        sum = sum.add(square(
++            I::point(point[k]).sub(interval(image.0[k], image.1[k])?)?,
++        )?)?;
++    }
++    Some(sqrt(sum)?.hi)
++}
++fn middle(image: ([f64; 3], [f64; 3])) -> [f64; 3] {
++    std::array::from_fn(|k| image.0[k] * 0.5 + image.1[k] * 0.5)
++}
++impl UpperCertificate {
++    fn incoming_image(&self, y: I) -> Option<([f64; 3], [f64; 3])> {
++        let p = self.branch.p;
++        let theta =
++            div(y.sub(I::point(p.pos_y))?.add(I::point(p.h))?, 2. * p.h)?.mul(p.twist_rad)?;
++        let (s, c) = sin_cos(theta)?;
++        let q = [
++            mul(self.branch.u, c)?
++                .sub(s.mul(p.v0z)?)?
++                .add(I::point(p.pos_x))?,
++            y,
++            mul(self.branch.u, s)?
++                .add(c.mul(p.v0z)?)?
++                .add(I::point(p.pos_z))?,
++        ];
++        Some((q.map(|i| i.lo), q.map(|i| i.hi)))
++    }
++    fn phi_for(&self, point: [f64; 3], eps: f64) -> Option<f64> {
++        let low = self.image(I::point(0.))?.y;
++        let high = self.image(I::point(self.phi_max))?.y;
++        if point[1] <= low.hi || point[1] >= high.lo {
++            return None;
++        }
++        let (mut a, mut b) = (0., self.phi_max);
++        for _ in 0..64 {
++            let m = a + (b - a) * 0.5;
++            if m == a || m == b {
++                break;
++            }
++            let image = self.point_image(m)?;
++            if distance(point, image)? <= eps * 0.25 {
++                return Some(m);
++            }
++            if (image.0[1] * 0.5 + image.1[1] * 0.5) < point[1] {
++                a = m;
++            } else {
++                b = m;
++            }
++        }
++        let m = a + (b - a) * 0.5;
++        (distance(point, self.point_image(m)?)? <= eps).then_some(m)
++    }
++}
++impl UpperChart {
++    pub(crate) fn contains(&self, t: f64) -> bool {
++        t.is_finite() && t >= self.span[0] && t <= self.span[1]
++    }
++    fn fraction(&self, t: f64) -> Option<f64> {
++        if !self.contains(t) || self.span[0] >= self.span[1] {
++            return None;
++        }
++        Some(((t - self.span[0]) / (self.span[1] - self.span[0])).clamp(0., 1.))
++    }
++    fn ideal_image(&self, a: f64, b: f64) -> Option<([f64; 3], [f64; 3])> {
++        let u = interval(self.fraction(a)?, self.fraction(b)?)?;
++        if self.outgoing {
++            let phi = u.mul(self.join_phi)?;
++            let image = self
++                .cert
++                .image(interval(phi.lo.max(0.), phi.hi.min(self.join_phi))?)?;
++            Some((image.xyz.map(|i| i.lo), image.xyz.map(|i| i.hi)))
++        } else {
++            let y = I::point(self.join_y)
++                .add(mul(self.cert.transition_y.sub(I::point(self.join_y))?, u)?)?;
++            self.cert.incoming_image(y)
++        }
++    }
++    pub(crate) fn image(&self, a: f64, b: f64) -> Option<([f64; 3], [f64; 3])> {
++        let (mut lo, mut hi) = self.ideal_image(a, a)?;
++        let mut previous = a;
++        for i in 1..=16 {
++            let next = if i == 16 {
++                b
++            } else {
++                a + (b - a) * i as f64 / 16.
++            };
++            let (l, h) = self.ideal_image(previous, next)?;
++            for k in 0..3 {
++                lo[k] = lo[k].min(l[k]);
++                hi[k] = hi[k].max(h[k]);
++            }
++            previous = next;
++        }
++        for (t, p) in [(self.span[0], self.ends[0]), (self.span[1], self.ends[1])] {
++            if a <= t && t <= b {
++                for k in 0..3 {
++                    lo[k] = lo[k].min(p[k]);
++                    hi[k] = hi[k].max(p[k]);
++                }
++            }
++        }
++        Some((lo, hi))
++    }
++    pub(crate) fn point(&self, t: f64) -> Option<[f64; 3]> {
++        let image = self.ideal_image(t, t)?;
++        let q = if t == self.span[0] {
++            self.ends[0]
++        } else if t == self.span[1] {
++            self.ends[1]
++        } else {
++            middle(image)
++        };
++        (distance(q, image)? <= self.allowance).then_some(q)
++    }
++    pub(crate) fn tangent(&self, t: f64) -> Option<[f64; 3]> {
++        let p = self.cert.branch.p;
++        let s = self.fraction(t)?;
++        let k = p.twist_rad / (2. * p.h);
++        let (u, v, up, vp, yp, y) = if self.outgoing {
++            let phi = s * self.join_phi;
++            let (sn, cs) = phi.sin_cos();
++            let r = self.cert.outer_radius;
++            let a = r * (cs - 1.);
++            let rho = self.cert.branch.cylinder.2 + a;
++            let q = self.cert.sphere_radius + r * (sn - 1.);
++            let y = self.cert.sphere_y + (q * q - rho * rho).sqrt();
++            let v = p.v0z + a * p.nz2;
++            let u = self.cert.branch.sign as f64 * (rho * rho - v * v).sqrt();
++            let rp = -r * sn;
++            let vp = rp * p.nz2;
++            let up = (rho * rp - v * vp) / u;
++            let yp = r * (q * cs + rho * sn) / (y - self.cert.sphere_y);
++            (u, v, up, vp, yp, y)
++        } else {
++            let y = self.point(t)?[1];
++            (
++                self.cert.branch.u.lo * 0.5 + self.cert.branch.u.hi * 0.5,
++                p.v0z,
++                0.,
++                0.,
++                1.,
++                y,
++            )
++        };
++        let theta = k * (y - p.pos_y + p.h);
++        let (sn, cs) = theta.sin_cos();
++        let q = [
++            up * cs - vp * sn - k * yp * (u * sn + v * cs),
++            yp,
++            up * sn + vp * cs + k * yp * (u * cs - v * sn),
++        ];
++        let n = q[0].hypot(q[1]).hypot(q[2]);
++        (n.is_finite() && n > 0.).then_some(q.map(|x| x / n))
++    }
++    pub(crate) fn words(&self) -> Vec<u64> {
++        let p = self.cert.branch.p;
++        let mut out = vec![self.outgoing as u64, self.original_curve as u64];
++        out.extend(self.source_pair.map(|i| i as u64));
++        out.extend(self.event_curves.map(|i| i as u64));
++        out.extend(self.cert.source.map(|i| i as u64));
++        out.extend(
++            [
++                p.pos_x,
++                p.pos_y,
++                p.pos_z,
++                p.h,
++                p.twist_rad,
++                p.v0z,
++                p.nz2,
++                self.cert.branch.sign as f64,
++                self.cert.branch.cylinder.2,
++                self.cert.outer_radius,
++                self.cert.sphere_radius,
++                self.cert.sphere_y,
++                self.cert.phi_max,
++                self.cert.transition_y.lo,
++                self.cert.transition_y.hi,
++                self.span[0],
++                self.span[1],
++                self.join_y,
++                self.join_phi,
++                self.original_range[0],
++                self.original_range[1],
++                self.allowance,
++            ]
++            .map(f64::to_bits),
++        );
++        out.extend(
++            [
++                p.v0x,
++                p.nx2,
++                p.sim.s,
++                self.cert.branch.u.lo,
++                self.cert.branch.u.hi,
++                self.cert.height_derivative_lower,
++                self.cert.transverse_minor_lower,
++            ]
++            .map(f64::to_bits),
++        );
++        out.extend(p.sim.r.map(f64::to_bits));
++        out.extend(p.sim.t.map(f64::to_bits));
++        out.extend(self.cert.branch.cylinder.0.map(f64::to_bits));
++        out.extend(self.cert.branch.cylinder.1.map(f64::to_bits));
++        out.extend(self.cert.margins.map(f64::to_bits));
++        for q in self.ends {
++            out.extend(q.map(f64::to_bits));
++        }
++        out
++    }
++    pub(crate) fn member(
++        &self,
++        strata: &[Stratum],
++        pair: [usize; 2],
++        sid: usize,
++        t: f64,
++        point: [f64; 3],
++        eps: f64,
++    ) -> bool {
++        if !self.outgoing
++            || pair != self.source_pair
++            || !pair.contains(&sid)
++            || !self.contains(t)
++            || !eps.is_finite()
++            || eps <= 0.
++            || strata.len() > 256
++        {
++            return false;
++        }
++        let [n, f, c] = self.cert.source;
++        let Some(parent) = strata.get(f) else {
++            return false;
++        };
++        let Some(cylinder) = strata.get(c) else {
++            return false;
++        };
++        if !pair.into_iter().enumerate().all(|(i, id)| {
++            strata
++                .get(id)
++                .is_some_and(|s| s.upper_round_child_matches(parent, cylinder, i))
++        }) {
++            return false;
++        }
++        let Some(root) = strata.get(n).and_then(Stratum::exposure_root_a) else {
++            return false;
++        };
++        if bind_region(
++            root,
++            strata,
++            &self.cert.branch,
++            self.cert.phi_max,
++            Some(self.join_y),
++        )
++        .is_none()
++        {
++            return false;
++        }
++        self.ideal_image(t, t)
++            .and_then(|image| distance(point, image))
++            .is_some_and(|d| d <= eps.min(self.allowance))
++    }
++}
++
++fn source_pair(f: &SfccFeatureSet, branch: &HelixBranch) -> Option<[usize; 2]> {
++    let mut ids = [None, None];
++    for s in &f.strata {
++        for child in 0..2 {
++            if s.upper_round_child_matches(
++                &f.strata[branch.field],
++                &f.strata[branch.cylinder_id],
++                child,
++            ) {
++                if ids[child].replace(s.id).is_some() {
++                    return None;
++                }
++            }
++        }
++    }
++    Some([ids[0]?, ids[1]?])
++}
++fn incoming_span(
++    c: &FeatureCurve,
++    cert: &UpperCertificate,
++    eps: f64,
++) -> Option<(usize, f64, [f64; 3])> {
++    if c.closed
++        || c.corner_end >= 0
++        || c.t_min != 0.
++        || c.t_max != c.t_max.floor()
++        || c.t_max > 128.
++    {
++        return None;
++    }
++    let mut found = None;
++    for i in 0..c.t_max as usize {
++        let a = c.shared_checked_point(i as f64)?;
++        let b = c.shared_checked_point(i as f64 + 1.)?;
++        if a[1] < cert.transition_y.lo && b[1] > cert.transition_y.hi {
++            if found.is_some() || distance(a, cert.incoming_image(I::point(a[1]))?)? > eps {
++                return None;
++            }
++            let y = cert.transition_y.lo * 0.5 + cert.transition_y.hi * 0.5;
++            found = Some((i, i as f64 + (y - a[1]) / (b[1] - a[1]), a));
++        }
++    }
++    found
++}
++
++/// Complete geometric proposal is prepared before any feature set mutation.
++pub(crate) fn connect(
++    root: &CsgNode,
++    f: &mut SfccFeatureSet,
++    tol: &crate::tolerances::ResolvedTolerances,
++) -> usize {
++    #[cfg(test)]
++    if DISABLED.with(std::cell::Cell::get) {
++        return 0;
++    }
++    if f.curves.len() > 256 || f.strata.len() > 256 {
++        return 0;
++    }
++    let mut proposals = Vec::new();
++    let mut attempts = 0;
++    for p in 0..f.curves.len() {
++        for a in p + 1..f.curves.len() {
++            if proposals.len() >= 8 {
++                break;
++            }
++            let cp = &f.curves[p];
++            let ca = &f.curves[a];
++            if cp.closed
++                || ca.closed
++                || cp.corner_end >= 0
++                || ca.corner_end >= 0
++                || cp.corner_start < 0
++                || cp.corner_start != ca.corner_start
++            {
++                continue;
++            }
++            let Some(tube) = cp.projection_tube(0., 1.) else {
++                continue;
++            };
++            let Some(branch) = HelixBranch::identify(f, p, a, tube) else {
++                continue;
++            };
++            attempts += 1;
++            if attempts > 64 {
++                return 0;
++            }
++            let Some(cert) = bind(root, &f.strata, &branch, 0.5) else {
++                continue;
++            };
++            let eps = tol.curve_eps * 8.;
++            let Some((pi, pt, pjoin)) = incoming_span(cp, &cert, eps) else {
++                continue;
++            };
++            let Some((ai, at, ajoin)) = incoming_span(ca, &cert, eps) else {
++                continue;
++            };
++            let low = pjoin[1].min(ajoin[1]);
++            let Some(cert) = bind_region(root, &f.strata, &branch, 0.5, Some(low)) else {
++                continue;
++            };
++            let Some(pair) = source_pair(f, &branch) else {
++                continue;
++            };
++            let event = middle(cert.point_image(0.).unwrap());
++            let mut outgoing = None;
++            let mut ambiguous = false;
++            for c in &f.curves {
++                if c.adjacent_strata != pair
++                    || c.closed
++                    || c.corner_start >= 0
++                    || c.t_min != 0.
++                    || c.t_max <= 1.
++                {
++                    continue;
++                }
++                let Some(start) = c.shared_checked_point(0.) else {
++                    continue;
++                };
++                let Some(join) = c.shared_checked_point(1.) else {
++                    continue;
++                };
++                if start[1] <= cert.transition_y.hi || join[1] <= start[1] {
++                    continue;
++                }
++                let Some(phi0) = cert.phi_for(start, eps) else {
++                    continue;
++                };
++                let Some(phi) = cert.phi_for(join, eps) else {
++                    continue;
++                };
++                if phi <= phi0 {
++                    continue;
++                }
++                if outgoing.replace((c.id, phi, join)).is_some() {
++                    ambiguous = true;
++                    break;
++                }
++            }
++            if ambiguous {
++                continue;
++            }
++            let Some((o, phi, ojoin)) = outgoing else {
++                continue;
++            };
++            let event_curves = [p, a, o];
++            if proposals
++                .iter()
++                .any(|(ids, _, _): &([usize; 3], [FeatureCurve; 3], [f64; 3])| {
++                    ids.iter().any(|i| event_curves.contains(i))
++                })
++            {
++                continue;
++            }
++            let make = |id: usize, index: usize, cut: f64, join: [f64; 3], out: bool| {
++                let span = if out {
++                    [0., 1.]
++                } else {
++                    [index as f64, index as f64 + 1.]
++                };
++                let chart = UpperChart {
++                    cert: cert.clone(),
++                    span,
++                    outgoing: out,
++                    join_y: if out { low } else { join[1] },
++                    join_phi: phi,
++                    ends: if out { [event, join] } else { [join, event] },
++                    source_pair: f.curves[id].adjacent_strata,
++                    event_curves,
++                    original_curve: id,
++                    original_range: if out { [0., 1.] } else { [index as f64, cut] },
++                    allowance: eps,
++                };
++                f.curves[id].with_upper_chart(chart, index, out)
++            };
++            let (Some(pc), Some(ac), Some(oc)) = (
++                make(p, pi, pt, pjoin, false),
++                make(a, ai, at, ajoin, false),
++                make(o, 0, 1., ojoin, true),
++            ) else {
++                continue;
++            };
++            proposals.push((event_curves, [pc, ac, oc], event));
++        }
++    }
++    let count = proposals.len();
++    for (ids, mut curves, event) in proposals {
++        let corner = f.corners.len();
++        curves[0].corner_end = corner as i64;
++        curves[1].corner_end = corner as i64;
++        curves[2].corner_start = corner as i64;
++        let mut strata = Vec::new();
++        for c in &curves {
++            for s in c.adjacent_strata {
++                if !strata.contains(&s) {
++                    strata.push(s);
++                }
++            }
++        }
++        for (id, c) in ids.into_iter().zip(curves) {
++            f.curves[id] = c;
++        }
++        f.corners.push(SfccCorner {
++            id: corner,
++            x: event[0],
++            y: event[1],
++            z: event[2],
++            strata,
++            curve_ends: vec![(ids[0], 1), (ids[1], 1), (ids[2], 0)],
++        });
++    }
++    count
++}
++
++/// Recognizing the source event makes its required outgoing incidence mandatory.
++pub(crate) fn event_complete(
++    f: &SfccFeatureSet,
++    ids: [usize; 2],
++    corner: &SfccCorner,
++    eps: f64,
++) -> bool {
++    let Some(tube) = f.curves[ids[0]].projection_tube(0., 1.) else {
++        return true;
++    };
++    let Some(branch) = HelixBranch::identify(f, ids[0], ids[1], tube) else {
++        return true;
++    };
++    let Some(root) = f.strata[branch.native].exposure_root_a() else {
++        return true;
++    };
++    let Some(cert) = bind(root, &f.strata, &branch, 0.5) else {
++        return true;
++    };
++    let point = [corner.x, corner.y, corner.z];
++    if !distance(point, cert.point_image(0.).unwrap()).is_some_and(|d| d <= eps) {
++        return true;
++    }
++    let Some(meta) = f.curves[ids[0]].upper_chart() else {
++        return false;
++    };
++    if meta.outgoing || !meta.event_curves.contains(&ids[1]) {
++        return false;
++    }
++    meta.event_curves.into_iter().enumerate().all(|(i, id)| {
++        let Some(c) = f.curves.get(id) else {
++            return false;
++        };
++        let end = if i == 2 { 0 } else { 1 };
++        let Some(m) = c.upper_chart() else {
++            return false;
++        };
++        m.event_curves == meta.event_curves
++            && m.outgoing == (i == 2)
++            && corner.curve_ends.contains(&(id, end))
++            && [c.corner_start, c.corner_end][end as usize] == corner.id as i64
++            && c.adjacent_strata
++                .iter()
++                .all(|sid| corner.strata.contains(sid))
++            && c.point_at_checked(if end == 0 { c.t_min } else { c.t_max })
++                .is_some_and(|p| distance(p, (point, point)).is_some_and(|d| d <= eps))
++    })
++}
++#[cfg(test)]
++thread_local! {static DISABLED:std::cell::Cell<bool>=const{std::cell::Cell::new(false)};}
++#[cfg(test)]
++pub(crate) fn disabled<T>(f: impl FnOnce() -> T) -> T {
++    struct Reset(bool);
++    impl Drop for Reset {
++        fn drop(&mut self) {
++            DISABLED.with(|v| v.set(self.0));
++        }
++    }
++    let _reset = Reset(DISABLED.with(|v| v.replace(true)));
++    f()
++}
++
++#[cfg(all(test, feature = "serde"))]
++mod tests {
++    use super::*;
++    use serde_json::json;
++    fn fixture() -> (CsgNode, crate::sfcc::pipeline::SfccWorldCube) {
++        let v: serde_json::Value =
++            serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++        let root = crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap())
++            .unwrap();
++        let cube = crate::sfcc::pipeline::SfccWorldCube {
++            min_x: v["cube"]["min"][0].as_f64().unwrap(),
++            min_y: v["cube"]["min"][1].as_f64().unwrap(),
++            min_z: v["cube"]["min"][2].as_f64().unwrap(),
++            size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++        };
++        (root, cube)
++    }
++    fn compile(root: &CsgNode, cube: &crate::sfcc::pipeline::SfccWorldCube) -> SfccFeatureSet {
++        crate::sfcc::pipeline::build_pipeline_context(root, cube, &Default::default()).features
++    }
++    #[test]
++    fn closure_a_original_three_chart_handoff_requires_complete_admission() {
++        let (root, cube) = fixture();
++        let baseline = disabled(|| compile(&root, &cube));
++        let f = compile(&root, &cube);
++        let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++        let result = crate::sfcc::private_arc_a::admit(&f, ids, 0.02);
++        let admission = match &result {
++            Ok((plan, transport)) => {
++                json!({"admitted":true,"plan":plan,"queries":transport.charged_queries()})
++            }
++            Err(e) => json!({"admitted":false,"refusal":e}),
++        };
++        let charts:Vec<_>=f.curves.iter().filter_map(|c|c.upper_chart().map(|m|{
++            let rows:Vec<_>=(0..=16).map(|i|{let t=m.span[0]+(m.span[1]-m.span[0])*i as f64/16.;let p=c.point_at_checked(t);
++                json!({"t":t,"point":p,"owned":p.map(|p|c.adjacent_strata.map(|s|f.strata[s].domain_contains(p,m.allowance))),"qualified":p.map(|p|c.adjacent_strata.map(|s|c.upper_source_member(&f.strata,s,t,p,m.allowance)))})}).collect();
++            json!({"id":c.id,"pair":c.adjacent_strata,"corners":[c.corner_start,c.corner_end],"metadata":m.words(),"queries":rows})})).collect();
++        let report = json!({"scope":"source-bound post-trim handoff; full admission mandatory; no component construction","baselineFingerprint":baseline.fingerprint().to_string(),"fingerprint":f.fingerprint().to_string(),"baselineCounts":[baseline.curves.len(),baseline.corners.len()],"counts":[f.curves.len(),f.corners.len()],"incoming":ids,"charts":charts,"admission":admission,"componentAccepted":false});
++        std::fs::write(
++            std::env::var("SFCC_CLOSURE_A_RECEIPT").expect("root receipt"),
++            serde_json::to_vec_pretty(&report).unwrap(),
++        )
++        .unwrap();
++        assert!(!charts.is_empty(), "actual source handoff charts required");
++        assert!(
++            result.is_ok(),
++            "complete source gate remains mandatory: {admission}"
++        );
++    }
++    #[test]
++    fn closure_a_missing_outgoing_authority_and_foreign_sources_refuse() {
++        let (root, cube) = fixture();
++        let f = compile(&root, &cube);
++        let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++        let corner = f.curves[ids[0]].corner_end;
++        assert!(corner >= 0, "handoff prerequisite");
++        let metadata = f.curves[ids[0]].upper_chart().unwrap();
++        let outgoing = metadata.event_curves[2];
++        let eps = metadata.allowance;
++        let c = &f.curves[outgoing];
++        let p = c.point_at_checked(0.).unwrap();
++        let sid = c.adjacent_strata[0];
++        assert!(c.upper_source_member(&f.strata, sid, 0., p, eps));
++        let mut wrong = p;
++        wrong[0] += 0.1;
++        assert!(!c.upper_source_member(&f.strata, sid, 0., wrong, eps));
++        assert!(!c.upper_source_member(&f.strata, sid, -1., p, eps));
++        let other = compile(&root, &cube);
++        assert!(!c.upper_source_member(&other.strata, sid, 0., p, eps));
++        let mut missing = f.clone();
++        missing.corners[corner as usize]
++            .curve_ends
++            .retain(|&(id, _)| id != outgoing);
++        missing.curves[outgoing].corner_start = -1;
++        missing.corners[corner as usize]
++            .strata
++            .retain(|sid| !c.adjacent_strata.contains(sid));
++        assert_eq!(
++            crate::sfcc::shared_arc_plan::endpoint(&missing, ids, corner, eps)
++                .unwrap_err()
++                .reason,
++            "upper_event_incomplete"
++        );
++        let mut omitted = f.clone();
++        omitted.corners[corner as usize]
++            .strata
++            .retain(|&s| s != sid);
++        assert!(crate::sfcc::shared_arc_plan::endpoint(&omitted, ids, corner, eps).is_err());
++        let _ = std::panic::catch_unwind(|| disabled(|| panic!("scope control")));
++        assert!(!DISABLED.with(std::cell::Cell::get));
++    }
++}
+--- a/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
+@@ -0,0 +1,352 @@
++//! Bounded full-scalar source continuation through an outer round intersection.
++//! This certificate does not attach numerical traces or grant private admission.
++use super::*;
++
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn max_abs(a: I) -> f64 {
++    a.lo.abs().max(a.hi.abs())
++}
++
++#[derive(Clone, Copy)]
++struct Image {
++    a: I,
++    b: I,
++    rho: I,
++    sphere_radius: I,
++    y: I,
++    u: I,
++    v: I,
++    cosine: I,
++    sine: I,
++    xyz: [I; 3],
++}
++#[derive(Clone)]
++pub(crate) struct UpperCertificate {
++    pub(super) source: [usize; 3],
++    pub(super) branch: HelixBranch,
++    pub(super) outer_radius: f64,
++    pub(super) sphere_radius: f64,
++    pub(super) sphere_y: f64,
++    pub(super) phi_max: f64,
++    margins: [f64; 6],
++    pub(super) transition_y: I,
++    height_derivative_lower: f64,
++    transverse_minor_lower: f64,
++}
++impl UpperCertificate {
++    fn image(&self, phi: I) -> Option<Image> {
++        if phi.lo < 0. || phi.hi > self.phi_max || phi.lo > phi.hi {
++            return None;
++        }
++        let (sine, cosine) = sin_cos(phi)?;
++        // The admitted angle is in [0,1/2], so sin>=0 and 0<cos<=1 exactly.
++        let sine = interval(sine.lo.max(0.), sine.hi.min(1.))?;
++        let cosine = interval(cosine.lo.max(0.), cosine.hi.min(1.))?;
++        if cosine.lo <= 0. {
++            return None;
++        }
++        let a = cosine.sub(I::point(1.))?.mul(self.outer_radius)?;
++        let a = interval(a.lo.max(-self.outer_radius), a.hi.min(0.))?;
++        let b = sine.sub(I::point(1.))?.mul(self.outer_radius)?;
++        let b = interval(b.lo.max(-self.outer_radius), b.hi.min(0.))?;
++        let rho = I::point(self.branch.cylinder.2).add(a)?;
++        let sphere_radius = I::point(self.sphere_radius).add(b)?;
++        if rho.lo <= 0. || sphere_radius.lo <= 0. {
++            return None;
++        }
++        let axial2 = square(sphere_radius)?.sub(square(rho)?)?;
++        if axial2.lo <= 0. {
++            return None;
++        }
++        let y = I::point(self.sphere_y).add(sqrt(axial2)?)?;
++        let p = self.branch.p;
++        let v = I::point(p.v0z).add(a.mul(p.nz2)?)?;
++        let u2 = square(rho)?.sub(square(v)?)?;
++        if u2.lo <= 0. {
++            return None;
++        }
++        let mut u = sqrt(u2)?;
++        if self.branch.sign < 0 {
++            u = u.mul(-1.)?;
++        }
++        let theta =
++            div(y.sub(I::point(p.pos_y))?.add(I::point(p.h))?, 2. * p.h)?.mul(p.twist_rad)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let xyz = [
++            mul(u, cs)?.sub(mul(v, sn)?)?.add(I::point(p.pos_x))?,
++            y,
++            mul(u, sn)?.add(mul(v, cs)?)?.add(I::point(p.pos_z))?,
++        ];
++        Some(Image {
++            a,
++            b,
++            rho,
++            sphere_radius,
++            y,
++            u,
++            v,
++            cosine,
++            sine,
++            xyz,
++        })
++    }
++    pub(crate) fn point_image(&self, phi: f64) -> Option<([f64; 3], [f64; 3])> {
++        let image = self.image(I::point(phi))?;
++        Some((image.xyz.map(|i| i.lo), image.xyz.map(|i| i.hi)))
++    }
++    fn native_zero_extension_residual(&self, y: f64) -> Option<I> {
++        let band = self.image(interval(0., self.phi_max)?)?.y;
++        if !y.is_finite() || y <= self.transition_y.hi || y > band.hi {
++            return None;
++        }
++        let radial = I::point(self.branch.cylinder.2);
++        let s = sqrt(square(radial)?.add(square(I::point(y).sub(I::point(self.sphere_y))?)?)?)?
++            .sub(I::point(self.sphere_radius))?;
++        let lifted = s.add(I::point(self.outer_radius))?;
++        if lifted.lo <= 0. {
++            return None;
++        }
++        sqrt(square(I::point(self.outer_radius))?.add(square(lifted)?)?)?
++            .sub(I::point(self.outer_radius))
++    }
++}
++
++// Zero-locus agreement is insufficient at a<0: prove this finite side is nearest.
++fn finite_profile_level(p: TwistedSideParams, leaf: &Leaf, q: [I; 2], a: I) -> Option<f64> {
++    profile_branch(p, leaf, q)?;
++    let Shape::Extrude { verts, .. } = &leaf.shape else {
++        return None;
++    };
++    let n = verts.len() / 2;
++    let v = |i: usize| [verts[2 * (i % n)], verts[2 * (i % n) + 1]];
++    let selected = (0..n).find(|&i| v(i) == [p.v0x, p.v0z])?;
++    let orientation = crate::sfcc::predicates::orient2d(v(0), v(1), v(2)) as f64;
++    let mut margin = f64::INFINITY;
++    for i in 0..n {
++        if i == selected {
++            continue;
++        }
++        let start = v(i);
++        let end = v(i + 1);
++        let ex = I::point(end[0]).sub(I::point(start[0]))?;
++        let ez = I::point(end[1]).sub(I::point(start[1]))?;
++        let wx = q[0].sub(I::point(start[0]))?;
++        let wz = q[1].sub(I::point(start[1]))?;
++        let line = quotient(
++            mul(ex, wz)?.sub(mul(ez, wx)?)?.mul(orientation)?,
++            sqrt(square(ex)?.add(square(ez)?)?)?,
++        )?;
++        let gap = line.sub(I::point(max_abs(a)))?;
++        if gap.lo <= 0. {
++            return None;
++        }
++        margin = margin.min(gap.lo);
++    }
++    Some(margin)
++}
++fn cap_margin(y: I, center: f64, half: f64, a: I) -> Option<f64> {
++    if !half.is_finite() || half <= 0. {
++        return None;
++    }
++    let local = y.sub(I::point(center))?;
++    let cap = I::point(max_abs(local)).sub(I::point(half))?;
++    let margin = I::point(a.lo).sub(cap)?;
++    (margin.lo > 0.).then_some(margin.lo)
++}
++fn negative_groove_upper(groove: &Leaf, y: I) -> Option<f64> {
++    let Shape::Lathe { edges } = &groove.shape else {
++        return None;
++    };
++    if edges.len() < 3
++        || edges.len() > 64
++        || !edges
++            .iter()
++            .any(|e| !matches!(e.kind, crate::primitives::shapes::LatheEdgeKind::None))
++    {
++        return None;
++    }
++    let mut top = f64::NEG_INFINITY;
++    for (i, e) in edges.iter().enumerate() {
++        let next = &edges[(i + 1) % edges.len()];
++        if [e.r0, e.r1, e.y0, e.y1].iter().any(|v| !v.is_finite())
++            || e.r1 != next.r0
++            || e.y1 != next.y0
++        {
++            return None;
++        }
++        top = top.max(e.y0).max(e.y1);
++    }
++    let gap = y.sub(I::point(groove.pos[1]))?.sub(I::point(top))?;
++    (gap.lo > 0.).then_some(-gap.lo)
++}
++
++/// Full scalar equality and continuing-crease premises for one bounded source family.
++fn bind_region(
++    runtime_root: &CsgNode,
++    strata: &[Stratum],
++    branch: &HelixBranch,
++    phi_max: f64,
++    incoming_y: Option<f64>,
++) -> Option<UpperCertificate> {
++    if strata.len() > 256 || !phi_max.is_finite() || phi_max <= 0. || phi_max > 0.5 {
++        return None;
++    }
++    let ids = [branch.native, branch.field, branch.cylinder_id];
++    if ids.iter().any(|&i| strata.get(i).is_none_or(|s| s.id != i))
++        || ids[0] == ids[1]
++        || ids[0] == ids[2]
++        || ids[1] == ids[2]
++        || branch.p.nx2 != 0.
++        || branch.p.nz2.abs() != 1.
++    {
++        return None;
++    }
++    let root = strata.get(branch.native)?.exposure_root_a()?;
++    if !same_source(runtime_root, root, &mut 64) {
++        return None;
++    }
++    let (cap_cut, sphere, outer_radius) =
++        pair(root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++    let (groove_cut, cap, _) = pair(cap_cut, None).ok()?;
++    let (hard, groove, chamfer_radius) =
++        pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++    let (inner, cylinder, _) = pair(hard, None).ok()?;
++    let (other, native, inner_radius) =
++        pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++    let native = leaf(native, 1.).ok()?;
++    let other = leaf(other, 1.).ok()?;
++    let cylinder = leaf(cylinder, 1.).ok()?;
++    let (p, registered_native, registered_other, registered_r) =
++        strata[branch.native].round_twisted_source(&strata[branch.field])?;
++    let registered_cylinder =
++        strata[branch.cylinder_id].correlated_cylinder_source_c(&strata[branch.native])?;
++    if !std::ptr::eq(native, registered_native)
++        || !std::ptr::eq(other, registered_other)
++        || !std::ptr::eq(cylinder, registered_cylinder)
++        || inner_radius != registered_r
++        || p != branch.p
++    {
++        return None;
++    }
++    let sphere = leaf(sphere, 1.).ok()?;
++    let Shape::Sphere { r: sphere_radius } = &sphere.shape else {
++        return None;
++    };
++    if !sphere_radius.is_finite()
++        || *sphere_radius <= outer_radius
++        || sphere.pos[0] != branch.cylinder.0[0]
++        || sphere.pos[2] != branch.cylinder.0[2]
++    {
++        return None;
++    }
++    let at_radius = I::point(*sphere_radius).sub(I::point(outer_radius))?;
++    let axial2 = square(at_radius)?.sub(square(I::point(branch.cylinder.2))?)?;
++    if axial2.lo <= 0. {
++        return None;
++    }
++    let transition_y = I::point(sphere.pos[1]).add(sqrt(axial2)?)?;
++    // Revalidates represented coefficients, source occurrences, sign and identity frames.
++    BranchCertificate::bind_strata(strata, branch, transition_y)?;
++    let mut cert = UpperCertificate {
++        source: [branch.native, branch.field, branch.cylinder_id],
++        branch: branch.clone(),
++        outer_radius,
++        sphere_radius: *sphere_radius,
++        sphere_y: sphere.pos[1],
++        phi_max,
++        margins: [0.; 6],
++        transition_y,
++        height_derivative_lower: 0.,
++        transverse_minor_lower: 0.,
++    };
++    let mut image = cert.image(interval(0., phi_max)?)?;
++    if let Some(y) = incoming_y {
++        if !y.is_finite() || y <= sphere.pos[1] || y >= cert.transition_y.lo {
++            return None;
++        }
++        image.y.lo = image.y.lo.min(y);
++    }
++    let profile = finite_profile_level(p, native, [image.u, image.v], image.a)?;
++    let native_cap = cap_margin(image.y, p.pos_y, p.h, image.a)?;
++    let Shape::Cylinder { h, .. } = &cylinder.shape else {
++        return None;
++    };
++    let cylinder_cap = cap_margin(image.y, cylinder.pos[1], *h, image.a)?;
++    let cx = I::point(branch.cylinder.0[0]).add(image.rho)?;
++    let lathe = lathe_lower(
++        other,
++        [cx.lo, image.y.lo, branch.cylinder.0[2]],
++        [cx.hi, image.y.hi, branch.cylinder.0[2]],
++    )?;
++    let inner_margin = I::point(lathe).sub(I::point(inner_radius))?.lo;
++    if inner_margin <= 0. {
++        return None;
++    }
++    let groove = leaf(groove, -1.).ok()?;
++    let g = negative_groove_upper(groove, image.y)?;
++    let g_margin = I::point(image.a.lo).sub(I::point(g))?;
++    let diagonal = image
++        .a
++        .add(I::point(g))?
++        .add(I::point(chamfer_radius))?
++        .mul(std::f64::consts::FRAC_1_SQRT_2)?;
++    let diagonal_margin = I::point(image.a.lo).sub(diagonal)?;
++    if g_margin.lo <= 0. || diagonal_margin.lo <= 0. {
++        return None;
++    }
++    let cap = leaf(cap, -1.).ok()?;
++    let Shape::Extrude { h, .. } = &cap.shape else {
++        return None;
++    };
++    let gap = I::point(cap.pos[1]).sub(I::point(*h))?.sub(image.y)?;
++    if gap.lo <= 0. {
++        return None;
++    }
++    let cutter_margin = I::point(image.a.lo).add(I::point(gap.lo))?;
++    if cutter_margin.lo <= 0. {
++        return None;
++    }
++    let axial = image.y.sub(I::point(sphere.pos[1]))?;
++    let dy = quotient(
++        mul(image.sphere_radius, image.cosine)?
++            .add(mul(image.rho, image.sine)?)?
++            .mul(outer_radius)?,
++        axial,
++    )?;
++    let u_min = image.u.lo.abs().min(image.u.hi.abs());
++    let minor = quotient(square(image.cosine)?.mul(u_min)?, I::point(image.rho.hi))?;
++    if dy.lo <= 0. || minor.lo <= 0. {
++        return None;
++    }
++    cert.margins = [
++        profile,
++        native_cap,
++        cylinder_cap,
++        inner_margin,
++        g_margin.lo.min(diagonal_margin.lo),
++        cutter_margin.lo,
++    ];
++    cert.height_derivative_lower = dy.lo;
++    cert.transverse_minor_lower = minor.lo;
++    Some(cert)
++}
++
++pub(crate) fn bind(
++    root: &CsgNode,
++    strata: &[Stratum],
++    branch: &HelixBranch,
++    phi_max: f64,
++) -> Option<UpperCertificate> {
++    bind_region(root, strata, branch, phi_max, None)
++}
++#[path = "upper_closure_a.rs"]
++pub(crate) mod closure;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "upper_source_a_tests.rs"]
++mod tests;
+--- a/gcad-wasm/kernel/src/sfcc/upper_source_a_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_source_a_tests.rs
+@@ -0,0 +1,209 @@
++use super::*;
++use crate::sfcc::{
++    feature_set::{compile_feature_set, SfccFeatureSet},
++    pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++};
++use serde_json::{json, Value};
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn mid(image: ([f64; 3], [f64; 3])) -> [f64; 3] {
++    std::array::from_fn(|k| image.0[k] * 0.5 + image.1[k] * 0.5)
++}
++fn fixture() -> (CsgNode, SfccFeatureSet, Value) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = {
++        let context = build_pipeline_context(&root, &cube, &PipelineTuning::default());
++        context.features
++    };
++    (root, f, v)
++}
++fn roles(f: &SfccFeatureSet) -> [usize; 3] {
++    let find = |path: Value, is_field: bool, local| {
++        f.strata
++            .iter()
++            .find(|s| {
++                let Some(d) = s.graph_capture_identity_b() else {
++                    return false;
++                };
++                s.local_index == local
++                    && if is_field {
++                        d["field"]["path"] == path
++                    } else {
++                        d["field"].is_null() && d["domain"][0]["path"] == path
++                    }
++            })
++            .unwrap()
++            .id
++    };
++    [
++        find(json!([0, 0, 0, 0, 1]), false, 3),
++        find(json!([0, 0, 0, 0]), true, 0),
++        find(json!([0, 0, 0, 1]), false, 0),
++    ]
++}
++fn initial(f: &SfccFeatureSet) -> (HelixBranch, [usize; 2]) {
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f).unwrap();
++    let tube = f.curves[ids[0]].projection_tube(0., 1.).unwrap();
++    (HelixBranch::identify(f, ids[0], ids[1], tube).unwrap(), ids)
++}
++#[test]
++fn upper_a_source_transition_has_regular_ordered_continuation() {
++    let (root, f, config) = fixture();
++    let (branch, ids) = initial(&f);
++    let cert = bind(&root, &f.strata, &branch, 0.01)
++        .expect("initial outgoing source interval must be proved");
++    let image = cert.image(interval(0., cert.phi_max).unwrap()).unwrap();
++    let phi_samples = [0., 0.0025, 0.005, 0.01];
++    let samples:Vec<_>=phi_samples.into_iter().map(|phi|{
++        let bounds=cert.point_image(phi).unwrap();let p=mid(bounds);
++        let scalar=root.f(p);
++        let exact=cert.image(I::point(phi)).unwrap();
++        json!({"phiHex":hex(phi),"pointHex":p.map(hex),"imageHex":[bounds.0.map(hex),bounds.1.map(hex)],
++            "fullFieldHex":hex(scalar),"operandLevelHex":[hex(exact.a.lo),hex(exact.a.hi)],
++            "sphereLevelHex":[hex(exact.b.lo),hex(exact.b.hi)]})
++    }).collect();
++    let endpoints:Vec<_>=ids.into_iter().map(|id|{
++        let c=&f.curves[id];let p=c.point_at_checked(c.t_max).unwrap();
++        let residual=cert.native_zero_extension_residual(p[1]).unwrap();
++        json!({"chart":id,"sourcePair":c.adjacent_strata,"parameterHex":hex(c.t_max),"pointHex":p.map(hex),
++            "corner":c.corner_end,"fullFieldAtNumericalPointHex":hex(root.f(p)),
++            "idealNativeZeroExtensionResidualHex":[hex(residual.lo),hex(residual.hi)]})
++    }).collect();
++    let extended = bind(&root, &f.strata, &branch, 0.5);
++    let extended_row=extended.as_ref().map(|c|{
++        let at=c.image(I::point(0.5)).unwrap();
++        json!({"phiMax":0.5,"endHeightHex":[hex(at.y.lo),hex(at.y.hi)],"coversHeightThree":c.transition_y.hi<3.&&at.y.lo>3.,
++            "sourceMarginsLowerHex":c.margins.map(hex),"transverseMinorLowerHex":hex(c.transverse_minor_lower)})
++    });
++    let report = json!({"scope":"bounded represented full-scalar source continuation; no trace attachment or complete private admission",
++        "sourceConfigSha256":config["sourceConfigSha256"],"featureFingerprint":f.fingerprint().to_string(),"sourceRoles":cert.source,
++        "sourceIdentities":cert.source.map(|id|f.strata[id].graph_capture_identity_b()),"branchSign":branch.sign,
++        "phiRangeHex":[hex(0.),hex(cert.phi_max)],"transitionHeightHex":[hex(cert.transition_y.lo),hex(cert.transition_y.hi)],
++        "wholeImageHex":[image.xyz.map(|i|hex(i.lo)),image.xyz.map(|i|hex(i.hi))],"sourceMarginsLowerHex":cert.margins.map(hex),
++        "marginOrder":["other profile edges","native finite cap","cylinder finite cap","inner round competitor","groove/chamfer dominance","cap cutter dominance"],
++        "heightDerivativeLowerHex":hex(cert.height_derivative_lower),"liftedTransverseMinorLowerHex":hex(cert.transverse_minor_lower),
++        "orderedIdealCreaseContinues":true,"floatingQueryTotalityProved":false,"attachmentAuthorized":false,"wholeComponentAccepted":false,
++        "samples":samples,"currentUpperEndpoints":endpoints,"optionalLongerInterval":extended_row,
++        "optionalLongerIntervalRefused":extended.is_none()});
++    std::fs::write(
++        std::env::var("SFCC_UPPER_A_RECEIPT").expect("root receipt required"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++    assert!(cert.margins.iter().all(|x| *x > 0.));
++    assert!(cert.height_derivative_lower > 0. && cert.transverse_minor_lower > 0.);
++    let final_y = cert.image(I::point(cert.phi_max)).unwrap().y;
++    for id in ids {
++        let end = f.curves[id].point_at_checked(f.curves[id].t_max).unwrap();
++        assert!(
++            cert.transition_y.hi < end[1] && end[1] < final_y.lo,
++            "continuing source interval crosses the actual cutoffs"
++        );
++        assert!(
++            cert.native_zero_extension_residual(end[1]).unwrap().lo > 0.,
++            "native zero extension no longer lies on final zero surface"
++        );
++    }
++    let points: Vec<_> = phi_samples
++        .into_iter()
++        .map(|t| mid(cert.point_image(t).unwrap()))
++        .collect();
++    assert!(points.windows(2).all(|w| w[0][1] < w[1][1]));
++    for p in points {
++        assert!(
++            root.f(p).abs() < 1e-10,
++            "existing evaluator agrees at sampled source points"
++        );
++    }
++}
++fn at_mut<'a>(root: &'a mut CsgNode, path: &[usize]) -> &'a mut CsgNode {
++    if path.is_empty() {
++        return root;
++    }
++    match root {
++        CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => {
++            at_mut(&mut c[path[0]], &path[1..])
++        }
++        _ => panic!("source path"),
++    }
++}
++#[test]
++fn upper_a_rejects_unsupported_sources_caps_and_empty_scope() {
++    let (root, f, config) = fixture();
++    let (branch, _) = initial(&f);
++    let cert = bind(&root, &f.strata, &branch, 0.01).unwrap();
++    assert!(bind(&root, &f.strata, &branch, 0.).is_none());
++    assert!(bind(&root, &f.strata, &branch, 0.51).is_none());
++    assert!(bind(&root, &f.strata, &branch, f64::NAN).is_none());
++    let mut wrong = root.clone();
++    let CsgNode::Blend { r, .. } = &mut wrong else {
++        panic!()
++    };
++    *r += 0.001;
++    assert!(bind(&wrong, &f.strata, &branch, 0.01).is_none());
++    let mut wrong_branch = branch.clone();
++    wrong_branch.sign = -wrong_branch.sign;
++    assert!(bind(&root, &f.strata, &wrong_branch, 0.01).is_none());
++    let (other_root, other, _) = fixture();
++    let mut mixed = f.strata.clone();
++    mixed[branch.field] = other.strata[branch.field].clone();
++    assert!(bind(&other_root, &mixed, &branch, 0.01).is_none());
++    for native in [true, false] {
++        let path = if native {
++            vec![0, 0, 0, 0, 1]
++        } else {
++            vec![0, 0, 0, 1]
++        };
++        let mut source_copy = root.clone();
++        let CsgNode::Leaf(original_leaf) = at_mut(&mut source_copy, &path) else {
++            panic!()
++        };
++        let cap_height = cert.transition_y.hi - original_leaf.pos[1] + 0.001;
++        // Rebuild through the real bridge so immutable leaf.strata match the changed shape.
++        let mut scene: Value = serde_json::from_str(config["sceneJson"].as_str().unwrap()).unwrap();
++        if native {
++            scene["lh"]["lh"]["lh"]["lh"]["children"][1]["h"] = json!(cap_height);
++        } else {
++            scene["lh"]["lh"]["lh"]["rh"]["h"] = json!(cap_height);
++        }
++        let clipped =
++            crate::scene_bridge::build_csg_tree_from_json(&serde_json::to_string(&scene).unwrap())
++                .unwrap();
++        let tol = crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 50.);
++        let (clipped_f, _) = compile_feature_set(&clipped, &tol);
++        let ids = roles(&clipped_f);
++        let (p, _, _, _) = clipped_f.strata[ids[0]]
++            .round_twisted_source(&clipped_f.strata[ids[1]])
++            .unwrap();
++        let radius = clipped_f.strata[ids[2]].certificate_cylinder().unwrap().2;
++        let u = branch.sign as f64 * (radius * radius - p.v0z * p.v0z).sqrt();
++        let y = cert.transition_y.lo * 0.5 + cert.transition_y.hi * 0.5;
++        let theta = (y - p.pos_y + p.h) / (2. * p.h) * p.twist_rad;
++        let (sn, cs) = theta.sin_cos();
++        let proposed = [
++            p.pos_x + u * cs - p.v0z * sn,
++            y,
++            p.pos_z + u * sn + p.v0z * cs,
++        ];
++        let b = branch_at(&clipped_f.strata, ids[0], ids[1], ids[2], proposed)
++            .expect("fresh changed source supplies the proposed regular radial branch");
++        assert!(
++            BranchCertificate::bind_strata(&clipped_f.strata, &b, cert.transition_y).is_some(),
++            "the zero-level transition remains strictly inside both finite caps"
++        );
++        assert!(
++            bind(&clipped, &clipped_f.strata, &b, 0.01).is_none(),
++            "the changed finite cap must prevent the requested outgoing continuation"
++        );
++    }
++}
+--- a/gcad-wasm/kernel/src/strata.rs
++++ b/gcad-wasm/kernel/src/strata.rs
+@@ -1607,3 +1607,32 @@
+         Some((*w, c.offset))
+     }
+ }
++
++impl Stratum {
++    pub(crate) fn upper_round_child_matches(
++        &self,
++        parent: &Self,
++        cylinder: &Self,
++        child: usize,
++    ) -> bool {
++        if self.sign != 1. || self.compound.is_some() || parent.sign != 1. || cylinder.sign != 1. {
++            return false;
++        }
++        let Some(field) = &self.field else {
++            return false;
++        };
++        let Some(parent) = &parent.field else {
++            return false;
++        };
++        let Some(cyl) = &cylinder.domain else {
++            return false;
++        };
++        let Some(domain) = &self.domain else {
++            return false;
++        };
++        cyl.len() == 1
++            && domain.len() == 1
++            && domain[0].same_domain(field)
++            && field.upper_round_child_of(parent, &cyl[0], child)
++    }
++}

@@ -1,0 +1,7 @@
+{
+  "filter": "closure_c_declared_endpoint_success_is_not_other_consumer_authority",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::upper_source_a::closure_c_tests::closure_c_declared_endpoint_success_is_not_other_consumer_authority"
+  ],
+  "exitCode": 0
+}

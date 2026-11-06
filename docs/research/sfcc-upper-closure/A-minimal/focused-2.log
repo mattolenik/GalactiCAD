@@ -1,0 +1,12 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::connection_a::tests::connection_a_compiled_chart_connects_and_preserves_order ... ok
+test sfcc::trim::connection_rollback_a::connection_a_rollback_late_refusal_preserves_original_geometry ... ok
+test sfcc::trim::connection_rollback_a::connection_a_rollback_scope_restores_after_unwind ... 
+thread 'sfcc::trim::connection_rollback_a::connection_a_rollback_scope_restores_after_unwind' (4229692) panicked at kernel/src/sfcc/connection_rollback_a.rs:113:9:
+injected unwind
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 347 filtered out; finished in 4.26s
+

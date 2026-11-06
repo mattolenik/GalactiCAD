@@ -1,0 +1,243 @@
+{
+  "completeAdmission": {
+    "accepted": false,
+    "refusal": {
+      "detail": "76/0",
+      "originals": [
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 39,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "outgoing_source_condition"
+    }
+  },
+  "completeDeclaredMembershipResult": {
+    "accepted": false,
+    "refusal": {
+      "detail": "actual original junction constraint fails unchanged numerical allowance",
+      "originals": [
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 39,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "endpoint_constraint"
+    }
+  },
+  "completeDeclaredStrata": [
+    10,
+    15,
+    30,
+    38,
+    39
+  ],
+  "counterfactualSourceIntervalCoverageProved": false,
+  "endpointIdsOnly": {
+    "accepted": false,
+    "refusal": {
+      "detail": "20",
+      "originals": [
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 39,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "outgoing_endpoint_mismatch"
+    }
+  },
+  "eventAssociationUpperHex": "3d5d007caf8132d2",
+  "eventPointHex": [
+    "c01ad793870bb97a",
+    "400590fc378b7a68",
+    "c020eca5cf1d23b4"
+  ],
+  "incoming": [
+    20,
+    39
+  ],
+  "omittedLiftedStrata": [
+    10,
+    15,
+    30
+  ],
+  "omittedMembershipEndpointResult": {
+    "accepted": true,
+    "endpoint": {
+      "additional_constraints": [],
+      "corner": 55,
+      "endpoint_scope": "retained parameter endpoint; physical continuation not established",
+      "outgoing": [
+        [
+          20,
+          1
+        ],
+        [
+          39,
+          1
+        ],
+        [
+          76,
+          0
+        ]
+      ],
+      "position_bits": [
+        13842613433302497658,
+        4613252806248987240,
+        13844325451425457076
+      ],
+      "strata": [
+        10,
+        15,
+        30
+      ]
+    }
+  },
+  "originalFeatureFingerprintPreserved": true,
+  "originalFingerprint": "11178391811374638840",
+  "otherPointConsumer": {
+    "accepted": false,
+    "refusal": {
+      "detail": "76/0",
+      "originals": [
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 20,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            10,
+            15
+          ]
+        },
+        {
+          "corners": [
+            13,
+            55
+          ],
+          "id": 39,
+          "range_bits": [
+            0,
+            4629418941960159232
+          ],
+          "strata": [
+            30,
+            15
+          ]
+        }
+      ],
+      "reason": "other_event_source_condition"
+    }
+  },
+  "outgoing": [
+    76,
+    0
+  ],
+  "outgoingActualEndpointHex": [
+    "c01ad793870bb97a",
+    "400590fc378b7a68",
+    "c020eca5cf1d23b4"
+  ],
+  "outgoingDomainChecks": [
+    false,
+    false
+  ],
+  "scope": "test-only endpoint/membership corruptions on actual compiled source; no runtime handoff",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceContinuationProved": true,
+  "sourceEventImageHex": [
+    [
+      "c01ad793870bbac2",
+      "400590fc378b7a4f",
+      "c020eca5cf1d2457"
+    ],
+    [
+      "c01ad793870bb832",
+      "400590fc378b7a81",
+      "c020eca5cf1d2310"
+    ]
+  ]
+}

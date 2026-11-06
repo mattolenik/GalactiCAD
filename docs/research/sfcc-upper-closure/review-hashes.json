@@ -1,0 +1,84 @@
+{
+  "checked": [
+    {
+      "label": "A",
+      "source": "/tmp/sfcc-closure-a",
+      "inputs": 169,
+      "sourceMismatches": [],
+      "binaryHashMatches": null,
+      "packetPatchHashMatches": true
+    },
+    {
+      "label": "B",
+      "source": "/tmp/sfcc-closure-b",
+      "inputs": 170,
+      "sourceMismatches": [],
+      "binaryHashMatches": true,
+      "packetPatchHashMatches": true
+    },
+    {
+      "label": "C",
+      "source": "/tmp/sfcc-closure-c",
+      "inputs": 169,
+      "sourceMismatches": [],
+      "binaryHashMatches": true,
+      "packetPatchHashMatches": true
+    },
+    {
+      "label": "A-reviewed",
+      "source": "/tmp/sfcc-closure-a-reviewed",
+      "inputs": 169,
+      "sourceMismatches": [],
+      "binaryHashMatches": true,
+      "packetPatchHashMatches": true
+    },
+    {
+      "label": "A-minimal",
+      "source": "/tmp/sfcc-closure-a-minimal",
+      "inputs": 169,
+      "sourceMismatches": [],
+      "binaryHashMatches": true,
+      "packetPatchHashMatches": true
+    },
+    {
+      "label": "A-component",
+      "source": "/tmp/sfcc-closure-a-component",
+      "inputs": 170,
+      "sourceMismatches": [],
+      "binaryHashMatches": null
+    },
+    {
+      "label": "A-component-fixed",
+      "source": "/tmp/sfcc-closure-a-component-fixed",
+      "inputs": 170,
+      "sourceMismatches": [],
+      "binaryHashMatches": true
+    },
+    {
+      "label": "A-cell",
+      "source": "/tmp/sfcc-closure-a-cell",
+      "inputs": 172,
+      "sourceMismatches": [],
+      "binaryHashMatches": true
+    }
+  ],
+  "minimalNormalQueryRowsMatchReviewed": true,
+  "cellDelta": [
+    "gcad-wasm/kernel/fixtures/upper-cell-sampler.json",
+    "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+    "gcad-wasm/kernel/src/sfcc/private_arc_a_diagnostic.rs",
+    "gcad-wasm/kernel/src/sfcc/stage4_component_b.rs",
+    "gcad-wasm/kernel/src/sfcc/upper_cell_sampler_tests.rs"
+  ],
+  "cellReplayFixtureMatchesActualCapture": true,
+  "prePostSamplerTypedFaceCertificatesIdentical": true,
+  "prePostSamplerStorageReservationIdentical": true,
+  "prePostSamplerLiveDigestBeforeIdentical": true,
+  "finalPostExecutionHashesRechecked": true,
+  "selectedPacket": "A-cell",
+  "fullComponentAccepted": false,
+  "componentRefusalOrder": [
+    "path_nodes_lt_two during meshing, chart75 in cell[8,51,116,172]",
+    "retained_point_own_query TotalCap during later validation"
+  ]
+}

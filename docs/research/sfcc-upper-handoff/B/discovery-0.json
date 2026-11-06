@@ -1,0 +1,7 @@
+{
+  "filter": "upper_b_intermediate_chamfer_",
+  "tests": [
+    "sfcc::branch_surfaces::upper_lineage_b_tests::upper_b_intermediate_chamfer_preserves_child_and_diagonal_dominance"
+  ],
+  "exitCode": 0
+}

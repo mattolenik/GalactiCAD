@@ -1,0 +1,733 @@
+{
+  "activationProposal": {
+    "fields": [
+      {
+        "correctedBandDisabledDomain": true,
+        "correctedDomain": false,
+        "correctedGradientHex": [
+          "3fb0ed1a292ee79e",
+          "bfffd69b2437e404",
+          "bfefee130cc7f83e"
+        ],
+        "correctedValueHex": "bce0000000000000",
+        "correctedZeroBandDomain": false,
+        "legacyDomain": false,
+        "legacyGradientHex": [
+          "bfdc413cf9f164ef",
+          "3fe6847844830543",
+          "bfe1d0ae892c2593"
+        ],
+        "legacyValueHex": "bfe99999999999a0",
+        "source": {
+          "branch": {
+            "kind": "Child(0)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "102a2a330"
+        }
+      },
+      {
+        "correctedBandDisabledDomain": true,
+        "correctedDomain": false,
+        "correctedGradientHex": [
+          "bfe3e20e76ff3411",
+          "8000000000000000",
+          "bfe912bcc10eb9a0"
+        ],
+        "correctedValueHex": "8000000000000000",
+        "correctedZeroBandDomain": false,
+        "legacyDomain": false,
+        "legacyGradientHex": [
+          "bfdc413cf9f164ef",
+          "3fe6847844830543",
+          "bfe1d0ae892c2593"
+        ],
+        "legacyValueHex": "bfe99999999999a0",
+        "source": {
+          "branch": {
+            "kind": "Child(1)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "102a2a330"
+        }
+      }
+    ],
+    "fullScalarHex": "8000000000000000",
+    "pointHex": [
+      "c01ad793870bb97c",
+      "400590fc378b7a64",
+      "c020eca5cf1d23b2"
+    ]
+  },
+  "activationProposalHex": "400590fc378b7a64",
+  "compilationRepeatedWithCorrectedAncestors": false,
+  "completeSourceAdmissionStillRequired": true,
+  "exactZeroOwnershipRule": "even native_band=0 rejects exact target value0; numerical proposal is not an exact source event",
+  "fingerprint": "5850573460878635130",
+  "incomingNativeZeroProposal": {
+    "fields": [
+      {
+        "correctedBandDisabledDomain": true,
+        "correctedDomain": false,
+        "correctedGradientHex": [
+          "3fb039bc87c307b2",
+          "bfffd69b2437e404",
+          "bfefef877972449b"
+        ],
+        "correctedValueHex": "3ce0000000000000",
+        "correctedZeroBandDomain": true,
+        "legacyDomain": false,
+        "legacyGradientHex": [
+          "bfdc5d96b1af3066",
+          "3fe681bf3e25a5eb",
+          "bfe1c8da49c0f414"
+        ],
+        "legacyValueHex": "bfe9d33b288a30f0",
+        "source": {
+          "branch": {
+            "kind": "Child(0)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "102a2a330"
+        }
+      },
+      {
+        "correctedBandDisabledDomain": true,
+        "correctedDomain": false,
+        "correctedGradientHex": [
+          "bfe3f3a449e85a68",
+          "8000000000000000",
+          "bfe904c0be225b7c"
+        ],
+        "correctedValueHex": "8000000000000000",
+        "correctedZeroBandDomain": true,
+        "legacyDomain": false,
+        "legacyGradientHex": [
+          "bfdc5d96b1af3066",
+          "3fe681bf3e25a5eb",
+          "bfe1c8da49c0f414"
+        ],
+        "legacyValueHex": "bfe9d33b288a30f0",
+        "source": {
+          "branch": {
+            "kind": "Child(1)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "102a2a330"
+        }
+      }
+    ],
+    "fullScalarHex": "3ce0000000000000",
+    "pointHex": [
+      "c01aef50fd6013a7",
+      "40057c815643cc50",
+      "c020e3354d23fdc1"
+    ]
+  },
+  "nativeBandHex": "3e997a9ab0c2db32",
+  "notProved": [
+    "continuous outgoing existence/uniqueness",
+    "full active-domain interval",
+    "exported geometric hole",
+    "ordered handoff",
+    "global safety of removing native band"
+  ],
+  "outgoingSamples": [
+    {
+      "fields": [
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": false,
+          "correctedGradientHex": [
+            "3fb0eb9998ba0a42",
+            "bfffd6195018a1bf",
+            "bfefeed8cb29a27d"
+          ],
+          "correctedValueHex": "bcb8000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc40abbe7f454e",
+            "3fe6848632f87475",
+            "bfe1d0d6823828dd"
+          ],
+          "legacyValueHex": "bfe9987279e80450",
+          "source": {
+            "branch": {
+              "kind": "Child(0)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        },
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": false,
+          "correctedGradientHex": [
+            "bfe3e257292a33d1",
+            "3f20397031d750f8",
+            "bfe913d1966502ac"
+          ],
+          "correctedValueHex": "bcb8000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc40abbe7f454e",
+            "3fe6848632f87475",
+            "bfe1d0d6823828dd"
+          ],
+          "legacyValueHex": "bfe9987279e80450",
+          "source": {
+            "branch": {
+              "kind": "Child(1)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        }
+      ],
+      "fullRawHex": "bcb8000000000000",
+      "fullScalarHex": "bcb8000000000000",
+      "hardOperandValuesHex": [
+        "be4a948940000000",
+        "be4a948940000000"
+      ],
+      "hardValueHex": "be4a948940000000",
+      "heightDeltaHex": "3f2a36e2eb1c432d",
+      "normalGapHex": "3ff27c5d1ea5be9e",
+      "pointHex": [
+        "c01ad719d7952d18",
+        "40059165131726d5",
+        "c020ecd60d7011ba"
+      ]
+    },
+    {
+      "fields": [
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": false,
+          "correctedGradientHex": [
+            "3fb0e959583f722f",
+            "bfffd55677a1d729",
+            "bfeff0014200ae29"
+          ],
+          "correctedValueHex": "bce2000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc3fd1e3d9c28c",
+            "3fe6849b194ad38f",
+            "bfe1d11274ab9b54"
+          ],
+          "legacyValueHex": "bfe996b7daba75c0",
+          "source": {
+            "branch": {
+              "kind": "Child(0)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        },
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": false,
+          "correctedGradientHex": [
+            "bfe3e2c40a990659",
+            "3f34476becdf600e",
+            "bfe91570b66ea0d2"
+          ],
+          "correctedValueHex": "bcb8000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc3fd1e3d9c28c",
+            "3fe6849b194ad38f",
+            "bfe1d11274ab9b54"
+          ],
+          "legacyValueHex": "bfe996b7daba75c0",
+          "source": {
+            "branch": {
+              "kind": "Child(1)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        }
+      ],
+      "fullRawHex": "bcb8000000000000",
+      "fullScalarHex": "bcb8000000000000",
+      "hardOperandValuesHex": [
+        "be74c31f80000000",
+        "be74c31f78000000"
+      ],
+      "hardValueHex": "be74c31f78000000",
+      "heightDeltaHex": "3f40624dd2f1a9fc",
+      "normalGapHex": "3ff27c992b45613e",
+      "pointHex": [
+        "c01ad6634cdae4c2",
+        "400592025c68a97f",
+        "c020ed1e67ba715c"
+      ]
+    },
+    {
+      "fields": [
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": false,
+          "correctedGradientHex": [
+            "3fb0e59a824ff821",
+            "bfffd411737aeb07",
+            "bfeff1eef62c86ed"
+          ],
+          "correctedValueHex": "bccc000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc3e66c8d5a603",
+            "3fe684bdf02f05f1",
+            "bfe1d17655c58880"
+          ],
+          "legacyValueHex": "bfe993d6525e8fc0",
+          "source": {
+            "branch": {
+              "kind": "Child(0)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        },
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": false,
+          "correctedGradientHex": [
+            "bfe3e37912df8660",
+            "3f4446cb7f2856b0",
+            "bfe9182441476407"
+          ],
+          "correctedValueHex": "bce7000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc3e66c8d5a603",
+            "3fe684bdf02f05f1",
+            "bfe1d17655c58880"
+          ],
+          "legacyValueHex": "bfe993d6525e8fc0",
+          "source": {
+            "branch": {
+              "kind": "Child(1)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        }
+      ],
+      "fullRawHex": "bccc000000000000",
+      "fullScalarHex": "bccc000000000000",
+      "hardOperandValuesHex": [
+        "be94c196f4000000",
+        "be94c196f6000000"
+      ],
+      "hardValueHex": "be94c196f4000000",
+      "heightDeltaHex": "3f50624dd2f1a9fc",
+      "normalGapHex": "3ff27cfd16d790a5",
+      "pointHex": [
+        "c01ad53306e46246",
+        "400593088145d899",
+        "c020ed96f5b176dc"
+      ]
+    },
+    {
+      "fields": [
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": true,
+          "correctedGradientHex": [
+            "3fb0de22c4cc0e3d",
+            "bfffd18664c1560b",
+            "bfeff5c8dbcb3a6f"
+          ],
+          "correctedValueHex": "bcd0000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc3b90840c8bc5",
+            "3fe68503a44a0734",
+            "bfe1d23df8cb94e1"
+          ],
+          "legacyValueHex": "bfe98e13e4f87100",
+          "source": {
+            "branch": {
+              "kind": "Child(0)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        },
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": true,
+          "correctedGradientHex": [
+            "bfe3e4e181fb57ec",
+            "3f54458b05126625",
+            "bfe91d8a17a10c1a"
+          ],
+          "correctedValueHex": "bcd0000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc3b90840c8bc5",
+            "3fe68503a44a0734",
+            "bfe1d23df8cb94e1"
+          ],
+          "legacyValueHex": "bfe98e13e4f87100",
+          "source": {
+            "branch": {
+              "kind": "Child(1)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        }
+      ],
+      "fullRawHex": "bcd0000000000000",
+      "fullScalarHex": "bcd0000000000000",
+      "hardOperandValuesHex": [
+        "beb4be8746800000",
+        "beb4be8746800000"
+      ],
+      "hardValueHex": "beb4be8746800000",
+      "heightDeltaHex": "3f60624dd2f1a9fc",
+      "normalGapHex": "3ff27dc452d0eb4a",
+      "pointHex": [
+        "c01ad2d257af3922",
+        "40059514cb0036ce",
+        "c020ee87f1b0118c"
+      ]
+    },
+    {
+      "fields": [
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": true,
+          "correctedGradientHex": [
+            "3fb0a37f333ce978",
+            "bfffbcfcf92f0975",
+            "bff00a27f3435403"
+          ],
+          "correctedValueHex": "bcb0000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc24db9da43448",
+            "3fe68732725dea8e",
+            "bfe1d8753adb501a"
+          ],
+          "legacyValueHex": "bfe9601ee7b91830",
+          "source": {
+            "branch": {
+              "kind": "Child(0)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        },
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": true,
+          "correctedGradientHex": [
+            "bfe3efd72e5af960",
+            "3f794a7f93b0e53b",
+            "bfe9487d1ff371b6"
+          ],
+          "correctedValueHex": "3cc8000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdc24db9da43448",
+            "3fe68732725dea8e",
+            "bfe1d8753adb501a"
+          ],
+          "legacyValueHex": "bfe9601ee7b91830",
+          "source": {
+            "branch": {
+              "kind": "Child(1)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        }
+      ],
+      "fullRawHex": "3cc8000000000000",
+      "fullScalarHex": "3cc8000000000000",
+      "hardOperandValuesHex": [
+        "bf0021e9da220000",
+        "bf0021e9da200000"
+      ],
+      "hardValueHex": "bf0021e9da200000",
+      "heightDeltaHex": "3f847ae147ae147b",
+      "normalGapHex": "3ff283e16edfde14",
+      "pointHex": [
+        "c01abfc6485e74f9",
+        "4005a57718d32878",
+        "c020f609d7be16ad"
+      ]
+    },
+    {
+      "fields": [
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": true,
+          "correctedGradientHex": [
+            "3fad180999104890",
+            "bffebf9d892f3a5c",
+            "bff0a5744e6f6372"
+          ],
+          "correctedValueHex": "bcb0000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdb242b23bc6b19",
+            "3fe6a04709abd104",
+            "bfe21ba2e57edace"
+          ],
+          "legacyValueHex": "bfe768cc794c87b0",
+          "source": {
+            "branch": {
+              "kind": "Child(0)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        },
+        {
+          "correctedBandDisabledDomain": true,
+          "correctedDomain": true,
+          "correctedGradientHex": [
+            "bfe44811f822d54f",
+            "3faefa75df8e0a49",
+            "bfeb1006e1e3739b"
+          ],
+          "correctedValueHex": "3ccc000000000000",
+          "correctedZeroBandDomain": true,
+          "legacyDomain": false,
+          "legacyGradientHex": [
+            "bfdb242b23bc6b19",
+            "3fe6a04709abd104",
+            "bfe21ba2e57edace"
+          ],
+          "legacyValueHex": "bfe768cc794c87b0",
+          "source": {
+            "branch": {
+              "kind": "Child(1)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "102a2a330"
+          }
+        }
+      ],
+      "fullRawHex": "3ccc000000000000",
+      "fullScalarHex": "3ccc000000000000",
+      "hardOperandValuesHex": [
+        "bf6809d390a00800",
+        "bf6809d390a00000"
+      ],
+      "hardValueHex": "bf6809d390a00000",
+      "heightDeltaHex": "3fb999999999999a",
+      "normalGapHex": "3ff2bc50e9750bbc",
+      "pointHex": [
+        "c019e67d0406e705",
+        "40065dc904584731",
+        "c02147b03bcbe5df"
+      ]
+    }
+  ],
+  "physicalAlias": [
+    20,
+    38
+  ],
+  "runtimeChanged": false,
+  "scope": "test-only finite-query ownership counterexample on actual source; no continuous existence proof or meshing repair",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourcePair": [
+    38,
+    39
+  ],
+  "toleranceHex": "3e997a9ab0c2db32"
+}

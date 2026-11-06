@@ -1,0 +1,314 @@
+--- a/gcad-wasm/kernel/src/sfcc/branch_surfaces.rs
++++ b/gcad-wasm/kernel/src/sfcc/branch_surfaces.rs
+@@ -313,6 +313,10 @@
+         CsgNode::Min(_) | CsgNode::Max(_) => values[path[0]],
+         CsgNode::Blend { kind, mode, r, n, .. } => {
+             let sign = if *kind == BlendKind::Smin { 1. } else { -1. };
++            #[cfg(all(test, feature = "serde"))]
++            if *mode == SminMode::Chamfer && children.len() == 2 && upper_ownership_c::correct_ancestors() {
++                return sample_blend(*mode, values[0].scale(sign), values[1].scale(sign), *r, *n).scale(sign);
++            }
+             if *mode == SminMode::Chamfer {
+                 let other = partners[0];
+                 return values[path[0]]
+@@ -662,3 +666,7 @@
+         assert_ne!(first, field(1, 1e-6).semantic_identity(&mut context));
+     }
+ }
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "upper_ownership_c.rs"]
++mod upper_ownership_c;
+--- a/gcad-wasm/kernel/src/sfcc/field_branches.rs
++++ b/gcad-wasm/kernel/src/sfcc/field_branches.rs
+@@ -1039,3 +1039,16 @@
+         self.is_plain().then_some(self.root.as_ref())
+     }
+ }
++
++#[cfg(all(test, feature = "serde"))]
++impl FieldRef {
++    pub(crate) fn upper_c_descriptor(&self) -> Option<(&[usize], &[usize], &super::branch_surfaces::FieldBranch, f64)> {
++        let (path, branch, band) = self.branch.as_ref()?;
++        Some((&self.path, path, branch, *band))
++    }
++    pub(crate) fn upper_c_with_band(&self, band: f64) -> Option<Self> {
++        let mut copy = self.clone();
++        copy.branch.as_mut()?.2 = band;
++        Some(copy)
++    }
++}
+--- a/gcad-wasm/kernel/src/sfcc/upper_ownership_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_ownership_c.rs
+@@ -0,0 +1,258 @@
++//! Counterfactual query audit; no compiled feature or attachment is changed.
++use super::*;
++use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++use crate::strata::TwistedSideParams;
++use serde_json::{json, Value};
++use std::cell::Cell;
++
++thread_local! { static CORRECT: Cell<bool> = const { Cell::new(false) }; }
++pub(super) fn correct_ancestors() -> bool {
++    CORRECT.with(Cell::get)
++}
++fn corrected<T>(f: impl FnOnce() -> T) -> T {
++    struct Reset(bool);
++    impl Drop for Reset {
++        fn drop(&mut self) {
++            CORRECT.with(|s| s.set(self.0));
++        }
++    }
++    let _reset = Reset(CORRECT.with(|s| s.replace(true)));
++    f()
++}
++fn hex(v: f64) -> String {
++    format!("{:016x}", v.to_bits())
++}
++fn at<'a>(mut node: &'a CsgNode, path: &[usize]) -> &'a CsgNode {
++    for &i in path {
++        node = match node {
++            CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => &c[i],
++            _ => panic!("source path"),
++        };
++    }
++    node
++}
++fn fixture() -> (CsgNode, Value, SfccWorldCube, PipelineTuning) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    (root, v, cube, PipelineTuning::default())
++}
++// A numerical proposal using represented source coefficients. Existing root/operand queries validate it.
++fn proposal(p: TwistedSideParams, r: f64, rho: f64, y: f64) -> [f64; 3] {
++    assert_eq!(p.nx2, 0.);
++    assert_eq!(p.nz2.abs(), 1.);
++    let v = p.v0z + (rho - r) / p.nz2;
++    let u = (rho * rho - v * v).sqrt();
++    let theta = (y - p.pos_y + p.h) / (2. * p.h) * p.twist_rad;
++    let (s, c) = theta.sin_cos();
++    [p.pos_x + u * c - v * s, y, p.pos_z + u * s + v * c]
++}
++fn solve(root: &CsgNode, p: TwistedSideParams, r: f64, outer: f64, y: f64) -> [f64; 3] {
++    let mut lo = r - outer;
++    let mut hi = r;
++    assert!(root.f(proposal(p, r, lo, y)) < 0.);
++    assert!(root.f(proposal(p, r, hi, y)) >= 0.);
++    for _ in 0..64 {
++        let mid = lo + (hi - lo) * 0.5;
++        if mid == lo || mid == hi {
++            break;
++        }
++        if root.f(proposal(p, r, mid, y)) > 0. {
++            hi = mid;
++        } else {
++            lo = mid;
++        }
++    }
++    [lo, hi]
++        .map(|rho| proposal(p, r, rho, y))
++        .into_iter()
++        .min_by(|a, b| root.f(*a).abs().total_cmp(&root.f(*b).abs()))
++        .unwrap()
++}
++fn field_row(field: &FieldRef, p: [f64; 3], eps: f64) -> Value {
++    let original = field.sample(p);
++    let old_live = field.surface_live(p, eps);
++    let (value, live, no_band, zero_band) = corrected(|| {
++        (
++            field.sample(p),
++            field.surface_live(p, eps),
++            field.upper_c_with_band(-1.).unwrap().surface_live(p, eps),
++            field.upper_c_with_band(0.).unwrap().surface_live(p, eps),
++        )
++    });
++    json!({"source":field.graph_capture_identity_b(),"legacyValueHex":hex(original.value),"legacyGradientHex":original.gradient.map(hex),"legacyDomain":old_live,
++        "correctedValueHex":hex(value.value),"correctedGradientHex":value.gradient.map(hex),"correctedDomain":live,
++        "correctedZeroBandDomain":zero_band,"correctedBandDisabledDomain":no_band})
++}
++#[test]
++fn upper_c_original_source_ownership_exclusion_is_separate_from_ancestor_bug() {
++    let (root, fixture, cube, tuning) = fixture();
++    let context = build_pipeline_context(&root, &cube, &tuning);
++    let f = &context.features;
++    let pair = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f).unwrap();
++    let native = f.curves[pair[0]]
++        .adjacent_strata
++        .into_iter()
++        .find(|&id| f.strata[id].twisted_source().is_some())
++        .unwrap();
++    let cylinder = f.curves[pair[0]]
++        .adjacent_strata
++        .into_iter()
++        .find(|&id| f.strata[id].certificate_cylinder().is_some())
++        .unwrap();
++    let (p, _) = f.strata[native].twisted_source().unwrap();
++    let (_, _, r) = f.strata[cylinder].certificate_cylinder().unwrap();
++    let CsgNode::Blend {
++        kind: BlendKind::Smax,
++        mode: SminMode::Round,
++        r: outer,
++        children,
++        ..
++    } = &root
++    else {
++        panic!("actual outer round source")
++    };
++    let CsgNode::Leaf(sphere) = &children[1] else {
++        panic!("outer sphere source")
++    };
++    let Shape::Sphere { r: sphere_r } = sphere.shape else {
++        panic!("outer sphere")
++    };
++    assert_eq!(sphere.pos[0], p.pos_x);
++    assert_eq!(sphere.pos[2], p.pos_z);
++    let activation = sphere.pos[1] + ((sphere_r - outer) * (sphere_r - outer) - r * r).sqrt();
++    let selected: Vec<_> = f
++        .strata
++        .iter()
++        .filter_map(|s| {
++            let field = s.upper_c_field()?;
++            let (owner, path, branch, band) = field.upper_c_descriptor()?;
++            if owner.is_empty() && path == [0, 0, 0] {
++                if let FieldBranch::Child(child) = branch {
++                    return Some((s.id, *child, band, field));
++                }
++            }
++            None
++        })
++        .collect();
++    assert_eq!(selected.len(), 2, "actual generated hard-Max child pair");
++    assert_eq!(selected.iter().map(|s| s.1).collect::<Vec<_>>(), vec![0, 1]);
++    let band = selected[0].2;
++    assert!(band > 0.);
++    assert_eq!(band, selected[1].2);
++    let eps = f.curves[pair[0]].traced_carriers().unwrap().2.curve_eps * 8.;
++    let hard = at(&root, &[0, 0, 0]);
++    let CsgNode::Max(operands) = hard else {
++        panic!("hard intersection")
++    };
++    let before = f.fingerprint();
++    let mut rows = Vec::new();
++    for delta in [0.0002, 0.0005, 0.001, 0.002, 0.01, 0.1] {
++        let point = solve(&root, p, r, *outer, activation + delta);
++        let a = sample_tree(&operands[0], point);
++        let b = sample_tree(&operands[1], point);
++        let full = sample_tree(&root, point);
++        let normal_gap = {
++            let a = selected[0].3;
++            let b = selected[1].3;
++            corrected(|| {
++                let a = a.sample(point).normalized_equation().unwrap().gradient;
++                let b = b.sample(point).normalized_equation().unwrap().gradient;
++                (a[0] - b[0]).hypot(a[1] - b[1]).hypot(a[2] - b[2])
++            })
++        };
++        let fields: Vec<_> = selected
++            .iter()
++            .map(|s| field_row(s.3, point, eps))
++            .collect();
++        rows.push(json!({"heightDeltaHex":hex(delta),"pointHex":point.map(hex),"fullScalarHex":hex(root.f(point)),"fullRawHex":hex(full.value),
++            "hardOperandValuesHex":[hex(a.value),hex(b.value)],"hardValueHex":hex(sample_tree(hard,point).value),"normalGapHex":hex(normal_gap),"fields":fields}));
++    }
++    let activation_point = proposal(p, r, r, activation);
++    let activation_fields: Vec<_> = selected
++        .iter()
++        .map(|s| field_row(s.3, activation_point, eps))
++        .collect();
++    let incoming = proposal(p, r, r, activation - 0.01);
++    let incoming_fields: Vec<_> = selected
++        .iter()
++        .map(|s| field_row(s.3, incoming, eps))
++        .collect();
++    let report = json!({"scope":"test-only finite-query ownership counterexample on actual source; no continuous existence proof or meshing repair",
++        "sourceConfigSha256":fixture["sourceConfigSha256"],"fingerprint":before.to_string(),"physicalAlias":pair,"sourcePair":selected.iter().map(|s|s.0).collect::<Vec<_>>(),
++        "activationProposalHex":hex(activation),"nativeBandHex":hex(band),"toleranceHex":hex(eps),"outgoingSamples":rows,
++        "activationProposal":{"pointHex":activation_point.map(hex),"fullScalarHex":hex(root.f(activation_point)),"fields":activation_fields},
++        "exactZeroOwnershipRule":"even native_band=0 rejects exact target value0; numerical proposal is not an exact source event",
++        "incomingNativeZeroProposal":{"pointHex":incoming.map(hex),"fullScalarHex":hex(root.f(incoming)),"fields":incoming_fields},
++        "runtimeChanged":false,"compilationRepeatedWithCorrectedAncestors":false,"completeSourceAdmissionStillRequired":true,
++        "notProved":["continuous outgoing existence/uniqueness","full active-domain interval","exported geometric hole","ordered handoff","global safety of removing native band"]});
++    let path = std::env::var("SFCC_UPPER_C_RECEIPT").expect("root receipt required");
++    let bytes = serde_json::to_vec_pretty(&report).unwrap();
++    assert!(bytes.len() < 512 * 1024);
++    std::fs::write(path, bytes).unwrap();
++    let mut suppressed = 0;
++    let mut beyond = 0;
++    for row in &rows {
++        let num =
++            |k: &str| f64::from_bits(u64::from_str_radix(row[k].as_str().unwrap(), 16).unwrap());
++        assert!(num("fullScalarHex").abs() < 1e-10);
++        assert!(num("fullRawHex").abs() < 1e-10);
++        let q: Vec<f64> = row["hardOperandValuesHex"]
++            .as_array()
++            .unwrap()
++            .iter()
++            .map(|v| f64::from_bits(u64::from_str_radix(v.as_str().unwrap(), 16).unwrap()))
++            .collect();
++        assert!(
++            (q[0] - q[1]).abs() < 1e-10,
++            "actual hard operands must meet"
++        );
++        assert!(
++            num("normalGapHex") > 0.1,
++            "the tested displaced feature is not a vanishing-angle terminal"
++        );
++        for field in row["fields"].as_array().unwrap() {
++            assert_eq!(field["correctedBandDisabledDomain"], true);
++            assert_eq!(field["correctedZeroBandDomain"], true);
++            if num("hardValueHex").abs() < band {
++                assert_eq!(field["correctedDomain"], false);
++                suppressed += 1;
++            } else {
++                assert_eq!(field["correctedDomain"], true);
++                beyond += 1;
++            }
++        }
++    }
++    assert!(
++        suppressed > 0 && beyond > 0,
++        "the campaign must bracket the native ownership band"
++    );
++    for field in incoming_fields {
++        assert_eq!(field["correctedDomain"], false);
++        assert_eq!(
++            field["correctedBandDisabledDomain"], true,
++            "unconditionally removing ownership duplicates the incoming native representation"
++        );
++    }
++    assert!(!correct_ancestors());
++    assert_eq!(before, f.fingerprint());
++}
++#[test]
++fn upper_c_counterfactual_scope_resets_after_unwind() {
++    assert!(!correct_ancestors());
++    let failed = std::panic::catch_unwind(|| {
++        corrected(|| {
++            assert!(correct_ancestors());
++            panic!("scope control")
++        })
++    });
++    assert!(failed.is_err());
++    assert!(!correct_ancestors());
++}
+--- a/gcad-wasm/kernel/src/strata.rs
++++ b/gcad-wasm/kernel/src/strata.rs
+@@ -1607,3 +1607,10 @@
+         Some((*w, c.offset))
+     }
+ }
++
++#[cfg(all(test, feature = "serde"))]
++impl Stratum {
++    pub(crate) fn upper_c_field(&self) -> Option<&crate::sfcc::field_branches::FieldRef> {
++        self.field.as_ref()
++    }
++}

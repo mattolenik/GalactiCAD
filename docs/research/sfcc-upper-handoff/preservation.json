@@ -1,0 +1,31 @@
+{
+  "checks": [
+    {
+      "label": "A",
+      "inputs": 167,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A-buildfix",
+      "inputs": 167,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "A-controls",
+      "inputs": 167,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "B",
+      "inputs": 166,
+      "flatPatchRestoresExecutedInputs": true
+    },
+    {
+      "label": "C",
+      "inputs": 166,
+      "flatPatchRestoresExecutedInputs": true
+    }
+  ],
+  "BLowerControlsReuseExactBinary": true,
+  "ACapControlFixPreservesTheoremReceiptExceptProcessLocalAddresses": true
+}

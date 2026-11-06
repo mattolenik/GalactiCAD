@@ -1,0 +1,387 @@
+{
+  "aliasPiece": {
+    "id": 39,
+    "rangeHex": [
+      "403e000000000000",
+      "403f000000000000"
+    ]
+  },
+  "attachmentAliasAudit": {
+    "notProved": [
+      "common-intersection connectivity",
+      "ordered raw-parameter transport",
+      "genuine source junction",
+      "whole physical arc"
+    ],
+    "rows": [],
+    "runtimeTransportPerformed": false,
+    "scope": "bounded equality of native/round-field zero loci and inherited domains; same common compound is retained"
+  },
+  "checkedCompiledIntervals": [
+    {
+      "cornerEnds": [
+        13,
+        -1
+      ],
+      "curve": 20,
+      "endpointHeightsHex": [
+        "400458eea11e9607",
+        "4005932d3cf8b455"
+      ],
+      "events": [
+        {
+          "distanceUpperHex": "3de24bb79d562506",
+          "parameterHex": "403ef642d899172e",
+          "pointHex": [
+            "c01ae2e59371f537",
+            "400587399116b194",
+            "c020e82730a3b170"
+          ]
+        },
+        {
+          "distanceUpperHex": "3de201829d09d5bb",
+          "parameterHex": "403ef65834c49c5c",
+          "pointHex": [
+            "c01ae2c72fd9e76e",
+            "40058753c7f99caf",
+            "c020e833457e68ba"
+          ]
+        }
+      ],
+      "parameterSpanHex": [
+        "403e000000000000",
+        "403f000000000000"
+      ],
+      "sourcePair": [
+        10,
+        15
+      ]
+    },
+    {
+      "cornerEnds": [
+        13,
+        -1
+      ],
+      "curve": 39,
+      "endpointHeightsHex": [
+        "400524e7f66bd01d",
+        "400591ab49aebf9d"
+      ],
+      "events": [
+        {
+          "distanceUpperHex": "3d901530386d46ea",
+          "parameterHex": "403ee76a9a2be7b1",
+          "pointHex": [
+            "c01ae2e5937037a2",
+            "400587399116b17c",
+            "c020e82730a46290"
+          ]
+        },
+        {
+          "distanceUpperHex": "3d8f6b43966d0b6b",
+          "parameterHex": "403ee7a84e1b3be1",
+          "pointHex": [
+            "c01ae2c72fd830dd",
+            "40058753c7f99c99",
+            "c020e833457f170f"
+          ]
+        }
+      ],
+      "parameterSpanHex": [
+        "403e000000000000",
+        "403f000000000000"
+      ],
+      "sourcePair": [
+        30,
+        15
+      ]
+    }
+  ],
+  "collateral": {
+    "baseline": {
+      "corners": 77,
+      "curves": 81,
+      "unresolvedTrims": 29,
+      "unwiredEnds": 2
+    },
+    "baselineSourceReceiptSha256": "6acd91cc9a04c34ac394bf669ec1d54ba487ab4ad8ed18559a9b7e894c4a3543",
+    "baselineUncertaintyReceiptSha256": "396c3225a8ecd3fcd27ecfd8270c7317bfda2b09ebf68d82e96003cf924c5266",
+    "candidate": {
+      "corners": 55,
+      "curves": 101,
+      "unresolvedTrims": 95,
+      "unwiredEnds": 86
+    },
+    "changedSourceFamilies": [
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 2,
+        "pair": "[1, 2]"
+      },
+      {
+        "baselineCurves": 3,
+        "candidateCurves": 3,
+        "pair": "[10, 15]"
+      },
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 2,
+        "pair": "[10, 31]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 2,
+        "pair": "[13, 21]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 2,
+        "pair": "[13, 22]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 2,
+        "pair": "[13, 23]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 2,
+        "pair": "[13, 24]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 2,
+        "pair": "[13, 25]"
+      },
+      {
+        "baselineCurves": 13,
+        "candidateCurves": 14,
+        "pair": "[15, 30]"
+      },
+      {
+        "baselineCurves": 4,
+        "candidateCurves": 4,
+        "pair": "[15, 31]"
+      },
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 2,
+        "pair": "[18, 20]"
+      },
+      {
+        "baselineCurves": 6,
+        "candidateCurves": 6,
+        "pair": "[18, 31]"
+      },
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 2,
+        "pair": "[2, 31]"
+      },
+      {
+        "baselineCurves": 6,
+        "candidateCurves": 6,
+        "pair": "[20, 31]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 1,
+        "pair": "[21, 22]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 1,
+        "pair": "[21, 26]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 1,
+        "pair": "[22, 23]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 1,
+        "pair": "[23, 24]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 1,
+        "pair": "[24, 25]"
+      },
+      {
+        "baselineCurves": 1,
+        "candidateCurves": 1,
+        "pair": "[25, 26]"
+      },
+      {
+        "baselineCurves": 12,
+        "candidateCurves": 7,
+        "pair": "[30, 31]"
+      },
+      {
+        "baselineCurves": 8,
+        "candidateCurves": 14,
+        "pair": "[38, 39]"
+      },
+      {
+        "baselineCurves": 0,
+        "candidateCurves": 2,
+        "pair": "[42, 43]"
+      },
+      {
+        "baselineCurves": 0,
+        "candidateCurves": 2,
+        "pair": "[47, 48]"
+      },
+      {
+        "baselineCurves": 0,
+        "candidateCurves": 6,
+        "pair": "[47, 49]"
+      },
+      {
+        "baselineCurves": 0,
+        "candidateCurves": 2,
+        "pair": "[56, 57]"
+      },
+      {
+        "baselineCurves": 0,
+        "candidateCurves": 2,
+        "pair": "[57, 58]"
+      },
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 1,
+        "pair": "[69, 70]"
+      },
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 2,
+        "pair": "[7, 15]"
+      },
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 3,
+        "pair": "[7, 31]"
+      },
+      {
+        "baselineCurves": 2,
+        "candidateCurves": 1,
+        "pair": "[72, 73]"
+      }
+    ],
+    "comparison": "pair-labelled indexing geometry, ranges and wired-end presence; final IDs may renumber"
+  },
+  "compiledCoverage": true,
+  "cornerCount": 55,
+  "curveCount": 101,
+  "featureFingerprint": "11178391811374638840",
+  "heightHex": [
+    "400587399116b17c",
+    "40058753c7f99c9b"
+  ],
+  "lowerJoint": {
+    "actualSourcePairs": [
+      [
+        10,
+        15
+      ],
+      [
+        10,
+        31
+      ],
+      [
+        15,
+        30
+      ],
+      [
+        15,
+        31
+      ],
+      [
+        30,
+        31
+      ]
+    ],
+    "distanceHex": "0000000000000000",
+    "expectedSourcePairs": [
+      [
+        10,
+        15
+      ],
+      [
+        10,
+        31
+      ],
+      [
+        15,
+        30
+      ],
+      [
+        15,
+        31
+      ],
+      [
+        30,
+        31
+      ]
+    ],
+    "incidentEnds": [
+      [
+        20,
+        0
+      ],
+      [
+        39,
+        0
+      ],
+      [
+        46,
+        0
+      ],
+      [
+        49,
+        1
+      ],
+      [
+        66,
+        0
+      ]
+    ],
+    "nearestCorner": 13,
+    "pointHex": [
+      "c022b7c9d907b15a",
+      "c003efb1a33e9e36",
+      "40158f2508500325"
+    ],
+    "preserved": true,
+    "toleranceHex": "3f08e1bb109e4a0e"
+  },
+  "physicalPiece": {
+    "id": 20,
+    "rangeHex": [
+      "403e000000000000",
+      "403f000000000000"
+    ]
+  },
+  "scope": "actual original feature compilation and represented interval retention; no component reconstruction",
+  "sourceConfigSha256": "7e3c3087901a19760dbcc94349e4dbc9c644d41a68a0779bcbb21c13de1bd891",
+  "sourceIds": [
+    10,
+    30,
+    15
+  ],
+  "supportImageHex": [
+    [
+      "c01ae2f1cd46c08c",
+      "400587399116b17c",
+      "c020e83af0e36699"
+    ],
+    [
+      "c01ae2baf606ff35",
+      "40058753c7f99c9b",
+      "c020e81f854385e9"
+    ]
+  ],
+  "unresolvedTrims": 95,
+  "wholeComponentAccepted": false
+}

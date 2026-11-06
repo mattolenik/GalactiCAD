@@ -1,0 +1,13 @@
+{
+  "step": "focused-3",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round26-upper-handoff/B/kernel-tests",
+    "upper_b_original_source_lifted_field_and_outgoing_curve_recover",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.7582428329988,
+  "elapsedSeconds": 1.8003623330005212,
+  "exitCode": 0,
+  "timedOut": false
+}

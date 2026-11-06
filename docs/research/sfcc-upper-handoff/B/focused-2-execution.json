@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round26-upper-handoff/B/kernel-tests",
+    "fixed_partner_keeps_its_formula_outside_its_guard",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.7715087079996,
+  "elapsedSeconds": 0.007091583996952977,
+  "exitCode": 0,
+  "timedOut": false
+}

@@ -1,0 +1,16 @@
+
+running 2 tests
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::tests::upper_a_rejects_unsupported_sources_caps_and_empty_scope ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::upper_source_a::tests::upper_a_rejects_unsupported_sources_caps_and_empty_scope' (3853572) panicked at kernel/src/sfcc/upper_source_a_tests.rs:181:14:
+changed source still provides a proposed regular radial branch
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sfcc::shared_twisted_proof::exposure_a::upper_source_a::tests::upper_a_source_transition_has_regular_ordered_continuation ... ok
+
+failures:
+
+failures:
+    sfcc::shared_twisted_proof::exposure_a::upper_source_a::tests::upper_a_rejects_unsupported_sources_caps_and_empty_scope
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 340 filtered out; finished in 2.87s
+

@@ -1,0 +1,7 @@
+{
+  "filter": "upper_b_explicit_chamfer_",
+  "tests": [
+    "sfcc::branch_surfaces::upper_lineage_b_tests::upper_b_explicit_chamfer_support_and_partner_controls_remain_distinct"
+  ],
+  "exitCode": 0
+}

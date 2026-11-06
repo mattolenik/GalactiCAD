@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round26-upper-handoff/C/kernel-tests",
+    "exposure_b_controls_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 55.61988874999952,
+  "elapsedSeconds": 0.006104125001002103,
+  "exitCode": 0,
+  "timedOut": false
+}

@@ -1,0 +1,76 @@
+--- a/gcad-wasm/kernel/src/sfcc/upper_source_a_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_source_a_tests.rs
+@@ -139,7 +139,7 @@
+ }
+ #[test]
+ fn upper_a_rejects_unsupported_sources_caps_and_empty_scope() {
+-    let (root, f, _) = fixture();
++    let (root, f, config) = fixture();
+     let (branch, _) = initial(&f);
+     let cert = bind(&root, &f.strata, &branch, 0.01).unwrap();
+     assert!(bind(&root, &f.strata, &branch, 0.).is_none());
+@@ -158,30 +158,52 @@
+     let mut mixed = f.strata.clone();
+     mixed[branch.field] = other.strata[branch.field].clone();
+     assert!(bind(&other_root, &mixed, &branch, 0.01).is_none());
+-    let proposed = mid(cert.point_image(0.).unwrap());
+     for native in [true, false] {
+-        let mut clipped = root.clone();
+         let path = if native {
+             vec![0, 0, 0, 0, 1]
+         } else {
+             vec![0, 0, 0, 1]
+         };
+-        let CsgNode::Leaf(leaf) = at_mut(&mut clipped, &path) else {
++        let mut source_copy = root.clone();
++        let CsgNode::Leaf(original_leaf) = at_mut(&mut source_copy, &path) else {
+             panic!()
+         };
+-        let cap_height = cert.transition_y.hi - leaf.pos[1] + 0.001;
+-        match &mut leaf.shape {
+-            Shape::Extrude { h, .. } | Shape::Cylinder { h, .. } => *h = cap_height,
+-            _ => panic!(),
++        let cap_height = cert.transition_y.hi - original_leaf.pos[1] + 0.001;
++        // Rebuild through the real bridge so immutable leaf.strata match the changed shape.
++        let mut scene: Value = serde_json::from_str(config["sceneJson"].as_str().unwrap()).unwrap();
++        if native {
++            scene["lh"]["lh"]["lh"]["lh"]["children"][1]["h"] = json!(cap_height);
++        } else {
++            scene["lh"]["lh"]["lh"]["rh"]["h"] = json!(cap_height);
+         }
++        let clipped =
++            crate::scene_bridge::build_csg_tree_from_json(&serde_json::to_string(&scene).unwrap())
++                .unwrap();
+         let tol = crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), 50.);
+         let (clipped_f, _) = compile_feature_set(&clipped, &tol);
+         let ids = roles(&clipped_f);
++        let (p, _, _, _) = clipped_f.strata[ids[0]]
++            .round_twisted_source(&clipped_f.strata[ids[1]])
++            .unwrap();
++        let radius = clipped_f.strata[ids[2]].certificate_cylinder().unwrap().2;
++        let u = branch.sign as f64 * (radius * radius - p.v0z * p.v0z).sqrt();
++        let y = cert.transition_y.lo * 0.5 + cert.transition_y.hi * 0.5;
++        let theta = (y - p.pos_y + p.h) / (2. * p.h) * p.twist_rad;
++        let (sn, cs) = theta.sin_cos();
++        let proposed = [
++            p.pos_x + u * cs - p.v0z * sn,
++            y,
++            p.pos_z + u * sn + p.v0z * cs,
++        ];
+         let b = branch_at(&clipped_f.strata, ids[0], ids[1], ids[2], proposed)
+-            .expect("changed source still provides a proposed regular radial branch");
++            .expect("fresh changed source supplies the proposed regular radial branch");
++        assert!(
++            BranchCertificate::bind_strata(&clipped_f.strata, &b, cert.transition_y).is_some(),
++            "the zero-level transition remains strictly inside both finite caps"
++        );
+         assert!(
+             bind(&clipped, &clipped_f.strata, &b, 0.01).is_none(),
+-            "finite cap must prevent this requested nonzero-level continuation"
+-        );
+-    }
+-}
++            "the changed finite cap must prevent the requested outgoing continuation"
++        );
++    }
++}

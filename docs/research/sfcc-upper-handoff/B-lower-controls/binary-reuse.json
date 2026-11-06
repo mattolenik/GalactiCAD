@@ -1,0 +1,6 @@
+{
+  "parentJob": "B",
+  "parentManifestSha256": "1e9d84fa031364b35cb2b5a2ce949fbe3064a91eee46a201d26b53d54c3eafd9",
+  "binarySha256": "ac1145d284d3f7afa5a042a48e2514859a7e64022c00f4cab4ef37ce88e21bdf",
+  "reason": "remaining lower-repair refusal controls on changed operator runtime; no rebuild or geometry-input change"
+}

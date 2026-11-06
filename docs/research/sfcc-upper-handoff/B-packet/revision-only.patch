@@ -1,0 +1,432 @@
+--- a/gcad-wasm/kernel/src/sfcc/branch_surfaces.rs
++++ b/gcad-wasm/kernel/src/sfcc/branch_surfaces.rs
+@@ -313,7 +313,10 @@
+         CsgNode::Min(_) | CsgNode::Max(_) => values[path[0]],
+         CsgNode::Blend { kind, mode, r, n, .. } => {
+             let sign = if *kind == BlendKind::Smin { 1. } else { -1. };
+-            if *mode == SminMode::Chamfer {
++            // Only an explicitly selected Chamfer branch is its supporting diagonal.
++            // Intervening ancestors retain their actual child/diagonal dominance.
++            #[cfg(test)]
++            if *mode == SminMode::Chamfer && upper_legacy_chamfer() {
+                 let other = partners[0];
+                 return values[path[0]]
+                     .add(values[other])
+@@ -662,3 +665,18 @@
+         assert_ne!(first, field(1, 1e-6).semantic_identity(&mut context));
+     }
+ }
++
++#[cfg(test)]
++thread_local! { static UPPER_LEGACY_CHAMFER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
++#[cfg(test)]
++fn upper_legacy_chamfer() -> bool { UPPER_LEGACY_CHAMFER.with(std::cell::Cell::get) }
++#[cfg(test)]
++fn with_upper_legacy_chamfer<T>(f: impl FnOnce() -> T) -> T {
++    struct Reset(bool);
++    impl Drop for Reset { fn drop(&mut self) { UPPER_LEGACY_CHAMFER.with(|v|v.set(self.0)); } }
++    let _reset=Reset(UPPER_LEGACY_CHAMFER.with(|v|v.replace(true)));
++    f()
++}
++#[cfg(all(test, feature = "serde"))]
++#[path = "upper_lineage_b_tests.rs"]
++pub(crate) mod upper_lineage_b_tests;
+--- a/gcad-wasm/kernel/src/sfcc/trim.rs
++++ b/gcad-wasm/kernel/src/sfcc/trim.rs
+@@ -834,6 +834,8 @@
+     };
+     for (ci, curve) in raw_curves.iter().enumerate() {
+         let (runs, unresolved) = trim_curve(tree, curve, ci, tol);
++        #[cfg(all(test, feature = "serde"))]
++        super::branch_surfaces::upper_lineage_b_tests::observe_upper_runs(tree, curve, ci, &runs);
+         unresolved_trims += unresolved;
+         for run in runs {
+             all_runs.push(run);
+--- a/gcad-wasm/kernel/src/sfcc/upper_lineage_b_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_lineage_b_tests.rs
+@@ -0,0 +1,385 @@
++use super::*;
++use crate::sfcc::{
++    feature_set::SfccFeatureSet,
++    pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++};
++use serde_json::{json, Value};
++
++thread_local! {
++    static UPPER_RUNS: std::cell::RefCell<Option<Vec<Value>>> = const { std::cell::RefCell::new(None) };
++}
++fn capture_runs<T>(f: impl FnOnce() -> T) -> (T, Vec<Value>) {
++    struct Reset;
++    impl Drop for Reset {
++        fn drop(&mut self) {
++            UPPER_RUNS.with(|v| *v.borrow_mut() = None);
++        }
++    }
++    UPPER_RUNS.with(|v| {
++        assert!(v.borrow().is_none());
++        *v.borrow_mut() = Some(Vec::new());
++    });
++    let _reset = Reset;
++    let out = f();
++    let rows = UPPER_RUNS.with(|v| v.borrow_mut().take().unwrap());
++    (out, rows)
++}
++pub(crate) fn observe_upper_runs(
++    tree: &SfccTree<'_>,
++    curve: &crate::sfcc::feature_curves::FeatureCurve,
++    raw: usize,
++    runs: &[crate::sfcc::trim::TrimmedRun],
++) {
++    if !UPPER_RUNS.with(|v| v.borrow().is_some()) {
++        return;
++    }
++    let identities = curve
++        .adjacent_strata
++        .map(|id| tree.strata[id].graph_capture_identity_b());
++    let native = |d: &Option<Value>| {
++        d.as_ref().is_some_and(|d| {
++            d["field"].is_null()
++                && d["domain"][0]["path"] == json!([0, 0, 0, 0, 1])
++                && d["localIndex"] == 3
++        })
++    };
++    let field = |d: &Option<Value>| {
++        d.as_ref()
++            .is_some_and(|d| d["field"]["path"] == json!([0, 0, 0, 0]))
++    };
++    let cylinder = |d: &Option<Value>| {
++        d.as_ref().is_some_and(|d| {
++            d["field"].is_null()
++                && d["domain"][0]["path"] == json!([0, 0, 0, 1])
++                && d["localIndex"] == 0
++        })
++    };
++    if !((cylinder(&identities[0]) && (native(&identities[1]) || field(&identities[1])))
++        || (cylinder(&identities[1]) && (native(&identities[0]) || field(&identities[0]))))
++    {
++        return;
++    }
++    if !curve.index_polyline.chunks_exact(3).any(|p| {
++        p[1] >= 2.4 && p[1] <= 3.2 && p[0] > -8. && p[0] < -5.5 && p[2] > -10. && p[2] < -7.
++    }) {
++        return;
++    }
++    let row = json!({"rawCurve":raw,"sourcePair":curve.adjacent_strata,"sourceIdentities":identities,"rawRangeHex":[hex(curve.t_min),hex(curve.t_max)],
++        "rawIndexPolylineHex":curve.index_polyline.iter().copied().map(hex).collect::<Vec<_>>(),
++        "trimmedRuns":runs.iter().map(|r|json!({"rangeHex":[hex(r.t0),hex(r.t1)],"frontiers":r.frontiers.map(|f|f.map(|f|json!({"initialAliveOtherHex":[hex(f.initial_alive),hex(f.initial_other)],"finalAliveOtherHex":[hex(f.alive),hex(f.other)],"initialOtherStatus":format!("{:?}",f.initial_other_status),"finalOtherStatus":format!("{:?}",f.other_status),"reason":format!("{:?}",f.reason)})))})).collect::<Vec<_>>()});
++    UPPER_RUNS.with(|v| {
++        let mut v = v.borrow_mut();
++        let rows = v.as_mut().unwrap();
++        assert!(rows.len() < 8, "bounded original upper raw runs");
++        rows.push(row);
++    });
++}
++
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn node_at<'a>(mut node: &'a CsgNode, path: &[usize]) -> &'a CsgNode {
++    for &i in path {
++        node = match node {
++            CsgNode::Min(c) | CsgNode::Max(c) | CsgNode::Blend { children: c, .. } => &c[i],
++            _ => panic!("fixture source path"),
++        };
++    }
++    node
++}
++fn fixture() -> (CsgNode, Value, SfccWorldCube, PipelineTuning) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    (root, v, cube, PipelineTuning::default())
++}
++fn bits(sample: FieldSample) -> Value {
++    json!({"valueHex":hex(sample.value),"gradientHex":sample.gradient.map(hex)})
++}
++fn same(a: FieldSample, b: FieldSample) {
++    assert_eq!(a.value.to_bits(), b.value.to_bits());
++    assert_eq!(a.gradient.map(f64::to_bits), b.gradient.map(f64::to_bits));
++}
++
++#[test]
++fn upper_b_intermediate_chamfer_preserves_child_and_diagonal_dominance() {
++    let child = crate::sdf::leaf_at(Shape::Sphere { r: 1. }, [0.; 3]);
++    let repeated = CsgNode::Max(vec![child.clone(), child]);
++    let p = [1., 0., 0.];
++    for kind in [BlendKind::Smin, BlendKind::Smax] {
++        for partner in [
++            crate::sdf::leaf_at(Shape::Sphere { r: 1. }, [10., 0., 0.]),
++            crate::sdf::leaf_at(Shape::Sphere { r: 20. }, [0.; 3]),
++            crate::sdf::leaf_at(Shape::Sphere { r: 1. }, [0.5, 0., 0.]),
++        ] {
++            let root = CsgNode::Blend {
++                kind,
++                mode: SminMode::Chamfer,
++                r: 1.,
++                n: 4.,
++                children: vec![repeated.clone(), partner],
++            };
++            let actual = sample_tree(&root, p);
++            let overridden = sample_override(&root, &[0], &FieldBranch::Child(0), &[1], p);
++            same(actual, overridden);
++            assert!(override_valid(
++                &root,
++                &[0],
++                &FieldBranch::Child(0),
++                &[1],
++                p,
++                1e-10
++            ));
++        }
++    }
++    let root = CsgNode::Blend {
++        kind: BlendKind::Smax,
++        mode: SminMode::Chamfer,
++        r: 1.,
++        n: 4.,
++        children: vec![
++            repeated,
++            crate::sdf::leaf_at(Shape::Sphere { r: 20. }, [0.; 3]),
++        ],
++    };
++    let old =
++        with_upper_legacy_chamfer(|| sample_override(&root, &[0], &FieldBranch::Child(0), &[1], p));
++    assert!((old.value - sample_tree(&root, p).value).abs() > 1.);
++}
++
++#[test]
++fn upper_b_explicit_chamfer_support_and_partner_controls_remain_distinct() {
++    let root = CsgNode::Blend {
++        kind: BlendKind::Smax,
++        mode: SminMode::Chamfer,
++        r: 1.,
++        n: 4.,
++        children: vec![
++            crate::sdf::leaf_at(Shape::Sphere { r: 1. }, [0.; 3]),
++            crate::sdf::leaf_at(Shape::Sphere { r: 20. }, [0.; 3]),
++        ],
++    };
++    let p = [1., 0., 0.];
++    let branch = FieldBranch::Chamfer(0, 1);
++    let forced = sample_override(&root, &[], &branch, &[], p);
++    same(forced, branch.sample(&root, p));
++    assert!((forced.value - sample_tree(&root, p).value).abs() > 1.);
++    assert!(!override_valid(&root, &[], &branch, &[], p, 1e-10));
++    let result = std::panic::catch_unwind(|| with_upper_legacy_chamfer(|| panic!("scope control")));
++    assert!(result.is_err());
++    assert!(!upper_legacy_chamfer());
++    let result = std::panic::catch_unwind(|| capture_runs(|| panic!("capture scope control")));
++    assert!(result.is_err());
++    assert!(UPPER_RUNS.with(|v| v.borrow().is_none()));
++}
++
++// Numerical witness construction uses the existing source evaluator. Its finite
++// bisection is not the independent continuous source theorem.
++fn outgoing_witness(root: &CsgNode, height: f64) -> [f64; 3] {
++    let CsgNode::Leaf(native) = node_at(root, &[0, 0, 0, 0, 1]) else {
++        panic!("native leaf")
++    };
++    let Shape::Extrude {
++        verts,
++        h,
++        twist_rad,
++        ..
++    } = &native.shape
++    else {
++        panic!("native extrusion")
++    };
++    let CsgNode::Leaf(cylinder) = node_at(root, &[0, 0, 0, 1]) else {
++        panic!("cylinder leaf")
++    };
++    let Shape::Cylinder { r, .. } = &cylinder.shape else {
++        panic!("cylinder")
++    };
++    let v0 = verts[7]; // fixture's explicitly selected horizontal side 3
++    assert_eq!(v0, 8.);
++    let point = |rho: f64| {
++        let v = v0 + rho - r;
++        let u = (rho * rho - v * v).sqrt();
++        let theta = (height - native.pos[1] + h) / (2. * h) * twist_rad;
++        let (s, c) = theta.sin_cos();
++        [
++            native.pos[0] + u * c - v * s,
++            height,
++            native.pos[2] + u * s + v * c,
++        ]
++    };
++    let mut lo = r - 0.3;
++    let mut hi = *r;
++    assert!(
++        root.f(point(lo)) < 0. && root.f(point(hi)) > 0.,
++        "numerical witness bracket"
++    );
++    for _ in 0..64 {
++        let mid = lo + (hi - lo) * 0.5;
++        if mid == lo || mid == hi {
++            break;
++        }
++        if root.f(point(mid)) > 0. {
++            hi = mid;
++        } else {
++            lo = mid;
++        }
++    }
++    let p = point(lo + (hi - lo) * 0.5);
++    assert!(root.f(p).abs() < 1e-10);
++    let e = node_at(root, &[0, 0, 0, 0, 1]).f(p);
++    let c = node_at(root, &[0, 0, 0, 1]).f(p);
++    assert!(
++        e < -1e-5 && (e - c).abs() < 1e-10,
++        "actual selected operands agree at nonzero level"
++    );
++    assert!(
++        (node_at(root, &[0, 0, 0, 0]).f(p) - e).abs() < 1e-10,
++        "actual parent field agrees at this point only"
++    );
++    p
++}
++fn lifted_pair(f: &SfccFeatureSet) -> [usize; 2] {
++    [0, 1].map(|child| {
++        let wanted = format!("Child({child})");
++        let ids: Vec<_> = f
++            .strata
++            .iter()
++            .filter_map(|s| {
++                let d = s.graph_capture_identity_b()?;
++                let field = &d["field"];
++                (field["path"] == json!([])
++                    && field["branch"]["path"] == json!([0, 0, 0])
++                    && field["branch"]["kind"] == wanted
++                    && field["partners"] == json!([1, usize::MAX, 1]))
++                .then_some(s.id)
++            })
++            .collect();
++        assert_eq!(ids.len(), 1, "actual lifted hard-Max source occurrence");
++        ids[0]
++    })
++}
++fn nearest_compiled(f: &SfccFeatureSet, pair: [usize; 2], p: [f64; 3]) -> Value {
++    let mut rows = Vec::new();
++    for c in &f.curves {
++        if c.adjacent_strata != pair && c.adjacent_strata != [pair[1], pair[0]] {
++            continue;
++        }
++        let (t, proposal_distance) = c.project(p[0], p[1], p[2]);
++        let own = c.point_at_checked(t);
++        let epsilon = c.traced_carriers().map_or(0., |(_, _, r)| r.curve_eps * 8.);
++        let domains = own.is_some_and(|q| {
++            pair.iter()
++                .all(|&id| f.strata[id].domain_contains(q, epsilon))
++        });
++        let distance = own
++            .filter(|_| domains)
++            .map(|q| (q[0] - p[0]).hypot(q[1] - p[1]).hypot(q[2] - p[2]));
++        rows.push(json!({"curve":c.id,"sourcePair":c.adjacent_strata,"parameterHex":hex(t),"proposalDistance":proposal_distance,"distance":distance,"ownPointHex":own.map(|p|p.map(hex)),"domains":domains,"rangeHex":[hex(c.t_min),hex(c.t_max)],"cornerEnds":[c.corner_start,c.corner_end]}));
++    }
++    rows.sort_by(|a, b| {
++        a["distance"]
++            .as_f64()
++            .unwrap_or(f64::INFINITY)
++            .total_cmp(&b["distance"].as_f64().unwrap_or(f64::INFINITY))
++    });
++    json!({"curves":rows,"nearestDistance":rows.first().map(|r|r["distance"].clone())})
++}
++
++fn families(f: &SfccFeatureSet) -> Value {
++    let mut out = std::collections::BTreeMap::<[usize; 2], Vec<Value>>::new();
++    for c in &f.curves {
++        let mut pair = c.adjacent_strata;
++        pair.sort();
++        out.entry(pair).or_default().push(json!({"id":c.id,"rangeHex":[hex(c.t_min),hex(c.t_max)],"corners":[c.corner_start,c.corner_end],"pointCount":c.index_polyline.len()/3,"endpointHex":[c.point_at_checked(c.t_min).map(|p|p.map(hex)),c.point_at_checked(c.t_max).map(|p|p.map(hex))]}));
++    }
++    json!(out
++        .into_iter()
++        .map(|(pair, curves)| json!({"pair":pair,"curves":curves}))
++        .collect::<Vec<_>>())
++}
++
++#[test]
++fn upper_b_original_source_lifted_field_and_outgoing_curve_recover() {
++    let (root, fixture, cube, tuning) = fixture();
++    let point = outgoing_witness(&root, 3.);
++    let path = [0, 0, 0];
++    let partners = [1, usize::MAX, 1];
++    let old_fields: [FieldSample; 2] = std::array::from_fn(|i| {
++        with_upper_legacy_chamfer(|| {
++            sample_override(&root, &path, &FieldBranch::Child(i), &partners, point)
++        })
++    });
++    let new_fields: [FieldSample; 2] = std::array::from_fn(|i| {
++        sample_override(&root, &path, &FieldBranch::Child(i), &partners, point)
++    });
++    let old_valid: [bool; 2] = std::array::from_fn(|i| {
++        with_upper_legacy_chamfer(|| {
++            override_valid(&root, &path, &FieldBranch::Child(i), &partners, point, 1e-8)
++        })
++    });
++    let new_valid: [bool; 2] = std::array::from_fn(|i| {
++        override_valid(&root, &path, &FieldBranch::Child(i), &partners, point, 1e-8)
++    });
++    let (old, old_runs) = capture_runs(|| {
++        with_upper_legacy_chamfer(|| build_pipeline_context(&root, &cube, &tuning).features)
++    });
++    let (new, new_runs) = capture_runs(|| build_pipeline_context(&root, &cube, &tuning).features);
++    let old_ids = lifted_pair(&old);
++    let new_ids = lifted_pair(&new);
++    let old_near = nearest_compiled(&old, old_ids, point);
++    let new_near = nearest_compiled(&new, new_ids, point);
++    let source_ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&new);
++    let admission = source_ids.map(|ids| {
++        match crate::sfcc::private_arc_a::admit(&new, ids, tuning.curve_chord_tol_mm) {
++            Ok(_) => json!({"admitted":true}),
++            Err(e) => json!({"admitted":false,"refusal":e}),
++        }
++    });
++    let report = json!({"scope":"intermediate-operator semantics and sampled actual outgoing feature recovery; no continuous handoff or component proof",
++        "sourceConfigSha256":fixture["sourceConfigSha256"],"witnessPointHex":point.map(hex),"height":3.,"actualRoot":bits(sample_tree(&root,point)),
++        "hardSourcePath":path,"partners":partners,"legacyFields":old_fields.map(bits),"correctedFields":new_fields.map(bits),"legacyValidity":old_valid,"correctedValidity":new_valid,
++        "legacy":{"fingerprint":old.fingerprint().to_string(),"counts":[old.curves.len(),old.corners.len(),old.strata.len(),old.trace_diagnostics.unresolved_trims],"liftedPair":old_ids,"nearest":old_near,"families":families(&old)},
++        "candidate":{"fingerprint":new.fingerprint().to_string(),"counts":[new.curves.len(),new.corners.len(),new.strata.len(),new.trace_diagnostics.unresolved_trims],"liftedPair":new_ids,"nearest":new_near,"families":families(&new),"sourceIdentities":new_ids.map(|id|new.strata[id].graph_capture_identity_b())},
++        "upperRawRuns":{"legacy":old_runs,"candidate":new_runs,"scope":"read-only stored polyline and actual trim frontiers; no added geometry queries"},"completeAdmission":admission,"lowerRepairMustPassSeparateUnchangedGate":true,"wholeComponentAccepted":false});
++    let bytes = serde_json::to_vec_pretty(&report).unwrap();
++    assert!(bytes.len() <= 512 * 1024, "bounded feature evidence");
++    std::fs::write(
++        std::env::var("SFCC_UPPER_B_RECEIPT").expect("root receipt path"),
++        bytes,
++    )
++    .unwrap();
++    assert_eq!(
++        old.fingerprint(),
++        5850573460878635130,
++        "legacy scope reproduces selected parent geometry fingerprint"
++    );
++    assert!(old_fields.iter().all(|s| s.value.abs() > 0.01));
++    assert!(new_fields.iter().all(|s| s.value.abs() < 1e-10));
++    assert_eq!(old_valid, [false, false]);
++    assert_eq!(new_valid, [true, true]);
++    let eps = new
++        .curves
++        .iter()
++        .filter(|c| c.adjacent_strata == new_ids || c.adjacent_strata == [new_ids[1], new_ids[0]])
++        .find_map(|c| c.traced_carriers().map(|(_, _, r)| r.curve_eps * 8.))
++        .unwrap_or(0.);
++    assert!(
++        old_near["nearestDistance"]
++            .as_f64()
++            .is_none_or(|d| d > 0.01),
++        "old source did not represent this outgoing branch near the witness"
++    );
++    assert!(
++        new_near["nearestDistance"]
++            .as_f64()
++            .is_some_and(|d| d <= eps),
++        "correct branch semantics must recover the actual outgoing feature witness"
++    );
++}

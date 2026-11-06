@@ -1,0 +1,66 @@
+{
+  "completeHandoffAccepted": false,
+  "stage4Complete": false,
+  "wholeComponentAccepted": false,
+  "productionRuntimeChanged": false,
+  "nextExperimentalBase": "B",
+  "acceptedPartialResults": [
+    "B intermediate-chamfer scalar recomposition",
+    "A-controls full-scalar bounded regular continuation",
+    "C discovery-ownership versus source-closure obstruction"
+  ],
+  "mandatoryAdmission": "FAIL endpoint_missing in all final candidates",
+  "tests": {
+    "A-controls": {
+      "passed": 14,
+      "admissionFailed": 1
+    },
+    "B": {
+      "passedAcrossPrimaryAndReusedBinaryControls": 16,
+      "admissionFailed": 1
+    },
+    "C": {
+      "passed": 14,
+      "admissionFailed": 1
+    }
+  },
+  "BGraph": {
+    "parent": [
+      76,
+      40,
+      74,
+      83
+    ],
+    "candidate": [
+      101,
+      55,
+      74,
+      95
+    ],
+    "order": [
+      "curves",
+      "corners",
+      "strata",
+      "unresolvedTrims"
+    ],
+    "allNewGraphFeaturesValidated": false,
+    "ownOutgoingQueryDistanceMm": 5.84968747079518e-09,
+    "legacyNearestMatchingFamilyDistanceMm": 5.503037884372323
+  },
+  "sourceTransitionHeightMm": [
+    2.6957935656967407,
+    2.6957935656967558
+  ],
+  "sourceContinuesThroughBothCurrentCutoffs": true,
+  "sourceDomainScope": "identity/coaxial supported full original source; positive interval bounds, no full terminal claim",
+  "ownershipBand": 3.796655370190979e-07,
+  "notEstablished": [
+    "source-bound closure/endpoint authority",
+    "ordered native-to-outgoing transport",
+    "whole changed graph preservation",
+    "complete private source admission",
+    "component geometry/interfaces",
+    "current-HEAD native/WASM/GPU acceptance"
+  ],
+  "next": "clip incoming native charts at proved source activation; connect source-certified outgoing interval to actual recovered lifted trace; distinguish geometric closure from discovery ownership with positive proof; rerun unchanged complete admission"
+}

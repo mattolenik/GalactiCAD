@@ -1,0 +1,54 @@
+{
+  "A": {
+    "source": "/tmp/sfcc-upper-a",
+    "inputCount": 167,
+    "inputMismatches": [],
+    "binaryVerified": null,
+    "patchSha256Verified": true,
+    "handoffSha256Verified": true
+  },
+  "A-buildfix": {
+    "source": "/tmp/sfcc-upper-a-buildfix",
+    "inputCount": 167,
+    "inputMismatches": [],
+    "binaryVerified": true,
+    "patchSha256Verified": true,
+    "handoffSha256Verified": true
+  },
+  "B": {
+    "source": "/tmp/sfcc-upper-b",
+    "inputCount": 166,
+    "inputMismatches": [],
+    "binaryVerified": true,
+    "patchSha256Verified": true,
+    "handoffSha256Verified": true
+  },
+  "C": {
+    "source": "/tmp/sfcc-upper-c",
+    "inputCount": 166,
+    "inputMismatches": [],
+    "binaryVerified": true,
+    "patchSha256Verified": true,
+    "handoffSha256Verified": true
+  },
+  "A-controls": {
+    "source": "/tmp/sfcc-upper-a-controls",
+    "inputCount": 167,
+    "inputMismatches": [],
+    "binaryVerified": true,
+    "patchSha256Verified": true,
+    "handoffSha256Verified": true
+  },
+  "AControlDelta": [
+    "gcad-wasm/kernel/src/sfcc/upper_source_a_tests.rs"
+  ],
+  "BLowerReuse": {
+    "parentJob": "B",
+    "parentManifestSha256": "1e9d84fa031364b35cb2b5a2ce949fbe3064a91eee46a201d26b53d54c3eafd9",
+    "binarySha256": "ac1145d284d3f7afa5a042a48e2514859a7e64022c00f4cab4ef37ce88e21bdf",
+    "reason": "remaining lower-repair refusal controls on changed operator runtime; no rebuild or geometry-input change"
+  },
+  "ATheoremReceiptUnchangedExceptProcessLocalRootAddresses": true,
+  "BLowerReuseVerified": true,
+  "ARawReceiptObjectsEqual": false
+}

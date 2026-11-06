@@ -1,0 +1,6 @@
+{
+  "parent": "stage4 C diagnostic plus selected lower repair",
+  "inputs": 165,
+  "allInputHashesMatch": true,
+  "auditedStdFilesMatch": 10
+}

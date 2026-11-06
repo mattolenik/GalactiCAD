@@ -1,0 +1,7 @@
+{
+  "filter": "upper_b_original_source_lifted_field_and_outgoing_curve_recover",
+  "tests": [
+    "sfcc::branch_surfaces::upper_lineage_b_tests::upper_b_original_source_lifted_field_and_outgoing_curve_recover"
+  ],
+  "exitCode": 0
+}

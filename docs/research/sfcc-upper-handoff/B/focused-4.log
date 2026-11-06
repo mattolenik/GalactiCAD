@@ -1,0 +1,6 @@
+
+running 1 test
+test sfcc::trim::exposure_b_tests::exposure_b_compiled_original_source_retains_required_continuation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 1.10s
+

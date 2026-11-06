@@ -1,0 +1,8 @@
+{
+  "filter": "upper_c_",
+  "tests": [
+    "sfcc::branch_surfaces::upper_ownership_c::upper_c_counterfactual_scope_resets_after_unwind",
+    "sfcc::branch_surfaces::upper_ownership_c::upper_c_original_source_ownership_exclusion_is_separate_from_ancestor_bug"
+  ],
+  "exitCode": 0
+}

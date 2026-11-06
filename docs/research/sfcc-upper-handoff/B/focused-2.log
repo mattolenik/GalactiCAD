@@ -1,0 +1,6 @@
+
+running 1 test
+test sfcc::branch_surfaces::region_tests::fixed_partner_keeps_its_formula_outside_its_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.00s
+

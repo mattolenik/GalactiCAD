@@ -21,6 +21,11 @@ octree or component construction: both upper ends remain unresolved. The origina
 private graph guard and geometric/interface checks were not reached. Stages 4–5
 remain open; the next prerequisite is the current upper source transition and
 ordered handoff, without relaxing complete-arc admission.
+The [upper-handoff investigation](../research/sfcc-upper-handoff/README.md) now
+proves regular continuation through those cutoffs and validates an intermediate-
+chamfer scalar correction that recovers an outgoing feature. Complete admission
+still refuses. Next implement source-bound activation/closure authority and ordered
+incoming/outgoing transport, preserving discovery ownership and rollback.
 Current production baseline:
 `421f5a9`. This expands the next five steps of
 [E4 in the critical-repairs plan](sfcc-critical-repairs.md), then defines the
@@ -263,13 +268,22 @@ but actual combined storage and all component geometry/interface exits are not
 reached. The conditional capture's success path is compiled, not validated on
 the unavailable component.
 
-The next bounded prerequisite is to capture the current upper raw frontiers and
-derive full composed-field continuation, branch transition or legitimate
-termination. Check nonzero blend operands and active domains explicitly; old
-zero-locus equivalence does not supply that contract. Preserve the accepted lower
-repair, prove any ordered outgoing handoff, then rerun the unchanged complete-arc
-admission before resuming component construction. No endpoint welding, invented
-corner, smaller obligation or relaxed admission is authorized by this refusal.
+The [next executed source investigation](../research/sfcc-upper-handoff/README.md)
+records the current raw frontiers and proves a regular ordered outgoing crease
+through the round activation, checking nonzero scalar operands and active domains.
+It also corrects forced-diagonal evaluation at an intermediate chamfer. B's
+correction is retained as the next isolated base, not as complete graph acceptance;
+its source inventory changes to 101 curves, 55 corners and 95 unresolved trims.
+
+The remaining bounded prerequisite is to delimit incoming native charts at the
+proved source event, connect an ordered outgoing prefix to the recovered lifted
+trace, and provide positive source-bound closure authority where discovery
+ownership currently excludes the transition. Zeroing/removing the ownership band
+globally is not sufficient and can permit overlapping native/lifted ownership.
+Keep the lower repair fixed, revalidate both representations and their incident
+patch topology together, then rerun complete-arc admission before component work.
+No endpoint welding, invented corner, smaller obligation or unproved domain waiver
+is authorized by the remaining refusal.
 
 Check these independently:
 

@@ -1,0 +1,13 @@
+
+running 1 test
+test sfcc::branch_surfaces::upper_lineage_b_tests::upper_b_explicit_chamfer_support_and_partner_controls_remain_distinct ... 
+thread 'sfcc::branch_surfaces::upper_lineage_b_tests::upper_b_explicit_chamfer_support_and_partner_controls_remain_distinct' (3817924) panicked at kernel/src/sfcc/upper_lineage_b_tests.rs:175:75:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'sfcc::branch_surfaces::upper_lineage_b_tests::upper_b_explicit_chamfer_support_and_partner_controls_remain_distinct' (3817924) panicked at kernel/src/sfcc/upper_lineage_b_tests.rs:178:62:
+capture scope control
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.00s
+

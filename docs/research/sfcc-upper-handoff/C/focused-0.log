@@ -1,0 +1,11 @@
+
+running 2 tests
+test sfcc::branch_surfaces::upper_ownership_c::upper_c_counterfactual_scope_resets_after_unwind ... 
+thread 'sfcc::branch_surfaces::upper_ownership_c::upper_c_counterfactual_scope_resets_after_unwind' (3813703) panicked at kernel/src/sfcc/upper_ownership_c.rs:253:13:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::branch_surfaces::upper_ownership_c::upper_c_original_source_ownership_exclusion_is_separate_from_ancestor_bug ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 340 filtered out; finished in 0.85s
+

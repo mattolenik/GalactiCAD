@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round26-upper-handoff/B/kernel-tests",
+    "upper_b_intermediate_chamfer_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.79886941600125,
+  "elapsedSeconds": 0.006027458999597002,
+  "exitCode": 0,
+  "timedOut": false
+}

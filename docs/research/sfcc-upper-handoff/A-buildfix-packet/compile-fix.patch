@@ -1,0 +1,11 @@
+--- a/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
+@@ -12,7 +12,7 @@
+     a.lo.abs().max(a.hi.abs())
+ }
+ 
+-#[derive(Clone, Copy, Debug)]
++#[derive(Clone, Copy)]
+ struct Image {
+     a: I,
+     b: I,

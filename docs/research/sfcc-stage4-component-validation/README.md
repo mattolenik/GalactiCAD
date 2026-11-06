@@ -173,3 +173,10 @@ Native test binaries remain local in `.testresults` and are not committed.
 Stage 4 remains open. Production runtime is unchanged; current-HEAD integration,
 native/WASM/GPU comparison, complete torture-model acceptance and visual QA were
 not performed. No full-component validity claim is made.
+
+The [subsequent upper-handoff investigation](../sfcc-upper-handoff/README.md)
+proves local continuation and corrects an intermediate-chamfer evaluator defect,
+recovering an outgoing feature in the isolated implementation. The independent
+ownership/closure obstruction remains, and complete source admission still fails.
+That result advances the source diagnosis without claiming this component was
+constructed or validated.

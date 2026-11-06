@@ -1455,6 +1455,36 @@ handoff, checking actual scalar blend behavior and active domains. Do not weld t
 two numerical ends or fabricate a corner to satisfy endpoint presence. Production
 runtime remains unchanged and E4 overall remains open.
 
+### Upper continuation proved; intermediate-chamfer correction remains partial
+
+The [upper-handoff investigation](sfcc-upper-handoff/README.md) establishes a
+regular ordered source crease through both current numerical cutoffs. Its bounded
+full-scalar theorem checks finite profile/cap and ancestor conditions, locating
+round activation near `y=2.695793565696748` mm. The incoming native-zero extension
+is not the exact outgoing zero set after that event. No terminal or complete raw
+trace correspondence is inferred from finite samples.
+
+The implementation audit confirms that `sample_override` incorrectly forced an
+intermediate chamfer's supporting diagonal even in child-dominant regions. The
+minimal correction uses existing full operator recomposition while retaining
+explicit selected-diagonal semantics. On the original source it recovers a checked
+outgoing lifted-curve point within about `5.85e-9` mm of the height-3 witness; the
+legacy matching source family was about 5.503 mm away. The lower twelve controls
+pass. The broader 76→101 curve, 40→55 corner and 83→95 unresolved inventory changes
+are recorded, not globally accepted.
+
+An independent counterexample shows the discovery ownership band excludes an
+initial interval of the outgoing regular source crease. Global removal or zeroing
+is not sufficient: it also permits overlap with incoming native ownership and
+does not provide exact source closure at activation. All final complete-admission
+gates still refuse `endpoint_missing`.
+
+Fourth review retains the operator correction as a partial isolated base and
+accepts the bounded source premise, while leaving the handoff and Stage 4 open.
+Next establish source-bound activation/closure and ordered native-to-outgoing
+transport with ambiguity, query and transaction refusals preserved. Production
+runtime and component geometry remain unchanged/unvalidated respectively.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

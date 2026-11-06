@@ -1,0 +1,15 @@
+
+running 1 test
+test sfcc::stage4_source_preflight_c::stage4_c_complete_source_admission_gate ... 
+thread 'sfcc::stage4_source_preflight_c::stage4_c_complete_source_admission_gate' (3818163) panicked at kernel/src/sfcc/stage4_source_preflight_c.rs:329:5:
+complete source admission is required before component work: {"kind":"refusal","refusal":{"detail":"admission reservation","originals":[{"corners":[13,-1],"id":20,"range_bits":[0,4629418941960159232],"strata":[10,15]},{"corners":[13,-1],"id":39,"range_bits":[0,4629418941960159232],"strata":[30,15]}],"reason":"endpoint_missing"}}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    sfcc::stage4_source_preflight_c::stage4_c_complete_source_admission_gate
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 342 filtered out; finished in 1.10s
+

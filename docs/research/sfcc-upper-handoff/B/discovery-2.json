@@ -1,0 +1,7 @@
+{
+  "filter": "fixed_partner_keeps_its_formula_outside_its_guard",
+  "tests": [
+    "sfcc::branch_surfaces::region_tests::fixed_partner_keeps_its_formula_outside_its_guard"
+  ],
+  "exitCode": 0
+}

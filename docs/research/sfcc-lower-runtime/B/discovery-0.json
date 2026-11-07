@@ -1,0 +1,9 @@
+{
+  "filter": "lower_runtime_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::lower_runtime_b_tests::lower_runtime_b_complete_star_requires_previous_physical_rays",
+    "sfcc::shared_twisted_proof::exposure_a::lower_runtime_b_tests::lower_runtime_b_metadata_only_attachment_does_not_close_actual_query",
+    "sfcc::shared_twisted_proof::exposure_a::lower_runtime_b_tests::lower_runtime_b_natural_missing_ray_passes_old_full_admission"
+  ],
+  "exitCode": 0
+}

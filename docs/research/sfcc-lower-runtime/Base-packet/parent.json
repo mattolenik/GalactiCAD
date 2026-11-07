@@ -1,0 +1,20 @@
+{
+  "parent": "previous A-cell source",
+  "parentManifest": "docs/research/sfcc-upper-closure/A-cell/manifest.json",
+  "parentManifestSha256": "632e88916bb5b2a00b4782b2a8f453f76bcf5286b21f7955f1b97cd4eb7734a8",
+  "mode": "incremental, alternative packets; do not stack A/C/Combined",
+  "changedFiles": [
+    "gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs",
+    "gcad-wasm/kernel/src/sfcc/correlated_transport_a_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_b_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_query_cost_c_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_source_a.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_source_a_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+    "gcad-wasm/kernel/src/sfcc/private_arc_a_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+    "gcad-wasm/kernel/src/sfcc/upper_source_a.rs"
+  ],
+  "patchSha256": "18b42189eb2aa71500ee6538cdf5dc287adbcde0bf4dbf284cc1567ae82c5275"
+}

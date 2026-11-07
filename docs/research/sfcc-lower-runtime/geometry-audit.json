@@ -1,0 +1,40 @@
+{
+  "receipt": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/component-attempt.json",
+  "receiptSha256": "406f36c23795aa8d44e6bf68302ba3210f5b786dc43cb2d4d55bcaf6aaff7a33",
+  "triangleIndex": 11,
+  "triangle": [
+    636,
+    455,
+    633
+  ],
+  "cell": [
+    7,
+    25,
+    58,
+    86
+  ],
+  "stages": {
+    "working": {
+      "exactNonzeroArea": true,
+      "exactReferenceDotSign": -1,
+      "exactReferenceDot": "-23820560530015292246437442573764694591515/45671926166590716193865151022383844364247891968",
+      "scope": "exact rational arithmetic on represented vertex and stored reference bits; no new SDF evaluation",
+      "floatingReferenceCosine": -0.9999999996888198
+    },
+    "exported": {
+      "exactNonzeroArea": true,
+      "exactReferenceDotSign": -1,
+      "exactReferenceDot": "-661568455640066728053957/1267650600228229401496703205376",
+      "scope": "exact rational arithmetic on represented vertex and stored reference bits; no new SDF evaluation",
+      "floatingReferenceCosine": -0.999999347114937
+    }
+  },
+  "completeCellTriangleRangeCoverage": true,
+  "candidatePoints": 1064,
+  "candidateTriangles": 1700,
+  "failureClassification": "opposes stored working-centroid reference in both precisions; neither area collapses",
+  "patchOwner": null,
+  "allLaterTriangleOrientationsChecked": false,
+  "newFieldEvaluations": 0,
+  "elapsedSeconds": 0.00847120798425749
+}

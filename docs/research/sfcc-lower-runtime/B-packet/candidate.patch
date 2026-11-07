@@ -1,0 +1,267 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -414,3 +414,7 @@
+ 
+ #[path = "lower_source_a.rs"]
+ pub(crate) mod lower_source_a;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "lower_runtime_b_tests.rs"]
++mod lower_runtime_b_tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_runtime_b_tests.rs
+@@ -0,0 +1,254 @@
++//! Independent lower-event discriminator; this test helper grants no runtime authority.
++use super::*;
++use crate::sfcc::{
++    feature_set::{compile_feature_set, SfccFeatureSet},
++    private_arc_a, shared_arc_plan,
++};
++use serde_json::{json, Value};
++
++struct Fixture {
++    root: CsgNode,
++    features: SfccFeatureSet,
++    source: [usize; 3],
++    pair: [usize; 2],
++    corner: usize,
++    common: usize,
++    lifted: [usize; 2],
++    epsilon: f64,
++}
++fn same_pair(mut a: [usize; 2], mut b: [usize; 2]) -> bool {
++    a.sort();
++    b.sort();
++    a == b
++}
++fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
++    (a[0] - b[0]).hypot(a[1] - b[1]).hypot(a[2] - b[2])
++}
++fn fixture() -> Fixture {
++    let input: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(input["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let size =
++        input["cube"]["max"][0].as_f64().unwrap() - input["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        3_f64.sqrt() * size,
++    );
++    let (features, _) = compile_feature_set(&root, &tol);
++    let pair = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&features).unwrap();
++    let tube = features.curves[pair[0]].projection_tube(0., 1.).unwrap();
++    let branch = HelixBranch::identify(&features, pair[0], pair[1], tube).unwrap();
++    let source = [branch.native, branch.field, branch.cylinder_id];
++    let old: Value =
++        serde_json::from_str(include_str!("../../fixtures/exposure-b-baseline.json")).unwrap();
++    let expected = std::array::from_fn(|k| {
++        f64::from_bits(
++            u64::from_str_radix(old["lowerJoint"]["pointHex"][k].as_str().unwrap(), 16).unwrap(),
++        )
++    });
++    let epsilon = tol.curve_eps * 8.;
++    let corners: Vec<_> = features
++        .corners
++        .iter()
++        .filter(|c| distance([c.x, c.y, c.z], expected) < epsilon)
++        .map(|c| c.id)
++        .collect();
++    assert_eq!(corners.len(), 1);
++    let corner = corners[0];
++    let c = &features.corners[corner];
++    let cert = lower_source_a::bind(
++        &root,
++        &features.strata,
++        source,
++        [c.x, c.y, c.z],
++        epsilon,
++        0.01,
++    )
++    .unwrap();
++    let lifted = cert.lifted_pair;
++    let registered = features.strata[source[0]].exposure_root_a().unwrap();
++    let (cap_cut, _, _) = pair_node(registered, Some((BlendKind::Smax, SminMode::Round)));
++    let (groove_cut, _, _) = pair_node(cap_cut, None);
++    let (hard, groove, _) = pair_node(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer)));
++    let common: Vec<_> = features
++        .strata
++        .iter()
++        .filter(|s| s.connection_compound(hard, groove, groove_cut).is_some())
++        .map(|s| s.id)
++        .collect();
++    assert_eq!(common.len(), 1);
++    Fixture {
++        root,
++        features,
++        source,
++        pair,
++        corner,
++        common: common[0],
++        lifted,
++        epsilon,
++    }
++}
++fn pair_node(node: &CsgNode, kind: Option<(BlendKind, SminMode)>) -> (&CsgNode, &CsgNode, f64) {
++    super::pair(node, kind).unwrap()
++}
++fn lifted_candidate(x: &Fixture) -> usize {
++    let corner = &x.features.corners[x.corner];
++    let point = [corner.x, corner.y, corner.z];
++    let cert = lower_source_a::bind(
++        &x.root,
++        &x.features.strata,
++        x.source,
++        point,
++        x.epsilon,
++        0.01,
++    )
++    .unwrap();
++    let ids: Vec<_> = x
++        .features
++        .curves
++        .iter()
++        .filter(|c| {
++            c.corner_end < 0
++                && !c.closed
++                && cert.curve_source_matches(&x.features.strata, c)
++                && c.point_at_checked(c.t_max)
++                    .is_some_and(|p| distance(p, point) < 0.1)
++        })
++        .map(|c| c.id)
++        .collect();
++    assert_eq!(ids.len(), 1);
++    ids[0]
++}
++// The source theorem supplies the required ray roles. This is deliberately stricter
++// than the old declared-only endpoint gate, but it is not an interval/install proof.
++fn complete_event(x: &Fixture) -> std::result::Result<(), &'static str> {
++    let f = &x.features;
++    let c = &f.corners[x.corner];
++    let point = [c.x, c.y, c.z];
++    let cert = lower_source_a::bind(&x.root, &f.strata, x.source, point, x.epsilon, 0.01)
++        .ok_or("source")?;
++    let roles = [
++        (
++            "native",
++            vec![[x.source[0], x.source[2]], [x.source[1], x.source[2]]],
++        ),
++        (
++            "native_chamfer",
++            vec![[x.source[0], x.common], [x.source[1], x.common]],
++        ),
++        ("cylinder_chamfer", vec![[x.source[2], x.common]]),
++        ("lifted", vec![cert.lifted_pair]),
++    ];
++    for (role, pairs) in roles {
++        let ends: Vec<_> = c
++            .curve_ends
++            .iter()
++            .filter(|&&(id, _)| {
++                f.curves
++                    .get(id)
++                    .is_some_and(|v| pairs.iter().any(|p| same_pair(v.adjacent_strata, *p)))
++            })
++            .copied()
++            .collect();
++        if ends.is_empty() {
++            return Err(role);
++        }
++        for (id, end) in ends {
++            let curve = &f.curves[id];
++            if end > 1 || [curve.corner_start, curve.corner_end][end as usize] != c.id as i64 {
++                return Err("backreference");
++            }
++            if curve.adjacent_strata.iter().any(|s| !c.strata.contains(s)) {
++                return Err("stratum_inventory");
++            }
++            let (a, b, _) = curve.traced_carriers().ok_or("not_traced")?;
++            if !a.connection_same_source(&f.strata[curve.adjacent_strata[0]])
++                || !b.connection_same_source(&f.strata[curve.adjacent_strata[1]])
++            {
++                return Err("embedded_source");
++            }
++            if role == "lifted" && !cert.curve_source_matches(&f.strata, curve) {
++                return Err("lifted_source");
++            }
++            let t = if end == 0 { curve.t_min } else { curve.t_max };
++            let own = curve.point_at_checked(t).ok_or("own_query")?;
++            if distance(own, point) > x.epsilon {
++                return Err("endpoint_mismatch");
++            }
++        }
++    }
++    Ok(())
++}
++
++#[test]
++fn lower_runtime_b_natural_missing_ray_passes_old_full_admission() {
++    let x = fixture();
++    let c = &x.features.corners[x.corner];
++    assert_eq!(complete_event(&x), Err("lifted"));
++    let endpoint =
++        shared_arc_plan::endpoint(&x.features, x.pair, x.corner as i64, x.epsilon).unwrap();
++    let (admitted, transport) = private_arc_a::admit(&x.features, x.pair, 0.02).unwrap();
++    let outgoing = lifted_candidate(&x);
++    let curve = &x.features.curves[outgoing];
++    let raw = curve.point_at_checked(curve.t_max).unwrap();
++    let gap = distance(raw, [c.x, c.y, c.z]);
++    assert!(gap > x.epsilon);
++    let report = json!({"scope":"naturally compiled lower event passes old declared-only admission despite a source-proved missing physical ray; not a publication claim","fingerprint":x.features.fingerprint().to_string(),"corner":c.id,"sourceRoles":x.source,"commonChamfer":x.common,"requiredLiftedPair":x.lifted,"liftedChart":outgoing,"cornerEnds":c.curve_ends,"cornerStrata":c.strata,"oldEndpointAccepted":true,"oldFullAdmissionAccepted":true,"originalEventCount":admitted.events.len(),"chargedQueries":transport.charged_queries(),"independentRequiredRayGate":"missing lifted","endpointDistance":gap,"allowance":x.epsilon,"endpointScope":endpoint.endpoint_scope,"sourceProofDoesNotInstallRuntimeInterval":true});
++    std::fs::write(
++        std::env::var("SFCC_LOWER_RUNTIME_B_RECEIPT").expect("root receipt path"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
++
++#[test]
++fn lower_runtime_b_metadata_only_attachment_does_not_close_actual_query() {
++    let mut x = fixture();
++    let id = lifted_candidate(&x);
++    let before = x.features.fingerprint();
++    let curve = &mut x.features.curves[id];
++    let old_query = curve.point_at_checked(curve.t_max).unwrap();
++    curve.corner_end = x.corner as i64;
++    let c = &mut x.features.corners[x.corner];
++    c.curve_ends.push((id, 1));
++    for s in x.lifted {
++        if !c.strata.contains(&s) {
++            c.strata.push(s);
++        }
++    }
++    assert_ne!(x.features.fingerprint(), before);
++    assert_eq!(
++        x.features.curves[id]
++            .point_at_checked(x.features.curves[id].t_max)
++            .unwrap()
++            .map(f64::to_bits),
++        old_query.map(f64::to_bits)
++    );
++    assert_eq!(complete_event(&x), Err("endpoint_mismatch"));
++    assert!(
++        shared_arc_plan::endpoint(&x.features, x.pair, x.corner as i64, x.epsilon).is_err(),
++        "labels and stratum list cannot replace numerical closure authority"
++    );
++}
++
++#[test]
++fn lower_runtime_b_complete_star_requires_previous_physical_rays() {
++    let mut x = fixture();
++    let original = x.features.corners[x.corner].curve_ends.clone();
++    let cylinder_pair = [x.source[2], x.common];
++    x.features.corners[x.corner]
++        .curve_ends
++        .retain(|&(id, _)| !same_pair(x.features.curves[id].adjacent_strata, cylinder_pair));
++    assert!(x.features.corners[x.corner].curve_ends.len() < original.len());
++    assert_eq!(complete_event(&x), Err("cylinder_chamfer"));
++    x.features.corners[x.corner].curve_ends = original;
++    let native = x.source[0];
++    let field = x.source[1];
++    let common = x.common;
++    x.features.corners[x.corner].curve_ends.retain(|&(id, _)| {
++        !same_pair(x.features.curves[id].adjacent_strata, [native, common])
++            && !same_pair(x.features.curves[id].adjacent_strata, [field, common])
++    });
++    assert_eq!(complete_event(&x), Err("native_chamfer"));
++}

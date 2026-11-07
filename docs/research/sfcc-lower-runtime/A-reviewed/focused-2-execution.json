@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/kernel-tests",
+    "lower_b_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 50.19989570800681,
+  "elapsedSeconds": 2.1249089580087457,
+  "exitCode": 0,
+  "timedOut": false
+}

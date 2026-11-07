@@ -1,0 +1,51 @@
+[
+  {
+    "packet": "Base",
+    "executedInputs": 176,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 11
+  },
+  {
+    "packet": "B",
+    "executedInputs": 177,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 2
+  },
+  {
+    "packet": "A-initial",
+    "executedInputs": 178,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 8
+  },
+  {
+    "packet": "A-reviewed",
+    "executedInputs": 178,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 8
+  },
+  {
+    "packet": "C",
+    "executedInputs": 177,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 2
+  },
+  {
+    "packet": "Combined",
+    "executedInputs": 179,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 10
+  },
+  {
+    "packet": "Geometry-capture",
+    "executedInputs": 179,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 2
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/kernel-tests",
+    "inverse_c_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 53.39345699999831,
+  "elapsedSeconds": 3.2465697090083268,
+  "exitCode": 0,
+  "timedOut": false
+}

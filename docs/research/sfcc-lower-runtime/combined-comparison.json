@@ -1,0 +1,103 @@
+{
+  "checks": {
+    "generatedQueryBitsEqual": true,
+    "typedFaceCertificatesEqualExceptCharge": true,
+    "consumerInventoryEqual": true,
+    "storageReservationEqual": true,
+    "sourceGeometryFingerprintEqual": true,
+    "liveDigestBeforeEqual": true,
+    "liveUnmodifiedBoth": true
+  },
+  "certificateIgnoredFields": [
+    "rootAddressProcessLocal",
+    "final_charged_queries"
+  ],
+  "generatedQueries": 1167,
+  "geometryTriangleBitIdentityEstablished": false,
+  "A": {
+    "validated": 787,
+    "charge": 16384,
+    "refusal": {
+      "kind": "refusal",
+      "refusal": {
+        "detail": "chart 20 t 4036d28e6310bcbb: TotalCap",
+        "originals": [
+          {
+            "corners": [
+              13,
+              56
+            ],
+            "id": 20,
+            "range_bits": [
+              0,
+              4629418941960159232
+            ],
+            "strata": [
+              10,
+              15
+            ]
+          },
+          {
+            "corners": [
+              13,
+              56
+            ],
+            "id": 39,
+            "range_bits": [
+              0,
+              4629418941960159232
+            ],
+            "strata": [
+              30,
+              15
+            ]
+          }
+        ],
+        "reason": "bounded_event_transport"
+      }
+    }
+  },
+  "Combined": {
+    "validated": 1167,
+    "charge": 5568,
+    "refusal": {
+      "kind": "refusal",
+      "refusal": {
+        "detail": "one-loop and multi-loop children both checked",
+        "originals": [
+          {
+            "corners": [
+              13,
+              56
+            ],
+            "id": 20,
+            "range_bits": [
+              0,
+              4629418941960159232
+            ],
+            "strata": [
+              10,
+              15
+            ]
+          },
+          {
+            "corners": [
+              13,
+              56
+            ],
+            "id": 39,
+            "range_bits": [
+              0,
+              4629418941960159232
+            ],
+            "strata": [
+              30,
+              15
+            ]
+          }
+        ],
+        "reason": "private_invalid_f64_or_f32"
+      }
+    }
+  }
+}

@@ -1,0 +1,314 @@
+--- a/gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs
+@@ -80,6 +80,36 @@
+     } else {
+         Ok(t)
+     }
++}
++fn height_proposal(lo: f64, hi: f64, low_y: f64, high_y: f64, y: f64) -> Option<f64> {
++    if ![lo, hi, low_y, high_y, y].iter().all(|v| v.is_finite()) || lo >= hi {
++        return None;
++    }
++    let fraction = (y - low_y) / (high_y - low_y);
++    if !fraction.is_finite() || fraction <= 0. || fraction >= 1. {
++        return None;
++    }
++    let t = lo + (hi - lo) * fraction;
++    (t.is_finite() && t > lo && t < hi).then_some(t)
++}
++#[cfg(test)]
++thread_local! { static FORCE_BISECTION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
++fn interpolation_enabled() -> bool {
++    #[cfg(test)]
++    return !FORCE_BISECTION.with(std::cell::Cell::get);
++    #[cfg(not(test))]
++    true
++}
++#[cfg(test)]
++fn without_interpolation<T>(f: impl FnOnce() -> T) -> T {
++    struct Restore(bool);
++    impl Drop for Restore {
++        fn drop(&mut self) {
++            FORCE_BISECTION.with(|v| v.set(self.0));
++        }
++    }
++    let _restore = Restore(FORCE_BISECTION.with(|v| v.replace(true)));
++    f()
+ }
+ fn window(knots: &[(f64, f64)], y: f64) -> Result<[f64; 2], Failure> {
+     let mut found = None;
+@@ -421,17 +451,27 @@
+         let low = self.query(target, lo, &mut request)?;
+         let high = self.query(target, hi, &mut request)?;
+         let ascending = high.point[1] > low.point[1];
+-        for _ in 0..MAX_ITERATIONS {
++        let (mut low_y, mut high_y) = (low.point[1], high.point[1]);
++        for iteration in 0..MAX_ITERATIONS {
+             self.cost.inverse_iterations += 1;
+-            let t = midpoint(lo, hi)?;
++            // Two checked secant proposals, then bisection, all within the same iteration budget.
++            let proposal = (iteration < 2 && interpolation_enabled())
++                .then(|| height_proposal(lo, hi, low_y, high_y, actual.point[1]))
++                .flatten();
++            let t = match proposal {
++                Some(t) => t,
++                None => midpoint(lo, hi)?,
++            };
+             let event = self.query(target, t, &mut request)?;
+             if accepts(actual.point, event.point, eps) {
+                 return Ok(event);
+             }
+             if (event.point[1] < actual.point[1]) == ascending {
+                 lo = t;
++                low_y = event.point[1];
+             } else {
+                 hi = t;
++                high_y = event.point[1];
+             }
+             // This is only a numerical search; shrinking a window never proves
+             // the rejected side lacks a solution. Stagnation simply refuses.
+@@ -523,3 +563,7 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "lower_query_cost_c_tests.rs"]
+ mod lower_cost_tests;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "inverse_proposal_c_tests.rs"]
++mod inverse_proposal_tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/inverse_proposal_c_tests.rs
+@@ -0,0 +1,234 @@
++use super::*;
++use crate::sfcc::feature_curves::make_traced_curve;
++use serde_json::{json, Value};
++
++fn fixture() -> (SfccFeatureSet, [usize; 2]) {
++    let config: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(config["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let size =
++        config["cube"]["max"][0].as_f64().unwrap() - config["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        (3. * size * size).sqrt(),
++    );
++    let (f, _) = crate::sfcc::feature_set::compile_feature_set(&root, &tol);
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++    (f, ids)
++}
++
++fn campaign(f: &SfccFeatureSet, ids: [usize; 2]) -> (Vec<[CheckedEvent; 3]>, Value, f64) {
++    let mut solver = Transport::bind(f, ids, 0.02).unwrap();
++    let mut events = Vec::new();
++    solver.complete(&mut events).unwrap();
++    for slot in 0..2 {
++        let knots = solver.knots[slot].clone();
++        for span in knots.windows(2) {
++            for fraction in [0.25, 0.5, 0.75] {
++                let t = span[0] + fraction * (span[1] - span[0]);
++                let own = solver.own(ids[slot], t).unwrap();
++                let pair = solver.pair(own).unwrap();
++                assert!(pair
++                    .iter()
++                    .all(|p| accepts(pair[0].point, p.point, solver.allowance())));
++                events.push(pair);
++            }
++        }
++    }
++    solver.check_sequences(&events).unwrap();
++    (events, solver.cost_json(), solver.allowance())
++}
++
++#[test]
++fn inverse_c_paired_original_and_interior_events_keep_acceptance_and_reduce_new_queries() {
++    let (f, ids) = fixture();
++    let (old, old_cost, old_eps) = without_interpolation(|| campaign(&f, ids));
++    let (new, new_cost, eps) = campaign(&f, ids);
++    assert_eq!(old_eps.to_bits(), eps.to_bits());
++    assert_eq!(old.len(), new.len());
++    let mut changed_parameters = 0;
++    let mut maximum_difference = 0_f64;
++    let mut rows = Vec::new();
++    for (a, b) in old.iter().zip(&new) {
++        assert_eq!(a[0].chart, b[0].chart);
++        assert_eq!(a[0].parameter.to_bits(), b[0].parameter.to_bits());
++        assert_eq!(a[0].point.map(f64::to_bits), b[0].point.map(f64::to_bits));
++        for k in 1..3 {
++            assert!(accepts(a[0].point, a[k].point, eps));
++            assert!(accepts(b[0].point, b[k].point, eps));
++            let difference = distance_upper(a[k].point, b[k].point).unwrap();
++            maximum_difference = maximum_difference.max(difference);
++            assert!(difference <= (2. * eps).next_up());
++            changed_parameters += usize::from(a[k].parameter.to_bits() != b[k].parameter.to_bits());
++        }
++        rows.push(
++            json!({"originChart":a[0].chart,"originParameterBits":a[0].parameter.to_bits(),
++            "oldParametersBits":a.each_ref().map(|e|e.parameter.to_bits()),
++            "newParametersBits":b.each_ref().map(|e|e.parameter.to_bits()),
++            "oldPointBits":a.each_ref().map(|e|e.point.map(f64::to_bits)),
++            "newPointBits":b.each_ref().map(|e|e.point.map(f64::to_bits))}),
++        );
++    }
++    assert!(
++        new_cost["consumeAttempts"].as_u64().unwrap()
++            < old_cost["consumeAttempts"].as_u64().unwrap()
++    );
++    assert!(new_cost["maximumRequest"].as_u64().unwrap() <= MAX_REQUEST as u64);
++    let report = json!({"scope":"same original and quarter/midpoint events under old/new numerical proposals; all actual source/query/container/3D and sequence gates retained; not component acceptance",
++        "featureFingerprint":f.fingerprint().to_string(),"sourceCharts":ids,"unchangedAllowance":eps,
++        "events":rows,"eventCount":new.len(),"oldCost":old_cost,"newCost":new_cost,
++        "changedMappedParameters":changed_parameters,"maximumOldNewPointDifferenceUpper":maximum_difference,
++        "bitIdentityRequired":false,"limits":{"request":MAX_REQUEST,"total":MAX_TOTAL,"iterations":MAX_ITERATIONS}});
++    std::fs::write(
++        std::env::var("SFCC_INVERSE_C_RECEIPT").expect("root receipt path"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
++
++#[test]
++fn inverse_c_proposal_requires_finite_interior_bracket_and_scope_restores() {
++    assert_eq!(height_proposal(2., 4., 10., 20., 15.), Some(3.));
++    assert_eq!(height_proposal(2., 4., 20., 10., 15.), Some(3.));
++    for args in [
++        [2., 4., 10., 10., 10.],
++        [2., 2., 10., 20., 15.],
++        [4., 2., 10., 20., 15.],
++        [2., 4., 10., 20., 10.],
++        [2., 4., 10., 20., 20.],
++        [2., 4., 10., 20., 21.],
++        [2., 4., 10., 20., 9.],
++        [2., 4., -f64::MAX, f64::MAX, 0.],
++        [-f64::MAX, f64::MAX, 10., 20., 15.],
++        [1., 1_f64.next_up(), 10., 20., 15.],
++    ] {
++        assert!(height_proposal(args[0], args[1], args[2], args[3], args[4]).is_none());
++    }
++    for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
++        for i in 0..5 {
++            let mut args = [2., 4., 10., 20., 15.];
++            args[i] = invalid;
++            assert!(height_proposal(args[0], args[1], args[2], args[3], args[4]).is_none());
++        }
++    }
++    assert_eq!(midpoint(1., 1_f64.next_up()), Err(Failure::Stagnation));
++    assert_eq!(
++        window(&[(0., 0.), (1., 1.), (2., 0.)], 0.5),
++        Err(Failure::AmbiguousWindow)
++    );
++    assert!(interpolation_enabled());
++    without_interpolation(|| {
++        assert!(!interpolation_enabled());
++        without_interpolation(|| assert!(!interpolation_enabled()));
++        assert!(!interpolation_enabled());
++    });
++    assert!(interpolation_enabled());
++    assert!(
++        std::panic::catch_unwind(|| without_interpolation(|| panic!("scope control"))).is_err()
++    );
++    assert!(interpolation_enabled());
++}
++
++#[test]
++fn inverse_c_preserves_source_distance_order_cancellation_and_total_refusals() {
++    let (f, ids) = fixture();
++    let mut solver = Transport::bind(&f, ids, 0.02).unwrap();
++    let t = f.curves[ids[0]].t_min + 0.25;
++    let own = solver.own(ids[0], t).unwrap();
++    let mapped = solver.map(&own, ids[1]).unwrap();
++    let charged = solver.total;
++    let repeated = solver.map(&own, ids[1]).unwrap();
++    assert_eq!(mapped.parameter.to_bits(), repeated.parameter.to_bits());
++    assert_eq!(
++        mapped.point.map(f64::to_bits),
++        repeated.point.map(f64::to_bits)
++    );
++    assert_eq!(solver.total, charged);
++    let mut forged = own.clone();
++    forged.point[0] += 0.001;
++    assert_eq!(forged.point[1].to_bits(), own.point[1].to_bits());
++    assert_eq!(solver.map(&forged, ids[1]).unwrap_err(), Failure::Source);
++    assert!(solver.retained(ids[0], t, forged.point).is_err());
++    assert_eq!(
++        Transport::ordered(Some(mapped.parameter), &mapped, 1.),
++        Err(Failure::Order)
++    );
++    assert_eq!(
++        Transport::ordered(Some(mapped.parameter + 1.), &mapped, 1.),
++        Err(Failure::Order)
++    );
++    {
++        let _cancel = crate::sfcc::cancel::CancelGuard::install(Box::new(|| true));
++        assert_eq!(solver.map(&own, ids[1]).unwrap_err(), Failure::Cancelled);
++    }
++    assert_eq!(solver.total, charged);
++    let mut wrong = f.clone();
++    wrong.strata[solver.admitted_branch().cylinder_id].sign = -1.;
++    assert!(matches!(
++        Transport::bind(&wrong, ids, 0.02),
++        Err(Failure::Source)
++    ));
++    let mut limited = Transport::bind(&f, ids, 0.02).unwrap();
++    let own = limited.own(ids[0], t).unwrap();
++    limited.reserve_external(MAX_TOTAL - limited.total).unwrap();
++    assert_eq!(limited.map(&own, ids[1]).unwrap_err(), Failure::TotalCap);
++    assert_eq!(limited.total, MAX_TOTAL);
++    assert_eq!(limited.cost.consume_failures, 0);
++    assert_eq!(limited.cost.total_cap_refusals, 1);
++    assert_eq!(limited.cost.failed_maps, 1);
++}
++
++#[test]
++fn inverse_c_actual_failed_projection_still_costs_and_refuses() {
++    let (f, ids) = fixture();
++    let solver = Transport::bind(&f, ids, 0.02).unwrap();
++    let first = solver.pieces.iter().find(|p| p.chart == ids[0]).unwrap();
++    let mut failed = f.clone();
++    let old = &f.curves[ids[0]];
++    let (a, b, mut refine) = old.traced_carriers().unwrap();
++    refine.max_displacement = 0.;
++    let mut replacement = make_traced_curve(
++        old.id,
++        old.adjacent_strata,
++        old.index_polyline.clone(),
++        old.closed,
++        a,
++        b,
++        refine,
++        old.owner_node_id,
++    );
++    replacement.corner_start = old.corner_start;
++    replacement.corner_end = old.corner_end;
++    failed.curves[ids[0]] = replacement;
++    let piece = ConsumedPiece::bind(
++        &failed,
++        &first.source.branch,
++        ids,
++        ids[0],
++        first.range,
++        0.02,
++    )
++    .unwrap();
++    let mut failed_solver = Transport {
++        features: &failed,
++        ids,
++        pieces: vec![piece],
++        knots: [vec![], vec![]],
++        cache: BTreeMap::new(),
++        total: 0,
++        maximum_request: 0,
++        admission_identity: None,
++        cost: QueryCost::default(),
++        map_request_counts: [0; MAX_REQUEST + 1],
++        phase: "failed_query_control",
++    };
++    assert!(matches!(
++        failed_solver.query(ids[0], (first.range[0] + first.range[1]) * 0.5, &mut 0),
++        Err(Failure::Query(EventFailure::QueryFailed))
++    ));
++    assert_eq!(failed_solver.total, 1);
++    assert_eq!(failed_solver.cost.consume_attempts, 1);
++    assert_eq!(failed_solver.cost.consume_failures, 1);
++    assert!(failed_solver.cache.is_empty());
++}

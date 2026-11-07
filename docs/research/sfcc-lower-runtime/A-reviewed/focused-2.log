@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::lower_b_tests::lower_b_actual_join_has_ordered_canonical_connection ... ok
+test sfcc::shared_twisted_proof::exposure_a::lower_b_tests::lower_b_four_facet_star_has_four_and_only_four_rays ... ok
+test sfcc::shared_twisted_proof::exposure_a::lower_b_tests::lower_b_source_star_and_actual_lifted_frontier ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 363 filtered out; finished in 2.12s
+

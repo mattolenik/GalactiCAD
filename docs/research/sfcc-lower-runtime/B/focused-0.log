@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::lower_runtime_b_tests::lower_runtime_b_complete_star_requires_previous_physical_rays ... ok
+test sfcc::shared_twisted_proof::exposure_a::lower_runtime_b_tests::lower_runtime_b_metadata_only_attachment_does_not_close_actual_query ... ok
+test sfcc::shared_twisted_proof::exposure_a::lower_runtime_b_tests::lower_runtime_b_natural_missing_ray_passes_old_full_admission ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 363 filtered out; finished in 3.22s
+

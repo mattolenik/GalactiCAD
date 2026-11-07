@@ -1,0 +1,87 @@
+{
+  "parentCommit": "4f7fd4f",
+  "selectedRuntime": "Combined",
+  "selectedDiagnosticSource": "Geometry-capture",
+  "productionRuntimeChanged": false,
+  "lowerHandoffInstalled": true,
+  "sourceFeatureFingerprint": "10977506807348230851",
+  "runtimeLowerChart": 75,
+  "runtimeLowerCorner": 13,
+  "counts": {
+    "curves": 101,
+    "corners": 57,
+    "strata": 74
+  },
+  "constructorWork": {
+    "queries": 13,
+    "sourceAttempts": 7,
+    "scope": "separate bounded pre-index phase"
+  },
+  "fullComponentAccepted": false,
+  "queryCapsUnchanged": {
+    "total": 16384,
+    "perRequest": 64,
+    "iterations": 64,
+    "generatedReservation": 2048
+  },
+  "component": {
+    "leafConsumers": 199,
+    "requiredFaces": 1001,
+    "typedFaceCertificates": 198,
+    "pinBounds": 396,
+    "combinedReservationBytes": 20251702,
+    "allSelectedCellsMeshed": true,
+    "generatedQueries": 1167,
+    "generatedValidated": 1167,
+    "chargedQueries": 5568,
+    "cacheMissConsumes": 3383,
+    "externalReserved": 2185,
+    "maximumRequest": 2,
+    "firstInvalidTriangleIndex": 11,
+    "firstInvalidCell": [
+      7,
+      25,
+      58,
+      86
+    ],
+    "failure": "private_invalid_f64_or_f32",
+    "workingAndExportedClassification": "nonzero area, opposite to stored centroid gradient",
+    "candidatePoints": 1064,
+    "candidateTriangles": 1700,
+    "liveDigestBeforeAfter": "707005205ae34fd4",
+    "postGraphEdgeTransportAndFinalSequenceValidationReached": false
+  },
+  "tests": {
+    "Base": {
+      "passed": 34
+    },
+    "B": {
+      "passed": 3
+    },
+    "A-initial": {
+      "passed": 2,
+      "failed": 1,
+      "failure": "rollback test wrongly compared root Arc identity across independent builds"
+    },
+    "A-reviewed": {
+      "passed": 37,
+      "nonTestLibrary": "PASS"
+    },
+    "C": {
+      "passed": 7
+    },
+    "Combined": {
+      "passed": 41,
+      "nonTestLibrary": "PASS"
+    },
+    "Geometry-capture": {
+      "passed": 16,
+      "nonTestLibrary": "PASS"
+    }
+  },
+  "next": [
+    "trace first failing cell loop and triangle patch ownership with actual source evidence",
+    "repair orientation only with coherent adjacent-face/feature constraints and preserved guarded tests",
+    "re-run component and complete remaining topology, contacts, patch-ownership and production gates"
+  ]
+}

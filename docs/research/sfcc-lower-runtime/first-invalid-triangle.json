@@ -1,0 +1,140 @@
+{
+  "allEarlierTrianglesPassedExistingPredicate": true,
+  "allLaterTrianglesChecked": false,
+  "cellRanges": [
+    {
+      "cell": [
+        7,
+        25,
+        58,
+        86
+      ],
+      "count": 30,
+      "start": 0
+    }
+  ],
+  "edgeMemberships": [
+    {
+      "edge": [
+        636,
+        455
+      ],
+      "intervals": []
+    },
+    {
+      "edge": [
+        455,
+        633
+      ],
+      "intervals": [
+        {
+          "curve": 66,
+          "rangeBits": [
+            4613723625259831101,
+            4611686018427387904
+          ]
+        }
+      ]
+    },
+    {
+      "edge": [
+        633,
+        636
+      ],
+      "intervals": []
+    }
+  ],
+  "exported": {
+    "finiteArea": true,
+    "finiteCoordinates": true,
+    "normalBits": [
+      4508123256577851392,
+      4512356550290964480,
+      13710533278195253248
+    ],
+    "orientationRejectedByExistingComparison": true,
+    "passesExistingStagePredicate": false,
+    "pointBits": [
+      [
+        13844829164399493120,
+        13836168307012534272,
+        4617755021965000704
+      ],
+      [
+        13844827771219476480,
+        13836171170681978880,
+        4617755369320480768
+      ],
+      [
+        13844829242245775360,
+        13836168156151808000,
+        4617754791647379456
+      ]
+    ],
+    "referenceDot": -5.218854907818899e-07,
+    "referenceDotBits": 13736404332951771048,
+    "twiceArea": 5.218858315133539e-07,
+    "twiceAreaBits": 4513032299315112931,
+    "zeroArea": false
+  },
+  "geometryDetailByteCap": 524288,
+  "newFieldQueries": 0,
+  "patchOwner": null,
+  "pointKeys": [
+    "Unkeyed",
+    "Str(\"F1:3398483:66:2.904879208205\")",
+    "Unkeyed"
+  ],
+  "referenceBits": [
+    13825312337061533544,
+    13829547449881954499,
+    4581538107277878383
+  ],
+  "referenceFinite": true,
+  "scope": "first failure of unchanged triangle predicate; reference is the already computed working-centroid gradient, reused for both precisions",
+  "sourceCloneLedgerIncludesDiagnosticJson": false,
+  "totalPoints": 1064,
+  "totalTriangles": 1700,
+  "triangle": [
+    636,
+    455,
+    633
+  ],
+  "triangleIndex": 11,
+  "working": {
+    "finiteArea": true,
+    "finiteCoordinates": true,
+    "normalBits": [
+      4508121926576705694,
+      4512350019409823852,
+      13710887620025745280
+    ],
+    "orientationRejectedByExistingComparison": true,
+    "passesExistingStagePredicate": false,
+    "pointBits": [
+      [
+        13844829164480657603,
+        13836168306838169979,
+        4617755021808465438
+      ],
+      [
+        13844827771288457826,
+        13836171170937199256,
+        4617755369311285198
+      ],
+      [
+        13844829242475464625,
+        13836168156182810477,
+        4617754791604872513
+      ]
+    ],
+    "referenceDot": -5.215580451572934e-07,
+    "referenceDotBits": 13736401240315285934,
+    "twiceArea": 5.21558045319592e-07,
+    "twiceAreaBits": 4513029203462042993,
+    "zeroArea": false
+  },
+  "receiptSha256": "406f36c23795aa8d44e6bf68302ba3210f5b786dc43cb2d4d55bcaf6aaff7a33",
+  "featureFingerprint": "10977506807348230851",
+  "fixtureScope": "exact failed predicate inputs, not complete cell replay"
+}

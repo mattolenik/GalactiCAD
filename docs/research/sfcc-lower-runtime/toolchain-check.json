@@ -1,0 +1,57 @@
+{
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.3\n",
+  "stdFiles": [
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/std/Cargo.toml",
+      "sha256": "2dbf2cd3b78c1b72e5e3ae211f886dd791c3a10cb9ded9fc722552deeef40ae0",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/std/src/collections/hash/map.rs",
+      "sha256": "1c4722af99116914c3b164e253668e951515cbf4ef38e3c6fb77d1edc8f0ec63",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/std/src/hash/random.rs",
+      "sha256": "7e4715f54722ae0a1c79d18acfed402ca1aef88e0e911614a1093bf1d33eff23",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs",
+      "sha256": "e0c798ff16cf1770ef3266d28440d93dd65402b3afe1df4e184f15af17fb1e3e",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/slice.rs",
+      "sha256": "67228d05babee451c4f29b12fb6e922d1b7be19cf8bdc7efb21edd02c8a69a3e",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/boxed.rs",
+      "sha256": "760cb37a7639e6c7287f197f1d59c70b81f510870a58f21f64bbc79641e0f62b",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/alloc/src/sync.rs",
+      "sha256": "b2f806b0f696a181018072625dceed25304aa97dfef6a79bac9800d529afdd0e",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/raw.rs",
+      "sha256": "0c8ad353ba95817e72b0a8fea48fa2599099ea3def374f254ab6402a9c468d22",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/neon.rs",
+      "sha256": "bd8366684d86f456b9880940bbc72d7aabfb642d88a7bdd90de66ef7f643fae5",
+      "matchesHistoricalAudit": true
+    },
+    {
+      "path": "/opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/vendor/hashbrown-0.17.1/src/control/group/sse2.rs",
+      "sha256": "53d7d09c72332232b4562aa7dfabf18e5f57c5009a672b2cfac7193ef468b349",
+      "matchesHistoricalAudit": true
+    }
+  ],
+  "allAuditedFilesUnchanged": true,
+  "scope": "Source-layout evidence only; runtime controls executed separately"
+}

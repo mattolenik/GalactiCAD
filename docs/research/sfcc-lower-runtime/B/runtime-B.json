@@ -1,0 +1,53 @@
+{
+  "allowance": 3.796655370190979e-7,
+  "chargedQueries": 1241,
+  "commonChamfer": 31,
+  "corner": 13,
+  "cornerEnds": [
+    [
+      20,
+      0
+    ],
+    [
+      39,
+      0
+    ],
+    [
+      46,
+      0
+    ],
+    [
+      49,
+      1
+    ],
+    [
+      66,
+      0
+    ]
+  ],
+  "cornerStrata": [
+    10,
+    15,
+    30,
+    31
+  ],
+  "endpointDistance": 0.000016551860695598605,
+  "endpointScope": "actual additional junction constraints checked at retained endpoint; no open-neighborhood full-field equality claim",
+  "fingerprint": "6620945114087557251",
+  "independentRequiredRayGate": "missing lifted",
+  "liftedChart": 75,
+  "oldEndpointAccepted": true,
+  "oldFullAdmissionAccepted": true,
+  "originalEventCount": 64,
+  "requiredLiftedPair": [
+    38,
+    39
+  ],
+  "scope": "naturally compiled lower event passes old declared-only admission despite a source-proved missing physical ray; not a publication claim",
+  "sourceProofDoesNotInstallRuntimeInterval": true,
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ]
+}

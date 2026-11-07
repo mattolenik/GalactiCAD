@@ -1,0 +1,101 @@
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -497,3 +497,70 @@
+     #[cfg(not(feature = "serde"))]
+     let _ = (log, finished);
+ }
++
++
++pub(crate) fn note_cell_triangles(cell: &super::octree::SfccCell, start: usize, count: usize) {
++    #[cfg(feature = "serde")]
++    DIAGNOSTIC.with(|state| {
++        if let Some(report) = state.borrow_mut().as_mut() {
++            if report["cellTriangleRanges"].is_null() { report["cellTriangleRanges"] = serde_json::json!([]); }
++            let rows = report["cellTriangleRanges"].as_array_mut().unwrap();
++            if rows.len() < 256 {
++                rows.push(serde_json::json!({"cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"start":start,"count":count}));
++            } else { report["cellTriangleRangesTruncated"] = serde_json::json!(true); }
++        }
++    });
++    #[cfg(not(feature = "serde"))] let _ = (cell,start,count);
++}
++#[cfg(feature = "serde")]
++fn orientation_observation(p: [[f64;3];3], reference: [f64;3]) -> serde_json::Value {
++    use super::triangle_quality as q;
++    let normal=q::normal(p); let area=q::norm(normal); let dot=q::dot(normal,reference);
++    let finite=p.iter().flatten().all(|v|v.is_finite());
++    serde_json::json!({"pointBits":p.map(|v|v.map(f64::to_bits)),"normalBits":normal.map(f64::to_bits),
++        "twiceArea":area,"twiceAreaBits":area.to_bits(),"referenceDot":dot,"referenceDotBits":dot.to_bits(),
++        "finiteCoordinates":finite,"finiteArea":area.is_finite(),"zeroArea":area==0.,
++        "orientationRejectedByExistingComparison":dot<=0.,
++        "passesExistingStagePredicate":finite&&area.is_finite()&&area!=0.&&!(dot<=0.)})
++}
++pub(crate) fn note_invalid_triangle(index:usize, ids:[usize;3], reference:[f64;3], points:&super::point_table::PointTable, triangles:&[usize]) {
++    #[cfg(feature = "serde")]
++    DIAGNOSTIC.with(|state| {
++        let mut state=state.borrow_mut(); let Some(report)=state.as_mut() else{return;};
++        use super::triangle_quality as q;
++        let p=ids.map(|id|q::pos(points,id));
++        let owners=report["cellTriangleRanges"].as_array().map(|rows|rows.iter().filter(|r| {
++            let start=r["start"].as_u64().unwrap() as usize;let count=r["count"].as_u64().unwrap() as usize;
++            index>=start&&index<start+count
++        }).cloned().collect::<Vec<_>>()).unwrap_or_default();
++        let mut evidence=serde_json::json!({"scope":"first failure of unchanged triangle predicate; reference is the already computed working-centroid gradient, reused for both precisions",
++            "triangleIndex":index,"triangle":ids,"referenceBits":reference.map(f64::to_bits),"referenceFinite":reference.iter().all(|x|x.is_finite()),
++            "working":orientation_observation(p,reference),"exported":orientation_observation(p.map(q::rounded),reference),
++            "pointKeys":ids.map(|id|format!("{:?}",points.key_at(id))),"patchOwner":points.patch(ids),
++            "edgeMemberships":(0..3).map(|k|serde_json::json!({"edge":[ids[k],ids[(k+1)%3]],"intervals":points.curve_intervals(ids[k],ids[(k+1)%3]).iter().map(|i|serde_json::json!({"curve":i.curve_id,"rangeBits":[i.start.to_bits(),i.end.to_bits()]})).collect::<Vec<_>>()})).collect::<Vec<_>>(),
++            "cellRanges":owners,"totalTriangles":triangles.len()/3,"totalPoints":points.count(),"allEarlierTrianglesPassedExistingPredicate":true,
++            "allLaterTrianglesChecked":false,"newFieldQueries":0,"geometryDetailByteCap":524288,"sourceCloneLedgerIncludesDiagnosticJson":false});
++        if points.count()<=4096&&triangles.len()<=3*4096 {
++            let geometry=serde_json::json!({"pointBits":(0..points.count()).map(|id|q::pos(points,id).map(f64::to_bits)).collect::<Vec<_>>(),"triangles":triangles});
++            if serde_json::to_vec(&geometry).is_ok_and(|v|v.len()<=512*1024) {evidence["candidateGeometry"]=geometry;}
++            else {evidence["geometryDetailRefusal"]=serde_json::json!("512KiB geometry diagnostic cap");}
++        } else {evidence["geometryDetailRefusal"]=serde_json::json!("4096 point/triangle diagnostic cap");}
++        report["firstInvalidTriangle"]=evidence;
++    });
++    #[cfg(not(feature = "serde"))] let _=(index,ids,reference,points,triangles);
++}
++#[cfg(all(test,feature="serde"))]
++#[test]
++fn component_geometry_capture_separates_working_exported_and_orientation() {
++    use super::triangle_quality as q;
++    let p=[[1e8,0.,0.],[1e8+1.,0.,0.],[1e8,1.,0.]];
++    let working=orientation_observation(p,[0.,0.,1.]);let exported=orientation_observation(p.map(q::rounded),[0.,0.,1.]);
++    assert_eq!(working["passesExistingStagePredicate"],true);assert_eq!(exported["zeroArea"],true);
++    assert!(!q::valid_orientation(p,[0.,0.,1.]));
++    let p=[[0.,0.,0.],[1.,0.,0.],[0.,1.,0.]];let flipped=orientation_observation(p,[0.,0.,-1.]);
++    assert_eq!(flipped["zeroArea"],false);assert_eq!(flipped["orientationRejectedByExistingComparison"],true);
++    assert!(!q::valid_orientation(p,[0.,0.,-1.]));
++    let p=[[0.,0.,0.],[1.,0.,0.],[2.,0.,0.]];
++    assert_eq!(orientation_observation(p,[0.,0.,1.])["zeroArea"],true);
++    assert!(!q::valid_orientation(p,[0.,0.,1.]));
++}
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -683,6 +683,7 @@
+             graph_failed = true;
+             break;
+         }
++        super::private_arc_a::note_cell_triangles(cell, triangles.len() / 3, result.tris.len() / 3);
+         triangles.extend(result.tris);
+         if private.count() > MAX_VERTICES || triangles.len() / 3 > MAX_TRIANGLES {
+             return Err(fail(
+@@ -778,13 +779,11 @@
+             }
+         }
+     }
+-    for t in triangles.chunks_exact(3) {
++    for (triangle_index, t) in triangles.chunks_exact(3).enumerate() {
+         let p = [t[0], t[1], t[2]].map(|id| q::pos(&private, id));
+-        if !q::valid_orientation(
+-            p,
+-            tree.grad(std::array::from_fn(|k| (p[0][k] + p[1][k] + p[2][k]) / 3.))
+-                .1,
+-        ) {
++        let reference = tree.grad(std::array::from_fn(|k| (p[0][k] + p[1][k] + p[2][k]) / 3.)).1;
++        if !q::valid_orientation(p, reference) {
++            super::private_arc_a::note_invalid_triangle(triangle_index, [t[0],t[1],t[2]], reference, &private, &triangles);
+             return Err(fail(
+                 features,
+                 ids,

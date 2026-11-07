@@ -1,13 +1,12 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [lower lifted-source investigation](../research/sfcc-lower-lifted-connection/README.md)
-proves a four-ray local source arrangement and an ordered canonical connection
-with checked associations to the actual old join and existing junction. Its
-source/association packet passes 31 controls; separate query instrumentation passes
-29 and reproduces the unchanged graph failure followed by total-cap exhaustion.
-Only 744 of 838 generated events finish validation. **Stage 4 and production
-acceptance remain open.** Next install the lower connection transactionally, then
-reduce fresh inverse-query work under the unchanged acceptance checks and caps.
+Status: the [lower runtime connection and checked inverse proposals](../research/sfcc-lower-runtime/README.md)
+pass 41 focused checks and a non-test build. All 199 selected cells now mesh, and
+all 1,167 generated events validate at 5,568 charges under the unchanged 16,384 cap.
+The next guard rejects triangle 11 in cell `[7,25,58,86]`: its nonzero-area normal
+opposes the existing centroid gradient in both f64 and f32. **Stage 4 and production
+acceptance remain open.** Next establish this triangle's source-patch attribution
+and loop orientation before repairing it, then finish the component validation.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and
@@ -17,9 +16,12 @@ The [initial component attempt](../research/sfcc-stage4-component-validation/REA
 then exposed unresolved upper ends. The [upper-source investigation](../research/sfcc-upper-handoff/README.md)
 proved continuation and corrected intermediate-chamfer evaluation; the current
 closure implementation supplies the qualified handoff and its cell consumer.
-The lower source proof establishes the next missing incident branch but installs
-no runtime attachment. The query audit separates actual work from conservative
-reservation; neither raising limits nor refunding unused slots is part of it.
+The lower source proof now supports an atomic last-span attachment, complete
+incident source-role checks and qualified query/sampling consumers. Two bounded
+height-interpolated inverse proposals reduce fresh query work under the existing
+actual-query and three-dimensional checks. No limits were raised and no reserved
+slots were refunded. The newly reached orientation refusal is captured exactly;
+later triangle and post-graph transport checks remain open.
 These are bounded witness results, not general mesh correctness.
 
 Current production baseline:

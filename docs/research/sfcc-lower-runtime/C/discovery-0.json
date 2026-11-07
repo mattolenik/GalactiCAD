@@ -1,0 +1,10 @@
+{
+  "filter": "inverse_c_",
+  "tests": [
+    "sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_actual_failed_projection_still_costs_and_refuses",
+    "sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_paired_original_and_interior_events_keep_acceptance_and_reduce_new_queries",
+    "sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_preserves_source_distance_order_cancellation_and_total_refusals",
+    "sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_proposal_requires_finite_interior_bracket_and_scope_restores"
+  ],
+  "exitCode": 0
+}

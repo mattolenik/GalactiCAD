@@ -1,0 +1,11 @@
+{
+  "parent": "round29 Combined (apply Combined-packet first)",
+  "parentManifest": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/manifest.json",
+  "parentManifestSha256": "0145b81ee528a8086a90a5307926512324800e71a9a8293ccda6beacc8796e4f",
+  "mode": "incremental, alternative packets; do not stack A/C/Combined",
+  "changedFiles": [
+    "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+    "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs"
+  ],
+  "patchSha256": "a90acb7926bc899b6bbafbc5ddf7ffc760aef3a989c15ec6d095aed6dbb4515f"
+}

@@ -1,0 +1,11 @@
+{
+  "allPreexistingReceiptFieldsIdentical": true,
+  "ignoredFields": [
+    "cellTriangleRanges",
+    "cellTriangleRangesTruncated",
+    "firstInvalidTriangle",
+    "rootAddressProcessLocal"
+  ],
+  "combinedReceiptSha256": "cc93fe45b0695b308f5763573a5448a311344630948373b281fb80e9096067b2",
+  "geometryReceiptSha256": "406f36c23795aa8d44e6bf68302ba3210f5b786dc43cb2d4d55bcaf6aaff7a33"
+}

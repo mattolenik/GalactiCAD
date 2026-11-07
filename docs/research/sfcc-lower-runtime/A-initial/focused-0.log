@@ -1,0 +1,18 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_missing_rays_metadata_and_bad_queries_refuse ... ok
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_prepared_transaction_rolls_back_and_scopes_cleanup ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_prepared_transaction_rolls_back_and_scopes_cleanup' (12079047) panicked at kernel/src/sfcc/lower_closure_a_tests.rs:186:5:
+assertion failed: old.curves.iter().zip(&injected.curves).all(|(a, b)|
+        a.private_storage_clone_equal_a(b))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_source_transaction_preserves_joins_and_admits_complete_event ... ok
+
+failures:
+
+failures:
+    sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_prepared_transaction_rolls_back_and_scopes_cleanup
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 363 filtered out; finished in 6.44s
+

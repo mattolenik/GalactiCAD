@@ -1,0 +1,17 @@
+{
+  "parent": "round29 Base (apply Base-packet first)",
+  "parentManifest": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/manifest.json",
+  "parentManifestSha256": "738e857b99f59729ee8cd407f3b45b0b01e431cc51ccf4119d793c5c2a485e1f",
+  "mode": "incremental, alternative packets; do not stack A/C/Combined",
+  "changedFiles": [
+    "gcad-wasm/kernel/src/sfcc/feature_curves.rs",
+    "gcad-wasm/kernel/src/sfcc/feature_set.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_b_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_closure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_closure_a_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_source_a.rs",
+    "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+    "gcad-wasm/kernel/src/sfcc/upper_cell_sampler_tests.rs"
+  ],
+  "patchSha256": "b157cf9cd04224183aa4ba6afb2eb4d2b02dedd41c64cd237f8adfe4c63dfffb"
+}

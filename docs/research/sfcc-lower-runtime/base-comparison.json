@@ -1,0 +1,10 @@
+{
+  "previousReceipt": "docs/research/sfcc-lower-lifted-connection/C-1991/component-attempt.json",
+  "previousSha256": "256f21d471d2454ce26625d397d93792e59a05df05d3159637d419f2991672ac",
+  "combinedBaseReceipt": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/component-attempt.json",
+  "combinedBaseSha256": "d1f23d62320bc2dcff307e03c6a0dec723f3160651eccdc0fb8e4cc8a4a2de69",
+  "allOtherFieldsEqual": true,
+  "ignoredFields": [
+    "rootAddressProcessLocal"
+  ]
+}

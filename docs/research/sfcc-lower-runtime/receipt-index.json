@@ -1,0 +1,1097 @@
+[
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/closure-A-rollback.json",
+    "sha256": "26d714c5bea623d3bcdcfd9c15bebaa1211af6ac53caf44a7fd0c0f186a6c4ff",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-13-execution.json",
+    "sha256": "bb55e186ed64e24aecf10920ef22a289201c7f456620705b2fcf6b149c92f906",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-6-execution.json",
+    "sha256": "84ba01f2ab3cb984677c669fe03cb1cf4a753ed689ca5dcc2bb5f61d859edad8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/repair-B.json",
+    "sha256": "33752f8ea304e66d6dc210bede007b5cc3f5ae5c9e4260d897bc1a27aa4f63e2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-9-execution.json",
+    "sha256": "c10ca2dc8f0a7e9cf6306d2f32dbd6fa26c54bb6230bb45e440b808a181f6395",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/lower-A.json",
+    "sha256": "1ab9bc8922bd83617745f560d03fe9ea10a7b52240c016e387b425a9c174ff9a",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-13.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-2.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-14-execution.json",
+    "sha256": "b14160624599c189723fc764819c3630b84f841fe4e7ac66d8d817307c332779",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-1-execution.json",
+    "sha256": "2d6cb377bd8c2754bc94915818b8f2b25966da33b20955ece299a08975d2a0b2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-0-execution.json",
+    "sha256": "ff1bba29759ae77333f77e6c68502600f0038a6e1085055153f53f0860575acd",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-3.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-8-execution.json",
+    "sha256": "1c70728afd6f2c51a77ed6f178b9659aa9ab22293b49aa5971f55dbbab924187",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-12.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/source-preflight.json",
+    "sha256": "f56ca93427af84d6a0cb2a923b27a38139b2901edcceb3a157265b245b27ce93",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/lower-B-association.json",
+    "sha256": "d1b52ed48c140e647b02beb0d5f21244b2ead7850be84633c3f44c4f422340cb",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-7-execution.json",
+    "sha256": "9c815bdca8f7c1df1ad5f90ae950a1474fef56727ce37e6b9dffeb01b1c4ebb2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-12-execution.json",
+    "sha256": "ab7e2fbad466be855b85386f69bdd19ce6898f4a99ea5d1bdf3f7e2c2a23f1a0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-5-execution.json",
+    "sha256": "b3828dad5440470de22026cf5d71b7e8c66cbdd7d4824761424972b715b0c646",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-4.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/component-attempt.json",
+    "sha256": "d1f23d62320bc2dcff307e03c6a0dec723f3160651eccdc0fb8e4cc8a4a2de69",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-10-execution.json",
+    "sha256": "a273d8d9f39ade623c1720cd5e1a3dc80b77dce280350f394e36211f8c551140",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-2-execution.json",
+    "sha256": "3083681cbcf2d40d5f92996ded3526b8a9acb74c3b1582ad07af9e2ca4d4f226",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-8.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/connection-A.json",
+    "sha256": "a22410f401e9932ec3b8aa404f6d184c5a8ec53a7fbc59efc3df4c25f242619c",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-3-execution.json",
+    "sha256": "84b978fa4176ef47012d7dde68302a9598891f72770cea7780babfd5af01c0d4",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-9.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-11-execution.json",
+    "sha256": "0a838fe50f27a8a4a7c49ab783fea442ec376d83b0bc770712402c937572f329",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/upper-A.json",
+    "sha256": "c9bc567b021f84975bd6a8fb23fc64aa89fac6626a170591e23c7882fbbd6d65",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-5.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/focused-4-execution.json",
+    "sha256": "b0aecdfe2c695e419ee5c955dc312c7f5f73bbdce43db8cc09f7507644bffba0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-14.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-6.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/clean-kernel-execution.json",
+    "sha256": "f58dca9ed23e017bfebae46365891d2e388b78137622261ff055f8b14eab7fc5",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/manifest.json",
+    "sha256": "738e857b99f59729ee8cd407f3b45b0b01e431cc51ccf4119d793c5c2a485e1f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/connection-A-rollback.json",
+    "sha256": "fb8a6990c478da45b964f50f4099c6b66154598f19195bd0876c27a00de476b4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-7.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/component-attempt-execution.json",
+    "sha256": "74cd0441c53e1f851fcc18ffa39279d448d2799361b736cc54bf19be069bc212",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-0.json",
+    "sha256": "564676d65d2057e8025a7771e1a0e29d69dd59b8d241fceb952cdf50ea9bd11f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-11.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/lower-C.json",
+    "sha256": "20ad49013603597b9bffbc4f87925ff24517625e9c27c01936ad1a098b65f491",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/binary.json",
+    "sha256": "7e01780cb4c4fef1f1c8337f73dc65656468bf80689cdb29374f036751747dea",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/lower-B.json",
+    "sha256": "e05807edaa393be5f965baaaf6bf92bc3fe4de8da7ca213d4c3302debaf495e8",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-10.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/discovery-1.json",
+    "sha256": "d6d1c4f24b808c25140a71894a297acafe4a29283845add9fa58cece6c6051f7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/closure-A.json",
+    "sha256": "8d8f8166eace573af6791f068425f6a571d1896818b8ac4b442487ca4e5793f2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/build-execution.json",
+    "sha256": "74d8301d04a16a34bc5ccc7c8e15032183fb59733c480007d38fcdcf4478a4b0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/B/focused-0-execution.json",
+    "sha256": "e8f54e51e91a5c4962808de033968cdf0577150e3bcd29e44fabf656d4aff88f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/B/clean-kernel-execution.json",
+    "sha256": "29224e980172003d8382d1f93b322b2580785b992118bafde7782e08c9cbf27c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/B/manifest.json",
+    "sha256": "bdfde250a660d4b3e9a2dc91777f4906438e8ce4a60cfd3e49c7989ebcf51b1b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/B/discovery-0.json",
+    "sha256": "6db7cfcedcf9a3e0983da9afa475a554795c624b5767c3882ecb7e2c5ba931a2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/B/binary.json",
+    "sha256": "355f7dd0e403d9daf1096d0390164b1312acf1ee8a721aafd174546220051723",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/B/runtime-B.json",
+    "sha256": "76a59a59166ca1296dcc244df47a5fd8aabfaedea50ee5dbfabd74f116b41a7a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/B/build-execution.json",
+    "sha256": "b00f4b264f9cddc8caf5abc6e27a5f788fb8fc31262588548b3e83058e9cf632",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-initial/runtime-A.json",
+    "sha256": "091b976af0713f6a3ebcdb42ad5aba71d589e373c56ee314ed8b7c44d76e981c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-initial/focused-0-execution.json",
+    "sha256": "f4df06526b51f126d650fbb9e1612358bbc3b91995cb78f16a7010f3040d126f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-initial/clean-kernel-execution.json",
+    "sha256": "b5aae3b4cac711c565e8c20f9a93d0b4ddde26478ebcdb59538bdfefd9873f97",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-initial/manifest.json",
+    "sha256": "5c7c728b471617d3137aa6651075052f2289487aa4e1afbac858ed4e0417db56",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-initial/discovery-0.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-initial/binary.json",
+    "sha256": "f8a147a2662b586a83cf30abe3e1dd51dc094f7fdf77cf4c825b0a8295c40752",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-initial/build-execution.json",
+    "sha256": "5a7bcb66c758bbac8e892c269433ef659d065d36ffbbe9072b9550d565991d83",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/closure-A-rollback.json",
+    "sha256": "b739b274103d76808c9a9babec39339a73a640b8cce182f354530e770f807b34",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-13-execution.json",
+    "sha256": "a77c994c2218f4208582165d8a242f393fa95d48f4d4c85bc7305981deb22faa",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-6-execution.json",
+    "sha256": "e0443685291c90cafd30aa910fa0f195d7b911db56cd7cc074bff26bb1aae0ab",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/repair-B.json",
+    "sha256": "b53f51f04c4d2413f04f671ea0f4d9afdc3403bfab11a6c065d402c4c3ead9f0",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/runtime-A.json",
+    "sha256": "091b976af0713f6a3ebcdb42ad5aba71d589e373c56ee314ed8b7c44d76e981c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-9-execution.json",
+    "sha256": "312f9683d9d22fd6d51e2bac135c9b0b6b72e0b6ff9dafe2165bd9a3b2645c62",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/lower-A.json",
+    "sha256": "6d7103a629cc93fbbb4be754b9d2c2d2c403d68cfeb71e19ec43974325443705",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-13.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-2.json",
+    "sha256": "d6d1c4f24b808c25140a71894a297acafe4a29283845add9fa58cece6c6051f7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-14-execution.json",
+    "sha256": "2891524cf4938d2c7f9411da463e3a1a69025888a9862dde0058e984cf844638",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-1-execution.json",
+    "sha256": "347a046b33392e5d6ff17b0ff0331f3e84e04c3e4298be8f8fd307b7268de7cd",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-0-execution.json",
+    "sha256": "a048c7fb30256902d429da646d45534eecf863667ba4038bd57368773a2f2f55",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-3.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-8-execution.json",
+    "sha256": "3c4e1259acc516d7efae91840034771e22aeff110380586c62b67b03aa0ca7b2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-12.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-15-execution.json",
+    "sha256": "0a367154e33760f19989ce8ee105181876841ec8403c8603ad96b0554afa48ea",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/source-preflight.json",
+    "sha256": "fd6d368fed6aef464705d4e686a0646e8563687387f0e3e49747a1f862a4e361",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/lower-B-association.json",
+    "sha256": "d1b52ed48c140e647b02beb0d5f21244b2ead7850be84633c3f44c4f422340cb",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-7-execution.json",
+    "sha256": "8645576c6f862f5d436ad57296e4e9b072f368ca1bf7060055cb6a44c90c2f4d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-12-execution.json",
+    "sha256": "7e99a98338323b157cc4aef742c0fb35e012afaf518e1b9b2bdfaffb6b18c273",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-5-execution.json",
+    "sha256": "da49fe7d363b85ab029cf0fb3aa86ab5ca0e0d718f0b3d391b5b83ece2ea3084",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-15.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-4.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/component-attempt.json",
+    "sha256": "38b7d75f48a2539d8ed434fdda53642137d1a9684d2e652026ca3f3d629370f5",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-10-execution.json",
+    "sha256": "4cb1f2084e4d316c4574f175fb4de13f266432d1ad60c672bfa6ca35090986c7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-2-execution.json",
+    "sha256": "45e196a99d85d10e0d4a55d0303727fee0a2da5a3a4d4bd6248f623e77193b15",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-8.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/connection-A.json",
+    "sha256": "d44f6e7c0e20e7110360ab1b63e06c9a47983dfc89532fa490d8ee3db83e7880",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-3-execution.json",
+    "sha256": "c6873d50020478e32b6b1faf2d4bb2a9a7c8d049adf1c0171525f0fc60a39ed5",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-9.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/library-check-execution.json",
+    "sha256": "125fc6a126bf28ee8ffbeca03251fc31d24d641943c92c4b91ab1312c82052ea",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-11-execution.json",
+    "sha256": "ced56b8daabd330886c5ede6a2afb349dea1980749c25a9da00acd240494781e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/upper-A.json",
+    "sha256": "1a2296d531db0cc493b03e483ad4ea530cffc55995817ef12c45c52a220a1f17",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-5.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/focused-4-execution.json",
+    "sha256": "80b955f01f68737a92f6e09a98d5fc69c4d237284c96e5bdc8981a14937ff21f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-14.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-6.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/clean-kernel-execution.json",
+    "sha256": "2bd3deeeb932d48d341534e3cf0ea5f4c5deada21b322a65695089e4477fa623",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/manifest.json",
+    "sha256": "30a17c5b95e814f5bcf5c3c3d2d4e01dcb4e00c4096d11aee74c61d811e5788d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/connection-A-rollback.json",
+    "sha256": "030238d282802a1862852d387c72052d32ce14fa45a0b8cd86cc9ca7b06fc656",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-7.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/component-attempt-execution.json",
+    "sha256": "1b8b749c0a9e96784acf381d413be2faa51c5cbf58d8087257068100464adfca",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-0.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-11.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/lower-C.json",
+    "sha256": "20ad49013603597b9bffbc4f87925ff24517625e9c27c01936ad1a098b65f491",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/binary.json",
+    "sha256": "e817fd07f834465af61aa8db42bedde0338b4bd40d788bf162e166147c2436e1",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/lower-B.json",
+    "sha256": "b28a36a8d21fd1123aa42571d362fd47188e0957c662d471fe5c7adf01607c0f",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-10.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/discovery-1.json",
+    "sha256": "564676d65d2057e8025a7771e1a0e29d69dd59b8d241fceb952cdf50ea9bd11f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/closure-A.json",
+    "sha256": "fa7510362a3d3cfd1e8e6b6d192bf6b63a66f154b19dfecc20b5dad7608ba106",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/A-reviewed/build-execution.json",
+    "sha256": "6217e97edcffc032ac69d51b24423b8904e894b5bb6f0e3e949962d9c1131110",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/focused-1-execution.json",
+    "sha256": "f16f3c42972d8215cab1a4b59cdced813c141d4edfa67356537b774e2df90dd7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/focused-0-execution.json",
+    "sha256": "6d9426abeb695b75f39c8c37645eb51dd4e4ad54502fd1840d7b5e3948b2ee90",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/inverse-C.json",
+    "sha256": "66478c1a81fc95514376d6c786273d2d28c53baeb35830473f2dfa1e8e6fc7e4",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/clean-kernel-execution.json",
+    "sha256": "1ab65a7c5c3acef550ca940f8340e9ff87ebd073e632d7d66d3723a30a792d4f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/manifest.json",
+    "sha256": "028221cc2ad77b10e9ea6ef9c76751a97e29de65b481b875d0e98f117ce7d84d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/discovery-0.json",
+    "sha256": "828f0930bf4711bab64ba6825d97601c08fe44fcfcb4a253ec33baf6a8c3661d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/lower-C.json",
+    "sha256": "82a1c53da0f75597513f8b69bd048225c5bea54ee1c5de7f45761930cd8b2a74",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/binary.json",
+    "sha256": "ecaf9c6a1765045497b4e6a4f45b142eec4f765096337a4b8710342e20bfef1f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/discovery-1.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/C/build-execution.json",
+    "sha256": "515680bb7cc839e6e30b71b11a95dd3db88df52b07c4014494a825da43475128",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/closure-A-rollback.json",
+    "sha256": "b739b274103d76808c9a9babec39339a73a640b8cce182f354530e770f807b34",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-13-execution.json",
+    "sha256": "2ae216ad1bf8f770fb3c9f4e839a79a48ef607b09b40a521c04f382bbcc9ad4f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-6-execution.json",
+    "sha256": "4450ed25a90d6a1041efacb589c40ef4bfe35824c6fb1e37e924c5f574ddd8cc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/repair-B.json",
+    "sha256": "b53f51f04c4d2413f04f671ea0f4d9afdc3403bfab11a6c065d402c4c3ead9f0",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-9-execution.json",
+    "sha256": "5f892840cee358637583de0f2bf9bd137c648f67b7ccd53710c27a007d211ec0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/lower-A.json",
+    "sha256": "ed5b8e02652192eb6c58f2b88d29a9f673b86f60c73db1a19b70f52d56e95ca9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-13.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-2.json",
+    "sha256": "564676d65d2057e8025a7771e1a0e29d69dd59b8d241fceb952cdf50ea9bd11f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-14-execution.json",
+    "sha256": "6e68100167c0ad80c8bc7fa5a926506dbe362af019a08a258c56173ed15958d2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-1-execution.json",
+    "sha256": "64665c335e93f8e2035d3ed2d025824d68206bd656b97d881344e759302c99ba",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-0-execution.json",
+    "sha256": "3bc2b0a698c0b4c51015df1eaba6e8f35b1d3421ad4139290882107ccbb00434",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-3.json",
+    "sha256": "d6d1c4f24b808c25140a71894a297acafe4a29283845add9fa58cece6c6051f7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-8-execution.json",
+    "sha256": "64244b9d4f76d8ed2543deb97a337060a333449f0065d83c7a243c643512b68a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-12.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-15-execution.json",
+    "sha256": "970d25e90f524a2581b73556ae0247a2b95cdc5f6ca8a9c0cc484700dfc8a637",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/source-preflight.json",
+    "sha256": "9c20f3171eda49835d2db7128651445a90af3c9b8f86858d0eb07dab3d446c68",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/lower-B-association.json",
+    "sha256": "d1b52ed48c140e647b02beb0d5f21244b2ead7850be84633c3f44c4f422340cb",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-7-execution.json",
+    "sha256": "5a11022cc09ec76df79a3c5ab22ae78d2762aca93ee6ba07c61ee095bcde27b4",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-12-execution.json",
+    "sha256": "494d267cedb1c98138e8c5efe3bf2a792539a989ba1ef020081476db849bf866",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-5-execution.json",
+    "sha256": "c8604fa145bcae5c610b357a35afdedcd479ec5356b69336e4daeb05c046ee09",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-15.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-4.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/component-attempt.json",
+    "sha256": "cc93fe45b0695b308f5763573a5448a311344630948373b281fb80e9096067b2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-10-execution.json",
+    "sha256": "e53cb9a08d43963df70c88f0e24d081585ebc1ab48c8e798809da5045166eff1",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-2-execution.json",
+    "sha256": "9114a02ee2b4140ce78ac96b9938df3e3e62400be76d26ecd0a28012ff973e65",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-8.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/connection-A.json",
+    "sha256": "d44f6e7c0e20e7110360ab1b63e06c9a47983dfc89532fa490d8ee3db83e7880",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/inverse-C.json",
+    "sha256": "e4fc177c4695f1ea1474994f129cc62cde5d8dd03bb3e9d103a45bd3bb97512a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-16-execution.json",
+    "sha256": "dfe4227f7b5e22d9b4ad8494584366ce921da52a11dbfad9b63c63807b2ea84a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-3-execution.json",
+    "sha256": "22e733cd2751ae70d28271af173a799344e6aa3c117e5ee625ccf680e2b3e7d2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-9.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/library-check-execution.json",
+    "sha256": "7e3477280bd13631bedc55283e341c9bb7aaf70661226f2a8a36a0ce94e97db7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-11-execution.json",
+    "sha256": "a8d0f33073e5a6b47b9f4fb99f239ca16840af92c7166f609c670480e0ebaf16",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/upper-A.json",
+    "sha256": "dba28286d6d507eca76cc599516a662fcae2a4ba6442d34bd16b9ba23f6d0a8a",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-5.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/focused-4-execution.json",
+    "sha256": "61e1017746fae327cf2a7bef5a22288a11e83ecbfc57d445fbeffaf3675e9f21",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-14.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-6.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/clean-kernel-execution.json",
+    "sha256": "3f773fd2d22f0900660f1b8ed503afd3c30a4b560f47da8b44ce87071a10014b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/manifest.json",
+    "sha256": "0145b81ee528a8086a90a5307926512324800e71a9a8293ccda6beacc8796e4f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/connection-A-rollback.json",
+    "sha256": "030238d282802a1862852d387c72052d32ce14fa45a0b8cd86cc9ca7b06fc656",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-16.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-7.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/component-attempt-execution.json",
+    "sha256": "4796388e5c650a733ec4cb58788a0dc75f6cca88f848fc06cdc666e5818de323",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-0.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-11.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/lower-C.json",
+    "sha256": "82a1c53da0f75597513f8b69bd048225c5bea54ee1c5de7f45761930cd8b2a74",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/binary.json",
+    "sha256": "b736262ad75a173107247569c8dd88dd80bde3a71804da41c968d65737c4e82f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/lower-B.json",
+    "sha256": "e8b94d20aceeda158bc76e652a28627b605f2542431154cd207364fa0bde1107",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-10.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/discovery-1.json",
+    "sha256": "828f0930bf4711bab64ba6825d97601c08fe44fcfcb4a253ec33baf6a8c3661d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/closure-A.json",
+    "sha256": "6055d65ee60ea5cfcffe0b80ea1cc60eba70e199fb55600d6df9142e4ed1f3b7",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Combined/build-execution.json",
+    "sha256": "a7aad8b0d3f24def47a287ce2efa1e99306fdd1007720c5afceca346f43ad636",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-6-execution.json",
+    "sha256": "3adea1f4bf3f9b156ec6fdd245cfff3bf462c343c36b6f277d15097fe65f04d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-2.json",
+    "sha256": "828f0930bf4711bab64ba6825d97601c08fe44fcfcb4a253ec33baf6a8c3661d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-1-execution.json",
+    "sha256": "768143606609fe0ec8fed1c5d7f3f87d2f924671ab175d67e8454f5fd129d184",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-0-execution.json",
+    "sha256": "9f675e995b12ebd0c10f83fdfa76efc8506f67c13e843d8e28c9b149ed0fc9c9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-3.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-8-execution.json",
+    "sha256": "c91a1ce06eba2191d42573021760e6158dbe19725208a307339a86b929ea69d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/source-preflight.json",
+    "sha256": "54e5638d5db35ad16657781bd8f7839f530e398b6139e536075bc340d99bd9f1",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-7-execution.json",
+    "sha256": "81292f0bc9bff085bf4ae1911be4f8bcc25d0a43dbc3b708f50fedccac38d679",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-5-execution.json",
+    "sha256": "7d7acd5315cb16c9fc650b425f1e5b8d083b79eb9b842b91dc2fc94df4ef36cf",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-4.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/component-attempt.json",
+    "sha256": "406f36c23795aa8d44e6bf68302ba3210f5b786dc43cb2d4d55bcaf6aaff7a33",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-2-execution.json",
+    "sha256": "498e89265a6313d6891c40536b5d4d992db9199ece7a62ecc51937f89fda1612",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-8.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/inverse-C.json",
+    "sha256": "e4fc177c4695f1ea1474994f129cc62cde5d8dd03bb3e9d103a45bd3bb97512a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-3-execution.json",
+    "sha256": "cf4ca8e09482a5585927161ebc1c0482ad3dd18ff51cb08e02f04e8c723b77dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/library-check-execution.json",
+    "sha256": "183d12f9937ce72ce07ed67b006b6c5db057463339dc650291540a303927d3f9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-5.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/focused-4-execution.json",
+    "sha256": "c5c0b821dcbb91c96c890f9df4c3fce2cf813e4e0b77517d1546ee2fc52ba1cc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-6.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/clean-kernel-execution.json",
+    "sha256": "904eeedd3f926588bba3e3e7da958957530e1834113ef15d7c5f9e355653ddfa",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/manifest.json",
+    "sha256": "e6d9b266c6f81f7d18bff1e1ef54f0fc08da6c00e68596d84f57e751b7ccd716",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-7.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/component-attempt-execution.json",
+    "sha256": "17f394b34481fb7abde110b9f13d929a8c2f797f4ea0563e542d28a9e56a5a47",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-0.json",
+    "sha256": "de8af4b87d8d4e900012212bf75a6f73e8f8160a2ed7a84e29e38fabdca3259e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/lower-C.json",
+    "sha256": "82a1c53da0f75597513f8b69bd048225c5bea54ee1c5de7f45761930cd8b2a74",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/binary.json",
+    "sha256": "dc2eca34b44588c5c12e36998a47f2f7aa26e84f5e870d70822f6a16f35f3674",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/discovery-1.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Geometry-capture/build-execution.json",
+    "sha256": "715b968b1cd153aa878d857ebad93ac74126723e2466019ba4950c2fe2d3e048",
+    "archived": true
+  }
+]

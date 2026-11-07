@@ -1,0 +1,11 @@
+{
+  "parent": "round29 Base (apply Base-packet first)",
+  "parentManifest": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round29-lower-runtime/Base/manifest.json",
+  "parentManifestSha256": "738e857b99f59729ee8cd407f3b45b0b01e431cc51ccf4119d793c5c2a485e1f",
+  "mode": "incremental, alternative packets; do not stack A/C/Combined",
+  "changedFiles": [
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_runtime_b_tests.rs"
+  ],
+  "patchSha256": "adc2b5182920814a04ac6144d3d1fd74845e280d75e3fbd880e42e7083abe074"
+}

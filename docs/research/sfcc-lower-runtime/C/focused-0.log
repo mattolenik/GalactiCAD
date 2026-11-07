@@ -1,0 +1,13 @@
+
+running 4 tests
+test sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_actual_failed_projection_still_costs_and_refuses ... ok
+test sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_paired_original_and_interior_events_keep_acceptance_and_reduce_new_queries ... ok
+test sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_preserves_source_distance_order_cancellation_and_total_refusals ... ok
+test sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_proposal_requires_finite_interior_bracket_and_scope_restores ... 
+thread 'sfcc::shared_twisted_proof::correlated_c::transport_a::inverse_proposal_tests::inverse_c_proposal_requires_finite_interior_bracket_and_scope_restores' (12083757) panicked at kernel/src/sfcc/inverse_proposal_c_tests.rs:128:62:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 363 filtered out; finished in 3.25s
+

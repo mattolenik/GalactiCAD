@@ -1,0 +1,7 @@
+{
+  "filter": "correlated_storage_staging_and_typed_lifecycle_controls",
+  "tests": [
+    "sfcc::private_storage_observation::tests::correlated_storage_staging_and_typed_lifecycle_controls"
+  ],
+  "exitCode": 0
+}

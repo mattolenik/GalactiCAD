@@ -1,0 +1,1344 @@
+--- a/gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs
+@@ -28,6 +28,26 @@
+     Order,
+ }
+ 
++// Fixed-size observation only; these counters never authorize or refund work.
++#[derive(Default)]
++struct QueryCost {
++    lookups: usize,
++    cache_hits: usize,
++    consume_attempts: usize,
++    consume_failures: usize,
++    external_reservation_calls: usize,
++    external_reserved: usize,
++    external_direct_attempts: usize,
++    request_cap_refusals: usize,
++    total_cap_refusals: usize,
++    maps: usize,
++    failed_maps: usize,
++    inverse_iterations: usize,
++    generated_total: usize,
++    generated_validated: usize,
++    graph_failed_before_validation: bool,
++}
++
+ pub(crate) struct Transport<'a> {
+     // Cache identity is this immutable borrowed feature instance plus chart id.
+     features: &'a SfccFeatureSet,
+@@ -38,6 +58,9 @@
+     total: usize,
+     maximum_request: usize,
+     admission_identity: Option<std::rc::Rc<()>>,
++    cost: QueryCost,
++    map_request_counts: [usize; MAX_REQUEST + 1],
++    phase: &'static str,
+ }
+ 
+ fn distance_upper(a: [f64; 3], b: [f64; 3]) -> Option<f64> {
+@@ -123,6 +146,9 @@
+             total: 0,
+             maximum_request: 0,
+             admission_identity: None,
++            cost: QueryCost::default(),
++            map_request_counts: [0; MAX_REQUEST + 1],
++            phase: "bind",
+         };
+         for slot in 0..2 {
+             for t in result.knots[slot].clone() {
+@@ -137,16 +163,20 @@
+         t: f64,
+         request: &mut usize,
+     ) -> Result<CheckedEvent, Failure> {
++        self.cost.lookups += 1;
+         if crate::sfcc::cancel::is_cancelled() {
+             return Err(Failure::Cancelled);
+         }
+         if let Some(event) = self.cache.get(&(chart, t.to_bits())) {
++            self.cost.cache_hits += 1;
+             return Ok(event.clone());
+         }
+         if *request >= MAX_REQUEST {
++            self.cost.request_cap_refusals += 1;
+             return Err(Failure::RequestCap);
+         }
+         if self.total >= MAX_TOTAL {
++            self.cost.total_cap_refusals += 1;
+             return Err(Failure::TotalCap);
+         }
+         // A deliberately generous bound for these bounded-size records and tree nodes.
+@@ -162,18 +192,61 @@
+         self.total += 1;
+         crate::sfcc::private_arc_a::note_query_charge(self.total);
+         self.maximum_request = self.maximum_request.max(*request);
+-        let event = piece.consume(t).map_err(Failure::Query)?;
++        self.cost.consume_attempts += 1;
++        let event = piece.consume(t).map_err(|e| {
++            self.cost.consume_failures += 1;
++            Failure::Query(e)
++        })?;
+         self.cache.insert((chart, t.to_bits()), event.clone());
+         Ok(event)
+     }
+ 
+     pub(crate) fn reserve_external(&mut self, count: usize) -> Result<(), Failure> {
++        self.cost.external_reservation_calls += 1;
+         if count > MAX_TOTAL - self.total {
++            self.cost.total_cap_refusals += 1;
+             return Err(Failure::TotalCap);
+         }
++        self.cost.external_reserved += count;
+         self.total += count;
+         crate::sfcc::private_arc_a::note_query_charge(self.total);
+         Ok(())
++    }
++    pub(crate) fn phase(&mut self, phase: &'static str) {
++        self.record_cost();
++        self.phase = phase;
++    }
++    pub(crate) fn external_direct_attempt(&mut self) {
++        self.cost.external_direct_attempts += 1;
++    }
++    pub(crate) fn generated_validation(&mut self, total: usize, graph_failed: bool) {
++        self.cost.generated_total = total;
++        self.cost.graph_failed_before_validation = graph_failed;
++    }
++    pub(crate) fn generated_validated(&mut self) {
++        self.cost.generated_validated += 1;
++    }
++    fn record_cost(&self) {
++        #[cfg(feature = "serde")]
++        crate::sfcc::private_arc_a::note_query_cost(self.phase, self.cost_json());
++    }
++    #[cfg(feature = "serde")]
++    fn cost_json(&self) -> serde_json::Value {
++        let c = &self.cost;
++        serde_json::json!({
++            "cumulative":true,"charged":self.total,"lookups":c.lookups,"cacheHits":c.cache_hits,
++            "consumeAttempts":c.consume_attempts,"consumeFailures":c.consume_failures,
++            "cachedEvents":self.cache.len(),"externalReservationCalls":c.external_reservation_calls,
++            "externalReserved":c.external_reserved,"externalDirectAttempts":c.external_direct_attempts,
++            "requestCapRefusals":c.request_cap_refusals,"totalCapRefusals":c.total_cap_refusals,
++            "mapCalls":c.maps,"failedMaps":c.failed_maps,"inverseIterations":c.inverse_iterations,
++            "mapRequestNewQueryHistogram":self.map_request_counts.as_slice(),
++            "maximumRequest":self.maximum_request,"generatedTotal":c.generated_total,
++            "generatedValidated":c.generated_validated,"graphFailedBeforeValidation":c.graph_failed_before_validation,
++            "ledgerEquationHolds":self.total==c.consume_attempts+c.external_reserved,
++            "scope":"curve-query attempts; no field-evaluation or CPU-time equivalence; reservations are not performed work",
++            "limits":{"total":MAX_TOTAL,"request":MAX_REQUEST,"iterations":MAX_ITERATIONS}
++        })
+     }
+     pub(crate) fn attach_admission(&mut self, identity: std::rc::Rc<()>) {
+         self.admission_identity = Some(identity);
+@@ -290,6 +363,14 @@
+         origin: &CheckedEvent,
+         target: usize,
+     ) -> Result<CheckedEvent, Failure> {
++        self.cost.maps += 1;
++        let before = self.cost.consume_attempts;
++        let result = self.map_inner(origin, target);
++        self.map_request_counts[self.cost.consume_attempts - before] += 1;
++        self.cost.failed_maps += usize::from(result.is_err());
++        result
++    }
++    fn map_inner(&mut self, origin: &CheckedEvent, target: usize) -> Result<CheckedEvent, Failure> {
+         let mut request = 0;
+         // Independently recover the point from this source-bound instance. An
+         // event created against another instance cannot become query authority.
+@@ -341,6 +422,7 @@
+         let high = self.query(target, hi, &mut request)?;
+         let ascending = high.point[1] > low.point[1];
+         for _ in 0..MAX_ITERATIONS {
++            self.cost.inverse_iterations += 1;
+             let t = midpoint(lo, hi)?;
+             let event = self.query(target, t, &mut request)?;
+             if accepts(actual.point, event.point, eps) {
+@@ -431,3 +513,13 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "correlated_transport_a_tests.rs"]
+ mod tests;
++
++impl Drop for Transport<'_> {
++    fn drop(&mut self) {
++        self.record_cost();
++    }
++}
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "lower_query_cost_c_tests.rs"]
++mod lower_cost_tests;
+--- a/gcad-wasm/kernel/src/sfcc/correlated_transport_a_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/correlated_transport_a_tests.rs
+@@ -149,6 +149,9 @@
+         total: 0,
+         maximum_request: 0,
+         admission_identity: None,
++        cost: QueryCost::default(),
++        map_request_counts: [0; MAX_REQUEST + 1],
++        phase: "test",
+     };
+     assert!(matches!(
+         failed_solver.query(20, 0.5, &mut 0),
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -407,3 +407,10 @@
+ 
+ #[path="upper_source_a.rs"]
+ pub(crate) mod upper_source_a;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "lower_b_tests.rs"]
++mod lower_b_tests;
++
++#[path = "lower_source_a.rs"]
++pub(crate) mod lower_source_a;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_b_tests.rs
+@@ -0,0 +1,344 @@
++//! Independent diagnostics: sampled source equality is not interval/attachment authority.
++use super::*;
++use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
++use serde_json::{json, Value};
++
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
++    (a[0] - b[0]).hypot(a[1] - b[1]).hypot(a[2] - b[2])
++}
++fn roles(f: &SfccFeatureSet) -> [usize; 3] {
++    let find = |path: Value, field: bool, local: usize| {
++        f.strata
++            .iter()
++            .find(|s| {
++                s.local_index == local
++                    && s.graph_capture_identity_b().is_some_and(|d| {
++                        if field {
++                            d["field"]["path"] == path
++                        } else {
++                            d["field"].is_null() && d["domain"][0]["path"] == path
++                        }
++                    })
++            })
++            .unwrap()
++            .id
++    };
++    [
++        find(json!([0, 0, 0, 0, 1]), false, 3),
++        find(json!([0, 0, 0, 0]), true, 0),
++        find(json!([0, 0, 0, 1]), false, 0),
++    ]
++}
++
++#[test]
++fn lower_b_source_star_and_actual_lifted_frontier() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let size =
++        fixture["cube"]["max"][0].as_f64().unwrap() - fixture["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        3_f64.sqrt() * size,
++    );
++    let (f, _) = compile_feature_set(&root, &tol);
++    let source = roles(&f);
++    let old: Value =
++        serde_json::from_str(include_str!("../../fixtures/exposure-b-baseline.json")).unwrap();
++    let expected = std::array::from_fn(|k| {
++        f64::from_bits(
++            u64::from_str_radix(old["lowerJoint"]["pointHex"][k].as_str().unwrap(), 16).unwrap(),
++        )
++    });
++    let junction =
++        junction::prove_junction(&root, &f.strata, source, expected, tol.curve_eps * 8.).unwrap();
++    let branch = branch_at(&f.strata, source[0], source[1], source[2], expected).unwrap();
++    let corner = f
++        .corners
++        .iter()
++        .find(|c| dist([c.x, c.y, c.z], expected) < tol.curve_eps * 8.)
++        .unwrap();
++    let registered = f.strata[source[0]].exposure_root_a().unwrap();
++    let (cap_cut, _, _) = pair(registered, Some((BlendKind::Smax, SminMode::Round))).unwrap();
++    let (groove_cut, _, _) = pair(cap_cut, None).unwrap();
++    let (_, groove_node, r) = pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).unwrap();
++    let groove = leaf(groove_node, -1.).unwrap();
++    let Shape::Lathe { edges } = &groove.shape else {
++        panic!()
++    };
++    let edge = edges[junction.groove_edge];
++    let orientation = crate::sfcc::predicates::orient2d(
++        [edges[0].r0, edges[0].y0],
++        [edges[1].r0, edges[1].y0],
++        [edges[2].r0, edges[2].y0],
++    ) as f64;
++    let dr = edge.r1 - edge.r0;
++    let dy = edge.y1 - edge.y0;
++    let length = dr.hypot(dy);
++    let nr = orientation * dy / length;
++    let ny = -orientation * dr / length;
++    let p = branch.p;
++    // E,C,g are local field coordinates, with g=G+r and G the negative groove field.
++    let point = |[e, c, g]: [f64; 3]| {
++        let rho = branch.cylinder.2 + c;
++        let v = p.v0z + e * p.nz2;
++        let u = branch.sign as f64 * (rho * rho - v * v).sqrt();
++        let y = groove.pos[1] + edge.y0 + ((r - g) - nr * (rho - edge.r0)) / ny;
++        let theta = (y - p.pos_y + p.h) / (2. * p.h) * p.twist_rad;
++        let (sn, cs) = theta.sin_cos();
++        [p.pos_x + u * cs - v * sn, y, p.pos_z + u * sn + v * cs]
++    };
++    let (_, native, _, _) = f.strata[source[0]]
++        .round_twisted_source(&f.strata[source[1]])
++        .unwrap();
++    let cylinder = f.strata[source[2]]
++        .correlated_cylinder_source_c(&f.strata[source[0]])
++        .unwrap();
++    let lifted: [usize; 2] = std::array::from_fn(|child| {
++        f.strata
++            .iter()
++            .find(|s| {
++                s.upper_round_child_matches(&f.strata[source[1]], &f.strata[source[2]], child)
++            })
++            .unwrap()
++            .id
++    });
++    let mut sample_rows = Vec::new();
++    for q in [0., 1e-6, 0.001, 0.01] {
++        for (ray, levels) in [
++            ("native", [0., 0., -q]),
++            ("native_chamfer", [0., -q, 0.]),
++            ("cylinder_chamfer", [-q, 0., 0.]),
++            ("lifted", [-q, -q, q]),
++        ] {
++            let x = point(levels);
++            let actual = [native.f(x), cylinder.f(x), groove.f(x) + r];
++            let values = [
++                actual[0],
++                actual[1],
++                (actual[0] + actual[2]) * std::f64::consts::FRAC_1_SQRT_2,
++                (actual[1] + actual[2]) * std::f64::consts::FRAC_1_SQRT_2,
++            ];
++            let full = root.f(x);
++            sample_rows.push(json!({"ray":ray,"qHex":hex(q),"pointHex":x.map(hex),"requestedLevelsHex":levels.map(hex),"actualLevelsHex":actual.map(hex),"fourFacetValuesHex":values.map(hex),"fullFieldHex":hex(full),"liftedFieldsHex":lifted.map(|id|hex(f.strata[id].f(x[0],x[1],x[2]))),"liftedOwnership":lifted.map(|id|f.strata[id].domain_contains(x,tol.curve_eps))}));
++            assert!(
++                actual
++                    .iter()
++                    .zip(levels)
++                    .all(|(a, b)| (a - b).abs() < 1e-10),
++                "actual finite source fields must match proposed local coordinates"
++            );
++            assert!(
++                full.abs() < 1e-10,
++                "actual composed source must vanish at every sampled ray point"
++            );
++        }
++    }
++    let event = point([0.; 3]);
++    assert!(dist(event, expected) < tol.curve_eps * 8.);
++    let mut curves = Vec::new();
++    for c in f.curves.iter().filter(|c| {
++        let mut a = c.adjacent_strata;
++        let mut b = lifted;
++        a.sort();
++        b.sort();
++        a == b
++    }) {
++        let Some(end) = c.point_at_checked(c.t_max) else {
++            continue;
++        };
++        if dist(end, event) > 0.1 {
++            continue;
++        }
++        let mut samples = Vec::new();
++        for i in 0..=32 {
++            let t = c.t_max - 1. + i as f64 / 32.;
++            let actual = c.point_at_checked(t);
++            samples.push(json!({"parameterHex":hex(t),"pointHex":actual.map(|x|x.map(hex)),"sourceCoordinatesHex":actual.map(|x|[native.f(x),cylinder.f(x),groove.f(x)+r].map(hex)),"fullFieldHex":actual.map(|x|hex(root.f(x)))}));
++        }
++        let e = native.f(end);
++        let predicted = point([e, e, -e]);
++        curves.push(json!({"chart":c.id,"sourcePair":c.adjacent_strata,"rangeHex":[hex(c.t_min),hex(c.t_max)],"cornerEnds":[c.corner_start,c.corner_end],"eventDistanceHex":hex(dist(end,event)),"analyticAssociationHex":hex(dist(end,predicted)),"endSourceEHex":hex(e),"declaredAtLowerCorner":corner.curve_ends.iter().any(|&(id,_)|id==c.id),"lastSpanQueries":samples}));
++    }
++    let report = json!({"scope":"independent sampled finite-source and actual frontier diagnostic; no interval theorem or attachment authority","featureFingerprint":f.fingerprint().to_string(),"sourceRoles":source,"sourceIdentities":source.map(|id|f.strata[id].graph_capture_identity_b()),"liftedSourcePair":lifted,"liftedIdentities":lifted.map(|id|f.strata[id].graph_capture_identity_b()),"junctionImage":junction.image,"eventHex":event.map(hex),"corner":{"id":corner.id,"ends":corner.curve_ends,"strata":corner.strata},"normalHex":[hex(nr),hex(ny)],"samples":sample_rows,"nearbyLiftedEnds":curves});
++    std::fs::write(
++        std::env::var("SFCC_LOWER_B_RECEIPT").expect("root receipt path required"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++    assert_eq!(
++        curves.len(),
++        1,
++        "exact source family has one lower nearby unresolved end in this fixture"
++    );
++    assert_eq!(
++        curves[0]["declaredAtLowerCorner"],
++        json!(false),
++        "captured compiler omits required lifted incidence"
++    );
++}
++
++#[test]
++fn lower_b_four_facet_star_has_four_and_only_four_rays() {
++    let w = std::f64::consts::FRAC_1_SQRT_2;
++    let normals = [[1., 0., 0.], [0., 1., 0.], [w, 0., w], [0., w, w]];
++    let cross = |a: [f64; 3], b: [f64; 3]| {
++        [
++            a[1] * b[2] - a[2] * b[1],
++            a[2] * b[0] - a[0] * b[2],
++            a[0] * b[1] - a[1] * b[0],
++        ]
++    };
++    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
++    let mut pairs = Vec::new();
++    for i in 0..4 {
++        for j in i + 1..4 {
++            let axis = cross(normals[i], normals[j]);
++            for sign in [-1., 1.] {
++                let ray = axis.map(|x| x * sign);
++                if normals.iter().all(|&n| dot(n, ray) <= 0.) {
++                    pairs.push([i, j]);
++                }
++            }
++        }
++    }
++    assert_eq!(pairs, vec![[0, 1], [0, 2], [1, 3], [2, 3]]);
++    // For either non-adjacent pair, the other two inequalities force the entire ray to the origin.
++    assert!(!pairs.contains(&[0, 3]) && !pairs.contains(&[1, 2]));
++}
++
++#[test]
++fn lower_b_actual_join_has_ordered_canonical_connection() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let size =
++        fixture["cube"]["max"][0].as_f64().unwrap() - fixture["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        3_f64.sqrt() * size,
++    );
++    let epsilon = tol.curve_eps * 8.;
++    let (f, _) = compile_feature_set(&root, &tol);
++    let source = roles(&f);
++    let old: Value =
++        serde_json::from_str(include_str!("../../fixtures/exposure-b-baseline.json")).unwrap();
++    let expected = std::array::from_fn(|k| {
++        f64::from_bits(
++            u64::from_str_radix(old["lowerJoint"]["pointHex"][k].as_str().unwrap(), 16).unwrap(),
++        )
++    });
++    let corner = f
++        .corners
++        .iter()
++        .find(|c| dist([c.x, c.y, c.z], expected) < epsilon)
++        .unwrap();
++    let event = [corner.x, corner.y, corner.z];
++    let initial = lower_source_a::bind(&root, &f.strata, source, event, epsilon, 0.01).unwrap();
++    let candidates: Vec<_> = f
++        .curves
++        .iter()
++        .filter(|c| {
++            !c.closed
++                && c.corner_end < 0
++                && c.t_max >= 1.
++                && initial.curve_source_matches(&f.strata, c)
++                && c.point_at_checked(c.t_max)
++                    .is_some_and(|p| dist(p, event) < 0.1)
++        })
++        .collect();
++    assert_eq!(
++        candidates.len(),
++        1,
++        "bounded source/branch association has unique candidate in this capture"
++    );
++    let curve = candidates[0];
++    let t_join = curve.t_max - 1.;
++    let join = curve.point_at_checked(t_join).unwrap();
++    let (native_params, native, _, _) = f.strata[source[0]]
++        .round_twisted_source(&f.strata[source[1]])
++        .unwrap();
++    let a_join = native.f(join);
++    assert!(a_join < 0. && a_join >= -0.25);
++    let cert = lower_source_a::bind(&root, &f.strata, source, event, epsilon, -a_join)
++        .expect("actual raw join must fit the bounded full-source interval");
++    assert!(cert.curve_source_matches(&f.strata, curve));
++    let upper_distance = |point: [f64; 3], image: ([f64; 3], [f64; 3])| {
++        let mut squared = I::point(0.);
++        for k in 0..3 {
++            squared = squared
++                .add(
++                    square(
++                        I::point(point[k])
++                            .sub(interval(image.0[k], image.1[k]).unwrap())
++                            .unwrap(),
++                    )
++                    .unwrap(),
++                )
++                .unwrap();
++        }
++        sqrt(squared).unwrap().hi
++    };
++    let join_error = upper_distance(join, cert.image_bounds(a_join, a_join).unwrap());
++    let event_error = upper_distance(event, cert.image_bounds(0., 0.).unwrap());
++    assert!(
++        join_error <= epsilon && event_error <= epsilon,
++        "existing join and corner must associate with canonical ideal endpoints in 3D"
++    );
++    assert!(cert.height_derivative_lower > 0. && cert.coordinate_jacobian_lower > 0.);
++    let raw_end = curve.point_at_checked(curve.t_max).unwrap();
++    let a_end = native.f(raw_end);
++    assert!(
++        a_join < a_end && a_end < 0.,
++        "old numerical endpoint stops strictly inside the canonical connection"
++    );
++    let end_error = upper_distance(raw_end, cert.image_bounds(a_end, a_end).unwrap());
++    assert!(end_error <= epsilon);
++    assert!(
++        dist(raw_end, event) > epsilon,
++        "actual missing tail exceeds the permitted endpoint association"
++    );
++    let mut samples = Vec::new();
++    let mut previous_y = f64::NEG_INFINITY;
++    for i in 0..=32 {
++        let s = i as f64 / 32.;
++        let a = a_join * (1. - s);
++        let image = cert.image_bounds(a, a).unwrap();
++        let p = std::array::from_fn(|k| image.0[k] * 0.5 + image.1[k] * 0.5);
++        assert!(p[1] > previous_y);
++        previous_y = p[1];
++        assert!(root.f(p).abs() < 1e-10);
++        samples.push(json!({"replacementFractionHex":hex(s),"sourceLevelHex":hex(a),"pointHex":p.map(hex),"fullFieldHex":hex(root.f(p))}));
++    }
++    let wrong = [join[0] + epsilon * 8., join[1], join[2]];
++    assert!(
++        upper_distance(wrong, cert.image_bounds(a_join, a_join).unwrap()) > epsilon,
++        "nearby wrong spatial branch does not acquire join authority"
++    );
++    let mut bad = curve.clone();
++    bad.adjacent_strata = [source[0], source[2]];
++    assert!(!cert.curve_source_matches(&f.strata, &bad));
++    assert!(
++        cert.image_bounds(a_join * 2., 0.).is_none(),
++        "source interval cannot silently extend past proved depth"
++    );
++    assert!(
++        cert.image_bounds(0., f64::EPSILON).is_none(),
++        "opposite side needs another source chart"
++    );
++    assert!(cert.image_bounds(f64::NAN, 0.).is_none());
++    let report = json!({"scope":"canonical replacement interval with actual old raw join and existing source event; no runtime mutation or universal old Newton-map continuity","featureFingerprint":f.fingerprint().to_string(),"sourceRoles":source,"sourcePair":cert.lifted_pair,"chart":curve.id,"corner":corner.id,"originalLastSpanHex":[hex(t_join),hex(curve.t_max)],"canonicalSourceLevelRangeHex":[hex(a_join),hex(0.)],"joinPointHex":join.map(hex),"eventPointHex":event.map(hex),"joinAssociationUpperHex":hex(join_error),"eventAssociationUpperHex":hex(event_error),"allowanceHex":hex(epsilon),"oldEndpoint":{"pointHex":raw_end.map(hex),"sourceLevelHex":hex(a_end),"sourceAssociationUpperHex":hex(end_error),"eventDistanceHex":hex(dist(raw_end,event))},"sourceMarginsLowerHex":cert.margins.map(hex),"heightDerivativeMagnitudeLowerHex":hex(cert.height_derivative_lower),"coordinateJacobianMagnitudeLowerHex":hex(cert.coordinate_jacobian_lower),"nativeNormalSignHex":hex(native_params.nz2),"samples":samples,"runtimeAttachmentInstalled":false,"wholeComponentAccepted":false});
++    std::fs::write(
++        std::env::var("SFCC_LOWER_B_ASSOCIATION_RECEIPT")
++            .expect("root association receipt required"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_query_cost_c_tests.rs
+@@ -0,0 +1,108 @@
++use super::*;
++use serde_json::{json, Value};
++
++fn fixture() -> (SfccFeatureSet, [usize; 2]) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let tree =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let size = v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        (3. * size * size).sqrt(),
++    );
++    let (f, _) = crate::sfcc::feature_set::compile_feature_set(&tree, &tol);
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++    (f, ids)
++}
++
++#[test]
++fn lower_c_query_cost_preserves_cache_request_and_total_caps() {
++    let (f, ids) = fixture();
++    let mut solver = Transport::bind(&f, ids, 0.02).unwrap();
++    let before = solver.total;
++    let own = solver.own(ids[0], solver.knots[0][0]).unwrap();
++    assert_eq!(solver.total, before);
++    assert_eq!(solver.cost.cache_hits, 1);
++    assert_eq!(solver.cost.consume_attempts, before);
++    let t = f.curves[ids[0]].t_min + 0.25;
++    let mut request = 0;
++    for i in 0..MAX_REQUEST {
++        solver
++            .query(ids[0], t + i as f64 * 1e-6, &mut request)
++            .unwrap();
++    }
++    assert_eq!(request, MAX_REQUEST);
++    assert!(matches!(
++        solver.query(ids[0], t + 0.001, &mut request),
++        Err(Failure::RequestCap)
++    ));
++    assert_eq!(solver.cost.request_cap_refusals, 1);
++    assert_eq!(solver.maximum_request, MAX_REQUEST);
++    // The real reservation API fills the unchanged ledger; no synthetic counter preload.
++    let remainder = MAX_TOTAL - solver.total;
++    solver.reserve_external(remainder).unwrap();
++    assert!(matches!(
++        solver.query(ids[0], t + 0.001, &mut 0),
++        Err(Failure::TotalCap)
++    ));
++    assert!(matches!(solver.reserve_external(1), Err(Failure::TotalCap)));
++    assert_eq!(solver.total, MAX_TOTAL);
++    assert_eq!(solver.cost.external_reserved, remainder);
++    assert_eq!(solver.cost.total_cap_refusals, 2);
++    assert_eq!(
++        solver.total,
++        solver.cost.consume_attempts + solver.cost.external_reserved
++    );
++    assert_eq!(
++        solver.cache.len(),
++        solver.cost.consume_attempts - solver.cost.consume_failures
++    );
++    // Cached authority remains usable at the cap, exactly as before instrumentation.
++    assert_eq!(
++        solver
++            .own(own.chart(), own.parameter())
++            .unwrap()
++            .point()
++            .map(f64::to_bits),
++        own.point().map(f64::to_bits)
++    );
++    assert_eq!(solver.total, MAX_TOTAL);
++}
++
++#[test]
++fn lower_c_inverse_cost_distinguishes_replayed_lookups_from_new_queries() {
++    let (f, ids) = fixture();
++    let mut solver = Transport::bind(&f, ids, 0.02).unwrap();
++    let source = solver.own(ids[0], f.curves[ids[0]].t_min + 0.25).unwrap();
++    let before = solver.cost.consume_attempts;
++    let mapped = solver.map(&source, ids[1]).unwrap();
++    let first_new = solver.cost.consume_attempts - before;
++    assert!(first_new > 0 && first_new <= MAX_REQUEST);
++    let before_repeat = solver.cost_json();
++    let again = solver.map(&source, ids[1]).unwrap();
++    assert_eq!(mapped.parameter().to_bits(), again.parameter().to_bits());
++    assert_eq!(
++        mapped.point().map(f64::to_bits),
++        again.point().map(f64::to_bits)
++    );
++    assert_eq!(solver.cost.consume_attempts - before, first_new);
++    assert!(solver.cost.lookups > before_repeat["lookups"].as_u64().unwrap() as usize);
++    assert!(
++        solver.cost.inverse_iterations
++            > before_repeat["inverseIterations"].as_u64().unwrap() as usize
++    );
++    assert_eq!(solver.map_request_counts[0], 1);
++    assert_eq!(solver.map_request_counts[first_new], 1);
++    assert_eq!(
++        solver.map_request_counts.iter().sum::<usize>(),
++        solver.cost.maps
++    );
++    assert_eq!(solver.cost.failed_maps, 0);
++    let report = json!({"scope":"observation only; no cap/refund/cache policy changes", "beforeRepeat":before_repeat,"afterRepeat":solver.cost_json(),"newQueriesFirstMap":first_new,"samePointAndParameterOnRepeat":true});
++    std::fs::write(
++        std::env::var("SFCC_LOWER_C_RECEIPT").expect("root receipt path"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_source_a.rs
+@@ -0,0 +1,300 @@
++//! Bounded lower chamfer source curve and local four-ray arrangement.
++//! No numerical trace attachment or private admission is granted here.
++use super::*;
++use crate::sfcc::feature_curves::FeatureCurve;
++
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn absolute_lower(a: I) -> Option<f64> {
++    if a.lo <= 0. && a.hi >= 0. {
++        None
++    } else {
++        Some(a.lo.abs().min(a.hi.abs()))
++    }
++}
++#[derive(Clone)]
++pub(crate) struct LowerCertificate {
++    branch: HelixBranch,
++    source_root: std::sync::Arc<CsgNode>,
++    embedded: [Stratum; 2],
++    edge: [f64; 4],
++    orientation: i8,
++    groove_y: f64,
++    radius: f64,
++    pub(crate) depth: f64,
++    pub(crate) source: [usize; 3],
++    pub(crate) lifted_pair: [usize; 2],
++    pub(crate) groove_edge: usize,
++    pub(crate) margins: [f64; 8],
++    pub(crate) height_derivative_lower: f64,
++    pub(crate) coordinate_jacobian_lower: f64,
++}
++struct Image {
++    a: I,
++    rho: I,
++    y: I,
++    u: I,
++    v: I,
++    xyz: [I; 3],
++}
++impl LowerCertificate {
++    fn normal(&self) -> Option<(I, I)> {
++        let dr = I::point(self.edge[2]).sub(I::point(self.edge[0]))?;
++        let dy = I::point(self.edge[3]).sub(I::point(self.edge[1]))?;
++        let len = sqrt(square(dr)?.add(square(dy)?)?)?;
++        Some((
++            quotient(dy.mul(self.orientation as f64)?, len)?,
++            quotient(dr.mul(-(self.orientation as f64))?, len)?,
++        ))
++    }
++    fn image(&self, a: I) -> Option<Image> {
++        if a.lo < -self.depth || a.hi > 0. || a.lo > a.hi {
++            return None;
++        }
++        let (nr, ny) = self.normal()?;
++        let rho = I::point(self.branch.cylinder.2).add(a)?;
++        let distance = I::point(self.radius).add(a)?;
++        if rho.lo <= 0. || distance.lo <= 0. {
++            return None;
++        }
++        let y = quotient(
++            distance.sub(mul(nr, rho.sub(I::point(self.edge[0]))?)?)?,
++            ny,
++        )?
++        .add(I::point(self.edge[1]))?
++        .add(I::point(self.groove_y))?;
++        let p = self.branch.p;
++        let v = I::point(p.v0z).add(a.mul(p.nz2)?)?;
++        let u2 = square(rho)?.sub(square(v)?)?;
++        if u2.lo <= 0. {
++            return None;
++        }
++        let mut u = sqrt(u2)?;
++        if self.branch.sign < 0 {
++            u = u.mul(-1.)?;
++        }
++        let theta =
++            div(y.sub(I::point(p.pos_y))?.add(I::point(p.h))?, 2. * p.h)?.mul(p.twist_rad)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let xyz = [
++            mul(u, cs)?.sub(mul(v, sn)?)?.add(I::point(p.pos_x))?,
++            y,
++            mul(u, sn)?.add(mul(v, cs)?)?.add(I::point(p.pos_z))?,
++        ];
++        Some(Image {
++            a,
++            rho,
++            y,
++            u,
++            v,
++            xyz,
++        })
++    }
++    pub(crate) fn image_bounds(&self, a: f64, b: f64) -> Option<([f64; 3], [f64; 3])> {
++        let image = self.image(interval(a, b)?)?;
++        Some((image.xyz.map(|v| v.lo), image.xyz.map(|v| v.hi)))
++    }
++    pub(crate) fn curve_source_matches(&self, strata: &[Stratum], curve: &FeatureCurve) -> bool {
++        let Some(root) = strata
++            .get(self.source[0])
++            .and_then(Stratum::upper_source_root_handle)
++        else {
++            return false;
++        };
++        if !std::sync::Arc::ptr_eq(&root, &self.source_root)
++            || curve.adjacent_strata != self.lifted_pair
++        {
++            return false;
++        }
++        let Some((a, b, _)) = curve.traced_carriers() else {
++            return false;
++        };
++        let Some(sa) = strata.get(self.lifted_pair[0]) else {
++            return false;
++        };
++        let Some(sb) = strata.get(self.lifted_pair[1]) else {
++            return false;
++        };
++        sa.connection_same_source(&self.embedded[0])
++            && sb.connection_same_source(&self.embedded[1])
++            && a.connection_same_source(sa)
++            && b.connection_same_source(sb)
++    }
++}
++
++fn groove_segment(groove: &Leaf, cert: &LowerCertificate, image: &Image) -> Option<(f64, f64)> {
++    let Shape::Lathe { edges } = &groove.shape else {
++        return None;
++    };
++    let edge = edges.get(cert.groove_edge)?;
++    let dr = I::point(edge.r1).sub(I::point(edge.r0))?;
++    let dy = I::point(edge.y1).sub(I::point(edge.y0))?;
++    let wr = image.rho.sub(I::point(edge.r0))?;
++    let wy = image
++        .y
++        .sub(I::point(groove.pos[1]))?
++        .sub(I::point(edge.y0))?;
++    let along = quotient(
++        mul(dr, wr)?.add(mul(dy, wy)?)?,
++        square(dr)?.add(square(dy)?)?,
++    )?;
++    let projection_margin = along.lo.min(1. - along.hi);
++    if projection_margin <= 0. {
++        return None;
++    }
++    let max_distance = I::point(cert.radius).add(image.a)?.hi;
++    let mut margin = f64::INFINITY;
++    for (i, e) in edges.iter().enumerate() {
++        if i == cert.groove_edge {
++            continue;
++        }
++        let dx = I::point(e.r1).sub(I::point(e.r0))?;
++        let dy = I::point(e.y1).sub(I::point(e.y0))?;
++        let wx = image.rho.sub(I::point(e.r0))?;
++        let wy = image.y.sub(I::point(groove.pos[1]))?.sub(I::point(e.y0))?;
++        let t = quotient(
++            mul(dx, wx)?.add(mul(dy, wy)?)?,
++            square(dx)?.add(square(dy)?)?,
++        )?;
++        let t = I {
++            lo: t.lo.clamp(0., 1.),
++            hi: t.hi.clamp(0., 1.),
++        };
++        let dist = sqrt(square(wx.sub(mul(dx, t)?)?)?.add(square(wy.sub(mul(dy, t)?)?)?)?)?;
++        let gap = dist.sub(I::point(max_distance))?.lo;
++        if gap <= 0. {
++            return None;
++        }
++        margin = margin.min(gap);
++    }
++    Some((projection_margin, margin))
++}
++
++/// Strict finite-source margins at the event also persist in some open
++/// neighbourhood. Together with the nonzero source-coordinate Jacobian they
++/// justify the local max-of-four-planes star, not a radius for that neighbourhood.
++pub(crate) fn bind(
++    root: &CsgNode,
++    strata: &[Stratum],
++    source: [usize; 3],
++    candidate: [f64; 3],
++    epsilon: f64,
++    depth: f64,
++) -> Option<LowerCertificate> {
++    if !depth.is_finite() || depth <= 0. || depth > 0.25 {
++        return None;
++    }
++    let junction = junction::prove_junction(root, strata, source, candidate, epsilon)?;
++    let branch = branch_at(strata, source[0], source[1], source[2], candidate)?;
++    let source_root = strata[branch.native].exposure_root_a()?;
++    let (cap_cut, sphere, outer_radius) =
++        pair(source_root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++    let (groove_cut, cap, _) = pair(cap_cut, None).ok()?;
++    let (hard, groove_node, radius) =
++        pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++    let (inner, cylinder, _) = pair(hard, None).ok()?;
++    let (other, native, inner_radius) =
++        pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++    let native = leaf(native, 1.).ok()?;
++    let other = leaf(other, 1.).ok()?;
++    let cylinder = leaf(cylinder, 1.).ok()?;
++    let groove = leaf(groove_node, -1.).ok()?;
++    let Shape::Lathe { edges } = &groove.shape else {
++        return None;
++    };
++    let edge = edges.get(junction.groove_edge)?;
++    let orientation = crate::sfcc::predicates::orient2d(
++        [edges[0].r0, edges[0].y0],
++        [edges[1].r0, edges[1].y0],
++        [edges[2].r0, edges[2].y0],
++    );
++    let mut pair_ids = [None, None];
++    for s in strata {
++        for child in 0..2 {
++            if s.upper_round_child_matches(
++                &strata[branch.field],
++                &strata[branch.cylinder_id],
++                child,
++            ) {
++                if pair_ids[child].replace(s.id).is_some() {
++                    return None;
++                }
++            }
++        }
++    }
++    let mut cert = LowerCertificate {
++        source,
++        source_root: strata[branch.native].upper_source_root_handle()?,
++        embedded: [strata[pair_ids[0]?].clone(), strata[pair_ids[1]?].clone()],
++        branch,
++        edge: [edge.r0, edge.y0, edge.r1, edge.y1],
++        orientation: orientation as i8,
++        groove_y: groove.pos[1],
++        radius,
++        depth,
++        lifted_pair: [pair_ids[0]?, pair_ids[1]?],
++        groove_edge: junction.groove_edge,
++        margins: [0.; 8],
++        height_derivative_lower: 0.,
++        coordinate_jacobian_lower: 0.,
++    };
++    let image = cert.image(interval(-depth, 0.)?)?;
++    let profile_margin =
++        upper_source_a::finite_profile_level(cert.branch.p, native, [image.u, image.v], image.a)?;
++    let native_cap =
++        upper_source_a::cap_margin(image.y, cert.branch.p.pos_y, cert.branch.p.h, image.a)?;
++    let Shape::Cylinder { h, .. } = &cylinder.shape else {
++        return None;
++    };
++    let cylinder_cap = upper_source_a::cap_margin(image.y, cylinder.pos[1], *h, image.a)?;
++    let (projection_margin, other_edge_margin) = groove_segment(groove, &cert, &image)?;
++    let cx = I::point(cert.branch.cylinder.0[0]).add(image.rho)?;
++    let lathe = lathe_lower(
++        other,
++        [cx.lo, image.y.lo, cert.branch.cylinder.0[2]],
++        [cx.hi, image.y.hi, cert.branch.cylinder.0[2]],
++    )?;
++    let inner_margin = I::point(lathe).sub(I::point(inner_radius))?.lo;
++    let cap = leaf(cap, -1.).ok()?;
++    let Shape::Extrude { h, .. } = &cap.shape else {
++        return None;
++    };
++    let cutter_margin = I::point(cap.pos[1]).sub(I::point(*h))?.sub(image.y)?.lo;
++    let sphere = leaf(sphere, 1.).ok()?;
++    let Shape::Sphere { r } = &sphere.shape else {
++        return None;
++    };
++    let radius_bound =
++        sqrt(square(image.rho)?.add(square(image.y.sub(I::point(sphere.pos[1]))?)?)?)?;
++    let sphere_margin = I::point(*r)
++        .sub(I::point(outer_radius))?
++        .sub(radius_bound)?
++        .lo;
++    let (nr, ny) = cert.normal()?;
++    let derivative = quotient(I::point(1.).sub(nr)?, ny)?;
++    let jacobian = mul(quotient(image.u, image.rho)?, ny)?.mul(cert.branch.p.nz2)?;
++    cert.height_derivative_lower = absolute_lower(derivative)?;
++    cert.coordinate_jacobian_lower = absolute_lower(jacobian)?;
++    cert.margins = [
++        profile_margin,
++        native_cap,
++        cylinder_cap,
++        projection_margin,
++        other_edge_margin,
++        inner_margin,
++        cutter_margin,
++        sphere_margin,
++    ];
++    if cert.margins.iter().any(|x| !x.is_finite() || *x <= 0.) {
++        return None;
++    }
++    Some(cert)
++}
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "lower_source_a_tests.rs"]
++mod tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_source_a_tests.rs
+@@ -0,0 +1,171 @@
++use super::*;
++use crate::sfcc::{
++    feature_set::SfccFeatureSet,
++    pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++};
++use serde_json::{json, Value};
++fn fixture() -> (CsgNode, SfccFeatureSet) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = build_pipeline_context(&root, &cube, &PipelineTuning::default()).features;
++    (root, f)
++}
++fn roles(f: &SfccFeatureSet) -> [usize; 3] {
++    let find = |path: Value, is_field: bool, local| {
++        f.strata
++            .iter()
++            .find(|s| {
++                let Some(d) = s.graph_capture_identity_b() else {
++                    return false;
++                };
++                s.local_index == local
++                    && if is_field {
++                        d["field"]["path"] == path
++                    } else {
++                        d["field"].is_null() && d["domain"][0]["path"] == path
++                    }
++            })
++            .unwrap()
++            .id
++    };
++    [
++        find(json!([0, 0, 0, 0, 1]), false, 3),
++        find(json!([0, 0, 0, 0]), true, 0),
++        find(json!([0, 0, 0, 1]), false, 0),
++    ]
++}
++const EVENT: [f64; 3] = [-9.358961851300297, -2.492038035725069, 5.3897897051654455];
++fn midpoint(image: ([f64; 3], [f64; 3])) -> [f64; 3] {
++    std::array::from_fn(|k| image.0[k] * 0.5 + image.1[k] * 0.5)
++}
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++#[test]
++fn lower_a_full_scalar_interval_and_local_four_ray_star() {
++    let (root, f) = fixture();
++    let source = roles(&f);
++    let cert = bind(&root, &f.strata, source, EVENT, 1e-7, 0.01).expect("lower source interval");
++    let image = cert.image(interval(-cert.depth, 0.).unwrap()).unwrap();
++    let mut samples = Vec::new();
++    for a in [-0.01, -0.0075, -0.005, -0.0025, 0.] {
++        let bounds = cert.image_bounds(a, a).unwrap();
++        let p = midpoint(bounds);
++        let fields = cert.lifted_pair.map(|id| f.strata[id].f(p[0], p[1], p[2]));
++        assert!(
++            root.f(p).abs() < 1e-10,
++            "actual full scalar at a={a}: {}",
++            root.f(p)
++        );
++        assert!(
++            fields.iter().all(|v| v.abs() < 1e-10),
++            "actual lifted scalar at a={a}: {fields:?}"
++        );
++        samples.push(json!({"aHex":hex(a),"pointHex":p.map(hex),"imageHex":[bounds.0.map(hex),bounds.1.map(hex)],
++            "fullScalarHex":hex(root.f(p)),"liftedScalarsHex":fields.map(hex)}));
++    }
++    let matches: Vec<_> = f
++        .curves
++        .iter()
++        .filter(|c| cert.curve_source_matches(&f.strata, c))
++        .map(|c| c.id)
++        .collect();
++    assert!(
++        !matches.is_empty(),
++        "actual embedded lifted source pair exists"
++    );
++    let points: Vec<_> = [-0.01, -0.005, 0.]
++        .map(|a| midpoint(cert.image_bounds(a, a).unwrap()))
++        .into();
++    assert!(points.windows(2).all(|p| p[0][1] < p[1][1]));
++    let report = json!({"scope":"bounded lower ideal source interval plus existence of a local four-ray source star; no numerical trace attachment",
++        "featureFingerprint":f.fingerprint().to_string(),"sourceRoles":source,"liftedPair":cert.lifted_pair,
++        "sourceIdentities":source.map(|id|f.strata[id].graph_capture_identity_b()),
++        "liftedIdentities":cert.lifted_pair.map(|id|f.strata[id].graph_capture_identity_b()),"matchingCurves":matches,
++        "grooveEdge":cert.groove_edge,"aRangeHex":[hex(-cert.depth),hex(0.)],
++        "imageHex":[image.xyz.map(|v|hex(v.lo)),image.xyz.map(|v|hex(v.hi))],"marginsLowerHex":cert.margins.map(hex),
++        "marginOrder":["profile nearest edge","native cap","cylinder cap","groove projection interval","other groove edges","inner round competitor","cap cutter","outer sphere"],
++        "heightDerivativeAbsoluteLowerHex":hex(cert.height_derivative_lower),"coordinateJacobianAbsoluteLowerHex":hex(cert.coordinate_jacobian_lower),
++        "samples":samples,"localSourceFormula":"max(E,C,w*(E+g),w*(C+g)); g=G+r; w=represented FRAC_1_SQRT_2",
++        "localPhysicalRayCount":4,"explicitNeighbourhoodRadiusProved":false,"numericalTraceConnectionProved":false,
++        "floatingQueryTotalityProved":false,"wholeComponentAccepted":false});
++    std::fs::write(
++        std::env::var("SFCC_LOWER_A_RECEIPT").expect("root receipt required"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
++#[test]
++fn lower_a_refuses_bad_source_interval_and_embedded_carrier() {
++    let (root, f) = fixture();
++    let source = roles(&f);
++    let cert = bind(&root, &f.strata, source, EVENT, 1e-7, 0.01).unwrap();
++    for depth in [0., -0.01, 0.251, f64::NAN, f64::INFINITY] {
++        assert!(bind(&root, &f.strata, source, EVENT, 1e-7, depth).is_none());
++    }
++    assert!(cert.image_bounds(-0.011, 0.).is_none());
++    assert!(cert.image_bounds(0., 0.001).is_none());
++    assert!(cert.image_bounds(0., -0.001).is_none());
++    assert!(cert.image_bounds(f64::NAN, 0.).is_none());
++    let mut wrong = root.clone();
++    let CsgNode::Blend { r, .. } = &mut wrong else {
++        panic!()
++    };
++    *r += 0.001;
++    assert!(bind(&wrong, &f.strata, source, EVENT, 1e-7, 0.01).is_none());
++    let mut wrong_point = EVENT;
++    wrong_point[1] += 0.01;
++    assert!(bind(&root, &f.strata, source, wrong_point, 1e-7, 0.01).is_none());
++    let mut wrong_roles = source;
++    wrong_roles.swap(0, 2);
++    assert!(bind(&root, &f.strata, wrong_roles, EVENT, 1e-7, 0.01).is_none());
++    let curve = f
++        .curves
++        .iter()
++        .find(|c| cert.curve_source_matches(&f.strata, c))
++        .unwrap();
++    let mut wrong_curve = curve.clone();
++    wrong_curve.adjacent_strata.swap(0, 1);
++    assert!(!cert.curve_source_matches(&f.strata, &wrong_curve));
++    let (_, foreign) = fixture();
++    assert!(
++        !cert.curve_source_matches(&foreign.strata, curve),
++        "separate source handles cannot authorize embedded carriers"
++    );
++    let foreign_curve = foreign
++        .curves
++        .iter()
++        .find(|c| c.adjacent_strata == cert.lifted_pair)
++        .unwrap();
++    assert!(
++        !cert.curve_source_matches(&foreign.strata, foreign_curve),
++        "coherent foreign registry and embedded carriers cannot borrow old certificate"
++    );
++    let mut altered = f.strata.clone();
++    altered[cert.lifted_pair[0]] = foreign.strata[cert.lifted_pair[0]].clone();
++    altered[cert.lifted_pair[1]] = foreign.strata[cert.lifted_pair[1]].clone();
++    assert!(
++        !cert.curve_source_matches(&altered, foreign_curve),
++        "matching native root cannot authorize foreign lifted embedded descriptors"
++    );
++    let mut bad = cert.clone();
++    bad.edge[2] = bad.edge[0];
++    assert!(
++        bad.image_bounds(-0.01, 0.).is_none(),
++        "vertical groove edge cannot parameterize y"
++    );
++    let mut bad = cert.clone();
++    bad.depth = bad.radius;
++    assert!(
++        bad.image_bounds(-bad.depth, 0.).is_none(),
++        "offset must stay strictly outside groove"
++    );
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -37,12 +37,14 @@
+     let reservation = shared_correlated_gate_c::admission_query_reservation(f, ids)?;
+     let mut transport = Transport::bind(f, ids, tolerance)
+         .map_err(|e| fail(f, ids, "transport_bind", format!("{e:?}")))?;
++    transport.phase("source_admission");
+     transport
+         .reserve_external(reservation)
+         .map_err(|e| fail(f, ids, "admission_query_budget", format!("{e:?}")))?;
+     let admission = shared_correlated_gate_c::admit(f, ids, tolerance)?;
+     require_admission(f, ids, Some(&admission))?;
+     let mut checked = Vec::new();
++    transport.phase("original_transport");
+     transport.complete(&mut checked).map_err(|e| {
+         fail(
+             f,
+@@ -172,6 +174,7 @@
+             format!("{chart}/{:x}", t.to_bits()),
+         ));
+     }
++    transport.external_direct_attempt();
+     let own = if curve.traced_carriers().is_some() {
+         curve.shared_checked_point(t)
+     } else {
+@@ -301,6 +304,7 @@
+             .with(|s| s.borrow_mut().take())
+             .ok_or("missing generated query scope")?;
+         note_queries(&log.attempts);
++        note_generated_cost(&log, true);
+         if log.exhausted {
+             return Err("2048 generated query/event reservation exhausted");
+         }
+@@ -312,6 +316,7 @@
+         QUERY_LOG.with(|s| {
+             if let Some(log) = s.borrow_mut().take() {
+                 note_queries(&log.attempts);
++                note_generated_cost(&log, false);
+             }
+         });
+     }
+@@ -463,3 +468,32 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "stage4_component_b.rs"]
+ pub(crate) mod stage4_component_b;
++
++#[cfg(feature = "serde")]
++pub(crate) fn note_query_cost(phase: &'static str, cost: serde_json::Value) {
++    DIAGNOSTIC.with(|state| {
++        if let Some(report) = state.borrow_mut().as_mut() {
++            if report["queryCosts"].is_null() {
++                report["queryCosts"] = serde_json::json!({});
++            }
++            report["queryCosts"][phase] = cost;
++            report["lastQueryPhase"] = serde_json::json!(phase);
++        }
++    });
++}
++fn note_generated_cost(log: &QueryLog, finished: bool) {
++    #[cfg(feature = "serde")]
++    DIAGNOSTIC.with(|state| {
++        if let Some(report) = state.borrow_mut().as_mut() {
++            report["generatedQueryCost"] = serde_json::json!({
++                "reserved":GENERATED_RESERVATION,"attempted":log.attempts.len(),
++                "successful":log.attempts.iter().filter(|e|e.point.is_some()).count(),
++                "unusedReserved":GENERATED_RESERVATION-log.attempts.len(),
++                "exhausted":log.exhausted,"finished":finished,"refunded":0,
++                "scope":"reservation remains charged, including unused slots; failed and discarded attempts retained"
++            });
++        }
++    });
++    #[cfg(not(feature = "serde"))]
++    let _ = (log, finished);
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a_tests.rs
+@@ -125,3 +125,50 @@
+         Some("refusal" | "private_candidate_publication_blocked")
+     ));
+ }
++
++#[test]
++fn lower_c_generated_reservation_finish_drop_and_failed_attempts_stay_charged() {
++    let (tree, v) = fixture();
++    let size = v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(&crate::tuning::SfccTuning::default(), (3. * size * size).sqrt());
++    let (f, _) = crate::sfcc::feature_set::compile_feature_set(&tree, &tol);
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++    let mut transport = Transport::bind(&f, ids, 0.02).unwrap();
++    DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({})));
++    let before = transport.charged_queries();
++    let scope = GeneratedQueries::begin(&mut transport).unwrap();
++    assert!(GeneratedQueries::begin(&mut transport).is_err());
++    assert!(f.curves[ids[0]].point_at_checked(f64::NAN).is_none());
++    let events = scope.finish().unwrap();
++    assert_eq!(events.len(), 1);
++    assert!(events[0].point.is_none());
++    assert_eq!(transport.charged_queries(), before + GENERATED_RESERVATION);
++    let finished = DIAGNOSTIC.with(|s| s.borrow().as_ref().unwrap()["generatedQueryCost"].clone());
++    assert_eq!(finished["unusedReserved"], GENERATED_RESERVATION - 1);
++    assert_eq!(finished["refunded"], 0);
++    assert_eq!(finished["successful"], 0);
++    assert_eq!(finished["finished"], true);
++    {
++        let _scope = GeneratedQueries::begin(&mut transport).unwrap();
++        assert!(f.curves[ids[0]].point_at_checked(f64::NAN).is_none());
++    }
++    assert_eq!(transport.charged_queries(), before + 2 * GENERATED_RESERVATION);
++    assert!(QUERY_LOG.with(|s| s.borrow().is_none()));
++    let dropped = DIAGNOSTIC.with(|s| s.borrow().as_ref().unwrap()["generatedQueryCost"].clone());
++    assert_eq!(dropped["finished"], false);
++    assert_eq!(dropped["attempted"], 1);
++    // All 2048 actual failed own queries count; the 2049th is refused before evaluation.
++    let scope = GeneratedQueries::begin(&mut transport).unwrap();
++    for _ in 0..GENERATED_RESERVATION { assert!(f.curves[ids[0]].point_at_checked(f64::NAN).is_none()); }
++    assert!(f.curves[ids[0]].point_at_checked(f64::NAN).is_none());
++    assert!(scope.finish().is_err());
++    assert_eq!(transport.charged_queries(), before + 3 * GENERATED_RESERVATION);
++    let exhausted = DIAGNOSTIC.with(|s| s.borrow().as_ref().unwrap()["generatedQueryCost"].clone());
++    assert_eq!(exhausted["attempted"], GENERATED_RESERVATION);
++    assert_eq!(exhausted["unusedReserved"], 0);
++    assert_eq!(exhausted["exhausted"], true);
++    assert!(QUERY_LOG.with(|s| s.borrow().is_none()));
++    drop(transport);
++    let captured = DIAGNOSTIC.with(|s| s.borrow_mut().take()).unwrap();
++    assert_eq!(captured["queryCosts"]["bind"]["ledgerEquationHolds"], true);
++}
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -219,6 +219,7 @@
+ ) -> Result<PrivateCandidate, Refusal> {
+     let (plan, mut transport) = super::private_arc_a::admit(features, ids, opts.curve_chord_tol)?;
+     super::private_arc_a::note_admission(&plan, transport.charged_queries());
++    transport.phase("original_rechecks");
+     let mut checked_events = BTreeMap::new();
+     for event in &plan.events {
+         let own = transport
+@@ -238,6 +239,7 @@
+     let mut pin_parameters = BTreeMap::new();
+     let mut changed = BTreeSet::new();
+     let mut bindings = 0usize;
++    transport.phase("typed_faces");
+     for axis in 0..3 {
+         let mut keys:Vec<_>=faces[axis].keys().copied().collect(); keys.sort_unstable();
+         for key in keys {
+@@ -424,6 +426,7 @@
+     let canonical = |p: usize| equivalences.get(&p).copied().unwrap_or(p);
+     let mut needed = BTreeSet::new();
+     let mut required_pins=0usize;
++    transport.phase("required_pins");
+     for &(axis, key, len) in &required {
+         let r = &faces[axis][&key];
+         if r.len != len
+@@ -650,6 +653,7 @@
+         ..*opts
+     };
+     let mut triangles = Vec::new();
++    transport.phase("generated_queries");
+     let generated_scope = super::private_arc_a::GeneratedQueries::begin(&mut transport)
+         .map_err(|e| fail(features, ids, "generated_query_budget", e))?;
+     let mut graph_failed = false;
+@@ -692,6 +696,8 @@
+         .finish()
+         .map_err(|e| fail(features, ids, "generated_query_budget", e))?;
+     super::private_arc_a::note_queries(&generated);
++    transport.generated_validation(generated.len(), graph_failed);
++    transport.phase("generated_validation");
+     for event in &generated {
+         let point=event.point.ok_or_else(||fail(features,ids,"generated_query_failed",format!("actual query chart {} t {:x}; failed events cannot be suppressed by graph fallback",event.chart,event.t.to_bits())))?;
+         if ids.contains(&event.chart) {
+@@ -724,6 +730,7 @@
+                     event.chart.to_string(),
+                 )
+             })?;
++            transport.external_direct_attempt();
+             let own = curve.point_at_checked(event.t).ok_or_else(|| {
+                 fail(
+                     features,
+@@ -749,6 +756,7 @@
+                 ));
+             }
+         }
++        transport.generated_validated();
+     }
+     if graph_failed {
+         return Err(fail(
+@@ -784,6 +792,7 @@
+             ));
+         }
+     }
++    transport.phase("post_graph_edges");
+     let canonical_edges: Vec<_> = private
+         .identified_edges()
+         .flat_map(|(e, is)| {
+--- a/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
+@@ -117,7 +117,7 @@
+ }
+ 
+ // Zero-locus agreement is insufficient at a<0: prove this finite side is nearest.
+-fn finite_profile_level(p: TwistedSideParams, leaf: &Leaf, q: [I; 2], a: I) -> Option<f64> {
++pub(super) fn finite_profile_level(p: TwistedSideParams, leaf: &Leaf, q: [I; 2], a: I) -> Option<f64> {
+     profile_branch(p, leaf, q)?;
+     let Shape::Extrude { verts, .. } = &leaf.shape else {
+         return None;
+@@ -149,7 +149,7 @@
+     }
+     Some(margin)
+ }
+-fn cap_margin(y: I, center: f64, half: f64, a: I) -> Option<f64> {
++pub(super) fn cap_margin(y: I, center: f64, half: f64, a: I) -> Option<f64> {
+     if !half.is_finite() || half <= 0. {
+         return None;
+     }

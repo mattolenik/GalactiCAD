@@ -1541,6 +1541,36 @@ checks passing. Production remains unchanged. Next install the bounded lower
 transaction, preserve complete incidence and rollback, improve inverse proposals
 under the same checks, and revalidate the complete affected component.
 
+## Lower runtime attachment and newly reached orientation refusal
+
+The [runtime milestone](sfcc-lower-runtime/README.md) installs the source-bound
+last span of chart 75 at existing corner 13, preserves the old join and incident
+branches, and enforces all four required source roles. A-reviewed passes 37 checks.
+Its fresh component meshes all 199 selected cells but reaches the old query cap
+after validating 787 of 1,167 generated events.
+
+The independently reviewed inverse proposal change uses at most two checked
+height-interpolation proposals before bounded bisection, with the same acceptance
+tests and caps. Combined validation passes 41 focused checks and completes all
+1,167 generated events at 5,568 charges. No reservation is refunded. Fresh inventory
+has 1,001 required faces and 198 typed-face certificates/396 pin bounds; combined
+reservation is 20,251,702 bytes. Live state remains unchanged.
+
+The component then refuses `private_invalid_f64_or_f32`. An observational capture
+passes 16 checks and reproduces every prior receipt field. It preserves all 1,064
+private points and 1,700 triangles with cell ranges. Triangle 11, IDs [636,455,633],
+belongs to cell [7,25,58,86] and has an edge on curve 66 but no recorded patch owner.
+Its area is nonzero in both precisions, while its normal opposes the already
+computed centroid-gradient reference. Exact arithmetic on the captured binary
+coordinates confirms both negative dot signs. This is not f32 collapse, and no
+claim is made that the new connection introduced the previously unreachable failure.
+
+Next reconstruct the loop/patch attribution and source-consistent orientation;
+do not blindly reverse one triangle. Later triangle checks, post-graph transport,
+topology, outside contacts, source-patch coverage and production acceptance remain
+open. Full receipts, restoration patches and the fourth-agent decision are linked
+from the runtime report.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

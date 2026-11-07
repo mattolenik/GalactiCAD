@@ -1,0 +1,1274 @@
+{
+  "corner": {
+    "ends": [
+      [
+        20,
+        0
+      ],
+      [
+        39,
+        0
+      ],
+      [
+        46,
+        0
+      ],
+      [
+        49,
+        1
+      ],
+      [
+        66,
+        0
+      ]
+    ],
+    "id": 13,
+    "strata": [
+      10,
+      15,
+      30,
+      31
+    ]
+  },
+  "eventHex": [
+    "c022b7c9d907b134",
+    "c003efb1a33e9e36",
+    "40158f25085002f8"
+  ],
+  "featureFingerprint": "6620945114087557251",
+  "junctionImage": [
+    [
+      -9.358961851300311,
+      -2.4920380357250713,
+      5.389789705165327
+    ],
+    [
+      -9.358961851300148,
+      -2.492038035725067,
+      5.389789705165489
+    ]
+  ],
+  "liftedIdentities": [
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": {
+            "kind": "Child(0)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "784ad24010"
+        }
+      ],
+      "field": {
+        "branch": {
+          "kind": "Child(0)",
+          "nativeBandHex": "3e997a9ab0c2db32",
+          "path": [
+            0,
+            0,
+            0
+          ]
+        },
+        "partners": [
+          1,
+          18446744073709551615,
+          1
+        ],
+        "path": [],
+        "rootAddressProcessLocal": "784ad24010"
+      },
+      "id": 38,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": {
+            "kind": "Child(1)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "784ad24010"
+        }
+      ],
+      "field": {
+        "branch": {
+          "kind": "Child(1)",
+          "nativeBandHex": "3e997a9ab0c2db32",
+          "path": [
+            0,
+            0,
+            0
+          ]
+        },
+        "partners": [
+          1,
+          18446744073709551615,
+          1
+        ],
+        "path": [],
+        "rootAddressProcessLocal": "784ad24010"
+      },
+      "id": 39,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    }
+  ],
+  "liftedSourcePair": [
+    38,
+    39
+  ],
+  "nearbyLiftedEnds": [
+    {
+      "analyticAssociationHex": "3dc8bae81279756a",
+      "chart": 75,
+      "cornerEnds": [
+        31,
+        -1
+      ],
+      "declaredAtLowerCorner": false,
+      "endSourceEHex": "bec61464eea00000",
+      "eventDistanceHex": "3ef15b1b3488d454",
+      "lastSpanQueries": [
+        {
+          "fullFieldHex": "3da71b7000000000",
+          "parameterHex": "4028000000000000",
+          "pointHex": [
+            "c0225f718d3aa065",
+            "c0049a3b36265392",
+            "40165fec46d7587e"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa6d134c9309180",
+            "bfa6d134c3d88400",
+            "3fa6d134c3f931b0"
+          ]
+        },
+        {
+          "fullFieldHex": "3db27c1000000000",
+          "parameterHex": "4028100000000000",
+          "pointHex": [
+            "c022623e331c533c",
+            "c00494e4efd5c517",
+            "40165977c973c870"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa61a6774a7a380",
+            "bfa61a6773bd7e00",
+            "3fa61a6773f1c640"
+          ]
+        },
+        {
+          "fullFieldHex": "3dd150ba00000000",
+          "parameterHex": "4028200000000000",
+          "pointHex": [
+            "c022650a3808062e",
+            "c0048f8ec79bef92",
+            "40165302212b83c4"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa5639e2d5aa280",
+            "bfa5639e29ea8200",
+            "3fa5639e2aae6890"
+          ]
+        },
+        {
+          "fullFieldHex": "3de2345300000000",
+          "parameterHex": "4028300000000000",
+          "pointHex": [
+            "c02267d59bad7e70",
+            "c0048a38bde4b3c0",
+            "40164c8b4ebc2f26"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa4acd8fc307200",
+            "bfa4acd8f4efc500",
+            "3fa4acd8f68bb020"
+          ]
+        },
+        {
+          "fullFieldHex": "3dee2c3000000000",
+          "parameterHex": "4028400000000000",
+          "pointHex": [
+            "c0226aa05dbd5a6a",
+            "c00484e2d312fc0e",
+            "4016461352e6a82b"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa3f617ee23f580",
+            "bfa3f617e214a400",
+            "3fa3f617e4bf5e60"
+          ]
+        },
+        {
+          "fullFieldHex": "3df5ebb100000000",
+          "parameterHex": "4028500000000000",
+          "pointHex": [
+            "c0226d6a7de876bf",
+            "c0047f8d07899868",
+            "40163f9a2e6c2277"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa33f5b10309000",
+            "bfa33f5afe9c1b00",
+            "3fa33f5b027c1f20"
+          ]
+        },
+        {
+          "fullFieldHex": "3dfd45ed00000000",
+          "parameterHex": "4028600000000000",
+          "pointHex": [
+            "c0227033fbdfee70",
+            "c0047a375bab3e04",
+            "4016391fe20e2756"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa288a26f522800",
+            "bfa288a257c4c000",
+            "3fa288a25cf18060"
+          ]
+        },
+        {
+          "fullFieldHex": "3e026ba300000000",
+          "parameterHex": "4028700000000000",
+          "pointHex": [
+            "c02272fcd7551b0b",
+            "c00474e1cfda86ec",
+            "401632a46e8e955b"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa1d1ee18854300",
+            "bfa1d1edfac8ac00",
+            "3fa1d1ee014be6c0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e062cc300000000",
+          "parameterHex": "4028800000000000",
+          "pointHex": [
+            "c02275c50ff994d0",
+            "c0046f8c6479f1c8",
+            "40162c27d4af9fe0"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa11b3e18c70c00",
+            "bfa11b3df4dd7900",
+            "3fa11b3dfcb482d0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e09c6e880000000",
+          "parameterHex": "4028900000000000",
+          "pointHex": [
+            "c022788ca57f32d8",
+            "c0046a3719ebe17b",
+            "401625aa1533ceac"
+          ],
+          "sourceCoordinatesHex": [
+            "bfa064927d156380",
+            "bfa0649253343400",
+            "3fa064925c514500"
+          ]
+        },
+        {
+          "fullFieldHex": "3e0d1e5280000000",
+          "parameterHex": "4028a00000000000",
+          "pointHex": [
+            "c0227b5397980b40",
+            "c00464e1f0929cda",
+            "40161f2b30ddfd71"
+          ],
+          "sourceCoordinatesHex": [
+            "bf9f5bd6a4dddc00",
+            "bf9f5bd645f2a600",
+            "3f9f5bd65a89a680"
+          ]
+        },
+        {
+          "fullFieldHex": "3e100d7da0000000",
+          "parameterHex": "4028b00000000000",
+          "pointHex": [
+            "c0227e19e5f6734f",
+            "c0045f8ce8d04e53",
+            "401618ab28715b75"
+          ],
+          "sourceCoordinatesHex": [
+            "bf9dee914ba64100",
+            "bf9dee90e2a94c00",
+            "3f9dee90f95cfea0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e11544300000000",
+          "parameterHex": "4028c00000000000",
+          "pointHex": [
+            "c02280df904cff9a",
+            "c0045a38030703a2",
+            "40161229fcb16b14"
+          ],
+          "sourceCoordinatesHex": [
+            "bf9c81550884ac00",
+            "bf9c815496d2a200",
+            "3f9c8154af547460"
+          ]
+        },
+        {
+          "fullFieldHex": "3e125b2200000000",
+          "parameterHex": "4028d00000000000",
+          "pointHex": [
+            "c02283a4964e842f",
+            "c00454e33f98ad7f",
+            "40160ba7ae62014f"
+          ],
+          "sourceCoordinatesHex": [
+            "bf9b1421f57b9f00",
+            "bf9b14217cab8000",
+            "3f9b142196a113c0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e131ba220000000",
+          "parameterHex": "4028e00000000000",
+          "pointHex": [
+            "c0228668f7ae14bc",
+            "c0044f8e9ee71f4a",
+            "401605243e474570"
+          ],
+          "sourceCoordinatesHex": [
+            "bf99a6f82c8f9f00",
+            "bf99a6f7ae673000",
+            "3f99a6f7c96d0060"
+          ]
+        },
+        {
+          "fullFieldHex": "3e13911a20000000",
+          "parameterHex": "4028f00000000000",
+          "pointHex": [
+            "c022892cb41f04b1",
+            "c0044a3a21540ebd",
+            "4015fe9fad25b087"
+          ],
+          "sourceCoordinatesHex": [
+            "bf9839d7c7c74c00",
+            "bf9839d7462f6800",
+            "3f9839d761db58a0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e13b8ca40000000",
+          "parameterHex": "4029000000000000",
+          "pointHex": [
+            "c0228befcb54e76d",
+            "c00444e5c7411395",
+            "4015f819fbc20d09"
+          ],
+          "sourceCoordinatesHex": [
+            "bf96ccc0e12b6a00",
+            "bf96ccc05e241a00",
+            "3f96ccc07a082b40"
+          ]
+        },
+        {
+          "fullFieldHex": "3e1391b640000000",
+          "parameterHex": "4029100000000000",
+          "pointHex": [
+            "c0228eb23d03905c",
+            "c0043f91910fa751",
+            "4015f1932ae17655"
+          ],
+          "sourceCoordinatesHex": [
+            "bf955fb392c71600",
+            "bf955fb3105b8600",
+            "3f955fb32c085360"
+          ]
+        },
+        {
+          "fullFieldHex": "3e131ccce0000000",
+          "parameterHex": "4029200000000000",
+          "pointHex": [
+            "c022917408df1324",
+            "c0043a3d7f2124c5",
+            "4015eb0b3b495850"
+          ],
+          "sourceCoordinatesHex": [
+            "bf93f2aff6a7d900",
+            "bf93f2af76e1f800",
+            "3f93f2af91e96f00"
+          ]
+        },
+        {
+          "fullFieldHex": "3e125cd360000000",
+          "parameterHex": "4029300000000000",
+          "pointHex": [
+            "c02294352e9bc3ca",
+            "c00434e991d6c7e6",
+            "4015e4822dbf6eea"
+          ],
+          "sourceCoordinatesHex": [
+            "bf9285b626ddb900",
+            "bf9285b5abb9ce00",
+            "3f9285b5c5b1c6a0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e115665c0000000",
+          "parameterHex": "4029400000000000",
+          "pointHex": [
+            "c02296f5adee36d1",
+            "c0042f95c991ad70",
+            "4015ddf80309c5ba"
+          ],
+          "sourceCoordinatesHex": [
+            "bf9118c63d7b6900",
+            "bf9118c5c8db5e00",
+            "3f9118c5e1603580"
+          ]
+        },
+        {
+          "fullFieldHex": "3e100ffaa0000000",
+          "parameterHex": "4029500000000000",
+          "pointHex": [
+            "c02299b5868b4164",
+            "c0042a4226b2d293",
+            "4015d76cbbeeb782"
+          ],
+          "sourceCoordinatesHex": [
+            "bf8f57c0a92cac00",
+            "bf8f57bfd069bc00",
+            "3f8f57bffdd82ac0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e0d23b880000000",
+          "parameterHex": "4029600000000000",
+          "pointHex": [
+            "c0229c74b827f97c",
+            "c00424eea99b149d",
+            "4015d0e05934edc4"
+          ],
+          "sourceCoordinatesHex": [
+            "bf8c7e090c8db000",
+            "bf8c7e084754a400",
+            "3f8c7e08708a4780"
+          ]
+        },
+        {
+          "fullFieldHex": "3e09cc7c00000000",
+          "parameterHex": "4029700000000000",
+          "pointHex": [
+            "c0229f334279b603",
+            "c0041f9b52ab30b9",
+            "4015ca52dba36052"
+          ],
+          "sourceCoordinatesHex": [
+            "bf89a465d9504c00",
+            "bf89a4652a2ad000",
+            "3f89a4654ea6f6c0"
+          ]
+        },
+        {
+          "fullFieldHex": "3e06323ec0000000",
+          "parameterHex": "4029800000000000",
+          "pointHex": [
+            "c022a1f125360ef4",
+            "c0041a482243c39e",
+            "4015c3c4440154d8"
+          ],
+          "sourceCoordinatesHex": [
+            "bf86cad743b13a00",
+            "bf86cad6ac8af800",
+            "3f86cad6cbeee080"
+          ]
+        },
+        {
+          "fullFieldHex": "3e0270c400000000",
+          "parameterHex": "4029900000000000",
+          "pointHex": [
+            "c022a4ae6012dd89",
+            "c00414f518c5492d",
+            "4015bd3493165e77"
+          ],
+          "sourceCoordinatesHex": [
+            "bf83f15d7ff39c00",
+            "bf83f15d01fed400",
+            "3f83f15d1c12ffc0"
+          ]
+        },
+        {
+          "fullFieldHex": "3dfd4ef980000000",
+          "parameterHex": "4029a00000000000",
+          "pointHex": [
+            "c022a76af2c63c57",
+            "c0040fa236901c3a",
+            "4015b6a3c9aa5d3d"
+          ],
+          "sourceCoordinatesHex": [
+            "bf8117f8c2610c00",
+            "bf8117f85dfb1400",
+            "3f8117f872b47b80"
+          ]
+        },
+        {
+          "fullFieldHex": "3df5f31d00000000",
+          "parameterHex": "4029b00000000000",
+          "pointHex": [
+            "c022aa26dd068773",
+            "c0040a4f7c04762a",
+            "4015b011e8857dd0"
+          ],
+          "sourceCoordinatesHex": [
+            "bf7c7d527e943c00",
+            "bf7c7d51e7be4800",
+            "3f7c7d5206c8e800"
+          ]
+        },
+        {
+          "fullFieldHex": "3dee377600000000",
+          "parameterHex": "4029c00000000000",
+          "pointHex": [
+            "c022ace21e8a5c98",
+            "c00404fce9826eb2",
+            "4015a97ef07038de"
+          ],
+          "sourceCoordinatesHex": [
+            "bf76cade560c9000",
+            "bf76caddedea0000",
+            "3f76cade0347cc00"
+          ]
+        },
+        {
+          "fullFieldHex": "3de23bac00000000",
+          "parameterHex": "4029d00000000000",
+          "pointHex": [
+            "c022af9cb7089b47",
+            "c003ffaa7f69fb7d",
+            "4015a2eae23352c4"
+          ],
+          "sourceCoordinatesHex": [
+            "bf71189573e8ec00",
+            "bf71189534e24800",
+            "3f71189541c6d300"
+          ]
+        },
+        {
+          "fullFieldHex": "3dd1584000000000",
+          "parameterHex": "4029e00000000000",
+          "pointHex": [
+            "c022b256a63864ed",
+            "c003fa583e1aefe8",
+            "40159c55be97db0f"
+          ],
+          "sourceCoordinatesHex": [
+            "bf66ccf081eb8000",
+            "bf66ccf045c8e000",
+            "3f66ccf0520c9b00"
+          ]
+        },
+        {
+          "fullFieldHex": "3db2854000000000",
+          "parameterHex": "4029f00000000000",
+          "pointHex": [
+            "c022b50febd11d05",
+            "c003f50625f4fcb1",
+            "401595bf86672c06"
+          ],
+          "sourceCoordinatesHex": [
+            "bf56d21c983c4000",
+            "bf56d21c78086000",
+            "3f56d21c7e94aa00"
+          ]
+        },
+        {
+          "fullFieldHex": "3d3c200000000000",
+          "parameterHex": "402a000000000000",
+          "pointHex": [
+            "c022b7c8878a6b96",
+            "c003efb437578dcc",
+            "40158f283a6af4fc"
+          ],
+          "sourceCoordinatesHex": [
+            "bec61464eea00000",
+            "bec6145fd7000000",
+            "3ec6145feae40000"
+          ]
+        }
+      ],
+      "rangeHex": [
+        "0000000000000000",
+        "402a000000000000"
+      ],
+      "sourcePair": [
+        38,
+        39
+      ]
+    }
+  ],
+  "normalHex": [
+    "bfe1c01aa03be896",
+    "3feaa027f059dce0"
+  ],
+  "samples": [
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bcc6a09e667f3bcd",
+        "0000000000000000"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bcb55e0702fb1677",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b7c9d907b134",
+        "c003efb1a33e9e36",
+        "40158f25085002f8"
+      ],
+      "qHex": "0000000000000000",
+      "ray": "native",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "0000000000000000",
+        "8000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bcc6a09e667f3bcd",
+        "0000000000000000"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bcb55e0702fb1677",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b7c9d907b134",
+        "c003efb1a33e9e36",
+        "40158f25085002f8"
+      ],
+      "qHex": "0000000000000000",
+      "ray": "native_chamfer",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "8000000000000000",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bcc6a09e667f3bcd",
+        "0000000000000000"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bcb55e0702fb1677",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b7c9d907b134",
+        "c003efb1a33e9e36",
+        "40158f25085002f8"
+      ],
+      "qHex": "0000000000000000",
+      "ray": "cylinder_chamfer",
+      "requestedLevelsHex": [
+        "8000000000000000",
+        "0000000000000000",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bcc6a09e667f3bcd",
+        "0000000000000000"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bcb55e0702fb1677",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b7c9d907b134",
+        "c003efb1a33e9e36",
+        "40158f25085002f8"
+      ],
+      "qHex": "0000000000000000",
+      "ray": "lifted",
+      "requestedLevelsHex": [
+        "8000000000000000",
+        "8000000000000000",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "0000000000000000",
+        "0000000000000000",
+        "beb0c6f7a0c00000"
+      ],
+      "fourFacetValuesHex": [
+        "0000000000000000",
+        "0000000000000000",
+        "bea7ba004196a80b",
+        "bea7ba004196a80b"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "8000000000000000",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b7ca14a4ba27",
+        "c003efb101ef5a12",
+        "40158f243948ba33"
+      ],
+      "qHex": "3eb0c6f7a0b5ed8d",
+      "ray": "native",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "0000000000000000",
+        "beb0c6f7a0b5ed8d"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bce0000000000000",
+        "beb0c6f7a1000000",
+        "bcd4000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bce0000000000000",
+        "beb0c6f7a1000000",
+        "bce26280b3476097",
+        "bea7ba0042624d9d"
+      ],
+      "fullFieldHex": "bce0000000000000",
+      "liftedFieldsHex": [
+        "bcccbcdf792172ac",
+        "bea3075fea2f4b95"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b7c9ad596fe2",
+        "c003efb1fcb91c38",
+        "40158f2519897606"
+      ],
+      "qHex": "3eb0c6f7a0b5ed8d",
+      "ray": "native_chamfer",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "beb0c6f7a0b5ed8d",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "beb0c6f7a1000000",
+        "bce0000000000000",
+        "bcd2000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "beb0c6f7a1000000",
+        "bce0000000000000",
+        "bea7ba004256fd4d",
+        "bce1ad7bc01366b8"
+      ],
+      "fullFieldHex": "bce0000000000000",
+      "liftedFieldsHex": [
+        "be951fb4e2bd3301",
+        "bce0000000000001"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b7c9c01a78bc",
+        "c003efb1a33e9e36",
+        "40158f255ee10564"
+      ],
+      "qHex": "3eb0c6f7a0b5ed8d",
+      "ray": "cylinder_chamfer",
+      "requestedLevelsHex": [
+        "beb0c6f7a0b5ed8d",
+        "0000000000000000",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "beb0c6f7a1000000",
+        "beb0c6f7a0800000",
+        "3eb0c6f7a0b80000"
+      ],
+      "fourFacetValuesHex": [
+        "beb0c6f7a1000000",
+        "beb0c6f7a0800000",
+        "bcc974b2334f2347",
+        "3cc3cc8a99af5453"
+      ],
+      "fullFieldHex": "3cc4000000000000",
+      "liftedFieldsHex": [
+        "bcb55e070e101546",
+        "3cc00a4304eec0a9"
+      ],
+      "liftedOwnership": [
+        true,
+        true
+      ],
+      "pointHex": [
+        "c022b7c958cf2ab3",
+        "c003efb29e08605c",
+        "40158f263f21bc0f"
+      ],
+      "qHex": "3eb0c6f7a0b5ed8d",
+      "ray": "lifted",
+      "requestedLevelsHex": [
+        "beb0c6f7a0b5ed8d",
+        "beb0c6f7a0b5ed8d",
+        "3eb0c6f7a0b5ed8d"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bf50624dd2f1aa00"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bf472ba43fff4dbe",
+        "bf472ba43fff371d"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bcbcbcdf2a27f2d6",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b8b2a5674070",
+        "c003ed3b859c73c5",
+        "40158bfc403b4010"
+      ],
+      "qHex": "3f50624dd2f1a9fc",
+      "ray": "native",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "0000000000000000",
+        "bf50624dd2f1a9fc"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "bf50624dd2f1a000",
+        "bca0000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "bf50624dd2f1a000",
+        "bcc974b2334f2347",
+        "bf472ba43fff2bcd"
+      ],
+      "fullFieldHex": "bcc8000000000000",
+      "liftedFieldsHex": [
+        "bcb55ea19a10a93b",
+        "bf429533aa094d5e"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b71f3b6bbb73",
+        "c003f10f29badd03",
+        "40158f6841515399"
+      ],
+      "qHex": "3f50624dd2f1a9fc",
+      "ray": "native_chamfer",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "bf50624dd2f1a9fc",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bf50624dd2f1c000",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bf50624dd2f1c000",
+        "0000000000000000",
+        "bf472ba43fff563a",
+        "0000000000000000"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bf34a08b57553445",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b768794cbbd7",
+        "c003efb1a33e9e36",
+        "4015907724c0eeea"
+      ],
+      "qHex": "3f50624dd2f1a9fc",
+      "ray": "cylinder_chamfer",
+      "requestedLevelsHex": [
+        "bf50624dd2f1a9fc",
+        "0000000000000000",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bf50624dd2f1c000",
+        "bf50624dd2f1a000",
+        "3f50624dd2f1aa00"
+      ],
+      "fourFacetValuesHex": [
+        "bf50624dd2f1c000",
+        "bf50624dd2f1a000",
+        "bccf1cd9cceef23a",
+        "3cbc48c6001f0ac0"
+      ],
+      "fullFieldHex": "3cc0000000000000",
+      "liftedFieldsHex": [
+        "bcbc7d98678329da",
+        "3cb9aa04d4b13443"
+      ],
+      "liftedOwnership": [
+        true,
+        true
+      ],
+      "pointHex": [
+        "c022b5d4d5cbbb3e",
+        "c003f385475d0774",
+        "401593e2d704f481"
+      ],
+      "qHex": "3f50624dd2f1a9fc",
+      "ray": "lifted",
+      "requestedLevelsHex": [
+        "bf50624dd2f1a9fc",
+        "bf50624dd2f1a9fc",
+        "3f50624dd2f1a9fc"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bf847ae147ae1440"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "0000000000000000",
+        "bf7cf68d4fff075e",
+        "bf7cf68d4fff048a"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bcbcbcdf2a27f2d5",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022c0dbd43f8b21",
+        "c003d7147ae8f5ce",
+        "40156f8652b2d1f5"
+      ],
+      "qHex": "3f847ae147ae147b",
+      "ray": "native",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "0000000000000000",
+        "bf847ae147ae147b"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bcd0000000000000",
+        "bf847ae147ae1400",
+        "0000000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bcd0000000000000",
+        "bf847ae147ae1400",
+        "bcc6a09e667f3bcd",
+        "bf7cf68d4fff0430"
+      ],
+      "fullFieldHex": "bcc8000000000000",
+      "liftedFieldsHex": [
+        "bcb56412f2271241",
+        "bf773a80948bab21"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b120c6a18974",
+        "c003fd58e4191243",
+        "401591bfd60e2906"
+      ],
+      "qHex": "3f847ae147ae147b",
+      "ray": "native_chamfer",
+      "requestedLevelsHex": [
+        "0000000000000000",
+        "bf847ae147ae147b",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bf847ae147ae1200",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "fourFacetValuesHex": [
+        "bf847ae147ae1200",
+        "0000000000000000",
+        "bf7cf68d4fff015c",
+        "0000000000000000"
+      ],
+      "fullFieldHex": "8000000000000000",
+      "liftedFieldsHex": [
+        "bf69c3f857af96a2",
+        "8000000000000000"
+      ],
+      "liftedOwnership": [
+        false,
+        false
+      ],
+      "pointHex": [
+        "c022b3fbb9e79ae0",
+        "c003efb1a33e9e36",
+        "40159c56a1002c86"
+      ],
+      "qHex": "3f847ae147ae147b",
+      "ray": "cylinder_chamfer",
+      "requestedLevelsHex": [
+        "bf847ae147ae147b",
+        "0000000000000000",
+        "0000000000000000"
+      ]
+    },
+    {
+      "actualLevelsHex": [
+        "bf847ae147ae1200",
+        "bf847ae147ae1400",
+        "3f847ae147ae1440"
+      ],
+      "fourFacetValuesHex": [
+        "bf847ae147ae1200",
+        "bf847ae147ae1400",
+        "3cc974b2334f2347",
+        "3c96a09e667f3bcd"
+      ],
+      "fullFieldHex": "3cc8000000000000",
+      "liftedFieldsHex": [
+        "3cb55fb8273d46f2",
+        "3c99aa04d4b13442"
+      ],
+      "liftedOwnership": [
+        true,
+        true
+      ],
+      "pointHex": [
+        "c022a42a3a5ec5b6",
+        "c00415f60c6ebaab",
+        "4015be715130232e"
+      ],
+      "qHex": "3f847ae147ae147b",
+      "ray": "lifted",
+      "requestedLevelsHex": [
+        "bf847ae147ae147b",
+        "bf847ae147ae147b",
+        "3f847ae147ae147b"
+      ]
+    }
+  ],
+  "scope": "independent sampled finite-source and actual frontier diagnostic; no interval theorem or attachment authority",
+  "sourceIdentities": [
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "rootAddressProcessLocal": "784b204010"
+        }
+      ],
+      "field": null,
+      "id": 10,
+      "leafIndex": 1,
+      "localIndex": 3,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "rootAddressProcessLocal": "784b204010"
+        }
+      ],
+      "field": {
+        "branch": null,
+        "partners": [],
+        "path": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "rootAddressProcessLocal": "784b204010"
+      },
+      "id": 30,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rootAddressProcessLocal": "784b204010"
+        }
+      ],
+      "field": null,
+      "id": 15,
+      "leafIndex": 2,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    }
+  ],
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ]
+}

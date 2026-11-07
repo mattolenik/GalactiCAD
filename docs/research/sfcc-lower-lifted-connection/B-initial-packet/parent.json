@@ -1,0 +1,11 @@
+{
+  "parent": "../sfcc-upper-closure/A-cell-packet/candidate.patch applied to documented Stage1 baseline",
+  "parentManifest": "../sfcc-upper-closure/A-cell/manifest.json",
+  "parentManifestSha256": "632e88916bb5b2a00b4782b2a8f453f76bcf5286b21f7955f1b97cd4eb7734a8",
+  "patchMode": "incremental against A-cell, not flat against Stage1; competing packets are alternatives",
+  "changedFiles": [
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/lower_b_tests.rs"
+  ],
+  "sha256": "16a0ea5e96c6cea6302ab94f54739ff8c596ea4b9dee8a45dfe49049f9484e34"
+}

@@ -1,0 +1,792 @@
+[
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/closure-A-rollback.json",
+    "sha256": "26d714c5bea623d3bcdcfd9c15bebaa1211af6ac53caf44a7fd0c0f186a6c4ff",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-6-execution.json",
+    "sha256": "a934a33fcfc69e22d24fa742bcd846981fb42fd252d63bad0a46136764bcff20",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/repair-B.json",
+    "sha256": "33752f8ea304e66d6dc210bede007b5cc3f5ae5c9e4260d897bc1a27aa4f63e2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-9-execution.json",
+    "sha256": "d9a43035f3dcffee3f9fd3d8918e613755a8c09cc52bc92b53fcc83f9453abc2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-2.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-1-execution.json",
+    "sha256": "786c410725803edd959870c580bc370679562f31f4ec84d4ba3de41ead0b4f77",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-0-execution.json",
+    "sha256": "f2ec6a394d2e7fdfc133d32354af931321005c19e5263f8725e3b71335c86c3d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-3.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-8-execution.json",
+    "sha256": "f5951670ad8324cd2b6ed4df42281b0bc863ad26981593957e5b7e3ee752e245",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/source-preflight.json",
+    "sha256": "f7ec1a542a73e737b03dbf03f54b9d551edbc380e245dc9b5b1b9282ef6b41a7",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-7-execution.json",
+    "sha256": "8b0ee57a24b87c12d3dc8a5824cd223fab59042152f1da02fe030071f84b4c4e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-5-execution.json",
+    "sha256": "394f70574249bf4cc7a050075cfba1ee9288f99f54c43cd8e5a494eb73433240",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-4.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/component-attempt.json",
+    "sha256": "2a4ddda2e93dbe8d815d3afb30f953c1e2dd2255f0a9aae4939eda7ed42a459f",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-10-execution.json",
+    "sha256": "b7e5222c04bc7fea219bfa9d640caa688c658df5c2f1c36d21c0ee236b50b90b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-2-execution.json",
+    "sha256": "3eceeaeacdebb97fe8fd2bace9152dbdaec31e161e6ab165c04a5e7c311abbca",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-8.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/connection-A.json",
+    "sha256": "a22410f401e9932ec3b8aa404f6d184c5a8ec53a7fbc59efc3df4c25f242619c",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-3-execution.json",
+    "sha256": "bc0522d0cdc60dd2bcd9599d0d9237e0908c1e29499b801c690f6d54783040c5",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-9.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-11-execution.json",
+    "sha256": "324a0166e494738b9fe3cc5ad91ad21d92f091ea486d09e510207e037486633c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/upper-A.json",
+    "sha256": "adb15176acfe7cb0e3fb1df83a68377f1d39ab3163ec240b3ca42abe58674ff2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-5.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/focused-4-execution.json",
+    "sha256": "3c342e672c25cfcd17e69e7e882eed429678f34bdab4cfc5f68be9c722291af8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-6.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/clean-kernel-execution.json",
+    "sha256": "813e6fd2c49e5c026748e68d3a3ba9a1bffe63eba8ed75afb04aaa911d611a1d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/manifest.json",
+    "sha256": "fff36469cac0abbd3271f980f9432944a3d9a0f6dbf21312e74bb90f65a4ec6a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/connection-A-rollback.json",
+    "sha256": "fb8a6990c478da45b964f50f4099c6b66154598f19195bd0876c27a00de476b4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-7.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/component-attempt-execution.json",
+    "sha256": "1268ece68ddde6a5586823d46c7a35c6d82378d13cc4866865b3c48f1e240d0b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-0.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-11.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/binary.json",
+    "sha256": "fb4b570b7f274272b353e70c5b8fe136cdbeb802d7d1ec6873ef4cffa2eebe34",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-10.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/discovery-1.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/closure-A.json",
+    "sha256": "8d8f8166eace573af6791f068425f6a571d1896818b8ac4b442487ca4e5793f2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/build-execution.json",
+    "sha256": "efb35a432060dc25c6f0e4d10a976aa8d9539f85b15534af10ff8e085d21f7c7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/closure-A-rollback.json",
+    "sha256": "26d714c5bea623d3bcdcfd9c15bebaa1211af6ac53caf44a7fd0c0f186a6c4ff",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/lower-A.json",
+    "sha256": "289b437e8f79de0881819b52004872861050cdc9c114aad7958f666bd4085802",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/discovery-2.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/focused-1-execution.json",
+    "sha256": "b3a0d6ba2e6521153eeb78c4c33841a89983e7f9894607b82c0e413808fa6cfc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/focused-0-execution.json",
+    "sha256": "43366c2beb514a83cbb1ac58458ab69a85c514a3d70da4b8ff84fe0067ade154",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/discovery-3.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/focused-2-execution.json",
+    "sha256": "5e83629c92ac1e780d0365bab8ca62c27d135256dc587dc6c64d64c91f1c59c6",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/connection-A.json",
+    "sha256": "a22410f401e9932ec3b8aa404f6d184c5a8ec53a7fbc59efc3df4c25f242619c",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/focused-3-execution.json",
+    "sha256": "45eb0ee8aa67b3b2dcbe24130da9e390ae34169a7591053fc147cb28879d5ce0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/upper-A.json",
+    "sha256": "e8752728e14205b5f0b7343b71af3dbac6b449722b016f91a609489888116aff",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/clean-kernel-execution.json",
+    "sha256": "20a18a58808de926e6dc469689ff389afe4978ffb8ce64a27b86517a50f77ebe",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/manifest.json",
+    "sha256": "2cd14cbd8e7d65b24087985c6a6b575f0f3d6bfb7d64d91b8961b9e76c45d70b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/connection-A-rollback.json",
+    "sha256": "fb8a6990c478da45b964f50f4099c6b66154598f19195bd0876c27a00de476b4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/discovery-0.json",
+    "sha256": "564676d65d2057e8025a7771e1a0e29d69dd59b8d241fceb952cdf50ea9bd11f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/binary.json",
+    "sha256": "fd8979bcd2eff3f003afe6a0789995f23951d3ec1b8b82125f0c3d1da303289b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/discovery-1.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/closure-A.json",
+    "sha256": "8d8f8166eace573af6791f068425f6a571d1896818b8ac4b442487ca4e5793f2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/A-1991/build-execution.json",
+    "sha256": "efc4b2ee82030bf49e0d3168237d87e74a8447bdc3968a39dd75643618797b0f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-1991/focused-0-execution.json",
+    "sha256": "1facb45b1d4fa931e1b06068533a584550b28f92410ac789ef4686c49bf6201d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-1991/clean-kernel-execution.json",
+    "sha256": "825c89dc13106b2532fc81b69dc88bfd48f0c61e3b379d5c6ee334f1ad341ce9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-1991/manifest.json",
+    "sha256": "1648a5ee2be0a3548d407005378c33e541c97e7f3e53f989fd5ce6ae680fe2be",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-1991/discovery-0.json",
+    "sha256": "fed7c24d1699eb6be5144c0f4d3994fa9923750f33fcc038db60c0a15c095267",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-1991/binary.json",
+    "sha256": "116e52269ebbf50e31cf8af204ee08df9283570a3f2b8d2e93c2bdc6aa3d4654",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-1991/lower-B.json",
+    "sha256": "4e43439ec489cae37eae10c08a177b138ef34a4a7197644448c8bac07a3e1482",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-1991/build-execution.json",
+    "sha256": "0d23c2b234ee356bdc344af0bc029497a548c105face718946a4d4eede57e184",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/closure-A-rollback.json",
+    "sha256": "26d714c5bea623d3bcdcfd9c15bebaa1211af6ac53caf44a7fd0c0f186a6c4ff",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-13-execution.json",
+    "sha256": "fd32a51f48645aae0b40d8657f3b9584371608285594eebe4531bca73484d351",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-6-execution.json",
+    "sha256": "733faefe6c30470e88c83f19614d17fd5499edc6250b5be0998bbad3f548f4ae",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/repair-B.json",
+    "sha256": "33752f8ea304e66d6dc210bede007b5cc3f5ae5c9e4260d897bc1a27aa4f63e2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-9-execution.json",
+    "sha256": "bd2d88e8e8099833f1c5593e95c4810a8b6daf94da8d51d16510952da6607919",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/lower-A.json",
+    "sha256": "b4a47676c6eb89489aec3422ebf118240496e255b7622310aaf15a747b5e7b8c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-13.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-2.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-1-execution.json",
+    "sha256": "27778ca7a1bf668cc859dc1a5be757abe3ad7cfba24d7dfb50f63d63a709fd1c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-0-execution.json",
+    "sha256": "c5a9722bccfcf2af5488bb8187f8b858adb1e66acbfab34547c9f45ec6eef1a4",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-3.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-8-execution.json",
+    "sha256": "73ce14e093ed8748e7baedddc4a296202deb8ea369b09f728aeaf0b4cb0c4ac8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-12.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/source-preflight.json",
+    "sha256": "206fa606be9898b01b3bb1ec38ee462af6957e650fc88976287d5473920c3999",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/lower-B-association.json",
+    "sha256": "d1b52ed48c140e647b02beb0d5f21244b2ead7850be84633c3f44c4f422340cb",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-7-execution.json",
+    "sha256": "ed15a7f5ac348e1fd14332fa23e5f942ca98037ba57bf9ae5545bed0105e63f9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-12-execution.json",
+    "sha256": "2b74debb15cf6bcea037d98fabe6bbbd7f348addf350ff52f2499a6faa67df46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-5-execution.json",
+    "sha256": "e4fd3ae1d6ebba0e5f498d5bdf69c735df06ac63abb9a02434b57c1173da7b51",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-4.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-10-execution.json",
+    "sha256": "1e8868ca23715d6f9deb7c887c6596a63b75f9e63af2969494ceb23b38a99806",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-2-execution.json",
+    "sha256": "62eebd3b95e48bf181469d9dfdbe834a97c7410b29c60daed4f06b3497b23d5f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-8.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/connection-A.json",
+    "sha256": "a22410f401e9932ec3b8aa404f6d184c5a8ec53a7fbc59efc3df4c25f242619c",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-3-execution.json",
+    "sha256": "6610fe7a2a02b6bd26affa20149533a711e670e1597f1ad34f510708386be80d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-9.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/library-check-execution.json",
+    "sha256": "6526e45bc53f4ff8a62fe60ea0c5d7407e00bcb7e99a514060a56ce70b01231a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-11-execution.json",
+    "sha256": "47a43f13f0798f0295b93cf751cfe442516151f66675419ae0906588477401f3",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/upper-A.json",
+    "sha256": "cd545e9c4e7de8ec428222af2fa9f1ed21f66691152eb6cfe569a9058e6e080b",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-5.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/focused-4-execution.json",
+    "sha256": "3e2c9f9bb9d1f72188cb21ce1a62bb206a8d319b3becd3d5926f546e2d0fbfbd",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-6.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/clean-kernel-execution.json",
+    "sha256": "bd5b5e7973334177f3f7e9d0d81f5d9c7ae353d7ad7752b3bbae93601805074d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/manifest.json",
+    "sha256": "dd05693c6509e71effc058a5d59ef8e8c8bdff4e4d0ba03121c90540a19a4a98",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/connection-A-rollback.json",
+    "sha256": "fb8a6990c478da45b964f50f4099c6b66154598f19195bd0876c27a00de476b4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-7.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-0.json",
+    "sha256": "564676d65d2057e8025a7771e1a0e29d69dd59b8d241fceb952cdf50ea9bd11f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-11.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/binary.json",
+    "sha256": "327f1214d9fbe38f79c193b1a0588d6e1a4e191e84ac7bd61a0c68445fef46c5",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/lower-B.json",
+    "sha256": "3bc9407957e6ca15db714eee85533f580ed705699b6deca037c2e32f7937638f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-10.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/discovery-1.json",
+    "sha256": "d6d1c4f24b808c25140a71894a297acafe4a29283845add9fa58cece6c6051f7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/closure-A.json",
+    "sha256": "8d8f8166eace573af6791f068425f6a571d1896818b8ac4b442487ca4e5793f2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/B-associated-1991/build-execution.json",
+    "sha256": "0d7296a8e51b7c55449915d7803c7db354ed7d1db81201148eeb5aaeb898838b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/closure-A-rollback.json",
+    "sha256": "26d714c5bea623d3bcdcfd9c15bebaa1211af6ac53caf44a7fd0c0f186a6c4ff",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-6-execution.json",
+    "sha256": "1df52bcdd25bc2337f37b7019f9c4b2619cf0faff2b36e143d113e0ac5902271",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/repair-B.json",
+    "sha256": "33752f8ea304e66d6dc210bede007b5cc3f5ae5c9e4260d897bc1a27aa4f63e2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-9-execution.json",
+    "sha256": "d80dcb9ffa282e05d93bf92d65e6b2c85272a756f0892f38feaf83ec0c33ac6c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-2.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-1-execution.json",
+    "sha256": "7ca6904a2a54749b4cd164db15aefe08eeaeb6555f7c117d00d42fc8a9fd94a4",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-0-execution.json",
+    "sha256": "7996c58663b48c5d59520c0e7165a83f8a02cc6ebedf0c15d3d0080f759352f0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-3.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-8-execution.json",
+    "sha256": "4fa1d3183214e80fd0e6c6d5d782f83a8453416b800df29f02a04e10022a3578",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-12.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/source-preflight.json",
+    "sha256": "2579f40bb1d173121161fe5c4568b269ae18785f626350e1d6827b3466c65edf",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-7-execution.json",
+    "sha256": "d3cde4eb73e4d498e8edc049321518747fac381e8db7743586c4a4253b603cd9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-12-execution.json",
+    "sha256": "fb8c5fea2ffd7cfcb593c4a7af6389c44b4d81b45df567182649faad5b4811c9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-5-execution.json",
+    "sha256": "fded3749753f15fa817cc64f9eb5facfa183a5b52fd8645a537069d76dce7fc7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-4.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/component-attempt.json",
+    "sha256": "256f21d471d2454ce26625d397d93792e59a05df05d3159637d419f2991672ac",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-10-execution.json",
+    "sha256": "692a8c57bb7bb9b4a82df0889a9b6eb2e3f63f4c9a9ca289a9622026487bd87b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-2-execution.json",
+    "sha256": "f54d40178abafe9f94aed81eb77f95f50484af327519fbce5302e75e4bf1cec3",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-8.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/connection-A.json",
+    "sha256": "a22410f401e9932ec3b8aa404f6d184c5a8ec53a7fbc59efc3df4c25f242619c",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-3-execution.json",
+    "sha256": "3f5e377eae0928b4229fb65b83caee2023f882d60e6f8b018a5a32a4eb6fff9a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-9.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/library-check-execution.json",
+    "sha256": "b2a89f22785606301cd4ab50066f1520f52e1a1eccc2f742a687c3fa8fd1e86e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-11-execution.json",
+    "sha256": "98fc7479501b47f7e296bf29fa777803721b97c824063374668acdc2433a941f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/upper-A.json",
+    "sha256": "2e1d63afe1d455fe8770408b7aaa3ea5f5cc920582971eaff6e32ea970cc2b93",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-5.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/focused-4-execution.json",
+    "sha256": "61714c5b15702165a3cdf19921c14cfa94b137088fba93d7800c74a05ac06463",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-6.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/clean-kernel-execution.json",
+    "sha256": "06c33b3e8240c8a937ca6b5b9735cf591add19aa45fe305c7bd08b6543266a20",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/manifest.json",
+    "sha256": "5109b4dd452351f7ab8b2e382fbc187772b3972f8b35a0aebd41f88d937604fd",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/connection-A-rollback.json",
+    "sha256": "fb8a6990c478da45b964f50f4099c6b66154598f19195bd0876c27a00de476b4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-7.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/component-attempt-execution.json",
+    "sha256": "50a36a2363d2087d7895090d9139e431bac01c752b745b5442b1193a2eb36628",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-0.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-11.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/lower-C.json",
+    "sha256": "20ad49013603597b9bffbc4f87925ff24517625e9c27c01936ad1a098b65f491",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/binary.json",
+    "sha256": "3895a572506592bda24d1bb1ac32fc3145260ac8b41a5476d42bd9e7e01f4017",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-10.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/discovery-1.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/closure-A.json",
+    "sha256": "8d8f8166eace573af6791f068425f6a571d1896818b8ac4b442487ca4e5793f2",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/C-1991/build-execution.json",
+    "sha256": "d584138c6a03821659708443e30af10908e548c5096ecc3cd6d32cf87829e4f6",
+    "archived": true
+  }
+]

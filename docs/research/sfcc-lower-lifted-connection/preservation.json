@@ -1,0 +1,30 @@
+[
+  {
+    "packet": "A",
+    "executedInputs": 174,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 4
+  },
+  {
+    "packet": "B-initial",
+    "executedInputs": 173,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 2
+  },
+  {
+    "packet": "B-associated",
+    "executedInputs": 175,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 5
+  },
+  {
+    "packet": "C",
+    "executedInputs": 173,
+    "sourceAndBinaryMatch": true,
+    "restoredFromParentPatch": true,
+    "changedFiles": 6
+  }
+]

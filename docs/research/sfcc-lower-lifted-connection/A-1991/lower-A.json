@@ -1,0 +1,379 @@
+{
+  "aRangeHex": [
+    "bf847ae147ae147b",
+    "0000000000000000"
+  ],
+  "coordinateJacobianAbsoluteLowerHex": "3fe1d9a1e0626148",
+  "explicitNeighbourhoodRadiusProved": false,
+  "featureFingerprint": "6620945114087557251",
+  "floatingQueryTotalityProved": false,
+  "grooveEdge": 2,
+  "heightDerivativeAbsoluteLowerHex": "3ffde5722d963be9",
+  "imageHex": [
+    [
+      "c022c5e9f2977015",
+      "c00415f60c6ebab4",
+      "401570c86fe7719a"
+    ],
+    [
+      "c022961d0a2fe2a1",
+      "c003efb1a33e9e2d",
+      "4015dce33a4d09a0"
+    ]
+  ],
+  "liftedIdentities": [
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": {
+            "kind": "Child(0)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "1032fd250"
+        }
+      ],
+      "field": {
+        "branch": {
+          "kind": "Child(0)",
+          "nativeBandHex": "3e997a9ab0c2db32",
+          "path": [
+            0,
+            0,
+            0
+          ]
+        },
+        "partners": [
+          1,
+          18446744073709551615,
+          1
+        ],
+        "path": [],
+        "rootAddressProcessLocal": "1032fd250"
+      },
+      "id": 38,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": {
+            "kind": "Child(1)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "1032fd250"
+        }
+      ],
+      "field": {
+        "branch": {
+          "kind": "Child(1)",
+          "nativeBandHex": "3e997a9ab0c2db32",
+          "path": [
+            0,
+            0,
+            0
+          ]
+        },
+        "partners": [
+          1,
+          18446744073709551615,
+          1
+        ],
+        "path": [],
+        "rootAddressProcessLocal": "1032fd250"
+      },
+      "id": 39,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    }
+  ],
+  "liftedPair": [
+    38,
+    39
+  ],
+  "localPhysicalRayCount": 4,
+  "localSourceFormula": "max(E,C,w*(E+g),w*(C+g)); g=G+r; w=represented FRAC_1_SQRT_2",
+  "marginOrder": [
+    "profile nearest edge",
+    "native cap",
+    "cylinder cap",
+    "groove projection interval",
+    "other groove edges",
+    "inner round competitor",
+    "cap cutter",
+    "outer sphere"
+  ],
+  "marginsLowerHex": [
+    "3fe3069863e9b44f",
+    "4019eac78924cb9a",
+    "401deac78924cb9a",
+    "3fdf17a65795157b",
+    "3fefffffffffffe0",
+    "3fda5475a69393f3",
+    "401df7d8d19f4f15",
+    "40089ccec90c1143"
+  ],
+  "matchingCurves": [
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84
+  ],
+  "numericalTraceConnectionProved": false,
+  "samples": [
+    {
+      "aHex": "bf847ae147ae147b",
+      "fullScalarHex": "3ce2000000000000",
+      "imageHex": [
+        [
+          "c022a42a3a5ec5e7",
+          "c00415f60c6ebab4",
+          "4015be71513022cb"
+        ],
+        [
+          "c022a42a3a5ec587",
+          "c00415f60c6ebaa2",
+          "4015be715130238e"
+        ]
+      ],
+      "liftedScalarsHex": [
+        "3cd007ca1d6df535",
+        "3c99aa04d4b13443"
+      ],
+      "pointHex": [
+        "c022a42a3a5ec5b7",
+        "c00415f60c6ebaab",
+        "4015be715130232c"
+      ]
+    },
+    {
+      "aHex": "bf7eb851eb851eb8",
+      "fullScalarHex": "bcde000000000000",
+      "imageHex": [
+        [
+          "c022a914f09961e7",
+          "c0040c64f222b398",
+          "4015b2a4754e9008"
+        ],
+        [
+          "c022a914f0996182",
+          "c0040c64f222b385",
+          "4015b2a4754e90d6"
+        ]
+      ],
+      "liftedScalarsHex": [
+        "bccab71ec6add233",
+        "bce0d7932b944a4d"
+      ],
+      "pointHex": [
+        "c022a914f09961b4",
+        "c0040c64f222b38e",
+        "4015b2a4754e906f"
+      ]
+    },
+    {
+      "aHex": "bf747ae147ae147b",
+      "fullScalarHex": "3ca0000000000000",
+      "imageHex": [
+        [
+          "c022adfdc857a1f6",
+          "c00402d3d7d6ac7b",
+          "4015a6d374685a48"
+        ],
+        [
+          "c022adfdc857a196",
+          "c00402d3d7d6ac69",
+          "4015a6d374685b0c"
+        ]
+      ],
+      "liftedScalarsHex": [
+        "3c8c7e7f5c183938",
+        "bcb9aa04d4b13443"
+      ],
+      "pointHex": [
+        "c022adfdc857a1c6",
+        "c00402d3d7d6ac72",
+        "4015a6d374685aaa"
+      ]
+    },
+    {
+      "aHex": "bf647ae147ae147b",
+      "fullScalarHex": "3ce3000000000000",
+      "imageHex": [
+        [
+          "c022b2e4c0c3a2b4",
+          "c003f942bd8aa55b",
+          "40159afe4fadd6ec"
+        ],
+        [
+          "c022b2e4c0c3a24e",
+          "c003f942bd8aa549",
+          "40159afe4fadd7bb"
+        ]
+      ],
+      "liftedScalarsHex": [
+        "bcc006d6700383a0",
+        "3cde79e5bc926e10"
+      ],
+      "pointHex": [
+        "c022b2e4c0c3a281",
+        "c003f942bd8aa552",
+        "40159afe4fadd754"
+      ]
+    },
+    {
+      "aHex": "0000000000000000",
+      "fullScalarHex": "3ce2000000000000",
+      "imageHex": [
+        [
+          "c022b7c9d907b167",
+          "c003efb1a33e9e3f",
+          "40158f2508500293"
+        ],
+        [
+          "c022b7c9d907b101",
+          "c003efb1a33e9e2d",
+          "40158f2508500364"
+        ]
+      ],
+      "liftedScalarsHex": [
+        "bcb1ce5b2d2692b7",
+        "3cdcdf456f475acc"
+      ],
+      "pointHex": [
+        "c022b7c9d907b134",
+        "c003efb1a33e9e36",
+        "40158f25085002fc"
+      ]
+    }
+  ],
+  "scope": "bounded lower ideal source interval plus existence of a local four-ray source star; no numerical trace attachment",
+  "sourceIdentities": [
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "rootAddressProcessLocal": "1032d0ae0"
+        }
+      ],
+      "field": null,
+      "id": 10,
+      "leafIndex": 1,
+      "localIndex": 3,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "rootAddressProcessLocal": "1032d0ae0"
+        }
+      ],
+      "field": {
+        "branch": null,
+        "partners": [],
+        "path": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "rootAddressProcessLocal": "1032d0ae0"
+      },
+      "id": 30,
+      "leafIndex": 18446744073709551615,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    },
+    {
+      "compoundPresent": false,
+      "compoundTermsIncluded": false,
+      "domain": [
+        {
+          "branch": null,
+          "partners": [],
+          "path": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rootAddressProcessLocal": "1032d0ae0"
+        }
+      ],
+      "field": null,
+      "id": 15,
+      "leafIndex": 2,
+      "localIndex": 0,
+      "ownerNodeId": -1,
+      "signHex": "3ff0000000000000"
+    }
+  ],
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ],
+  "wholeComponentAccepted": false
+}

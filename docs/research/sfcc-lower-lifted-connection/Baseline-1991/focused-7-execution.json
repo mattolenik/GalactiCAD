@@ -1,0 +1,13 @@
+{
+  "step": "focused-7",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/kernel-tests",
+    "stage4_c_source_reidentification_and_clone_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 37.57982354197884,
+  "elapsedSeconds": 1.097911250020843,
+  "exitCode": 0,
+  "timedOut": false
+}

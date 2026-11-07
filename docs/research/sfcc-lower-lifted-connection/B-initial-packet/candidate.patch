@@ -1,0 +1,226 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -407,3 +407,7 @@
+ 
+ #[path="upper_source_a.rs"]
+ pub(crate) mod upper_source_a;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "lower_b_tests.rs"]
++mod lower_b_tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_b_tests.rs
+@@ -0,0 +1,213 @@
++//! Independent diagnostics: sampled source equality is not interval/attachment authority.
++use super::*;
++use crate::sfcc::feature_set::{compile_feature_set, SfccFeatureSet};
++use serde_json::{json, Value};
++
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
++    (a[0] - b[0]).hypot(a[1] - b[1]).hypot(a[2] - b[2])
++}
++fn roles(f: &SfccFeatureSet) -> [usize; 3] {
++    let find = |path: Value, field: bool, local: usize| {
++        f.strata
++            .iter()
++            .find(|s| {
++                s.local_index == local
++                    && s.graph_capture_identity_b().is_some_and(|d| {
++                        if field {
++                            d["field"]["path"] == path
++                        } else {
++                            d["field"].is_null() && d["domain"][0]["path"] == path
++                        }
++                    })
++            })
++            .unwrap()
++            .id
++    };
++    [
++        find(json!([0, 0, 0, 0, 1]), false, 3),
++        find(json!([0, 0, 0, 0]), true, 0),
++        find(json!([0, 0, 0, 1]), false, 0),
++    ]
++}
++
++#[test]
++fn lower_b_source_star_and_actual_lifted_frontier() {
++    let fixture: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(fixture["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let size =
++        fixture["cube"]["max"][0].as_f64().unwrap() - fixture["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        3_f64.sqrt() * size,
++    );
++    let (f, _) = compile_feature_set(&root, &tol);
++    let source = roles(&f);
++    let old: Value =
++        serde_json::from_str(include_str!("../../fixtures/exposure-b-baseline.json")).unwrap();
++    let expected = std::array::from_fn(|k| {
++        f64::from_bits(
++            u64::from_str_radix(old["lowerJoint"]["pointHex"][k].as_str().unwrap(), 16).unwrap(),
++        )
++    });
++    let junction =
++        junction::prove_junction(&root, &f.strata, source, expected, tol.curve_eps * 8.).unwrap();
++    let branch = branch_at(&f.strata, source[0], source[1], source[2], expected).unwrap();
++    let corner = f
++        .corners
++        .iter()
++        .find(|c| dist([c.x, c.y, c.z], expected) < tol.curve_eps * 8.)
++        .unwrap();
++    let registered = f.strata[source[0]].exposure_root_a().unwrap();
++    let (cap_cut, _, _) = pair(registered, Some((BlendKind::Smax, SminMode::Round))).unwrap();
++    let (groove_cut, _, _) = pair(cap_cut, None).unwrap();
++    let (_, groove_node, r) = pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).unwrap();
++    let groove = leaf(groove_node, -1.).unwrap();
++    let Shape::Lathe { edges } = &groove.shape else {
++        panic!()
++    };
++    let edge = edges[junction.groove_edge];
++    let orientation = crate::sfcc::predicates::orient2d(
++        [edges[0].r0, edges[0].y0],
++        [edges[1].r0, edges[1].y0],
++        [edges[2].r0, edges[2].y0],
++    ) as f64;
++    let dr = edge.r1 - edge.r0;
++    let dy = edge.y1 - edge.y0;
++    let length = dr.hypot(dy);
++    let nr = orientation * dy / length;
++    let ny = -orientation * dr / length;
++    let p = branch.p;
++    // E,C,g are local field coordinates, with g=G+r and G the negative groove field.
++    let point = |[e, c, g]: [f64; 3]| {
++        let rho = branch.cylinder.2 + c;
++        let v = p.v0z + e * p.nz2;
++        let u = branch.sign as f64 * (rho * rho - v * v).sqrt();
++        let y = groove.pos[1] + edge.y0 + ((r - g) - nr * (rho - edge.r0)) / ny;
++        let theta = (y - p.pos_y + p.h) / (2. * p.h) * p.twist_rad;
++        let (sn, cs) = theta.sin_cos();
++        [p.pos_x + u * cs - v * sn, y, p.pos_z + u * sn + v * cs]
++    };
++    let (_, native, _, _) = f.strata[source[0]]
++        .round_twisted_source(&f.strata[source[1]])
++        .unwrap();
++    let cylinder = f.strata[source[2]]
++        .correlated_cylinder_source_c(&f.strata[source[0]])
++        .unwrap();
++    let lifted: [usize; 2] = std::array::from_fn(|child| {
++        f.strata
++            .iter()
++            .find(|s| {
++                s.upper_round_child_matches(&f.strata[source[1]], &f.strata[source[2]], child)
++            })
++            .unwrap()
++            .id
++    });
++    let mut sample_rows = Vec::new();
++    for q in [0., 1e-6, 0.001, 0.01] {
++        for (ray, levels) in [
++            ("native", [0., 0., -q]),
++            ("native_chamfer", [0., -q, 0.]),
++            ("cylinder_chamfer", [-q, 0., 0.]),
++            ("lifted", [-q, -q, q]),
++        ] {
++            let x = point(levels);
++            let actual = [native.f(x), cylinder.f(x), groove.f(x) + r];
++            let values = [
++                actual[0],
++                actual[1],
++                (actual[0] + actual[2]) * std::f64::consts::FRAC_1_SQRT_2,
++                (actual[1] + actual[2]) * std::f64::consts::FRAC_1_SQRT_2,
++            ];
++            let full = root.f(x);
++            sample_rows.push(json!({"ray":ray,"qHex":hex(q),"pointHex":x.map(hex),"requestedLevelsHex":levels.map(hex),"actualLevelsHex":actual.map(hex),"fourFacetValuesHex":values.map(hex),"fullFieldHex":hex(full),"liftedFieldsHex":lifted.map(|id|hex(f.strata[id].f(x[0],x[1],x[2]))),"liftedOwnership":lifted.map(|id|f.strata[id].domain_contains(x,tol.curve_eps))}));
++            assert!(
++                actual
++                    .iter()
++                    .zip(levels)
++                    .all(|(a, b)| (a - b).abs() < 1e-10),
++                "actual finite source fields must match proposed local coordinates"
++            );
++            assert!(
++                full.abs() < 1e-10,
++                "actual composed source must vanish at every sampled ray point"
++            );
++        }
++    }
++    let event = point([0.; 3]);
++    assert!(dist(event, expected) < tol.curve_eps * 8.);
++    let mut curves = Vec::new();
++    for c in f.curves.iter().filter(|c| {
++        let mut a = c.adjacent_strata;
++        let mut b = lifted;
++        a.sort();
++        b.sort();
++        a == b
++    }) {
++        let Some(end) = c.point_at_checked(c.t_max) else {
++            continue;
++        };
++        if dist(end, event) > 0.1 {
++            continue;
++        }
++        let mut samples = Vec::new();
++        for i in 0..=32 {
++            let t = c.t_max - 1. + i as f64 / 32.;
++            let actual = c.point_at_checked(t);
++            samples.push(json!({"parameterHex":hex(t),"pointHex":actual.map(|x|x.map(hex)),"sourceCoordinatesHex":actual.map(|x|[native.f(x),cylinder.f(x),groove.f(x)+r].map(hex)),"fullFieldHex":actual.map(|x|hex(root.f(x)))}));
++        }
++        let e = native.f(end);
++        let predicted = point([e, e, -e]);
++        curves.push(json!({"chart":c.id,"sourcePair":c.adjacent_strata,"rangeHex":[hex(c.t_min),hex(c.t_max)],"cornerEnds":[c.corner_start,c.corner_end],"eventDistanceHex":hex(dist(end,event)),"analyticAssociationHex":hex(dist(end,predicted)),"endSourceEHex":hex(e),"declaredAtLowerCorner":corner.curve_ends.iter().any(|&(id,_)|id==c.id),"lastSpanQueries":samples}));
++    }
++    let report = json!({"scope":"independent sampled finite-source and actual frontier diagnostic; no interval theorem or attachment authority","featureFingerprint":f.fingerprint().to_string(),"sourceRoles":source,"sourceIdentities":source.map(|id|f.strata[id].graph_capture_identity_b()),"liftedSourcePair":lifted,"liftedIdentities":lifted.map(|id|f.strata[id].graph_capture_identity_b()),"junctionImage":junction.image,"eventHex":event.map(hex),"corner":{"id":corner.id,"ends":corner.curve_ends,"strata":corner.strata},"normalHex":[hex(nr),hex(ny)],"samples":sample_rows,"nearbyLiftedEnds":curves});
++    std::fs::write(
++        std::env::var("SFCC_LOWER_B_RECEIPT").expect("root receipt path required"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++    assert_eq!(
++        curves.len(),
++        1,
++        "exact source family has one lower nearby unresolved end in this fixture"
++    );
++    assert_eq!(
++        curves[0]["declaredAtLowerCorner"],
++        json!(false),
++        "captured compiler omits required lifted incidence"
++    );
++}
++
++#[test]
++fn lower_b_four_facet_star_has_four_and_only_four_rays() {
++    let w = std::f64::consts::FRAC_1_SQRT_2;
++    let normals = [[1., 0., 0.], [0., 1., 0.], [w, 0., w], [0., w, w]];
++    let cross = |a: [f64; 3], b: [f64; 3]| {
++        [
++            a[1] * b[2] - a[2] * b[1],
++            a[2] * b[0] - a[0] * b[2],
++            a[0] * b[1] - a[1] * b[0],
++        ]
++    };
++    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
++    let mut pairs = Vec::new();
++    for i in 0..4 {
++        for j in i + 1..4 {
++            let axis = cross(normals[i], normals[j]);
++            for sign in [-1., 1.] {
++                let ray = axis.map(|x| x * sign);
++                if normals.iter().all(|&n| dot(n, ray) <= 0.) {
++                    pairs.push([i, j]);
++                }
++            }
++        }
++    }
++    assert_eq!(pairs, vec![[0, 1], [0, 2], [1, 3], [2, 3]]);
++    // For either non-adjacent pair, the other two inequalities force the entire ray to the origin.
++    assert!(!pairs.contains(&[0, 3]) && !pairs.contains(&[1, 2]));
++}

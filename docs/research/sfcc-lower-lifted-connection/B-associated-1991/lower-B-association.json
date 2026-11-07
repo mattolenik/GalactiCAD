@@ -1,0 +1,393 @@
+{
+  "allowanceHex": "3e997a9ab0c2db32",
+  "canonicalSourceLevelRangeHex": [
+    "bfa6d134c9309180",
+    "0000000000000000"
+  ],
+  "chart": 75,
+  "coordinateJacobianMagnitudeLowerHex": "3fe1b90f1ffe8b79",
+  "corner": 13,
+  "eventAssociationUpperHex": "3d4cc85c47b0ff43",
+  "eventPointHex": [
+    "c022b7c9d907b15a",
+    "c003efb1a33e9e36",
+    "40158f2508500325"
+  ],
+  "featureFingerprint": "6620945114087557251",
+  "heightDerivativeMagnitudeLowerHex": "3ffde5722d963be9",
+  "joinAssociationUpperHex": "3e29b1e203febaf8",
+  "joinPointHex": [
+    "c0225f718d3aa065",
+    "c0049a3b36265392",
+    "40165fec46d7587e"
+  ],
+  "nativeNormalSignHex": "3ff0000000000000",
+  "oldEndpoint": {
+    "eventDistanceHex": "3ef15b1b34bcfc7a",
+    "pointHex": [
+      "c022b7c8878a6b96",
+      "c003efb437578dcc",
+      "40158f283a6af4fc"
+    ],
+    "sourceAssociationUpperHex": "3dc8cb089ab727f8",
+    "sourceLevelHex": "bec61464eea00000"
+  },
+  "originalLastSpanHex": [
+    "4028000000000000",
+    "402a000000000000"
+  ],
+  "runtimeAttachmentInstalled": false,
+  "samples": [
+    {
+      "fullFieldHex": "bcd6000000000000",
+      "pointHex": [
+        "c0225f718d2a0884",
+        "c0049a3b364da766",
+        "40165fec46f94bfe"
+      ],
+      "replacementFractionHex": "0000000000000000",
+      "sourceLevelHex": "bfa6d134c9309180"
+    },
+    {
+      "fullFieldHex": "3cde000000000000",
+      "pointHex": [
+        "c022623d29dfafc6",
+        "c00494e6e9b52f1a",
+        "4016597a2d87f2ba"
+      ],
+      "replacementFractionHex": "3fa0000000000000",
+      "sourceLevelHex": "bfa61aab22e70cf4"
+    },
+    {
+      "fullFieldHex": "3cc0000000000000",
+      "pointHex": [
+        "c022650835d3519e",
+        "c0048f929d1cb6d0",
+        "40165306c5a8bffe"
+      ],
+      "replacementFractionHex": "3fb0000000000000",
+      "sourceLevelHex": "bfa564217c9d8868"
+    },
+    {
+      "fullFieldHex": "3cf0800000000000",
+      "pointHex": [
+        "c02267d2b0df7d1c",
+        "c0048a3e50843e88",
+        "40164c920f8eaab8"
+      ],
+      "replacementFractionHex": "3fb8000000000000",
+      "sourceLevelHex": "bfa4ad97d65403dc"
+    },
+    {
+      "fullFieldHex": "3cc0000000000000",
+      "pointHex": [
+        "c0226a9c9adec5d3",
+        "c00484ea03ebc63e",
+        "4016461c0b6cba0c"
+      ],
+      "replacementFractionHex": "3fc0000000000000",
+      "sourceLevelHex": "bfa3f70e300a7f50"
+    },
+    {
+      "fullFieldHex": "bca0000000000000",
+      "pointHex": [
+        "c0226d65f3abc3da",
+        "c0047f95b7534df6",
+        "40163fa4b976056b"
+      ],
+      "replacementFractionHex": "3fc4000000000000",
+      "sourceLevelHex": "bfa3408489c0fac4"
+    },
+    {
+      "fullFieldHex": "3cda000000000000",
+      "pointHex": [
+        "c022702ebb2113d4",
+        "c0047a416abad5ab",
+        "4016392c19ddb481"
+      ],
+      "replacementFractionHex": "3fc8000000000000",
+      "sourceLevelHex": "bfa289fae3777638"
+    },
+    {
+      "fullFieldHex": "3cb0000000000000",
+      "pointHex": [
+        "c02272f6f11956e4",
+        "c00474ed1e225d63",
+        "401632b22cd6ff3e"
+      ],
+      "replacementFractionHex": "3fcc000000000000",
+      "sourceLevelHex": "bfa1d3713d2df1ac"
+    },
+    {
+      "fullFieldHex": "3ce2000000000000",
+      "pointHex": [
+        "c02275be956f32c1",
+        "c0046f98d189e518",
+        "40162c36f2952dc4"
+      ],
+      "replacementFractionHex": "3fd0000000000000",
+      "sourceLevelHex": "bfa11ce796e46d20"
+    },
+    {
+      "fullFieldHex": "bce7000000000000",
+      "pointHex": [
+        "c0227885a7fd51a6",
+        "c0046a4484f16cd0",
+        "401625ba6b4b9878"
+      ],
+      "replacementFractionHex": "3fd2000000000000",
+      "sourceLevelHex": "bfa0665df09ae894"
+    },
+    {
+      "fullFieldHex": "3ca0000000000000",
+      "pointHex": [
+        "c0227b4c289e6266",
+        "c00464f03858f486",
+        "40161f3c972da7fc"
+      ],
+      "replacementFractionHex": "3fd4000000000000",
+      "sourceLevelHex": "bf9f5fa894a2c810"
+    },
+    {
+      "fullFieldHex": "3cc4000000000000",
+      "pointHex": [
+        "c0227e12172d185c",
+        "c0045f9bebc07c3b",
+        "401618bd766ed51a"
+      ],
+      "replacementFractionHex": "3fd6000000000000",
+      "sourceLevelHex": "bf9df295480fbef8"
+    },
+    {
+      "fullFieldHex": "3cc4000000000000",
+      "pointHex": [
+        "c02280d773842b74",
+        "c0045a479f2803f3",
+        "4016123d0942a8ea"
+      ],
+      "replacementFractionHex": "3fd8000000000000",
+      "sourceLevelHex": "bf9c8581fb7cb5e0"
+    },
+    {
+      "fullFieldHex": "3cc0000000000000",
+      "pointHex": [
+        "c022839c3d7e5835",
+        "c00454f3528f8ba8",
+        "40160bbb4fdcbca0"
+      ],
+      "replacementFractionHex": "3fda000000000000",
+      "sourceLevelHex": "bf9b186eaee9acc8"
+    },
+    {
+      "fullFieldHex": "3cd0000000000000",
+      "pointHex": [
+        "c022866074f65fb4",
+        "c0044f9f05f71360",
+        "401605384a70b9b3"
+      ],
+      "replacementFractionHex": "3fdc000000000000",
+      "sourceLevelHex": "bf99ab5b6256a3b0"
+    },
+    {
+      "fullFieldHex": "bcdc000000000000",
+      "pointHex": [
+        "c022892419c7079e",
+        "c0044a4ab95e9b16",
+        "4015feb3f93259c8"
+      ],
+      "replacementFractionHex": "3fde000000000000",
+      "sourceLevelHex": "bf983e4815c39a98"
+    },
+    {
+      "fullFieldHex": "3cde000000000000",
+      "pointHex": [
+        "c0228be72bcb1a3d",
+        "c00444f66cc622ce",
+        "4015f82e5c5566b3"
+      ],
+      "replacementFractionHex": "3fe0000000000000",
+      "sourceLevelHex": "bf96d134c9309180"
+    },
+    {
+      "fullFieldHex": "3ce4000000000000",
+      "pointHex": [
+        "c0228ea9aadd6671",
+        "c0043fa2202daa83",
+        "4015f1a7740dba6c"
+      ],
+      "replacementFractionHex": "3fe1000000000000",
+      "sourceLevelHex": "bf9564217c9d8868"
+    },
+    {
+      "fullFieldHex": "3cee000000000000",
+      "pointHex": [
+        "c022916b96d8bfb4",
+        "c0043a4dd395323b",
+        "4015eb1f408f3f27"
+      ],
+      "replacementFractionHex": "3fe2000000000000",
+      "sourceLevelHex": "bf93f70e300a7f50"
+    },
+    {
+      "fullFieldHex": "3ca0000000000000",
+      "pointHex": [
+        "c022942cef97fe22",
+        "c00434f986fcb9f0",
+        "4015e495c20def3f"
+      ],
+      "replacementFractionHex": "3fe3000000000000",
+      "sourceLevelHex": "bf9289fae3777638"
+    },
+    {
+      "fullFieldHex": "3cd8000000000000",
+      "pointHex": [
+        "c02296edb4f5fe76",
+        "c0042fa53a6441a8",
+        "4015de0af8bdd530"
+      ],
+      "replacementFractionHex": "3fe4000000000000",
+      "sourceLevelHex": "bf911ce796e46d20"
+    },
+    {
+      "fullFieldHex": "3ce2000000000000",
+      "pointHex": [
+        "c02299ade6cda20a",
+        "c0042a50edcbc95e",
+        "4015d77ee4d30ba8"
+      ],
+      "replacementFractionHex": "3fe5000000000000",
+      "sourceLevelHex": "bf8f5fa894a2c810"
+    },
+    {
+      "fullFieldHex": "bcda000000000000",
+      "pointHex": [
+        "c0229c6d84f9ceda",
+        "c00424fca1335113",
+        "4015d0f18681bd6a"
+      ],
+      "replacementFractionHex": "3fe6000000000000",
+      "sourceLevelHex": "bf8c8581fb7cb5e0"
+    },
+    {
+      "fullFieldHex": "bce3000000000000",
+      "pointHex": [
+        "c0229f2c8f556f8a",
+        "c0041fa8549ad8cb",
+        "4015ca62ddfe2576"
+      ],
+      "replacementFractionHex": "3fe7000000000000",
+      "sourceLevelHex": "bf89ab5b6256a3b0"
+    },
+    {
+      "fullFieldHex": "3cb8000000000000",
+      "pointHex": [
+        "c022a1eb05bb7364",
+        "c0041a5408026080",
+        "4015c3d2eb7c8ed8"
+      ],
+      "replacementFractionHex": "3fe8000000000000",
+      "sourceLevelHex": "bf86d134c9309180"
+    },
+    {
+      "fullFieldHex": "bcc0000000000000",
+      "pointHex": [
+        "c022a4a8e806ce54",
+        "c00414ffbb69e838",
+        "4015bd41af3154c5"
+      ],
+      "replacementFractionHex": "3fe9000000000000",
+      "sourceLevelHex": "bf83f70e300a7f50"
+    },
+    {
+      "fullFieldHex": "bcda000000000000",
+      "pointHex": [
+        "c022a766361278f6",
+        "c0040fab6ed16fee",
+        "4015b6af2950e296"
+      ],
+      "replacementFractionHex": "3fea000000000000",
+      "sourceLevelHex": "bf811ce796e46d20"
+    },
+    {
+      "fullFieldHex": "bcb0000000000000",
+      "pointHex": [
+        "c022aa22efb97090",
+        "c0040a572238f7a6",
+        "4015b01b5a0fb3b9"
+      ],
+      "replacementFractionHex": "3feb000000000000",
+      "sourceLevelHex": "bf7c8581fb7cb5e0"
+    },
+    {
+      "fullFieldHex": "3cf2800000000000",
+      "pointHex": [
+        "c022acdf14d6b715",
+        "c0040502d5a07f5b",
+        "4015a98641a253bd"
+      ],
+      "replacementFractionHex": "3fec000000000000",
+      "sourceLevelHex": "bf76d134c9309180"
+    },
+    {
+      "fullFieldHex": "3ccc000000000000",
+      "pointHex": [
+        "c022af9aa5455321",
+        "c003ffae89080713",
+        "4015a2efe03d5e42"
+      ],
+      "replacementFractionHex": "3fed000000000000",
+      "sourceLevelHex": "bf711ce796e46d20"
+    },
+    {
+      "fullFieldHex": "3ce2000000000000",
+      "pointHex": [
+        "c022b255a0e0500c",
+        "c003fa5a3c6f8ec8",
+        "40159c5836157f13"
+      ],
+      "replacementFractionHex": "3fee000000000000",
+      "sourceLevelHex": "bf66d134c9309180"
+    },
+    {
+      "fullFieldHex": "3cd6000000000000",
+      "pointHex": [
+        "c022b5100782bdd4",
+        "c003f505efd71680",
+        "401595bf435f7206"
+      ],
+      "replacementFractionHex": "3fef000000000000",
+      "sourceLevelHex": "bf56d134c9309180"
+    },
+    {
+      "fullFieldHex": "3ce2000000000000",
+      "pointHex": [
+        "c022b7c9d907b134",
+        "c003efb1a33e9e36",
+        "40158f25085002fc"
+      ],
+      "replacementFractionHex": "3ff0000000000000",
+      "sourceLevelHex": "8000000000000000"
+    }
+  ],
+  "scope": "canonical replacement interval with actual old raw join and existing source event; no runtime mutation or universal old Newton-map continuity",
+  "sourceMarginsLowerHex": [
+    "3fe0ec1722e5b80d",
+    "4019853ffb46cb23",
+    "401d853ffb46cb23",
+    "3fdf17a65795157b",
+    "3fefe197c1aec5f8",
+    "3fd4aed291a4ad83",
+    "401df7d8d19f4f15",
+    "40089ccec90c1143"
+  ],
+  "sourcePair": [
+    38,
+    39
+  ],
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ],
+  "wholeComponentAccepted": false
+}

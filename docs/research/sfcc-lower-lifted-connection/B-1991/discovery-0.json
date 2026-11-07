@@ -1,0 +1,8 @@
+{
+  "filter": "lower_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::lower_b_tests::lower_b_four_facet_star_has_four_and_only_four_rays",
+    "sfcc::shared_twisted_proof::exposure_a::lower_b_tests::lower_b_source_star_and_actual_lifted_frontier"
+  ],
+  "exitCode": 0
+}

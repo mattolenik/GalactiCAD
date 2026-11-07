@@ -1,0 +1,10 @@
+{
+  "previousReceipt": "docs/research/sfcc-upper-closure/A-cell/component-attempt.json",
+  "previousSha256": "9dd90af6ecaa27931994df655855095ce2e925d91a2948df488976ed3d97f4e2",
+  "currentReceipt": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/component-attempt.json",
+  "currentSha256": "2a4ddda2e93dbe8d815d3afb30f953c1e2dd2255f0a9aae4939eda7ed42a459f",
+  "ignoredFields": [
+    "rootAddressProcessLocal"
+  ],
+  "allOtherReceiptFieldsEqual": true
+}

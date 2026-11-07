@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::private_arc_a::tests::lower_c_generated_reservation_finish_drop_and_failed_attempts_stay_charged ... ok
+test sfcc::shared_twisted_proof::correlated_c::transport_a::lower_cost_tests::lower_c_inverse_cost_distinguishes_replayed_lookups_from_new_queries ... ok
+test sfcc::shared_twisted_proof::correlated_c::transport_a::lower_cost_tests::lower_c_query_cost_preserves_cache_request_and_total_caps ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 355 filtered out; finished in 3.96s
+

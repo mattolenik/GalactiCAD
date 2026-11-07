@@ -1515,6 +1515,32 @@ reuse of the upper closure by source IDs alone, gate relaxation or cap increase
 is justified. Full-component geometry, interfaces, source-patch ownership and
 production acceptance remain open.
 
+## Lower lifted source and query-cost audit
+
+The [next bounded investigation](sfcc-lower-lifted-connection/README.md) proves
+the lower source's four physical crease rays and a canonical lifted connection
+from the actual chart75 parameter12 join to the existing source event. Whole-interval
+source margins and ordered parameterization pass; the 3D join association is bounded
+by 2.992e-9 mm under the unchanged 3.797e-7 mm allowance. This is a source/association
+proof, not an installed runtime handoff or a proof of old Newton-map continuity.
+
+Independent observational instrumentation reproduces the same component refusal
+with unchanged geometry and limits. Typed-face checks use 6,557 fresh queries;
+generated-event validation uses another 6,527 before TotalCap. Only 744 of 838
+generated events finish validation. The ledger retains all 2,048 reserved generated
+slots despite only 838 being used; no refund is implemented. Repeated identical
+inverse searches already consume zero fresh queries, so correspondence caching
+chiefly targets CPU work. A better checked proposal for new inverses is the next
+query-budget experiment.
+
+Rust 1.99.0 was removed from the host. Root pinned 1.99.1, reran all 26 baseline
+controls and the original component, and verified unchanged audited std/hashbrown
+sources and identical receipts except process-local addresses. The source/association
+packet passes 31 controls and the separate query packet 29, with non-test library
+checks passing. Production remains unchanged. Next install the bounded lower
+transaction, preserve complete incidence and rollback, improve inverse proposals
+under the same checks, and revalidate the complete affected component.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

@@ -1,0 +1,7 @@
+
+running 2 tests
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::tests::lower_a_full_scalar_interval_and_local_four_ray_star ... ok
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::tests::lower_a_refuses_bad_source_interval_and_embedded_carrier ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 358 filtered out; finished in 3.80s
+

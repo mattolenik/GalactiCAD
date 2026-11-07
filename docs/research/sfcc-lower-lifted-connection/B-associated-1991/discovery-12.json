@@ -1,0 +1,7 @@
+{
+  "filter": "stage4_component_b_topology_controls",
+  "tests": [
+    "sfcc::private_arc_a::stage4_component_b::stage4_component_b_topology_controls"
+  ],
+  "exitCode": 0
+}

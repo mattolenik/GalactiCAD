@@ -1,0 +1,18 @@
+{
+  "scope": "Read-only historical receipt audit; no new geometry run",
+  "receipt": "docs/research/sfcc-upper-closure/A-cell/component-attempt.json",
+  "sha256": "9dd90af6ecaa27931994df655855095ce2e925d91a2948df488976ed3d97f4e2",
+  "attempts": 838,
+  "uniqueChartParameters": 696,
+  "byChart": {
+    "20": 794,
+    "76": 6,
+    "46": 18,
+    "49": 6,
+    "66": 14
+  },
+  "allSucceeded": true,
+  "generatedReservation": 2048,
+  "unusedReservedSlots": 1210,
+  "refundAuthorized": false
+}

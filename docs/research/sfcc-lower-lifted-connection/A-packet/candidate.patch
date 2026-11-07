@@ -1,0 +1,506 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -407,3 +407,6 @@
+ 
+ #[path="upper_source_a.rs"]
+ pub(crate) mod upper_source_a;
++
++#[path = "lower_source_a.rs"]
++pub(crate) mod lower_source_a;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_source_a.rs
+@@ -0,0 +1,300 @@
++//! Bounded lower chamfer source curve and local four-ray arrangement.
++//! No numerical trace attachment or private admission is granted here.
++use super::*;
++use crate::sfcc::feature_curves::FeatureCurve;
++
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn absolute_lower(a: I) -> Option<f64> {
++    if a.lo <= 0. && a.hi >= 0. {
++        None
++    } else {
++        Some(a.lo.abs().min(a.hi.abs()))
++    }
++}
++#[derive(Clone)]
++pub(crate) struct LowerCertificate {
++    branch: HelixBranch,
++    source_root: std::sync::Arc<CsgNode>,
++    embedded: [Stratum; 2],
++    edge: [f64; 4],
++    orientation: i8,
++    groove_y: f64,
++    radius: f64,
++    pub(crate) depth: f64,
++    pub(crate) source: [usize; 3],
++    pub(crate) lifted_pair: [usize; 2],
++    pub(crate) groove_edge: usize,
++    pub(crate) margins: [f64; 8],
++    pub(crate) height_derivative_lower: f64,
++    pub(crate) coordinate_jacobian_lower: f64,
++}
++struct Image {
++    a: I,
++    rho: I,
++    y: I,
++    u: I,
++    v: I,
++    xyz: [I; 3],
++}
++impl LowerCertificate {
++    fn normal(&self) -> Option<(I, I)> {
++        let dr = I::point(self.edge[2]).sub(I::point(self.edge[0]))?;
++        let dy = I::point(self.edge[3]).sub(I::point(self.edge[1]))?;
++        let len = sqrt(square(dr)?.add(square(dy)?)?)?;
++        Some((
++            quotient(dy.mul(self.orientation as f64)?, len)?,
++            quotient(dr.mul(-(self.orientation as f64))?, len)?,
++        ))
++    }
++    fn image(&self, a: I) -> Option<Image> {
++        if a.lo < -self.depth || a.hi > 0. || a.lo > a.hi {
++            return None;
++        }
++        let (nr, ny) = self.normal()?;
++        let rho = I::point(self.branch.cylinder.2).add(a)?;
++        let distance = I::point(self.radius).add(a)?;
++        if rho.lo <= 0. || distance.lo <= 0. {
++            return None;
++        }
++        let y = quotient(
++            distance.sub(mul(nr, rho.sub(I::point(self.edge[0]))?)?)?,
++            ny,
++        )?
++        .add(I::point(self.edge[1]))?
++        .add(I::point(self.groove_y))?;
++        let p = self.branch.p;
++        let v = I::point(p.v0z).add(a.mul(p.nz2)?)?;
++        let u2 = square(rho)?.sub(square(v)?)?;
++        if u2.lo <= 0. {
++            return None;
++        }
++        let mut u = sqrt(u2)?;
++        if self.branch.sign < 0 {
++            u = u.mul(-1.)?;
++        }
++        let theta =
++            div(y.sub(I::point(p.pos_y))?.add(I::point(p.h))?, 2. * p.h)?.mul(p.twist_rad)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let xyz = [
++            mul(u, cs)?.sub(mul(v, sn)?)?.add(I::point(p.pos_x))?,
++            y,
++            mul(u, sn)?.add(mul(v, cs)?)?.add(I::point(p.pos_z))?,
++        ];
++        Some(Image {
++            a,
++            rho,
++            y,
++            u,
++            v,
++            xyz,
++        })
++    }
++    pub(crate) fn image_bounds(&self, a: f64, b: f64) -> Option<([f64; 3], [f64; 3])> {
++        let image = self.image(interval(a, b)?)?;
++        Some((image.xyz.map(|v| v.lo), image.xyz.map(|v| v.hi)))
++    }
++    pub(crate) fn curve_source_matches(&self, strata: &[Stratum], curve: &FeatureCurve) -> bool {
++        let Some(root) = strata
++            .get(self.source[0])
++            .and_then(Stratum::upper_source_root_handle)
++        else {
++            return false;
++        };
++        if !std::sync::Arc::ptr_eq(&root, &self.source_root)
++            || curve.adjacent_strata != self.lifted_pair
++        {
++            return false;
++        }
++        let Some((a, b, _)) = curve.traced_carriers() else {
++            return false;
++        };
++        let Some(sa) = strata.get(self.lifted_pair[0]) else {
++            return false;
++        };
++        let Some(sb) = strata.get(self.lifted_pair[1]) else {
++            return false;
++        };
++        sa.connection_same_source(&self.embedded[0])
++            && sb.connection_same_source(&self.embedded[1])
++            && a.connection_same_source(sa)
++            && b.connection_same_source(sb)
++    }
++}
++
++fn groove_segment(groove: &Leaf, cert: &LowerCertificate, image: &Image) -> Option<(f64, f64)> {
++    let Shape::Lathe { edges } = &groove.shape else {
++        return None;
++    };
++    let edge = edges.get(cert.groove_edge)?;
++    let dr = I::point(edge.r1).sub(I::point(edge.r0))?;
++    let dy = I::point(edge.y1).sub(I::point(edge.y0))?;
++    let wr = image.rho.sub(I::point(edge.r0))?;
++    let wy = image
++        .y
++        .sub(I::point(groove.pos[1]))?
++        .sub(I::point(edge.y0))?;
++    let along = quotient(
++        mul(dr, wr)?.add(mul(dy, wy)?)?,
++        square(dr)?.add(square(dy)?)?,
++    )?;
++    let projection_margin = along.lo.min(1. - along.hi);
++    if projection_margin <= 0. {
++        return None;
++    }
++    let max_distance = I::point(cert.radius).add(image.a)?.hi;
++    let mut margin = f64::INFINITY;
++    for (i, e) in edges.iter().enumerate() {
++        if i == cert.groove_edge {
++            continue;
++        }
++        let dx = I::point(e.r1).sub(I::point(e.r0))?;
++        let dy = I::point(e.y1).sub(I::point(e.y0))?;
++        let wx = image.rho.sub(I::point(e.r0))?;
++        let wy = image.y.sub(I::point(groove.pos[1]))?.sub(I::point(e.y0))?;
++        let t = quotient(
++            mul(dx, wx)?.add(mul(dy, wy)?)?,
++            square(dx)?.add(square(dy)?)?,
++        )?;
++        let t = I {
++            lo: t.lo.clamp(0., 1.),
++            hi: t.hi.clamp(0., 1.),
++        };
++        let dist = sqrt(square(wx.sub(mul(dx, t)?)?)?.add(square(wy.sub(mul(dy, t)?)?)?)?)?;
++        let gap = dist.sub(I::point(max_distance))?.lo;
++        if gap <= 0. {
++            return None;
++        }
++        margin = margin.min(gap);
++    }
++    Some((projection_margin, margin))
++}
++
++/// Strict finite-source margins at the event also persist in some open
++/// neighbourhood. Together with the nonzero source-coordinate Jacobian they
++/// justify the local max-of-four-planes star, not a radius for that neighbourhood.
++pub(crate) fn bind(
++    root: &CsgNode,
++    strata: &[Stratum],
++    source: [usize; 3],
++    candidate: [f64; 3],
++    epsilon: f64,
++    depth: f64,
++) -> Option<LowerCertificate> {
++    if !depth.is_finite() || depth <= 0. || depth > 0.25 {
++        return None;
++    }
++    let junction = junction::prove_junction(root, strata, source, candidate, epsilon)?;
++    let branch = branch_at(strata, source[0], source[1], source[2], candidate)?;
++    let source_root = strata[branch.native].exposure_root_a()?;
++    let (cap_cut, sphere, outer_radius) =
++        pair(source_root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++    let (groove_cut, cap, _) = pair(cap_cut, None).ok()?;
++    let (hard, groove_node, radius) =
++        pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++    let (inner, cylinder, _) = pair(hard, None).ok()?;
++    let (other, native, inner_radius) =
++        pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++    let native = leaf(native, 1.).ok()?;
++    let other = leaf(other, 1.).ok()?;
++    let cylinder = leaf(cylinder, 1.).ok()?;
++    let groove = leaf(groove_node, -1.).ok()?;
++    let Shape::Lathe { edges } = &groove.shape else {
++        return None;
++    };
++    let edge = edges.get(junction.groove_edge)?;
++    let orientation = crate::sfcc::predicates::orient2d(
++        [edges[0].r0, edges[0].y0],
++        [edges[1].r0, edges[1].y0],
++        [edges[2].r0, edges[2].y0],
++    );
++    let mut pair_ids = [None, None];
++    for s in strata {
++        for child in 0..2 {
++            if s.upper_round_child_matches(
++                &strata[branch.field],
++                &strata[branch.cylinder_id],
++                child,
++            ) {
++                if pair_ids[child].replace(s.id).is_some() {
++                    return None;
++                }
++            }
++        }
++    }
++    let mut cert = LowerCertificate {
++        source,
++        source_root: strata[branch.native].upper_source_root_handle()?,
++        embedded: [strata[pair_ids[0]?].clone(), strata[pair_ids[1]?].clone()],
++        branch,
++        edge: [edge.r0, edge.y0, edge.r1, edge.y1],
++        orientation: orientation as i8,
++        groove_y: groove.pos[1],
++        radius,
++        depth,
++        lifted_pair: [pair_ids[0]?, pair_ids[1]?],
++        groove_edge: junction.groove_edge,
++        margins: [0.; 8],
++        height_derivative_lower: 0.,
++        coordinate_jacobian_lower: 0.,
++    };
++    let image = cert.image(interval(-depth, 0.)?)?;
++    let profile_margin =
++        upper_source_a::finite_profile_level(cert.branch.p, native, [image.u, image.v], image.a)?;
++    let native_cap =
++        upper_source_a::cap_margin(image.y, cert.branch.p.pos_y, cert.branch.p.h, image.a)?;
++    let Shape::Cylinder { h, .. } = &cylinder.shape else {
++        return None;
++    };
++    let cylinder_cap = upper_source_a::cap_margin(image.y, cylinder.pos[1], *h, image.a)?;
++    let (projection_margin, other_edge_margin) = groove_segment(groove, &cert, &image)?;
++    let cx = I::point(cert.branch.cylinder.0[0]).add(image.rho)?;
++    let lathe = lathe_lower(
++        other,
++        [cx.lo, image.y.lo, cert.branch.cylinder.0[2]],
++        [cx.hi, image.y.hi, cert.branch.cylinder.0[2]],
++    )?;
++    let inner_margin = I::point(lathe).sub(I::point(inner_radius))?.lo;
++    let cap = leaf(cap, -1.).ok()?;
++    let Shape::Extrude { h, .. } = &cap.shape else {
++        return None;
++    };
++    let cutter_margin = I::point(cap.pos[1]).sub(I::point(*h))?.sub(image.y)?.lo;
++    let sphere = leaf(sphere, 1.).ok()?;
++    let Shape::Sphere { r } = &sphere.shape else {
++        return None;
++    };
++    let radius_bound =
++        sqrt(square(image.rho)?.add(square(image.y.sub(I::point(sphere.pos[1]))?)?)?)?;
++    let sphere_margin = I::point(*r)
++        .sub(I::point(outer_radius))?
++        .sub(radius_bound)?
++        .lo;
++    let (nr, ny) = cert.normal()?;
++    let derivative = quotient(I::point(1.).sub(nr)?, ny)?;
++    let jacobian = mul(quotient(image.u, image.rho)?, ny)?.mul(cert.branch.p.nz2)?;
++    cert.height_derivative_lower = absolute_lower(derivative)?;
++    cert.coordinate_jacobian_lower = absolute_lower(jacobian)?;
++    cert.margins = [
++        profile_margin,
++        native_cap,
++        cylinder_cap,
++        projection_margin,
++        other_edge_margin,
++        inner_margin,
++        cutter_margin,
++        sphere_margin,
++    ];
++    if cert.margins.iter().any(|x| !x.is_finite() || *x <= 0.) {
++        return None;
++    }
++    Some(cert)
++}
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "lower_source_a_tests.rs"]
++mod tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/lower_source_a_tests.rs
+@@ -0,0 +1,171 @@
++use super::*;
++use crate::sfcc::{
++    feature_set::SfccFeatureSet,
++    pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++};
++use serde_json::{json, Value};
++fn fixture() -> (CsgNode, SfccFeatureSet) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = build_pipeline_context(&root, &cube, &PipelineTuning::default()).features;
++    (root, f)
++}
++fn roles(f: &SfccFeatureSet) -> [usize; 3] {
++    let find = |path: Value, is_field: bool, local| {
++        f.strata
++            .iter()
++            .find(|s| {
++                let Some(d) = s.graph_capture_identity_b() else {
++                    return false;
++                };
++                s.local_index == local
++                    && if is_field {
++                        d["field"]["path"] == path
++                    } else {
++                        d["field"].is_null() && d["domain"][0]["path"] == path
++                    }
++            })
++            .unwrap()
++            .id
++    };
++    [
++        find(json!([0, 0, 0, 0, 1]), false, 3),
++        find(json!([0, 0, 0, 0]), true, 0),
++        find(json!([0, 0, 0, 1]), false, 0),
++    ]
++}
++const EVENT: [f64; 3] = [-9.358961851300297, -2.492038035725069, 5.3897897051654455];
++fn midpoint(image: ([f64; 3], [f64; 3])) -> [f64; 3] {
++    std::array::from_fn(|k| image.0[k] * 0.5 + image.1[k] * 0.5)
++}
++fn hex(x: f64) -> String {
++    format!("{:016x}", x.to_bits())
++}
++#[test]
++fn lower_a_full_scalar_interval_and_local_four_ray_star() {
++    let (root, f) = fixture();
++    let source = roles(&f);
++    let cert = bind(&root, &f.strata, source, EVENT, 1e-7, 0.01).expect("lower source interval");
++    let image = cert.image(interval(-cert.depth, 0.).unwrap()).unwrap();
++    let mut samples = Vec::new();
++    for a in [-0.01, -0.0075, -0.005, -0.0025, 0.] {
++        let bounds = cert.image_bounds(a, a).unwrap();
++        let p = midpoint(bounds);
++        let fields = cert.lifted_pair.map(|id| f.strata[id].f(p[0], p[1], p[2]));
++        assert!(
++            root.f(p).abs() < 1e-10,
++            "actual full scalar at a={a}: {}",
++            root.f(p)
++        );
++        assert!(
++            fields.iter().all(|v| v.abs() < 1e-10),
++            "actual lifted scalar at a={a}: {fields:?}"
++        );
++        samples.push(json!({"aHex":hex(a),"pointHex":p.map(hex),"imageHex":[bounds.0.map(hex),bounds.1.map(hex)],
++            "fullScalarHex":hex(root.f(p)),"liftedScalarsHex":fields.map(hex)}));
++    }
++    let matches: Vec<_> = f
++        .curves
++        .iter()
++        .filter(|c| cert.curve_source_matches(&f.strata, c))
++        .map(|c| c.id)
++        .collect();
++    assert!(
++        !matches.is_empty(),
++        "actual embedded lifted source pair exists"
++    );
++    let points: Vec<_> = [-0.01, -0.005, 0.]
++        .map(|a| midpoint(cert.image_bounds(a, a).unwrap()))
++        .into();
++    assert!(points.windows(2).all(|p| p[0][1] < p[1][1]));
++    let report = json!({"scope":"bounded lower ideal source interval plus existence of a local four-ray source star; no numerical trace attachment",
++        "featureFingerprint":f.fingerprint().to_string(),"sourceRoles":source,"liftedPair":cert.lifted_pair,
++        "sourceIdentities":source.map(|id|f.strata[id].graph_capture_identity_b()),
++        "liftedIdentities":cert.lifted_pair.map(|id|f.strata[id].graph_capture_identity_b()),"matchingCurves":matches,
++        "grooveEdge":cert.groove_edge,"aRangeHex":[hex(-cert.depth),hex(0.)],
++        "imageHex":[image.xyz.map(|v|hex(v.lo)),image.xyz.map(|v|hex(v.hi))],"marginsLowerHex":cert.margins.map(hex),
++        "marginOrder":["profile nearest edge","native cap","cylinder cap","groove projection interval","other groove edges","inner round competitor","cap cutter","outer sphere"],
++        "heightDerivativeAbsoluteLowerHex":hex(cert.height_derivative_lower),"coordinateJacobianAbsoluteLowerHex":hex(cert.coordinate_jacobian_lower),
++        "samples":samples,"localSourceFormula":"max(E,C,w*(E+g),w*(C+g)); g=G+r; w=represented FRAC_1_SQRT_2",
++        "localPhysicalRayCount":4,"explicitNeighbourhoodRadiusProved":false,"numericalTraceConnectionProved":false,
++        "floatingQueryTotalityProved":false,"wholeComponentAccepted":false});
++    std::fs::write(
++        std::env::var("SFCC_LOWER_A_RECEIPT").expect("root receipt required"),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
++#[test]
++fn lower_a_refuses_bad_source_interval_and_embedded_carrier() {
++    let (root, f) = fixture();
++    let source = roles(&f);
++    let cert = bind(&root, &f.strata, source, EVENT, 1e-7, 0.01).unwrap();
++    for depth in [0., -0.01, 0.251, f64::NAN, f64::INFINITY] {
++        assert!(bind(&root, &f.strata, source, EVENT, 1e-7, depth).is_none());
++    }
++    assert!(cert.image_bounds(-0.011, 0.).is_none());
++    assert!(cert.image_bounds(0., 0.001).is_none());
++    assert!(cert.image_bounds(0., -0.001).is_none());
++    assert!(cert.image_bounds(f64::NAN, 0.).is_none());
++    let mut wrong = root.clone();
++    let CsgNode::Blend { r, .. } = &mut wrong else {
++        panic!()
++    };
++    *r += 0.001;
++    assert!(bind(&wrong, &f.strata, source, EVENT, 1e-7, 0.01).is_none());
++    let mut wrong_point = EVENT;
++    wrong_point[1] += 0.01;
++    assert!(bind(&root, &f.strata, source, wrong_point, 1e-7, 0.01).is_none());
++    let mut wrong_roles = source;
++    wrong_roles.swap(0, 2);
++    assert!(bind(&root, &f.strata, wrong_roles, EVENT, 1e-7, 0.01).is_none());
++    let curve = f
++        .curves
++        .iter()
++        .find(|c| cert.curve_source_matches(&f.strata, c))
++        .unwrap();
++    let mut wrong_curve = curve.clone();
++    wrong_curve.adjacent_strata.swap(0, 1);
++    assert!(!cert.curve_source_matches(&f.strata, &wrong_curve));
++    let (_, foreign) = fixture();
++    assert!(
++        !cert.curve_source_matches(&foreign.strata, curve),
++        "separate source handles cannot authorize embedded carriers"
++    );
++    let foreign_curve = foreign
++        .curves
++        .iter()
++        .find(|c| c.adjacent_strata == cert.lifted_pair)
++        .unwrap();
++    assert!(
++        !cert.curve_source_matches(&foreign.strata, foreign_curve),
++        "coherent foreign registry and embedded carriers cannot borrow old certificate"
++    );
++    let mut altered = f.strata.clone();
++    altered[cert.lifted_pair[0]] = foreign.strata[cert.lifted_pair[0]].clone();
++    altered[cert.lifted_pair[1]] = foreign.strata[cert.lifted_pair[1]].clone();
++    assert!(
++        !cert.curve_source_matches(&altered, foreign_curve),
++        "matching native root cannot authorize foreign lifted embedded descriptors"
++    );
++    let mut bad = cert.clone();
++    bad.edge[2] = bad.edge[0];
++    assert!(
++        bad.image_bounds(-0.01, 0.).is_none(),
++        "vertical groove edge cannot parameterize y"
++    );
++    let mut bad = cert.clone();
++    bad.depth = bad.radius;
++    assert!(
++        bad.image_bounds(-bad.depth, 0.).is_none(),
++        "offset must stay strictly outside groove"
++    );
++}
+--- a/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/upper_source_a.rs
+@@ -117,7 +117,7 @@
+ }
+ 
+ // Zero-locus agreement is insufficient at a<0: prove this finite side is nearest.
+-fn finite_profile_level(p: TwistedSideParams, leaf: &Leaf, q: [I; 2], a: I) -> Option<f64> {
++pub(super) fn finite_profile_level(p: TwistedSideParams, leaf: &Leaf, q: [I; 2], a: I) -> Option<f64> {
+     profile_branch(p, leaf, q)?;
+     let Shape::Extrude { verts, .. } = &leaf.shape else {
+         return None;
+@@ -149,7 +149,7 @@
+     }
+     Some(margin)
+ }
+-fn cap_margin(y: I, center: f64, half: f64, a: I) -> Option<f64> {
++pub(super) fn cap_margin(y: I, center: f64, half: f64, a: I) -> Option<f64> {
+     if !half.is_finite() || half <= 0. {
+         return None;
+     }

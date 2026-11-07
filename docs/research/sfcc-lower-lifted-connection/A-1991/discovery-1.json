@@ -1,0 +1,8 @@
+{
+  "filter": "upper_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::upper_source_a::tests::upper_a_rejects_unsupported_sources_caps_and_empty_scope",
+    "sfcc::shared_twisted_proof::exposure_a::upper_source_a::tests::upper_a_source_transition_has_regular_ordered_continuation"
+  ],
+  "exitCode": 0
+}

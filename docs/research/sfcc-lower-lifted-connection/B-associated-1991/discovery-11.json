@@ -1,0 +1,7 @@
+{
+  "filter": "stage4_c_complete_source_admission_gate",
+  "tests": [
+    "sfcc::stage4_source_preflight_c::stage4_c_complete_source_admission_gate"
+  ],
+  "exitCode": 0
+}

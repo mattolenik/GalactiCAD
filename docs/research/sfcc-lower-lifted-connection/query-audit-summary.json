@@ -1,0 +1,112 @@
+{
+  "geometryAndExistingReceiptFieldsUnchanged": true,
+  "excludedFields": [
+    "generatedQueryCost",
+    "lastQueryPhase",
+    "queryCosts",
+    "rootAddressProcessLocal"
+  ],
+  "baselineSha256": "2a4ddda2e93dbe8d815d3afb30f953c1e2dd2255f0a9aae4939eda7ed42a459f",
+  "instrumentedSha256": "256f21d471d2454ce26625d397d93792e59a05df05d3159637d419f2991672ac",
+  "phaseDeltas": [
+    {
+      "phase": "bind",
+      "chargedDelta": 64,
+      "consumeAttemptsDelta": 64,
+      "externalReservedDelta": 0,
+      "lookupsDelta": 64,
+      "cacheHitsDelta": 0,
+      "inverseIterationsDelta": 0,
+      "mapCallsDelta": 0,
+      "cumulativeCharge": 64
+    },
+    {
+      "phase": "source_admission",
+      "chargedDelta": 80,
+      "consumeAttemptsDelta": 0,
+      "externalReservedDelta": 80,
+      "lookupsDelta": 0,
+      "cacheHitsDelta": 0,
+      "inverseIterationsDelta": 0,
+      "mapCallsDelta": 0,
+      "cumulativeCharge": 144
+    },
+    {
+      "phase": "original_transport",
+      "chargedDelta": 1097,
+      "consumeAttemptsDelta": 1097,
+      "externalReservedDelta": 0,
+      "lookupsDelta": 3812,
+      "cacheHitsDelta": 2715,
+      "inverseIterationsDelta": 1111,
+      "mapCallsDelta": 96,
+      "cumulativeCharge": 1241
+    },
+    {
+      "phase": "original_rechecks",
+      "chargedDelta": 0,
+      "consumeAttemptsDelta": 0,
+      "externalReservedDelta": 0,
+      "lookupsDelta": 3283,
+      "cacheHitsDelta": 3283,
+      "inverseIterationsDelta": 1111,
+      "mapCallsDelta": 64,
+      "cumulativeCharge": 1241
+    },
+    {
+      "phase": "typed_faces",
+      "chargedDelta": 6557,
+      "consumeAttemptsDelta": 6557,
+      "externalReservedDelta": 0,
+      "lookupsDelta": 43302,
+      "cacheHitsDelta": 36745,
+      "inverseIterationsDelta": 14790,
+      "mapCallsDelta": 792,
+      "cumulativeCharge": 7798
+    },
+    {
+      "phase": "required_pins",
+      "chargedDelta": 5,
+      "consumeAttemptsDelta": 0,
+      "externalReservedDelta": 5,
+      "lookupsDelta": 21651,
+      "cacheHitsDelta": 21651,
+      "inverseIterationsDelta": 7395,
+      "mapCallsDelta": 396,
+      "cumulativeCharge": 7803
+    },
+    {
+      "phase": "generated_queries",
+      "chargedDelta": 2048,
+      "consumeAttemptsDelta": 0,
+      "externalReservedDelta": 2048,
+      "lookupsDelta": 0,
+      "cacheHitsDelta": 0,
+      "inverseIterationsDelta": 0,
+      "mapCallsDelta": 0,
+      "cumulativeCharge": 9851
+    },
+    {
+      "phase": "generated_validation",
+      "chargedDelta": 6533,
+      "consumeAttemptsDelta": 6527,
+      "externalReservedDelta": 6,
+      "lookupsDelta": 40151,
+      "cacheHitsDelta": 33623,
+      "inverseIterationsDelta": 13615,
+      "mapCallsDelta": 738,
+      "cumulativeCharge": 16384
+    }
+  ],
+  "allLedgerEquationsHold": true,
+  "generatedValidationComplete": false,
+  "validatedPrefix": 744,
+  "unvalidatedSuffixIncludingFailedAttempt": 94,
+  "limitsUnchanged": {
+    "iterations": 64,
+    "request": 64,
+    "total": 16384
+  },
+  "reservationRefundImplemented": false,
+  "repeatedIdenticalMapAlreadyUsesZeroNewQueries": true
+}

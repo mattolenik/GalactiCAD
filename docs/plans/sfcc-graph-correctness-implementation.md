@@ -1,11 +1,13 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the selected [A-cell upper handoff and sampler repair](../research/sfcc-upper-closure/README.md)
-passes 26 focused checks, the non-test build and private-arc admission. Fresh
-component reconstruction progresses beyond the original upper-cell refusal, then records a lower
-lifted-path failure followed by query-cap exhaustion during validation. **Stage 4
-and production acceptance remain open.** Next establish the lower event's required
-continuation and audit private query costs/accounting without weakening guards.
+Status: the [lower lifted-source investigation](../research/sfcc-lower-lifted-connection/README.md)
+proves a four-ray local source arrangement and an ordered canonical connection
+with checked associations to the actual old join and existing junction. Its
+source/association packet passes 31 controls; separate query instrumentation passes
+29 and reproduces the unchanged graph failure followed by total-cap exhaustion.
+Only 744 of 838 generated events finish validation. **Stage 4 and production
+acceptance remain open.** Next install the lower connection transactionally, then
+reduce fresh inverse-query work under the unchanged acceptance checks and caps.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and
@@ -15,6 +17,9 @@ The [initial component attempt](../research/sfcc-stage4-component-validation/REA
 then exposed unresolved upper ends. The [upper-source investigation](../research/sfcc-upper-handoff/README.md)
 proved continuation and corrected intermediate-chamfer evaluation; the current
 closure implementation supplies the qualified handoff and its cell consumer.
+The lower source proof establishes the next missing incident branch but installs
+no runtime attachment. The query audit separates actual work from conservative
+reservation; neither raising limits nor refunding unused slots is part of it.
 These are bounded witness results, not general mesh correctness.
 
 Current production baseline:

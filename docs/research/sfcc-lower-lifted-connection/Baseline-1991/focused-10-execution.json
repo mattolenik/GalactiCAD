@@ -1,0 +1,13 @@
+{
+  "step": "focused-10",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round28-lower-connection/Baseline-1991/kernel-tests",
+    "stage4_component_b_topology_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 35.349316957988776,
+  "elapsedSeconds": 0.004682708997279406,
+  "exitCode": 0,
+  "timedOut": false
+}

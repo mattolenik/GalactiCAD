@@ -1,0 +1,73 @@
+{
+  "parentCommit": "edec94a",
+  "productionRuntimeChanged": false,
+  "sourceProofPacket": "B-associated",
+  "queryAuditPacket": "C",
+  "packetsCombined": false,
+  "lowerLocalPhysicalRayCount": 4,
+  "boundedCanonicalConnectionProved": true,
+  "originalNewtonContinuityProved": false,
+  "explicitLocalNeighbourhoodRadiusProved": false,
+  "runtimeLowerAttachmentInstalled": false,
+  "sourceInterval": [
+    -0.04456486659936143,
+    0.0
+  ],
+  "actualRawJoinParameter": 12.0,
+  "joinAssociationUpper": 2.9912748111471406e-09,
+  "eventAssociationUpper": 2.045130861584275e-13,
+  "unchangedAllowance": 3.796655370190979e-07,
+  "componentAccepted": false,
+  "queryLimits": {
+    "total": 16384,
+    "newPerRequest": 64,
+    "iterations": 64,
+    "generatedReserved": 2048
+  },
+  "queryValidation": {
+    "generated": 838,
+    "validated": 744,
+    "unvalidatedIncludingFailed": 94,
+    "charged": 16384,
+    "cacheMissConsumes": 14245,
+    "externalReserved": 2139,
+    "requestMaximum": 20,
+    "generatedUnusedReservation": 1210,
+    "refunded": 0
+  },
+  "tests": {
+    "Baseline-1991": 26,
+    "A-1991": 12,
+    "B-1991": 2,
+    "B-associated-1991": 31,
+    "C-1991": 29
+  },
+  "allFocusedPassed": true,
+  "nonTestLibraryChecks": [
+    "B-associated-1991",
+    "C-1991"
+  ],
+  "componentAttempts": {
+    "Baseline-1991": 32.546181165991584,
+    "C-1991": 35.876296916016145
+  },
+  "firstGraphRefusal": {
+    "cell": [
+      8,
+      51,
+      116,
+      172
+    ],
+    "guard": "path_nodes_lt_two",
+    "chart": 75,
+    "corner": 13
+  },
+  "laterReturnedRefusal": "retained_point_own_query / TotalCap",
+  "liveDigestBeforeAfter": "aa6ab69dfb79125d",
+  "samePreexistingReceiptFields": true,
+  "next": [
+    "transactional lower source chart installation and complete incidence with consumer/rollback controls",
+    "safeguarded inverse proposal reduction with unchanged checked-query acceptance and caps",
+    "fresh combined-candidate complete component and remaining geometry/interface/ownership gates"
+  ]
+}

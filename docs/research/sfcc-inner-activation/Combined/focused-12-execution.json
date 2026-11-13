@@ -1,0 +1,13 @@
+{
+  "step": "focused-12",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round32-activation/Combined/kernel-tests",
+    "correlated_storage_staging_and_typed_lifecycle_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 11.528426083998056,
+  "elapsedSeconds": 0.00543758300045738,
+  "exitCode": 0,
+  "timedOut": false
+}

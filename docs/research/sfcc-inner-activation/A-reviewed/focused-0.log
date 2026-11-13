@@ -1,0 +1,18 @@
+
+running 4 tests
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_coherently_shifted_other_center_is_unsupported ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_coherently_shifted_other_center_is_unsupported' (3175774) panicked at kernel/src/sfcc/activation_a_tests.rs:197:6:
+same local alias source family must remain identifiable after small coherent shift
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_ghost_tail_is_single_smooth_facet_not_the_continued_crease ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_rejects_invalid_sources_ranges_and_interior_meridians ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_source_activation_and_regular_physical_continuation ... ok
+
+failures:
+
+failures:
+    sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_coherently_shifted_other_center_is_unsupported
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 387 filtered out; finished in 5.55s
+

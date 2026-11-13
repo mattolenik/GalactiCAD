@@ -1,0 +1,13 @@
+{
+  "step": "focused-7",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round32-activation/Frontier-retained/kernel-tests",
+    "correlated_storage_staging_and_typed_lifecycle_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 8.21081166600925,
+  "elapsedSeconds": 0.00480750000133412,
+  "exitCode": 0,
+  "timedOut": false
+}

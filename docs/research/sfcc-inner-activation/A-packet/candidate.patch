@@ -1,0 +1,781 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/activation_a.rs
+@@ -0,0 +1,601 @@
++//! Source activation and regular composite continuation; no trace mutation authority.
++use super::*;
++
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn abs_lower(a: I) -> Option<f64> {
++    if a.lo <= 0. && a.hi >= 0. {
++        None
++    } else {
++        Some(a.lo.abs().min(a.hi.abs()))
++    }
++}
++fn hull(a: I, b: I) -> Option<I> {
++    interval(a.lo.min(b.lo), a.hi.max(b.hi))
++}
++#[derive(Clone, Copy, Debug)]
++pub(crate) struct MeridianBound {
++    pub(crate) edge: usize,
++    pub(crate) nr: I,
++    pub(crate) ny: I,
++    /// Exterior distance = nr*rho + ny*world_y + offset on this finite branch.
++    pub(crate) offset: I,
++    pub(crate) distance: I,
++    pub(crate) projection_margin: f64,
++    pub(crate) nearest_margin: f64,
++    pub(crate) outside_by_ray: bool,
++}
++
++/// Positive exterior finite-segment distance, including nonconvex profiles.
++/// rho is measured about leaf.pos[X,Z], while y is a WORLD height.
++pub(crate) fn meridian_bound(leaf: &Leaf, rho: I, world_y: I) -> Option<MeridianBound> {
++    if !exact_identity(leaf)
++        || !matches!(leaf.sign, -1. | 1.)
++        || rho.lo <= 0.
++        || [rho.lo, rho.hi, world_y.lo, world_y.hi]
++            .iter()
++            .any(|v| !v.is_finite())
++        || rho.lo > rho.hi
++        || world_y.lo > world_y.hi
++        || leaf.pos.iter().any(|v| !v.is_finite())
++    {
++        return None;
++    }
++    let Shape::Lathe { edges } = &leaf.shape else {
++        return None;
++    };
++    if edges.len() < 3 || edges.len() > 64 {
++        return None;
++    }
++    for (i, e) in edges.iter().enumerate() {
++        let next = &edges[(i + 1) % edges.len()];
++        if [e.r0, e.y0, e.r1, e.y1].iter().any(|v| !v.is_finite())
++            || e.r0 < 0.
++            || e.r1 < 0.
++            || e.r1 != next.r0
++            || e.y1 != next.y0
++            || matches!(e.kind, crate::primitives::shapes::LatheEdgeKind::None)
++            || (e.r0 == e.r1 && e.y0 == e.y1)
++        {
++            return None;
++        }
++    }
++    let y = world_y.sub(I::point(leaf.pos[1]))?;
++    let mut no_right_crossing = true;
++    for e in edges {
++        let low = y.lo.max(e.y0.min(e.y1));
++        let high = y.hi.min(e.y0.max(e.y1));
++        if low > high {
++            continue;
++        }
++        if e.y0 == e.y1 {
++            if e.r0.max(e.r1) >= rho.lo {
++                no_right_crossing = false;
++            }
++        } else {
++            let t = quotient(
++                interval(low, high)?.sub(I::point(e.y0))?,
++                I::point(e.y1).sub(I::point(e.y0))?,
++            )?;
++            let t = interval(t.lo.clamp(0., 1.), t.hi.clamp(0., 1.))?;
++            let radial = I::point(e.r0).add(mul(I::point(e.r1).sub(I::point(e.r0))?, t)?)?;
++            if radial.hi >= rho.lo {
++                no_right_crossing = false;
++            }
++        }
++    }
++    let mut selected = None;
++    for (i, e) in edges.iter().enumerate() {
++        let dr = I::point(e.r1).sub(I::point(e.r0))?;
++        let dy = I::point(e.y1).sub(I::point(e.y0))?;
++        let length2 = square(dr)?.add(square(dy)?)?;
++        let length = sqrt(length2)?;
++        let wr = rho.sub(I::point(e.r0))?;
++        let wy = y.sub(I::point(e.y0))?;
++        let along = quotient(mul(dr, wr)?.add(mul(dy, wy)?)?, length2)?;
++        let projection_margin = along.lo.min(1. - along.hi);
++        if projection_margin <= 0. {
++            continue;
++        }
++        let raw = quotient(mul(dy, wr)?.sub(mul(dr, wy)?)?, length)?;
++        let orientation = if raw.lo > 0. {
++            1.
++        } else if raw.hi < 0. {
++            -1.
++        } else {
++            continue;
++        };
++        let distance = raw.mul(orientation)?;
++        let separating = edges.iter().all(|v| {
++            crate::sfcc::predicates::orient2d([e.r0, e.y0], [e.r1, e.y1], [v.r0, v.y0]) as f64
++                * orientation
++                >= 0.
++        });
++        if !no_right_crossing && !separating {
++            continue;
++        }
++        let mut nearest = f64::INFINITY;
++        for (j, o) in edges.iter().enumerate() {
++            if i == j {
++                continue;
++            }
++            let ox = I::point(o.r1).sub(I::point(o.r0))?;
++            let oy = I::point(o.y1).sub(I::point(o.y0))?;
++            let wx = rho.sub(I::point(o.r0))?;
++            let wy = y.sub(I::point(o.y0))?;
++            let t = quotient(
++                mul(ox, wx)?.add(mul(oy, wy)?)?,
++                square(ox)?.add(square(oy)?)?,
++            )?;
++            let t = interval(t.lo.clamp(0., 1.), t.hi.clamp(0., 1.))?;
++            let d = sqrt(square(wx.sub(mul(ox, t)?)?)?.add(square(wy.sub(mul(oy, t)?)?)?)?)?;
++            nearest = nearest.min(d.sub(I::point(distance.hi))?.lo);
++        }
++        if nearest <= 0. {
++            continue;
++        }
++        let nr = quotient(dy.mul(orientation)?, length)?;
++        let ny = quotient(dr.mul(-orientation)?, length)?;
++        let offset = mul(nr, I::point(e.r0))?
++            .add(mul(ny, I::point(e.y0).add(I::point(leaf.pos[1]))?)?)?
++            .mul(-1.)?;
++        let value = MeridianBound {
++            edge: i,
++            nr,
++            ny,
++            offset,
++            distance,
++            projection_margin,
++            nearest_margin: nearest,
++            outside_by_ray: no_right_crossing,
++        };
++        if selected.replace(value).is_some() {
++            return None;
++        }
++    }
++    selected
++}
++
++#[derive(Clone, Copy, Debug)]
++struct Locus {
++    radius: I,
++    activation_rho: I,
++    activation_y: I,
++    slope: I,
++    competitor_slope: I,
++}
++#[derive(Clone, Copy)]
++struct Image {
++    rho: I,
++    y: I,
++    level: I,
++    u: I,
++    v: I,
++    xyz: [I; 3],
++    native_weight: I,
++}
++/// Immutable source theorem only; no numerical trace identity or mutation is granted.
++pub(crate) struct Certificate<'a> {
++    features: &'a SfccFeatureSet,
++    pub(crate) source: [usize; 4],
++    pub(crate) charts: [usize; 2],
++    branch: HelixBranch,
++    native: &'a Leaf,
++    other: &'a Leaf,
++    groove: &'a Leaf,
++    cylinder: &'a Leaf,
++    cap: &'a Leaf,
++    sphere: &'a Leaf,
++    inner_radius: f64,
++    outer_radius: f64,
++    pub(crate) common_weight: f64,
++    pub(crate) common_offset: f64,
++    other_line: MeridianBound,
++    groove_line: MeridianBound,
++    loci: [Locus; 2],
++    pub(crate) outgoing_depth: f64,
++    pub(crate) margins: [f64; 7],
++    pub(crate) height_derivative_lower: f64,
++    pub(crate) transverse_lower: f64,
++    pub(crate) activation_separation_upper: f64,
++}
++fn source_locus(g: MeridianBound, l: MeridianBound, inner: f64, radius: I) -> Option<Locus> {
++    let slope = quotient(g.nr.mul(-1.)?, g.ny)?;
++    let intercept = quotient(radius.sub(g.offset)?, g.ny)?;
++    let k = l.nr.add(mul(l.ny, slope)?)?;
++    if k.lo <= 0. || slope.lo <= 0. {
++        return None;
++    }
++    let b = mul(l.ny, intercept)?.add(l.offset)?;
++    let rho = quotient(I::point(inner).sub(b)?, k)?;
++    let y = mul(slope, rho)?.add(intercept)?;
++    Some(Locus {
++        radius,
++        activation_rho: rho,
++        activation_y: y,
++        slope,
++        competitor_slope: k,
++    })
++}
++impl<'a> Certificate<'a> {
++    pub(crate) fn bound_to(&self, f: &SfccFeatureSet) -> bool {
++        std::ptr::eq(self.features, f)
++    }
++    pub(crate) fn activation_radial(&self, generated: bool) -> [f64; 2] {
++        let r = self.loci[usize::from(generated)].activation_rho;
++        [r.lo, r.hi]
++    }
++    pub(crate) fn activation_height(&self, generated: bool) -> [f64; 2] {
++        let y = self.loci[usize::from(generated)].activation_y;
++        [y.lo, y.hi]
++    }
++    fn xyz(&self, rho: I, y: I, level: I, native_weight: I) -> Option<Image> {
++        let p = self.branch.p;
++        let v = I::point(p.v0z).add(level.mul(p.nz2)?)?;
++        let mut u = sqrt(square(rho)?.sub(square(v)?)?)?;
++        if self.branch.sign < 0 {
++            u = u.mul(-1.)?;
++        }
++        abs_lower(u)?;
++        let theta =
++            div(y.sub(I::point(p.pos_y))?.add(I::point(p.h))?, 2. * p.h)?.mul(p.twist_rad)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let xyz = [
++            mul(u, cs)?.sub(mul(v, sn)?)?.add(I::point(p.pos_x))?,
++            y,
++            mul(u, sn)?.add(mul(v, cs)?)?.add(I::point(p.pos_z))?,
++        ];
++        Some(Image {
++            rho,
++            y,
++            level,
++            u,
++            v,
++            xyz,
++            native_weight,
++        })
++    }
++    fn incoming(&self, t: I, locus: Locus) -> Option<Image> {
++        if t.lo < 0. || t.hi > 1. || t.lo > t.hi {
++            return None;
++        }
++        let delta = mul(
++            I::point(self.branch.cylinder.2).sub(locus.activation_rho)?,
++            I::point(1.).sub(t)?,
++        )?;
++        let rho = locus.activation_rho.add(delta)?;
++        // This is a convex combination of the source event and cylinder radius.
++        let rho = interval(
++            rho.lo.max(locus.activation_rho.lo),
++            rho.hi.min(self.branch.cylinder.2),
++        )?;
++        let y = locus.activation_y.add(mul(locus.slope, delta)?)?;
++        self.xyz(rho, y, I::point(0.), I::point(1.))
++    }
++    fn outgoing(&self, delta: I, locus: Locus) -> Option<Image> {
++        if delta.lo < 0. || delta.hi > self.outgoing_depth || delta.lo > delta.hi {
++            return None;
++        }
++        let rho = locus.activation_rho.sub(delta)?;
++        let y = locus.activation_y.sub(mul(locus.slope, delta)?)?;
++        let z = mul(locus.competitor_slope, delta)?;
++        let z = interval(z.lo.max(0.), z.hi)?;
++        if z.hi >= self.inner_radius {
++            return None;
++        }
++        let rem = sqrt(square(I::point(self.inner_radius))?.sub(square(z)?)?)?;
++        if rem.lo <= 0. {
++            return None;
++        }
++        // Rationalization preserves the nonnegative level at activation.
++        let a = quotient(square(z)?, I::point(self.inner_radius).add(rem)?)?;
++        let a = interval(a.lo.max(0.), a.hi)?;
++        self.xyz(rho, y, a, div(rem, self.inner_radius)?)
++    }
++    pub(crate) fn incoming_image(
++        &self,
++        a: f64,
++        b: f64,
++        generated: bool,
++    ) -> Option<([f64; 3], [f64; 3])> {
++        let q = self.incoming(interval(a, b)?, self.loci[usize::from(generated)])?;
++        Some((q.xyz.map(|v| v.lo), q.xyz.map(|v| v.hi)))
++    }
++    pub(crate) fn outgoing_image(
++        &self,
++        a: f64,
++        b: f64,
++        generated: bool,
++    ) -> Option<([f64; 3], [f64; 3])> {
++        let q = self.outgoing(interval(a, b)?, self.loci[usize::from(generated)])?;
++        Some((q.xyz.map(|v| v.lo), q.xyz.map(|v| v.hi)))
++    }
++    pub(crate) fn activation_image(&self, generated: bool) -> Option<([f64; 3], [f64; 3])> {
++        self.outgoing_image(0., 0., generated)
++    }
++    fn ghost(&self, z: I, locus: Locus) -> Option<(Image, I, I)> {
++        if z.lo < 0. || z.hi > self.outgoing_depth || z.lo > z.hi {
++            return None;
++        }
++        let rem = sqrt(square(I::point(self.inner_radius))?.add(square(z)?)?)?;
++        let inner = quotient(square(z)?, I::point(self.inner_radius).add(rem)?)?.mul(-1.)?;
++        let distance = locus.radius.add(inner)?;
++        if distance.lo <= 0. {
++            return None;
++        }
++        let l = I::point(self.inner_radius).sub(z)?;
++        let g_rhs = distance.sub(self.groove_line.offset)?;
++        let l_rhs = l.sub(self.other_line.offset)?;
++        let det = mul(self.groove_line.nr, self.other_line.ny)?
++            .sub(mul(self.groove_line.ny, self.other_line.nr)?)?;
++        let rho = quotient(
++            mul(g_rhs, self.other_line.ny)?.sub(mul(self.groove_line.ny, l_rhs)?)?,
++            det,
++        )?;
++        let y = quotient(
++            mul(self.groove_line.nr, l_rhs)?.sub(mul(g_rhs, self.other_line.nr)?)?,
++            det,
++        )?;
++        let image = self.xyz(
++            rho,
++            y,
++            I::point(0.),
++            quotient(I::point(self.inner_radius), rem)?,
++        )?;
++        if image.rho.sub(I::point(self.branch.cylinder.2))?.hi >= inner.lo {
++            return None;
++        }
++        Some((image, inner, distance))
++    }
++    /// z>0 gives a regular single-Q surface patch; z=0 is the shared activation limit.
++    pub(crate) fn ghost_image(
++        &self,
++        a: f64,
++        b: f64,
++        generated: bool,
++    ) -> Option<([f64; 3], [f64; 3])> {
++        let q = self
++            .ghost(interval(a, b)?, self.loci[usize::from(generated)])?
++            .0;
++        Some((q.xyz.map(|v| v.lo), q.xyz.map(|v| v.hi)))
++    }
++    fn region(&self, image: Image) -> Option<([f64; 7], f64)> {
++        let other = meridian_bound(self.other, image.rho, image.y)?;
++        let groove = meridian_bound(self.groove, image.rho, image.y)?;
++        if other.edge != self.other_line.edge || groove.edge != self.groove_line.edge {
++            return None;
++        }
++        let same_line = |a: MeridianBound, b: MeridianBound| {
++            [a.nr.lo, a.nr.hi, a.ny.lo, a.ny.hi, a.offset.lo, a.offset.hi].map(f64::to_bits)
++                == [b.nr.lo, b.nr.hi, b.ny.lo, b.ny.hi, b.offset.lo, b.offset.hi].map(f64::to_bits)
++        };
++        if !same_line(other, self.other_line) || !same_line(groove, self.groove_line) {
++            return None;
++        }
++        let profile = upper_source_a::finite_profile_level(
++            self.branch.p,
++            self.native,
++            [image.u, image.v],
++            image.level,
++        )?;
++        let native_cap =
++            upper_source_a::cap_margin(image.y, self.branch.p.pos_y, self.branch.p.h, image.level)?;
++        let Shape::Cylinder { h, .. } = &self.cylinder.shape else {
++            return None;
++        };
++        let cylinder_cap = upper_source_a::cap_margin(
++            image.y,
++            self.cylinder.pos[1],
++            *h,
++            image.rho.sub(I::point(self.branch.cylinder.2))?,
++        )?;
++        let Shape::Extrude { h, .. } = &self.cap.shape else {
++            return None;
++        };
++        let cutter = I::point(self.cap.pos[1])
++            .sub(I::point(*h))?
++            .sub(image.y)?
++            .lo;
++        let Shape::Sphere { r } = &self.sphere.shape else {
++            return None;
++        };
++        let sd =
++            sqrt(square(image.rho)?.add(square(image.y.sub(I::point(self.sphere.pos[1]))?)?)?)?;
++        let outer = I::point(*r).sub(I::point(self.outer_radius))?.sub(sd)?.lo;
++        let rank = mul(
++            quotient(image.u, image.rho)?,
++            mul(image.native_weight, self.groove_line.ny)?,
++        )?
++        .mul(self.branch.p.nz2)?;
++        let rank = abs_lower(rank)?;
++        let margins = [
++            profile,
++            native_cap,
++            cylinder_cap,
++            other.projection_margin.min(groove.projection_margin),
++            other.nearest_margin.min(groove.nearest_margin),
++            cutter,
++            outer,
++        ];
++        if margins.iter().any(|v| !v.is_finite() || *v <= 0.) {
++            return None;
++        }
++        Some((margins, rank))
++    }
++}
++
++pub(crate) fn bind<'a>(
++    root: &CsgNode,
++    f: &'a SfccFeatureSet,
++    source: [usize; 3],
++    charts: [usize; 2],
++    outgoing_depth: f64,
++) -> Option<Certificate<'a>> {
++    if !outgoing_depth.is_finite()
++        || outgoing_depth <= 0.
++        || outgoing_depth > 0.25
++        || f.strata.len() > 256
++        || f.curves.len() > 256
++        || charts[0] == charts[1]
++    {
++        return None;
++    }
++    let cs = [f.curves.get(charts[0])?, f.curves.get(charts[1])?];
++    if cs
++        .iter()
++        .enumerate()
++        .any(|(i, c)| c.id != charts[i] || c.closed)
++        || cs[0].corner_start < 0
++        || cs[0].corner_start != cs[1].corner_start
++    {
++        return None;
++    }
++    let corner = f.corners.get(cs[0].corner_start as usize)?;
++    if corner.id != cs[0].corner_start as usize {
++        return None;
++    }
++    let point = [corner.x, corner.y, corner.z];
++    let eps = cs
++        .iter()
++        .filter_map(|c| c.traced_carriers().map(|(_, _, r)| r.curve_eps))
++        .fold(f64::INFINITY, f64::min)
++        * 8.;
++    let j = junction::prove_junction(root, &f.strata, source, point, eps)?;
++    let branch = branch_at(&f.strata, source[0], source[1], source[2], point)?;
++    let registered = f.strata[source[0]].exposure_root_a()?;
++    let (cap_cut, sphere, outer_radius) =
++        pair(registered, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++    let (cut, cap, _) = pair(cap_cut, None).ok()?;
++    let (hard, groove_node, radius) = pair(cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++    let (inner, cylinder, _) = pair(hard, None).ok()?;
++    let (other, native, inner_radius) =
++        pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++    let native = leaf(native, 1.).ok()?;
++    let other = leaf(other, 1.).ok()?;
++    let cylinder = leaf(cylinder, 1.).ok()?;
++    let groove = leaf(groove_node, -1.).ok()?;
++    let cap = leaf(cap, -1.).ok()?;
++    let sphere = leaf(sphere, 1.).ok()?;
++    let (p, rn, ro, rr) = f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++    if !std::ptr::eq(native, rn) || !std::ptr::eq(other, ro) || rr != inner_radius || p != branch.p
++    {
++        return None;
++    }
++    let rc = f.strata[source[2]].correlated_cylinder_source_c(&f.strata[source[0]])?;
++    if !std::ptr::eq(rc, cylinder) {
++        return None;
++    }
++    if [other, groove, sphere]
++        .iter()
++        .any(|v| v.pos[0] != branch.cylinder.0[0] || v.pos[2] != branch.cylinder.0[2])
++    {
++        return None;
++    }
++    let common = cs[0]
++        .adjacent_strata
++        .iter()
++        .copied()
++        .find(|s| cs[1].adjacent_strata.contains(s))?;
++    for (i, c) in cs.iter().enumerate() {
++        if !c.adjacent_strata.contains(&source[i]) || !c.adjacent_strata.contains(&common) {
++            return None;
++        }
++        let (a, b, _) = c.traced_carriers()?;
++        if !a.connection_same_source(f.strata.get(c.adjacent_strata[0])?)
++            || !b.connection_same_source(f.strata.get(c.adjacent_strata[1])?)
++        {
++            return None;
++        }
++    }
++    if f.strata.get(common)?.id != common {
++        return None;
++    }
++    let (weight, offset) = f
++        .strata
++        .get(common)?
++        .connection_compound(hard, groove_node, cut)?;
++    if weight <= 0. || !weight.is_finite() {
++        return None;
++    }
++    let initial_rho = I::point(branch.cylinder.2);
++    let initial_y = interval(j.height[0], j.height[1])?;
++    let g = meridian_bound(groove, initial_rho, initial_y)?;
++    if g.edge != j.groove_edge {
++        return None;
++    }
++    let l = meridian_bound(other, initial_rho, initial_y)?;
++    let physical = source_locus(g, l, inner_radius, I::point(radius))?;
++    let generated = source_locus(
++        g,
++        l,
++        inner_radius,
++        quotient(I::point(offset), I::point(weight))?,
++    )?;
++    for locus in [physical, generated] {
++        if locus.activation_rho.hi >= branch.cylinder.2
++            || locus.activation_rho.lo - outgoing_depth <= p.v0z.abs()
++        {
++            return None;
++        }
++    }
++    let mut cert = Certificate {
++        features: f,
++        source: [source[0], source[1], source[2], common],
++        charts,
++        branch,
++        native,
++        other,
++        groove,
++        cylinder,
++        cap,
++        sphere,
++        inner_radius,
++        outer_radius,
++        common_weight: weight,
++        common_offset: offset,
++        other_line: l,
++        groove_line: g,
++        loci: [physical, generated],
++        outgoing_depth,
++        margins: [f64::INFINITY; 7],
++        height_derivative_lower: physical.slope.lo.min(generated.slope.lo),
++        transverse_lower: f64::INFINITY,
++        activation_separation_upper: 0.,
++    };
++    for locus in cert.loci {
++        for i in 0..16 {
++            let a = i as f64 / 16.;
++            let b = (i + 1) as f64 / 16.;
++            for image in [
++                cert.incoming(interval(a, b)?, locus)?,
++                cert.outgoing(interval(a * outgoing_depth, b * outgoing_depth)?, locus)?,
++                cert.ghost(interval(a * outgoing_depth, b * outgoing_depth)?, locus)?
++                    .0,
++            ] {
++                let (m, rank) = cert.region(image)?;
++                for k in 0..7 {
++                    cert.margins[k] = cert.margins[k].min(m[k]);
++                }
++                cert.transverse_lower = cert.transverse_lower.min(rank);
++            }
++        }
++    }
++    let a = cert.activation_image(false)?;
++    let b = cert.activation_image(true)?;
++    let mut d = I::point(0.);
++    for k in 0..3 {
++        d = d.add(square(
++            interval(a.0[k], a.1[k])?.sub(interval(b.0[k], b.1[k])?)?,
++        )?)?;
++    }
++    cert.activation_separation_upper = sqrt(d)?.hi;
++    Some(cert)
++}
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "activation_a_tests.rs"]
++mod tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/activation_a_tests.rs
+@@ -0,0 +1,165 @@
++use super::*;
++use crate::sfcc::{
++    feature_set::SfccFeatureSet,
++    pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++};
++use serde_json::{json, Value};
++fn fixture() -> (CsgNode, SfccFeatureSet, [usize; 3], [usize; 2]) {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: v["cube"]["min"][0].as_f64().unwrap(),
++        min_y: v["cube"]["min"][1].as_f64().unwrap(),
++        min_z: v["cube"]["min"][2].as_f64().unwrap(),
++        size: v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = build_pipeline_context(&root, &cube, &PipelineTuning::default()).features;
++    let (source, _, charts) =
++        crate::sfcc::shared_twisted_proof::exposure_a::alias_face_b::select(&f).unwrap();
++    (root, f, source, charts)
++}
++fn middle(q: ([f64; 3], [f64; 3])) -> [f64; 3] {
++    std::array::from_fn(|k| q.0[k] * 0.5 + q.1[k] * 0.5)
++}
++fn distance(point: [f64; 3], image: ([f64; 3], [f64; 3])) -> f64 {
++    let mut d = I::point(0.);
++    for k in 0..3 {
++        d = d
++            .add(
++                square(
++                    I::point(point[k])
++                        .sub(interval(image.0[k], image.1[k]).unwrap())
++                        .unwrap(),
++                )
++                .unwrap(),
++            )
++            .unwrap();
++    }
++    sqrt(d).unwrap().hi
++}
++#[test]
++fn activation_a_source_activation_and_regular_physical_continuation() {
++    let (root, f, source, charts) = fixture();
++    let cert = bind(&root, &f, source, charts, 0.2).expect("bounded activation source theorem");
++    assert!(cert.bound_to(&f));
++    assert!(cert.height_derivative_lower > 0. && cert.transverse_lower > 0.);
++    assert!(cert.margins.iter().all(|x| *x > 0.));
++    let Shape::Lathe { edges } = &cert.other.shape else {
++        panic!()
++    };
++    let max_radius = edges.iter().map(|e| e.r0.max(e.r1)).fold(0_f64, f64::max);
++    assert!(
++        cert.activation_radial(false)[1] < max_radius,
++        "proof does not require being beyond every profile radius"
++    );
++    let mut samples = Vec::new();
++    for generated in [false, true] {
++        for (kind, t) in [
++            ("incoming", 0.),
++            ("incoming", 0.25),
++            ("incoming", 0.5),
++            ("incoming", 0.75),
++            ("incoming", 1.),
++            ("outgoing", 0.),
++            ("outgoing", 0.005),
++            ("outgoing", 0.02),
++            ("outgoing", 0.1),
++            ("outgoing", 0.2),
++        ] {
++            let image = if kind == "incoming" {
++                cert.incoming_image(t, t, generated)
++            } else {
++                cert.outgoing_image(t, t, generated)
++            }
++            .unwrap();
++            let point = middle(image);
++            let registered = f.strata[source[0]].exposure_root_a().unwrap();
++            let (cap, _, _) = pair(registered, Some((BlendKind::Smax, SminMode::Round))).unwrap();
++            let (cut, _, _) = pair(cap, None).unwrap();
++            let (hard, _, _) = pair(cut, Some((BlendKind::Smax, SminMode::Chamfer))).unwrap();
++            let (inner, _, _) = pair(hard, None).unwrap();
++            assert!(
++                root.f(point).abs() < 1e-10,
++                "floating source scalar {kind}/{t}: {}",
++                root.f(point)
++            );
++            assert!(inner.f(point).abs() < 1e-10);
++            samples.push(json!({"kind":kind,"parameter":t,"generated":generated,"pointBits":point.map(f64::to_bits),"image":[image.0,image.1],"native":cert.native.f(point),"inner":inner.f(point),"other":cert.other.f(point),"groove":cert.groove.f(point),"full":root.f(point)}));
++        }
++    }
++    let start = cert.incoming_image(1., 1., false).unwrap();
++    let end = cert.outgoing_image(0., 0., false).unwrap();
++    assert!((0..3).all(|k| start.0[k] <= end.1[k] && end.0[k] <= start.1[k]));
++    let report = json!({"scope":"source-bound closed incoming curve, regular C1 composite continuation and activation; no old trace attachment or full component authority","featureFingerprint":f.fingerprint().to_string(),"source":cert.source,"charts":charts,"physicalActivationRadial":cert.activation_radial(false),"physicalActivationHeight":cert.activation_height(false),"physicalActivationImage":cert.activation_image(false),"generatedActivationRadial":cert.activation_radial(true),"generatedActivationImage":cert.activation_image(true),"physicalGeneratedActivationSeparationUpper":cert.activation_separation_upper,"commonWeightBits":cert.common_weight.to_bits(),"commonOffsetBits":cert.common_offset.to_bits(),"physicalChamferRadiusBounds":[cert.loci[0].radius.lo,cert.loci[0].radius.hi],"generatedChamferRadiusBounds":[cert.loci[1].radius.lo,cert.loci[1].radius.hi],"innerRoundRadius":cert.inner_radius,"otherEdge":cert.other_line.edge,"grooveEdge":cert.groove_line.edge,"otherOutsideByRay":cert.other_line.outside_by_ray,"heightDerivativeLower":cert.height_derivative_lower,"transverseJacobianLower":cert.transverse_lower,"outgoingRadialDepth":cert.outgoing_depth,"strictMargins":cert.margins,"marginOrder":["native nearest profile","native cap","cylinder cap","finite meridian projection","other meridian edges","cap cutter","outer sphere"],"subintervalsPerFamilyPerVariant":16,"families":["incoming","physical composite outgoing","native ghost"],"samples":samples,"floatingOldQueryContinuityProved":false,"mutationAuthorized":false});
++    std::fs::write(
++        std::env::var("SFCC_ACTIVATION_A_RECEIPT").unwrap(),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
++#[test]
++fn activation_a_ghost_tail_is_single_smooth_facet_not_the_continued_crease() {
++    let (root, f, source, charts) = fixture();
++    let cert = bind(&root, &f, source, charts, 0.2).unwrap();
++    let primary = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++    let mut budget = crate::sfcc::shared_twisted_proof::correlated_c::transport_a::Transport::bind(
++        &f, primary, 0.02,
++    )
++    .unwrap();
++    budget.reserve_external(1).unwrap();
++    budget.external_direct_attempt();
++    let native_end = f.curves[charts[0]]
++        .point_at_checked(f.curves[charts[0]].t_max)
++        .unwrap();
++    let z = cert.inner_radius - cert.other.f(native_end);
++    assert!(z > 0. && z < cert.outgoing_depth);
++    let ghost = cert.ghost_image(z, z, true).unwrap();
++    let association = distance(native_end, ghost);
++    let eps = f.curves[charts[0]].traced_carriers().unwrap().2.curve_eps * 8.;
++    assert!(association <= eps);
++    let mut rows = Vec::new();
++    for generated in [false, true] {
++        for z in [0.0005, 0.001, 0.005, 0.02, 0.1, 0.2] {
++            let (image, inner, distance_to_groove) = cert
++                .ghost(I::point(z), cert.loci[usize::from(generated)])
++                .unwrap();
++            assert!(inner.hi < 0. && distance_to_groove.lo > 0.);
++            assert!(image.rho.sub(I::point(cert.branch.cylinder.2)).unwrap().hi < inner.lo);
++            let point = middle(cert.ghost_image(z, z, generated).unwrap());
++            assert!(cert.native.f(point).abs() < 1e-10);
++            assert!(root.f(point).abs() < 1e-10);
++            rows.push(json!({"z":z,"generated":generated,"pointBits":point.map(f64::to_bits),"innerBounds":[inner.lo,inner.hi],"grooveDistanceBounds":[distance_to_groove.lo,distance_to_groove.hi],"native":cert.native.f(point),"full":root.f(point)}));
++        }
++    }
++    let path = std::path::PathBuf::from(std::env::var("SFCC_ACTIVATION_A_RECEIPT").unwrap())
++        .with_file_name("activation-A-ghost.json");
++    let report = json!({"scope":"explicit nativeE0/commonQ0 source family for z>0 lies on single smooth activeQfacet; point association to original nativeendpoint, not whole old rawtail continuity","nativeEndpointParameter":f.curves[charts[0]].t_max,"nativeEndpointBits":native_end.map(f64::to_bits),"endpointSourceLevelDeficit":z,"endpointToGeneratedGhostUpper":association,"allowance":eps,"chargedCurveQueries":1,"ledgerTotal":budget.charged_queries(),"strictSoleActiveFacetForPositiveZ":true,"commonGradientNonzeroFromTransversality":true,"samples":rows,"rawTailPruningAuthorized":false});
++    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++}
++#[test]
++fn activation_a_rejects_invalid_sources_ranges_and_interior_meridians() {
++    let (root, f, source, charts) = fixture();
++    let cert = bind(&root, &f, source, charts, 0.2).unwrap();
++    for depth in [0., -0.1, 0.251, f64::NAN, f64::INFINITY] {
++        assert!(bind(&root, &f, source, charts, depth).is_none());
++    }
++    assert!(cert.incoming_image(-0.01, 1., false).is_none());
++    assert!(cert.incoming_image(1., 0., false).is_none());
++    assert!(cert.outgoing_image(0., 0.201, false).is_none());
++    assert!(cert.ghost_image(0., f64::NAN, false).is_none());
++    assert!(meridian_bound(cert.other, I::point(1.), I::point(0.)).is_none());
++    assert!(meridian_bound(cert.other, I::point(f64::NAN), I::point(0.)).is_none());
++    let mut wrong = root.clone();
++    let CsgNode::Blend { r, .. } = &mut wrong else {
++        panic!()
++    };
++    *r += 0.01;
++    assert!(bind(&wrong, &f, source, charts, 0.2).is_none());
++    let mut changed = f.clone();
++    changed.curves[charts[0]].adjacent_strata = [source[0], source[2]];
++    assert!(bind(&root, &changed, source, charts, 0.2).is_none());
++    let foreign = f.clone();
++    assert!(!cert.bound_to(&foreign));
++}
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -428,3 +428,6 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="alias_typed_face_b.rs"]
+ pub(crate) mod alias_typed_face_b;
++
++#[path="activation_a.rs"]
++pub(crate) mod activation_a;

@@ -1,0 +1,7 @@
+{
+  "filter": "planar_collinear_fan_is_retriangulated_without_erasing_its_feature_vertex",
+  "tests": [
+    "sfcc::cell_mesh::reliability_tests::planar_collinear_fan_is_retriangulated_without_erasing_its_feature_vertex"
+  ],
+  "exitCode": 0
+}

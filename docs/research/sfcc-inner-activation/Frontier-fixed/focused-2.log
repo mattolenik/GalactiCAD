@@ -1,0 +1,7 @@
+
+running 2 tests
+test sfcc::shared_twisted_proof::exposure_a::alias_typed_face_b::activation_b_tests::activation_b_all_six_original_adaptive_faces ... ok
+test sfcc::shared_twisted_proof::exposure_a::alias_typed_face_b::activation_b_tests::activation_b_axis_root_rejects_unbracketed_and_outside_face ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 399 filtered out; finished in 2.58s
+

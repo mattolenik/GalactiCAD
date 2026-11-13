@@ -1,0 +1,8 @@
+{
+  "filter": "activation_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::alias_typed_face_b::activation_b_tests::activation_b_all_six_original_adaptive_faces",
+    "sfcc::shared_twisted_proof::exposure_a::alias_typed_face_b::activation_b_tests::activation_b_axis_root_rejects_unbracketed_and_outside_face"
+  ],
+  "exitCode": 0
+}

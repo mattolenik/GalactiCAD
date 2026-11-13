@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::alias_face_b::alias_b_source_pair_uses_original_occurrences ... ok
+test sfcc::shared_twisted_proof::exposure_a::alias_face_b::alias_b_typed_rectangle_rejects_wrong_slot_and_extent ... ok
+test sfcc::shared_twisted_proof::exposure_a::alias_typed_face_b::alias_b_typed_point_rejects_record_plane_provenance_and_source_corruption ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 394 filtered out; finished in 2.25s
+

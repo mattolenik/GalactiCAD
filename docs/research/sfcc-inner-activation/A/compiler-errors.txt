@@ -1,0 +1,32 @@
+error[E0277]: `Interval` doesn't implement `Debug`
+  --> kernel/src/sfcc/activation_a.rs:23:5
+   |
+20 | #[derive(Clone, Copy, Debug)]
+   |                       ----- in this derive macro expansion
+...
+23 |     pub(crate) nr: I,
+   |     ^^^^^^^^^^^^^^^^ the trait `Debug` is not implemented for `Interval`
+   |
+help: consider annotating `Interval` with `#[derive(Debug)]`
+  --> kernel/src/sdf/enclosure.rs:14:1
+   |
+14 + #[derive(Debug)]
+15 | pub(crate) struct Interval {
+   |
+
+
+error[E0277]: `Interval` doesn't implement `Debug`
+   --> kernel/src/sfcc/activation_a.rs:165:5
+    |
+163 | #[derive(Clone, Copy, Debug)]
+    |                       ----- in this derive macro expansion
+164 | struct Locus {
+165 |     radius: I,
+    |     ^^^^^^^^^ the trait `Debug` is not implemented for `Interval`
+    |
+help: consider annotating `Interval` with `#[derive(Debug)]`
+   --> kernel/src/sdf/enclosure.rs:14:1
+    |
+ 14 + #[derive(Debug)]
+ 15 | pub(crate) struct Interval {
+    |

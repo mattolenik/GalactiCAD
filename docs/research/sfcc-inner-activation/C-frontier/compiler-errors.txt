@@ -1,0 +1,7 @@
+error: no rules expected `.`
+   --> kernel/src/sfcc/activation_frontier_c.rs:188:222
+    |
+188 | ...(local),points.ny(local),points.nz(local)].map(f64::to_bits),"key":format!("{:?}",points.key_at(local))})).collect();
+    |                                              ^ no rules expected this token in macro call
+    |
+    = note: while trying to match end of macro

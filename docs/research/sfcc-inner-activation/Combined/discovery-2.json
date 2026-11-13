@@ -1,0 +1,10 @@
+{
+  "filter": "activation_c_",
+  "tests": [
+    "sfcc::private_arc_a::activation_frontier_c::activation_c_diagnostic_scope_restores_after_unwind",
+    "sfcc::private_arc_a::activation_frontier_c::activation_c_frontier_selection_requires_one_actual_inventory_consumer",
+    "sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_actual_event_parameters_and_frontier_branch_associations",
+    "sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_event_preparation_rejects_wrong_source_cell_range_and_budget"
+  ],
+  "exitCode": 0
+}

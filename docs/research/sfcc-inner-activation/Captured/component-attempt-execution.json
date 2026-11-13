@@ -1,0 +1,13 @@
+{
+  "step": "component-attempt",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round32-activation/Captured/kernel-tests",
+    "stage4_component_b_original_source_attempt",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 120,
+  "elapsedSeconds": 32.04916979200061,
+  "exitCode": 0,
+  "timedOut": false
+}

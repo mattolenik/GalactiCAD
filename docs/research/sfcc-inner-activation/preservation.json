@@ -1,0 +1,89 @@
+{
+  "parentManifest": "docs/research/sfcc-alias-connection/C-local-validated/manifest.json",
+  "parentManifestSha256": "3a60d00ca0cc698ba5160e336ee8486ec7b468cd48a3d7015ecbcfdc01dbede4",
+  "parentInputCount": 189,
+  "selected": "Frontier-fixed",
+  "retainedCampaign": "same Frontier-fixed source and binary; no additional patch",
+  "restorations": [
+    {
+      "packet": "A",
+      "patchSha256": "2e9f4b422223e6dd5db5a106860ac82b3f60217cb4c7cac19da2ed5e4572687a",
+      "manifestSha256": "7d57b53f99301322a9f9ffe6ce00931cfb68dd528a5b20d42535746ab2eddd9c",
+      "verifiedInputCount": 191,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-ql9tidxz",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "A-reviewed",
+      "patchSha256": "60d9b10ef66885bf4d429b2754c70deb715eba3adc9eae3804f5c581125790bd",
+      "manifestSha256": "dab9287144d94d6c8bdf1a2262dce9a6437c0fc4f03baa3421f622f5f255d74d",
+      "verifiedInputCount": 191,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-2v_ljde1",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "B-faces",
+      "patchSha256": "37308d3e807b00a975fce19eefb247da7bc1cb5d0116df2d1820b5c147d66f8e",
+      "manifestSha256": "b64a1a68ab3d00b338b8a9acd0192d28a290cee461749d48c3b6142175eaa9f2",
+      "verifiedInputCount": 192,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-adr3pkev",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-association",
+      "patchSha256": "dd6f1a8bfa958c56bd82f88ec55b66aa7e9a42be5f5b8e12dd1b4f3dacf59e66",
+      "manifestSha256": "c6638e1de9f30fd9d4aab492362383484bcf3e88f8656c19fc1139de9950d6c4",
+      "verifiedInputCount": 195,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-gpfucbv9",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-frontier",
+      "patchSha256": "baf7772e5b5c439f4de308c3200a0548ace768c0581443c1a0d38085d6fe3f3a",
+      "manifestSha256": "fa56e2d98a308132a8451980a524c38f7c43f70dc8e1e7d0dc28522ac9945aee",
+      "verifiedInputCount": 190,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-_znrdvl0",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-frontier-fixed",
+      "patchSha256": "493479e1fc247365d8e76912c7e0a461e776499bcc2b0d1fdb98ee51ac557a12",
+      "manifestSha256": "0a6836915fa3aa1780d4d662e6b2901cdce4adfd4239e350452c7c661453b62e",
+      "verifiedInputCount": 190,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-1ctc4ob7",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Captured",
+      "patchSha256": "5929d6a88cb6ba5aa22779c801ff7ce7641074c553da5ee0dcb792f45693c459",
+      "manifestSha256": "fbd32d05b13b5e8d8972a70dab97484f40bc4123599990719de7b50862d07e78",
+      "verifiedInputCount": 197,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-ov0kyizw",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Combined",
+      "patchSha256": "7d28bcf3e486d20a0dabda4d0bb49890a94358b9f3a0d798fc80315e8f3a48a6",
+      "manifestSha256": "e38e60329578f2c5be371ee842c29082b73337f008fa65ead26570e7647b507b",
+      "verifiedInputCount": 197,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-6p4eriv4",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Frontier-fixed",
+      "patchSha256": "5826341599d18aff9e77fb497c232d6af13a42fea2799bbca7845d27d9e3ac96",
+      "manifestSha256": "cd0418180fced3203d98d141da2ee3d9265d1a84675243f615671008d8151dfe",
+      "verifiedInputCount": 199,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-e_490vln",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Frontier-local",
+      "patchSha256": "5a6f5aa92c8c6947372f0d33f093060c02c6fa33da63184f677eae3604ce9762",
+      "manifestSha256": "e858fb129499e4e7c2d4f8289bdc030f9291b4364502ad71ad4aa3c6dfebd52f",
+      "verifiedInputCount": 199,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-activation-restore-bxqrshp9",
+      "result": "all input hashes match"
+    }
+  ]
+}

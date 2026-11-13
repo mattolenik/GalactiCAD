@@ -1,0 +1,305 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/activation_frontier_c.rs
+@@ -0,0 +1,277 @@
++//! Actual unmatched-frontier input and local mesher result, with no live mutation.
++use super::{diagnostic, GeneratedQueries, DIAGNOSTIC};
++use crate::sdf::CsgNode;
++use crate::sfcc::{
++    cell_mesh::{mesh_cells_subset, CellMeshOptions},
++    face_contour::{FaceRecord, FaceSegment},
++    feature_set::SfccFeatureSet,
++    octree::SfccOctree,
++    point_table::{PointKey, PointTable},
++    shared_arc_plan::cell_faces,
++    shared_twisted_proof::correlated_c::transport_a::Transport,
++    stage4_source_preflight_c::selected_pair_c,
++    triangle_quality as q,
++    validation::NumericalGuard,
++};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet, HashMap};
++type CResult<T> = std::result::Result<T, &'static str>;
++
++struct SavedDiagnostic(Option<Value>);
++impl SavedDiagnostic {
++    fn begin() -> Self {
++        Self(DIAGNOSTIC.with(|s| s.replace(Some(json!({})))))
++    }
++}
++impl Drop for SavedDiagnostic {
++    fn drop(&mut self) {
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = self.0.take());
++    }
++}
++fn cell_id(cell: &crate::sfcc::octree::SfccCell) -> [i64; 4] {
++    [cell.level as i64, cell.ix, cell.iy, cell.iz]
++}
++fn pair_and_frontier(inventory: &Value) -> CResult<([usize; 2], (usize, i64, i64), [i64; 4])> {
++    let pair: [usize; 2] =
++        std::array::from_fn(|i| inventory["pair"][i].as_u64().unwrap_or(u64::MAX) as usize);
++    let faces = inventory["faces"].as_array().ok_or("inventory_faces")?;
++    let rows: Vec<_> = faces
++        .iter()
++        .filter(|row| {
++            row["inPairedRequired"] == json!(true)
++                && row["targetPins"].as_array().is_some_and(|pins| {
++                    pins.len() == 1 && pins[0]["chart"].as_u64() == Some(pair[1] as u64)
++                })
++        })
++        .collect();
++    if rows.len() != 1 || pair[0] == pair[1] {
++        return Err("ambiguous_unmatched_frontier");
++    }
++    let row = rows[0];
++    let id = (
++        row["face"][0].as_u64().ok_or("frontier_axis")? as usize,
++        row["face"][1].as_i64().ok_or("frontier_key")?,
++        row["face"][2].as_i64().ok_or("frontier_length")?,
++    );
++    let consumers = row["pairedSelectionConsumers"]
++        .as_array()
++        .ok_or("frontier_consumers")?;
++    if consumers.len() != 1 {
++        return Err("frontier_selected_consumer_count");
++    }
++    let mut cell = [0; 4];
++    for (k, slot) in cell.iter_mut().enumerate() {
++        *slot = consumers[0][0][k].as_i64().ok_or("frontier_cell")?;
++    }
++    Ok((pair, id, cell))
++}
++
++pub(crate) fn probe(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++    inventory: &Value,
++) -> CResult<Value> {
++    let _numeric = NumericalGuard::new();
++    let _diagnostic = SavedDiagnostic::begin();
++    let before = diagnostic::live_digest(faces, live);
++    let (pair, frontier, selected) = pair_and_frontier(inventory)?;
++    if pair.iter().any(|&id| id >= features.curves.len()) {
++        return Err("source_pair");
++    }
++    let candidates: Vec<_> = oct
++        .leaves
++        .iter()
++        .filter(|c| cell_id(c) == selected)
++        .collect();
++    if candidates.len() != 1 {
++        return Err("actual_leaf_binding");
++    }
++    let cell = candidates[0];
++    let required = cell_faces(oct, faces, cell);
++    if !required.contains(&frontier) || required.len() > 24 {
++        return Err("actual_frontier_face_binding");
++    }
++    let primary = selected_pair_c(features).map_err(|_| "primary_source")?;
++    let mut needed = BTreeSet::new();
++    for &(axis, key, len) in &required {
++        let r = faces
++            .get(axis)
++            .and_then(|map| map.get(&key))
++            .ok_or("face_slot")?;
++        if r.axis != axis || r.key != key || r.len != len {
++            return Err("record_identity");
++        }
++        if r.consumed_fwd.len() != r.segments.len()
++            || r.consumed_rev.len() != r.segments.len()
++            || r.consumed_fwd
++                .iter()
++                .chain(&r.consumed_rev)
++                .any(|&n| n != 0)
++        {
++            return Err("not_original_pregraph_record");
++        }
++        if r.pins.iter().any(|p| primary.contains(&p.curve_id)) {
++            return Err("primary_alias_in_frontier_probe");
++        }
++        needed.extend(r.segments.iter().flat_map(|s| [s.a, s.b]));
++        needed.extend(r.pins.iter().map(|p| p.point_id));
++    }
++    if needed.len() > 4096 || needed.iter().any(|&id| id >= live.count()) {
++        return Err("point_bound");
++    }
++    let mut points = PointTable::new();
++    points.arrangement = live.arrangement;
++    let mut map = BTreeMap::new();
++    for id in needed {
++        let p = q::pos(live, id);
++        let n = [live.nx(id), live.ny(id), live.nz(id)];
++        let data = || [p[0], p[1], p[2], n[0], n[1], n[2]];
++        let local = match live.key_at(id) {
++            PointKey::Num(k) => points.get_or_create(*k, data),
++            PointKey::Str(k) => points.get_or_create_str(k, data),
++            PointKey::Unkeyed => points.add(p[0], p[1], p[2], n[0], n[1], n[2]),
++        };
++        if q::pos(&points, local).map(f64::to_bits) != p.map(f64::to_bits) {
++            return Err("point_key_collision");
++        }
++        map.insert(id, local);
++    }
++    for (a, b) in live.protected_edges() {
++        if let (Some(&a2), Some(&b2)) = (map.get(&a), map.get(&b)) {
++            points.protect_edge(a2, b2);
++            for interval in live.curve_intervals(a, b) {
++                points.protect_curve_edge(a2, b2, interval);
++            }
++        }
++    }
++    let mut staged: [HashMap<i64, FaceRecord>; 3] = std::array::from_fn(|_| HashMap::new());
++    let mut face_rows = Vec::new();
++    for &(axis, key, len) in &required {
++        let r = &faces[axis][&key];
++        let segments = r
++            .segments
++            .iter()
++            .map(|s| FaceSegment {
++                a: map[&s.a],
++                b: map[&s.b],
++            })
++            .collect();
++        let pins = r
++            .pins
++            .iter()
++            .map(|p| {
++                let mut p = *p;
++                p.point_id = map[&p.point_id];
++                p
++            })
++            .collect();
++        face_rows.push(json!({"face":[axis,key,len],"originalPins":r.pins.iter().map(|p|json!({"chart":p.curve_id,"point":p.point_id,"parameterBits":p.t.to_bits()})).collect::<Vec<_>>(),"originalSegments":r.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>()}));
++        staged[axis].insert(
++            key,
++            FaceRecord {
++                axis,
++                key,
++                len,
++                segments,
++                pins,
++                interior_cycle: r.interior_cycle,
++                consumed_fwd: r.consumed_fwd.clone(),
++                consumed_rev: r.consumed_rev.clone(),
++            },
++        );
++    }
++    let initial_points = points.count();
++    let input_points: Vec<_> = map.iter().map(|(&global,&local)|json!({"global":global,"local":local,"positionBits":q::pos(&points,local).map(f64::to_bits),"normalBits":([points.nx(local),points.ny(local),points.nz(local)]).map(f64::to_bits),"key":format!("{:?}",points.key_at(local))})).collect();
++    let mut budget =
++        Transport::bind(features, primary, opts.curve_chord_tol).map_err(|_| "budget_source")?;
++    let charged_before = budget.charged_queries();
++    let generated = GeneratedQueries::begin(&mut budget)?;
++    super::note_active_cell(cell);
++    let local_opts = CellMeshOptions {
++        features: Some(features),
++        ..*opts
++    };
++    let mesh = mesh_cells_subset(
++        oct,
++        &mut staged,
++        tree,
++        &mut points,
++        &local_opts,
++        std::slice::from_ref(cell),
++    );
++    if !mesh.failed_cells.is_empty() || mesh.feature_cell_fallbacks != 0 {
++        super::graph_b::final_failure(cell);
++        super::note_private_mesher_failure(oct, &staged, cell, &points, &mesh);
++    }
++    let queries = generated.finish()?;
++    let charged_after = budget.charged_queries();
++    drop(budget);
++    let captured = DIAGNOSTIC
++        .with(|s| s.borrow_mut().take())
++        .unwrap_or(Value::Null);
++    let after = diagnostic::live_digest(faces, live);
++    let report = json!({"scope":"isolated original frontier-cell mesher, reconstructed from actual unconsumed FaceRecords; no primary or secondary quotient and no publication",
++        "featureFingerprint":features.fingerprint().to_string(),"cell":selected,"frontierFace":frontier,"secondaryPair":pair,
++        "curves":pair.map(|id|{let c=&features.curves[id];json!({"chart":id,"rangeBits":[c.t_min.to_bits(),c.t_max.to_bits()],"ends":[c.corner_start,c.corner_end],"strata":c.adjacent_strata})}),
++        "initialPoints":initial_points,"finalPoints":points.count(),"inputPointBindings":input_points,"faces":face_rows,
++        "returnedTriangles":mesh.tris,"failedCellCount":mesh.failed_cells.len(),"fallbackCellCount":mesh.feature_cell_fallbacks,
++        "generatedQueries":queries.iter().map(|q|json!({"chart":q.chart,"parameterBits":q.t.to_bits(),"pointBits":q.point.map(|p|p.map(f64::to_bits))})).collect::<Vec<_>>(),
++        "chargedBeforeGeneratedReservation":charged_before,"chargedAfter":charged_after,"queryBudgetScope":"separate isolated diagnostic ledger; not added to the main constructor ledger",
++        "allGeneratedQueriesSucceeded":queries.iter().all(|q|q.point.is_some()),"generatedPostValidationPerformed":false,
++        "graphEvidence":captured,"liveDigestBefore":before,"liveDigestAfter":after,"liveStatePreserved":before==after,"candidatePublished":false,
++        "fullTransactionPrepared":false,"diagnosticByteCap":524288});
++    if serde_json::to_vec(&report)
++        .map_err(|_| "diagnostic_serialization")?
++        .len()
++        > 512 * 1024
++    {
++        return Err("frontier_diagnostic_512KiB_cap");
++    }
++    if let Ok(path) = std::env::var("SFCC_ACTIVATION_C_RECEIPT") {
++        std::fs::write(
++            path,
++            serde_json::to_vec_pretty(&report).map_err(|_| "diagnostic_serialization")?,
++        )
++        .map_err(|_| "diagnostic_write")?;
++    }
++    Ok(report)
++}
++
++#[test]
++fn activation_c_diagnostic_scope_restores_after_unwind() {
++    let original = DIAGNOSTIC.with(|s| s.replace(Some(json!({"caller":17}))));
++    let caught = std::panic::catch_unwind(|| {
++        let _scope = SavedDiagnostic::begin();
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"probe":31})));
++        panic!("scope control");
++    });
++    assert!(caught.is_err());
++    assert_eq!(
++        DIAGNOSTIC.with(|s| s.borrow().clone()),
++        Some(json!({"caller":17}))
++    );
++    DIAGNOSTIC.with(|s| *s.borrow_mut() = original);
++}
++
++#[test]
++fn activation_c_frontier_selection_requires_one_actual_inventory_consumer() {
++    let mut input = json!({"pair":[46,66],"faces":[{"face":[1,17,1],"targetPins":[{"chart":66}],"inPairedRequired":true,"pairedSelectionConsumers":[[[8,3,4,5],0]]}]});
++    assert_eq!(
++        pair_and_frontier(&input).unwrap(),
++        ([46, 66], (1, 17, 1), [8, 3, 4, 5])
++    );
++    input["faces"][0]["pairedSelectionConsumers"] = json!([]);
++    assert_eq!(
++        pair_and_frontier(&input),
++        Err("frontier_selected_consumer_count")
++    );
++    input["faces"][0]["targetPins"] = json!([{"chart":46},{"chart":66}]);
++    assert_eq!(
++        pair_and_frontier(&input),
++        Err("ambiguous_unmatched_frontier")
++    );
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -568,3 +568,7 @@
+ 
+ #[cfg(all(test,feature="serde"))]
+ pub(crate) fn note_secondary_faces_b(value:serde_json::Value){DIAGNOSTIC.with(|s|{if let Some(report)=s.borrow_mut().as_mut(){report["secondaryTypedFacesB"]=value;}});}
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "activation_frontier_c.rs"]
++pub(crate) mod activation_frontier_c;
+--- a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -273,6 +273,12 @@
+             };
+             report["secondaryAliasFaceB"] = match crate::sfcc::shared_twisted_proof::exposure_a::alias_face_b::inspect(f, oct, faces, live) {
+                 Ok(v) => v, Err(reason) => json!({"status":"refused","reason":reason}),
++            };
++            report["activationFrontierC"] = match super::activation_frontier_c::probe(
++                tree, f, oct, faces, live, opts, &report["secondaryAliasFaceB"],
++            ) {
++                Ok(v) => v,
++                Err(reason) => json!({"scope":"isolated original frontier-cell diagnostic; no publication", "refusal":reason}),
+             };
+             report["constructionAttempted"] = json!(true);
+             match crate::sfcc::shared_arc_plan::construct_private(

@@ -1,0 +1,8 @@
+{
+  "filter": "activation_c_",
+  "tests": [
+    "sfcc::private_arc_a::activation_frontier_c::activation_c_diagnostic_scope_restores_after_unwind",
+    "sfcc::private_arc_a::activation_frontier_c::activation_c_frontier_selection_requires_one_actual_inventory_consumer"
+  ],
+  "exitCode": 0
+}

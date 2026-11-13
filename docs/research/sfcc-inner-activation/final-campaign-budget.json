@@ -1,0 +1,11 @@
+{
+  "totalCapSeconds": 60,
+  "initialJob": "Frontier-fixed",
+  "initialCampaignSeconds": 16.96847795899521,
+  "retainedJob": "Frontier-retained",
+  "remainingCapSeconds": 43.03152204100479,
+  "scope": "same frozen binary; disjoint retained filters; no budget increase",
+  "retainedCampaignSeconds": 36.173747250002634,
+  "combinedCampaignSeconds": 53.14222520899784,
+  "distinctTestsPassed": 47
+}

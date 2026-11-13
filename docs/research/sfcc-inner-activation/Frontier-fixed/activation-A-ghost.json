@@ -1,0 +1,288 @@
+{
+  "allowance": 3.796655370190979e-7,
+  "chargedCurveQueries": 1,
+  "commonGradientNonzeroFromTransversality": true,
+  "endpointSourceLevelDeficit": 0.0014779076874420483,
+  "endpointToGeneratedGhostUpper": 1.357850526007802e-12,
+  "generatedGhostUniversalPhysicalFacetClaim": false,
+  "ledgerTotal": 65,
+  "nativeEndpointBits": [
+    13844568370333185958,
+    13836718153291708234,
+    4617825311513358717
+  ],
+  "nativeEndpointParameter": 16.0,
+  "nativeEndpointPhysicalFacetProof": {
+    "box": [
+      [
+        -8.893713185734509,
+        -2.737231613332594,
+        5.452787631173462
+      ],
+      [
+        -8.89371318573389,
+        -2.7372316133322885,
+        5.4527876311746315
+      ]
+    ],
+    "competitorBounds": [
+      1.3985220923119437,
+      1.3985220923131116
+    ],
+    "cylinderBounds": [
+      -0.36778896011133005,
+      -0.3677889601101824
+    ],
+    "grooveBounds": [
+      -0.6999992199253938,
+      -0.6999992199244992
+    ],
+    "innerBounds": [
+      -7.800763945908785e-7,
+      -7.800742285457573e-7
+    ],
+    "nativeBounds": [
+      -1.2061462939527707e-12,
+      9.574563364367356e-13
+    ],
+    "physicalDiagonalBounds": [
+      -1.2647094754697813e-12,
+      8.996629788258035e-13
+    ],
+    "scope": "actual native endpoint and physical/generated ghost enclosures lie in one certified smooth physical-Q neighbourhood",
+    "transverseLower": 0.5340258959340491
+  },
+  "physicalGhostSoleActiveFacetForPositiveZ": true,
+  "rawTailPruningAuthorized": false,
+  "samples": [
+    {
+      "full": 3.3306690738754696e-16,
+      "generated": false,
+      "grooveDistanceBounds": [
+        0.6999999107142884,
+        0.6999999107142886
+      ],
+      "innerBounds": [
+        -8.928571143859355e-8,
+        -8.928571143859338e-8
+      ],
+      "native": 0.0,
+      "pointBits": [
+        13844568936354203096,
+        13836716920904897132,
+        4617825230731057313
+      ],
+      "z": 0.0005
+    },
+    {
+      "full": 4.440892098500626e-16,
+      "generated": false,
+      "grooveDistanceBounds": [
+        0.6999996428571883,
+        0.6999996428571885
+      ],
+      "innerBounds": [
+        -3.5714281158893323e-7,
+        -3.5714281158893255e-7
+      ],
+      "native": -8.881784197001252e-16,
+      "pointBits": [
+        13844568646998807202,
+        13836717550845760613,
+        4617825271801791818
+      ],
+      "z": 0.001
+    },
+    {
+      "full": 8.881784197001252e-16,
+      "generated": false,
+      "grooveDistanceBounds": [
+        0.6999910714570423,
+        0.6999910714570425
+      ],
+      "innerBounds": [
+        -8.9285429575431e-6,
+        -8.928542957543084e-6
+      ],
+      "native": 0.0,
+      "pointBits": [
+        13844566328484819992,
+        13836722603420971660,
+        4617825617907797714
+      ],
+      "z": 0.005
+    },
+    {
+      "full": 1.1102230246251565e-15,
+      "generated": false,
+      "grooveDistanceBounds": [
+        0.6998571501450288,
+        0.699857150145029
+      ],
+      "innerBounds": [
+        -0.0001428498549710483,
+        -0.000142849854971048
+      ],
+      "native": 0.0,
+      "pointBits": [
+        13844557575857615764,
+        13836741757162531451,
+        4617827193106821742
+      ],
+      "z": 0.02
+    },
+    {
+      "full": 7.771561172376096e-16,
+      "generated": false,
+      "grooveDistanceBounds": [
+        0.6964331152381799,
+        0.6964331152381801
+      ],
+      "innerBounds": [
+        -0.003566884761819967,
+        -0.003566884761819961
+      ],
+      "native": 0.0,
+      "pointBits": [
+        13844509333117322545,
+        13836849410629100796,
+        4617842920544236104
+      ],
+      "z": 0.1
+    },
+    {
+      "full": 1.7763568394002505e-15,
+      "generated": false,
+      "grooveDistanceBounds": [
+        0.6857864376269048,
+        0.685786437626905
+      ],
+      "innerBounds": [
+        -0.014213562373095066,
+        -0.01421356237309504
+      ],
+      "native": 1.7763568394002505e-15,
+      "pointBits": [
+        13844445288696106051,
+        13836996900105302672,
+        4617879505091731854
+      ],
+      "z": 0.2
+    },
+    {
+      "full": 3.3306690738754696e-16,
+      "generated": true,
+      "grooveDistanceBounds": [
+        0.6999999107142881,
+        0.6999999107142888
+      ],
+      "innerBounds": [
+        -8.928571143859355e-8,
+        -8.928571143859338e-8
+      ],
+      "native": 0.0,
+      "pointBits": [
+        13844568936354203096,
+        13836716920904897132,
+        4617825230731057313
+      ],
+      "z": 0.0005
+    },
+    {
+      "full": 4.440892098500626e-16,
+      "generated": true,
+      "grooveDistanceBounds": [
+        0.6999996428571881,
+        0.6999996428571887
+      ],
+      "innerBounds": [
+        -3.5714281158893323e-7,
+        -3.5714281158893255e-7
+      ],
+      "native": -8.881784197001252e-16,
+      "pointBits": [
+        13844568646998807202,
+        13836717550845760613,
+        4617825271801791818
+      ],
+      "z": 0.001
+    },
+    {
+      "full": 4.440892098500626e-16,
+      "generated": true,
+      "grooveDistanceBounds": [
+        0.6999910714570421,
+        0.6999910714570428
+      ],
+      "innerBounds": [
+        -8.9285429575431e-6,
+        -8.928542957543084e-6
+      ],
+      "native": 0.0,
+      "pointBits": [
+        13844566328484819992,
+        13836722603420971658,
+        4617825617907797713
+      ],
+      "z": 0.005
+    },
+    {
+      "full": 1.1102230246251565e-15,
+      "generated": true,
+      "grooveDistanceBounds": [
+        0.6998571501450286,
+        0.6998571501450292
+      ],
+      "innerBounds": [
+        -0.0001428498549710483,
+        -0.000142849854971048
+      ],
+      "native": 0.0,
+      "pointBits": [
+        13844557575857615764,
+        13836741757162531451,
+        4617827193106821742
+      ],
+      "z": 0.02
+    },
+    {
+      "full": -6.661338147750939e-16,
+      "generated": true,
+      "grooveDistanceBounds": [
+        0.6964331152381796,
+        0.6964331152381803
+      ],
+      "innerBounds": [
+        -0.003566884761819967,
+        -0.003566884761819961
+      ],
+      "native": -1.7763568394002505e-15,
+      "pointBits": [
+        13844509333117322543,
+        13836849410629100798,
+        4617842920544236108
+      ],
+      "z": 0.1
+    },
+    {
+      "full": 3.1086244689504383e-15,
+      "generated": true,
+      "grooveDistanceBounds": [
+        0.6857864376269046,
+        0.6857864376269053
+      ],
+      "innerBounds": [
+        -0.014213562373095066,
+        -0.01421356237309504
+      ],
+      "native": 1.7763568394002505e-15,
+      "pointBits": [
+        13844445288696106050,
+        13836996900105302674,
+        4617879505091731861
+      ],
+      "z": 0.2
+    }
+  ],
+  "scope": "physical nativeE0/diagonal0 ghost has one smooth active facet for z>0; generatedQ0 family is separate, and physical facet dominance is proved around the actual native endpoint; no old rawtail continuity"
+}

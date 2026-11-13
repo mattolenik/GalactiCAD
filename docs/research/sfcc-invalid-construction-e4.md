@@ -1635,6 +1635,49 @@ The successful local mechanism does not authorize publication or inherit the ear
 199-cell completion. Production remains unchanged; full-component geometry, topology,
 contacts and source-patch ownership remain open.
 
+## Round 32: source activation, six face roots and frontier handoff
+
+The [inner-activation milestone](sfcc-inner-activation/README.md) certifies where
+native/composite equivalence ends. The event is the competing lathe level 1.4,
+not its zero carrier. Finite source branches give one activation, bounded regular
+C1 continuation on the composite crease and a physical native ghost family on a
+smooth chamfer facet. Physical/generated coefficient differences are retained;
+the actual native endpoint gets an independent strict physical-facet check.
+There is no blanket continuity or pruning claim for the old raw native tail.
+
+Bounded incoming authority and analytic X/Y inverses admit all six actual paired
+adaptive faces, retaining exact record/container/provenance and direct own-query
+checks. Their 12 own queries and both opposite consumers are recorded. The measured
+prospective closure remains 205 cells and 1,031 required faces.
+
+A refined bounded inverse prepares an interior activation on native46 at
+15.970530466239364 and composite66 at 5.051414792727411. An initial pairwise
+association failure is preserved; the search target was tightened to epsilon/4
+without changing the final allowance or query/iteration caps. Original curve-range
+finite/order guards and original incoming/outgoing tubes remain mandatory.
+
+The actual frontier cell [8,55,114,172] originally lacks a second native node and
+rejects before own curve queries. A scoped graph-entry replay now merges its proved
+entrance port, inserts the interior event, ends the native local path there and
+retains the composite continuation to the unchanged original frontier. It produces
+12 triangles with valid local topology/incidence and no detected f64/f32 orientation
+or contact conflict. All 96 generated events postvalidate, at 2,451 ledger charges
+including the unchanged 2,048-slot reservation. No global curve is deleted.
+
+An initial fixture-lattice reconstruction differed by one ULP and was rejected
+before geometry. The fix uses the fresh original pipeline lattice and preserves
+exact captured cell-box equality. The final source/binary passes 47 distinct tests
+in 53.142 seconds of its existing 60-second campaign, plus a non-test library check.
+Ten executed candidate patches were restored and input hashes verified; failed
+controls and builds remain archived. A fourth agent reviewed the final scope.
+
+Next prepare the complete atomic transaction and reconstruct every affected
+consumer, then run full coverage/order, interfaces, topology, patch ownership,
+f64/f32 outside-contact and rollback checks. The fresh ordinary component still
+refuses the preceding graph; the frontier result is a separate local test, not a
+205-cell acceptance. Production, native/WASM/GPU parity and full-model acceptance
+remain unchanged and unestablished by this milestone.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

@@ -1,0 +1,7 @@
+{
+  "filter": "modeled_feature_paths_connect_two_boundary_loops_without_caps",
+  "tests": [
+    "sfcc::cell_mesh::reliability_tests::modeled_feature_paths_connect_two_boundary_loops_without_caps"
+  ],
+  "exitCode": 0
+}

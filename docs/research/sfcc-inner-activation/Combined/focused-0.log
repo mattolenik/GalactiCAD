@@ -1,0 +1,9 @@
+
+running 4 tests
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_coherently_shifted_other_center_is_unsupported ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_ghost_tail_is_single_smooth_facet_not_the_continued_crease ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_rejects_invalid_sources_ranges_and_interior_meridians ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_source_activation_and_regular_physical_continuation ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 393 filtered out; finished in 5.38s
+

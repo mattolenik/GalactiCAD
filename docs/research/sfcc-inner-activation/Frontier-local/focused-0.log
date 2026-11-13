@@ -1,0 +1,39 @@
+
+running 8 tests
+test sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_original_records_replay_missing_native_node ... 
+thread 'sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_original_records_replay_missing_native_node' (3448347) panicked at kernel/src/sfcc/activation_frontier_replay_c_tests.rs:758:5:
+assertion `left == right` failed
+  left: [13844609406308173427, 13836723565578993916, 4617754209319262306, 13844540356977949094, 13836447368258096585, 4617892307979710972]
+ right: [13844609406308173426, 13836723565578993916, 4617754209319262306, 13844540356977949093, 13836447368258096585, 4617892307979710972]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_scope_preserves_contract_and_required_sharing_refuses ... 
+thread 'sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_scope_preserves_contract_and_required_sharing_refuses' (3448428) panicked at kernel/src/sfcc/activation_frontier_replay_c_tests.rs:758:5:
+assertion `left == right` failed
+  left: [13844609406308173427, 13836723565578993916, 4617754209319262306, 13844540356977949094, 13836447368258096585, 4617892307979710972]
+ right: [13844609406308173426, 13836723565578993916, 4617754209319262306, 13844540356977949093, 13836447368258096585, 4617892307979710972]
+FAILED
+test sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_typed_handoff_reconstructs_and_validates_actual_graph ... 
+thread 'sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_typed_handoff_reconstructs_and_validates_actual_graph' (3448472) panicked at kernel/src/sfcc/activation_frontier_replay_c_tests.rs:758:5:
+assertion `left == right` failed
+  left: [13844609406308173427, 13836723565578993916, 4617754209319262306, 13844540356977949094, 13836447368258096585, 4617892307979710972]
+ right: [13844609406308173426, 13836723565578993916, 4617754209319262306, 13844540356977949093, 13836447368258096585, 4617892307979710972]
+FAILED
+test sfcc::private_arc_a::activation_frontier_c::activation_c_diagnostic_scope_restores_after_unwind ... 
+thread 'sfcc::private_arc_a::activation_frontier_c::activation_c_diagnostic_scope_restores_after_unwind' (3448612) panicked at kernel/src/sfcc/activation_frontier_c.rs:259:9:
+scope control
+ok
+test sfcc::private_arc_a::activation_frontier_c::activation_c_frontier_selection_requires_one_actual_inventory_consumer ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_actual_event_parameters_and_frontier_branch_associations ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_event_preparation_rejects_wrong_source_cell_range_and_budget ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_event_rejects_coherent_malformed_original_ranges ... ok
+
+failures:
+
+failures:
+    sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_original_records_replay_missing_native_node
+    sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_scope_preserves_contract_and_required_sharing_refuses
+    sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_typed_handoff_reconstructs_and_validates_actual_graph
+
+test result: FAILED. 5 passed; 3 failed; 0 ignored; 0 measured; 393 filtered out; finished in 6.52s
+

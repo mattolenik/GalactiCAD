@@ -1,0 +1,8 @@
+{
+  "mainPreviousFieldsEqual": true,
+  "ignoredFields": [
+    "rootAddressProcessLocal",
+    "activationFrontierC"
+  ],
+  "newReceiptSha256": "3acfe815c03a0fa41b5debca99aede4ba826e18d74b60975c3dbc70b49f5e2b9"
+}

@@ -1,14 +1,16 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [secondary-alias local reconstruction](../research/sfcc-alias-connection/README.md)
-passes 65 focused checks and a non-test build. Its captured-cell replay produces
-23 triangles with valid local links/incidence, no duplicate faces and no detected
-f64/f32 orientation/contact conflict; all 182 generated events validate at 2,495
-charges. It preserves both original curve identities. The first typed adaptive
-Y-face and consumed-prefix authority are established, but a real inner-round
-activation disproves whole-curve equivalence. **Stage 4 and production acceptance
-remain open.** Next certify that activation and the remaining paired faces, then
-prepare the complete 205-cell/1,031-face consumer transaction.
+Status: the [inner-activation milestone](../research/sfcc-inner-activation/README.md)
+certifies the source activation and bounded C1 continuation, admits all six paired
+adaptive-face point gates and reconstructs the actual frontier cell with 12 triangles.
+Its incoming edge retains both 46/66 identities and its outgoing edge only 66;
+all 96 generated events validate. The selected source passes 47 distinct focused
+checks within the unchanged 60-second budget and a non-test library check.
+The previous captured-cell repair remains covered by retained tests.
+**Stage 4 and production acceptance remain open.** Next prepare the atomic complete
+205-cell / 1,031-face transaction, reconstruct opposite consumers and validate
+coverage, interfaces, ownership, outside contacts and rollback. Neither local replay
+establishes those complete-component exits.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and
@@ -28,8 +30,9 @@ The repeated-vertex guard remains enabled. The source normal-cone proof confirms
 the orientation conflict across all possible local source facets, while graph
 rotation and alias handling explain the malformed fan. Scoped local sharing now
 repairs that captured graph, but the ordinary component still refuses: the replay
-does not reconstruct opposite consumers or resolve the activation frontier. Later
-full-constructor geometry, edge coverage and interface checks remain open.
+does not reconstruct opposite consumers; the activation frontier now succeeds only
+in a separate scoped graph-entry replay. Later full-constructor geometry, edge
+coverage and interface checks remain open.
 These are bounded witness results, not general mesh correctness.
 
 Current production baseline:

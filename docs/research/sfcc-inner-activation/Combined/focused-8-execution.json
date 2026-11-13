@@ -1,0 +1,13 @@
+{
+  "step": "focused-8",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round32-activation/Combined/kernel-tests",
+    "closure_a_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 31.55374545900122,
+  "elapsedSeconds": 9.737790583996684,
+  "exitCode": 0,
+  "timedOut": false
+}

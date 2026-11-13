@@ -1,0 +1,22 @@
+{
+  "parent": "round31 Base; apply Base-packet first",
+  "parentManifest": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round31-alias-connection/Base/manifest.json",
+  "parentManifestSha256": "113092bf45a82eb61d5601a9cab1a57c31baaa8fd8b9576d2b00f15a5c9d40c0",
+  "mode": "incremental; alternative packets must not be stacked",
+  "changedFiles": [
+    "gcad-wasm/kernel/fixtures/alias-graph-replay.json",
+    "gcad-wasm/kernel/fixtures/alias-typed-face-b.json",
+    "gcad-wasm/kernel/src/sfcc/alias_a.rs",
+    "gcad-wasm/kernel/src/sfcc/alias_a_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/alias_face_b.rs",
+    "gcad-wasm/kernel/src/sfcc/alias_graph_c_tests.rs",
+    "gcad-wasm/kernel/src/sfcc/alias_typed_face_b.rs",
+    "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+    "gcad-wasm/kernel/src/sfcc/correlated_transport_a.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+    "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+    "gcad-wasm/kernel/src/sfcc/stage4_component_b.rs"
+  ],
+  "patchSha256": "13eaadf1c8fdd059e71774ebebaa1c0b6656465c409fd12e0c8e289b54ddb2bb"
+}

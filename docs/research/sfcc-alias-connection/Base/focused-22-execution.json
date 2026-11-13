@@ -1,0 +1,13 @@
+{
+  "step": "focused-22",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round31-alias-connection/Base/kernel-tests",
+    "planar_collinear_fan_is_retriangulated_without_erasing_its_feature_vertex",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 14.328259249996336,
+  "elapsedSeconds": 0.00428541600558674,
+  "exitCode": 0,
+  "timedOut": false
+}

@@ -1,0 +1,102 @@
+error[E0599]: no method named `query` found for struct `alias_a::Certificate<'a>` in the current scope
+  --> kernel/src/sfcc/alias_a_tests.rs:75:18
+   |
+74 |               let own = cert
+   |  _______________________-
+75 | |                 .query(charts[s], t, &mut budget)
+   | |_________________-^^^^^
+   |
+  ::: kernel/src/sfcc/alias_a.rs:52:1
+   |
+52 |   pub(crate) struct Certificate<'a> {
+   |   --------------------------------- method `query` not found for this struct
+   |
+help: there is a method `query_main` with a similar name
+   |
+75 |                 .query_main(charts[s], t, &mut budget)
+   |                       +++++
+
+
+error[E0599]: `alias_a::Certificate<'_>` is not an iterator
+  --> kernel/src/sfcc/alias_a_tests.rs:78:18
+   |
+77 |               let other = cert
+   |  _________________________-
+78 | |                 .map(&own, charts[1 - s], &mut budget)
+   | |                 -^^^ `alias_a::Certificate<'_>` is not an iterator
+   | |_________________|
+   |
+   |
+  ::: kernel/src/sfcc/alias_a.rs:52:1
+   |
+52 |   pub(crate) struct Certificate<'a> {
+   |   --------------------------------- method `map` not found for this struct because it doesn't satisfy `alias_a::Certificate<'_>: Iterator`
+   |
+   = note: the following trait bounds were not satisfied:
+           `alias_a::Certificate<'_>: Iterator`
+           which is required by `&mut alias_a::Certificate<'_>: Iterator`
+note: the trait `Iterator` must be implemented
+  --> /opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:42:1
+   |
+42 | pub const trait Iterator {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following trait defines an item `map`, perhaps you need to implement it:
+           candidate #1: `Iterator`
+
+
+error[E0599]: no method named `query` found for struct `alias_a::Certificate<'a>` in the current scope
+   --> kernel/src/sfcc/alias_a_tests.rs:127:10
+    |
+126 |       let own = cert
+    |  _______________-
+127 | |         .query(charts[0], ranges[0][1] * 0.5, &mut budget)
+    | |_________-^^^^^
+    |
+   ::: kernel/src/sfcc/alias_a.rs:52:1
+    |
+ 52 |   pub(crate) struct Certificate<'a> {
+    |   --------------------------------- method `query` not found for this struct
+    |
+help: there is a method `query_main` with a similar name
+    |
+127 |         .query_main(charts[0], ranges[0][1] * 0.5, &mut budget)
+    |               +++++
+
+
+error[E0599]: no method named `retained` found for struct `alias_a::Certificate<'a>` in the current scope
+   --> kernel/src/sfcc/alias_a_tests.rs:132:10
+    |
+131 |       assert!(cert
+    |  _____________-
+132 | |         .retained(charts[0], own.parameter(), wrong, &mut budget)
+    | |_________-^^^^^^^^
+    |
+   ::: kernel/src/sfcc/alias_a.rs:52:1
+    |
+ 52 |   pub(crate) struct Certificate<'a> {
+    |   --------------------------------- method `retained` not found for this struct
+    |
+help: there is a method `retained_main` with a similar name
+    |
+132 |         .retained_main(charts[0], own.parameter(), wrong, &mut budget)
+    |                  +++++
+
+
+error[E0599]: no method named `query` found for struct `alias_a::Certificate<'a>` in the current scope
+   --> kernel/src/sfcc/alias_a_tests.rs:146:10
+    |
+145 |       assert!(cert
+    |  _____________-
+146 | |         .query(charts[0], own.parameter(), &mut foreign_budget)
+    | |_________-^^^^^
+    |
+   ::: kernel/src/sfcc/alias_a.rs:52:1
+    |
+ 52 |   pub(crate) struct Certificate<'a> {
+    |   --------------------------------- method `query` not found for this struct
+    |
+help: there is a method `query_main` with a similar name
+    |
+146 |         .query_main(charts[0], own.parameter(), &mut foreign_budget)
+    |               +++++

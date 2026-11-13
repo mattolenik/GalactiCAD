@@ -1,0 +1,8 @@
+{
+  "filter": "lower_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::lower_source_a::tests::lower_a_full_scalar_interval_and_local_four_ray_star",
+    "sfcc::shared_twisted_proof::exposure_a::lower_source_a::tests::lower_a_refuses_bad_source_interval_and_embedded_carrier"
+  ],
+  "exitCode": 0
+}

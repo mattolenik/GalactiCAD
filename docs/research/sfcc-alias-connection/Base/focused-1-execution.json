@@ -1,0 +1,13 @@
+{
+  "step": "focused-1",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round31-alias-connection/Base/kernel-tests",
+    "orientation_a_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 56.55291608400148,
+  "elapsedSeconds": 0.004855958999542054,
+  "exitCode": 0,
+  "timedOut": false
+}

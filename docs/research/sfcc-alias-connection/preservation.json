@@ -1,0 +1,100 @@
+[
+  {
+    "packet": "Base",
+    "inputs": 182,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 4
+  },
+  {
+    "packet": "A-initial",
+    "inputs": 184,
+    "restoredExact": true,
+    "binaryMatches": null,
+    "changedFiles": 5
+  },
+  {
+    "packet": "A-generated-fixed",
+    "inputs": 184,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 6
+  },
+  {
+    "packet": "A-diagnostic",
+    "inputs": 184,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 5
+  },
+  {
+    "packet": "A-authority",
+    "inputs": 184,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 5
+  },
+  {
+    "packet": "B-inventory",
+    "inputs": 183,
+    "restoredExact": true,
+    "binaryMatches": null,
+    "changedFiles": 3
+  },
+  {
+    "packet": "B-inventory-fixed",
+    "inputs": 183,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 3
+  },
+  {
+    "packet": "B-paired",
+    "inputs": 183,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 3
+  },
+  {
+    "packet": "B-typed",
+    "inputs": 187,
+    "restoredExact": true,
+    "binaryMatches": null,
+    "changedFiles": 10
+  },
+  {
+    "packet": "B-typed-final",
+    "inputs": 187,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 10
+  },
+  {
+    "packet": "C-replay",
+    "inputs": 184,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 3
+  },
+  {
+    "packet": "C-local",
+    "inputs": 189,
+    "restoredExact": true,
+    "binaryMatches": null,
+    "changedFiles": 13
+  },
+  {
+    "packet": "C-local-fixed",
+    "inputs": 189,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 13
+  },
+  {
+    "packet": "C-local-validated",
+    "inputs": 189,
+    "restoredExact": true,
+    "binaryMatches": true,
+    "changedFiles": 13
+  }
+]

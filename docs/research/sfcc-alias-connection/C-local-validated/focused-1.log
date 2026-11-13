@@ -1,0 +1,12 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_generated_scope_charges_exact_actual_attempts_and_cleans_up ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_generated_scope_charges_exact_actual_attempts_and_cleans_up' (2634046) panicked at kernel/src/sfcc/alias_a_tests.rs:220:9:
+scope unwind
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_rejects_foreign_sources_ranges_points_and_budget ... ok
+test sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_whole_ideal_interval_and_checked_consumed_events ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 384 filtered out; finished in 3.20s
+

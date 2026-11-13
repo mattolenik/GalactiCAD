@@ -1,0 +1,12 @@
+{
+  "parent": "round31 Base; apply Base-packet first",
+  "parentManifest": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round31-alias-connection/Base/manifest.json",
+  "parentManifestSha256": "113092bf45a82eb61d5601a9cab1a57c31baaa8fd8b9576d2b00f15a5c9d40c0",
+  "mode": "incremental; alternative packets must not be stacked",
+  "changedFiles": [
+    "gcad-wasm/kernel/src/sfcc/alias_face_b.rs",
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/stage4_component_b.rs"
+  ],
+  "patchSha256": "ae8ae1b4ed0d564ae34693bb26c9db6f1ea93a7399a5565f925da9c21a83b196"
+}

@@ -1,0 +1,9 @@
+{
+  "allPreviousReceiptFieldsEqual": true,
+  "ignoredFields": [
+    "rootAddressProcessLocal",
+    "secondaryAliasFaceB"
+  ],
+  "newReceiptSha256": "7e0ab13a041785be3929940dfd946016f51c983d06ef2cd0e9e446d2ed60afee",
+  "previousReceiptSha256": "67a8ed8c9f9d1ec4b49106c685b5ff0b0ae70003792e69826b896a54b125c8f1"
+}

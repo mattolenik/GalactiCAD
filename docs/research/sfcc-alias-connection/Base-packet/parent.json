@@ -1,0 +1,13 @@
+{
+  "parent": "previous A-guard source",
+  "parentManifest": "docs/research/sfcc-orientation/A-guard/manifest.json",
+  "parentManifestSha256": "1e2b86157c593d94389dfbe6c082e88d0a361854a8d9f977a5a64f164ff053e3",
+  "mode": "incremental; alternative packets must not be stacked",
+  "changedFiles": [
+    "gcad-wasm/kernel/fixtures/orientation-face-ports.json",
+    "gcad-wasm/kernel/fixtures/orientation-first-triangle.json",
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/orientation_b_tests.rs"
+  ],
+  "patchSha256": "62ad30f7fd34cf2bd66b41aaf5b504674efd553c06c2285c19ae576c18869136"
+}

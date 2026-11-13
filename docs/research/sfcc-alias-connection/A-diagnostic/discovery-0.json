@@ -1,0 +1,7 @@
+{
+  "filter": "alias_extent_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_extent_a_original_native_end_and_alias_knots"
+  ],
+  "exitCode": 0
+}

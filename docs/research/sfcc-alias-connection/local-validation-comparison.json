@@ -1,0 +1,82 @@
+{
+  "checks": {
+    "acceptedGraph": true,
+    "retainedUnresolved": true,
+    "triangles": true,
+    "pointBits": true,
+    "typedFaceProof": true,
+    "preparedFaceSegments": true,
+    "preparedFacePins": true,
+    "oldLoops": true,
+    "preparedLoops": true,
+    "duplicateTriangles": true,
+    "directedBoundaryAndInteriorIncidenceValid": true,
+    "invalidOrientationTriangles": true,
+    "contactConflictWorkingAndExported": true,
+    "generatedAttempts": true,
+    "allGeneratedQueriesSucceeded": true,
+    "sharedEdgesAndParameters": true
+  },
+  "postGeneratedValidation": {
+    "chargedAfter": 2495,
+    "chargedBefore": 2311,
+    "complete": true,
+    "failure": null,
+    "scope": "same generated-query validation predicates against original features and same ledger; local generated checked-event map only, not whole constructor",
+    "total": 182,
+    "unvalidated": 0,
+    "validated": 182
+  },
+  "topology": {
+    "boundaryEdges": [
+      [
+        39,
+        37
+      ],
+      [
+        37,
+        40
+      ],
+      [
+        38,
+        39
+      ],
+      [
+        456,
+        38
+      ],
+      [
+        40,
+        460
+      ],
+      [
+        453,
+        454
+      ],
+      [
+        461,
+        453
+      ],
+      [
+        454,
+        456
+      ],
+      [
+        460,
+        461
+      ]
+    ],
+    "duplicateFaces": 0,
+    "edges": 39,
+    "invalidVertexLinks": [],
+    "localTopologyValid": true,
+    "misorientedInternalEdges": 0,
+    "nonManifoldEdges": 0,
+    "scope": "indexed open-component combinatorics only; no geometric or outside-contact verdict",
+    "triangles": 23,
+    "usedVertices": 17
+  },
+  "noWholeComponentAcceptance": true,
+  "beforeSha256": "dc409ec5e2d5b6ad84b0a94070099c6551976e78a903f27ab8196c81897b90d3",
+  "afterSha256": "e32e230ea7a36568a610977c37426ea8f4979965189f17c344d4e8c075ebbad2"
+}

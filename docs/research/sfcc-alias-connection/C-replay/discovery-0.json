@@ -1,0 +1,8 @@
+{
+  "filter": "alias_c_",
+  "tests": [
+    "sfcc::cell_mesh::alias_graph_c_tests::alias_c_actual_first_cell_replays_guard_points_and_all_queries",
+    "sfcc::cell_mesh::alias_graph_c_tests::alias_c_real_shared_arc_requires_bound_endpoint_identity"
+  ],
+  "exitCode": 0
+}

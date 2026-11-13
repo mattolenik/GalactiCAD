@@ -1,0 +1,9 @@
+{
+  "filter": "alias_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::alias_face_b::alias_b_source_pair_uses_original_occurrences",
+    "sfcc::shared_twisted_proof::exposure_a::alias_face_b::alias_b_typed_rectangle_rejects_wrong_slot_and_extent",
+    "sfcc::shared_twisted_proof::exposure_a::alias_typed_face_b::alias_b_typed_point_rejects_record_plane_provenance_and_source_corruption"
+  ],
+  "exitCode": 0
+}

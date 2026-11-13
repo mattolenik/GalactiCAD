@@ -1,14 +1,14 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [orientation investigation](../research/sfcc-orientation/README.md)
-traces triangle 11 to an inconsistent graph rotation and a repeated-vertex patch
-walk. Its fan creates seven opposite duplicate pairs and eight nonmanifold edges.
-The selected guard passes 52 checks and refuses this exact walk before triangulation.
-Independent source proofs establish local supporting-equation equality for charts
-46/66 and associate their distinct ports with one local source crossing; complete
-interval correspondence and typed adaptive-face binding remain open. **Stage 4 and
-production acceptance remain open.** Next establish those two obligations and
-identify the physical arc transactionally before angular sorting.
+Status: the [secondary-alias local reconstruction](../research/sfcc-alias-connection/README.md)
+passes 65 focused checks and a non-test build. Its captured-cell replay produces
+23 triangles with valid local links/incidence, no duplicate faces and no detected
+f64/f32 orientation/contact conflict; all 182 generated events validate at 2,495
+charges. It preserves both original curve identities. The first typed adaptive
+Y-face and consumed-prefix authority are established, but a real inner-round
+activation disproves whole-curve equivalence. **Stage 4 and production acceptance
+remain open.** Next certify that activation and the remaining paired faces, then
+prepare the complete 205-cell/1,031-face consumer transaction.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and
@@ -24,10 +24,12 @@ height-interpolated inverse proposals reduce fresh query work under the existing
 actual-query and three-dimensional checks. No limits were raised and no reserved
 slots were refunded. That predecessor meshed 199 selected cells and validated
 1,167 generated events at 5,568 charges before exposing the orientation failure.
-The new repeated-vertex guard refuses earlier; it does not inherit that component
-completion. The source normal-cone proof confirms the orientation conflict across
-all possible local source facets, while graph rotation and alias handling explain
-the malformed fan. Later geometry and post-graph transport checks remain open.
+The repeated-vertex guard remains enabled. The source normal-cone proof confirms
+the orientation conflict across all possible local source facets, while graph
+rotation and alias handling explain the malformed fan. Scoped local sharing now
+repairs that captured graph, but the ordinary component still refuses: the replay
+does not reconstruct opposite consumers or resolve the activation frontier. Later
+full-constructor geometry, edge coverage and interface checks remain open.
 These are bounded witness results, not general mesh correctness.
 
 Current production baseline:

@@ -1,0 +1,175 @@
+{
+  "parentCommit": "df777ed",
+  "selectedExperimentalSource": "C-local-validated",
+  "productionRuntimeChanged": false,
+  "localGraphAccepted": true,
+  "localGeometry": {
+    "triangles": 23,
+    "usedVertices": 17,
+    "edges": 39,
+    "boundaryEdges": 9,
+    "duplicateFaces": 0,
+    "nonManifoldEdges": 0,
+    "invalidVertexLinks": [],
+    "invalidOrientationTriangles": [],
+    "contactConflictWorkingAndExported": [
+      false,
+      false
+    ],
+    "bothChartIdentitiesPreserved": true
+  },
+  "generatedEvents": 182,
+  "postGeneratedValidation": {
+    "chargedAfter": 2495,
+    "chargedBefore": 2311,
+    "complete": true,
+    "failure": null,
+    "scope": "same generated-query validation predicates against original features and same ledger; local generated checked-event map only, not whole constructor",
+    "total": 182,
+    "unvalidated": 0,
+    "validated": 182
+  },
+  "localCharges": 2495,
+  "queryLimitsUnchanged": {
+    "total": 16384,
+    "request": 64,
+    "iterations": 64,
+    "generatedReserved": 2048
+  },
+  "sourceScope": {
+    "charts": [
+      46,
+      66
+    ],
+    "prefixes": [
+      [
+        0,
+        3.5636496092224204
+      ],
+      [
+        0,
+        2.9048792082047883
+      ]
+    ],
+    "canonicalRadialBounds": [
+      10.79,
+      10.8
+    ],
+    "conditionalAcceptedQueryAuthority": true,
+    "originalProjectionTubesRetained": true,
+    "rawNewtonContinuityProved": false,
+    "wholeCurveAliasProved": false
+  },
+  "typedAdaptiveFace": [
+    1,
+    3398483,
+    1
+  ],
+  "actualFaceOppositeConsumers": [
+    [
+      7,
+      25,
+      58,
+      86
+    ],
+    [
+      8,
+      51,
+      115,
+      172
+    ]
+  ],
+  "prospectiveConsumerClosure": {
+    "faces": 6,
+    "pointUserFaces": 6,
+    "cells": 205,
+    "requiredFaces": 1031,
+    "newCells": [
+      [
+        8,
+        51,
+        115,
+        172
+      ],
+      [
+        8,
+        52,
+        115,
+        172
+      ],
+      [
+        8,
+        53,
+        114,
+        172
+      ],
+      [
+        8,
+        53,
+        115,
+        172
+      ],
+      [
+        8,
+        54,
+        114,
+        172
+      ],
+      [
+        8,
+        55,
+        114,
+        172
+      ]
+    ],
+    "withinCaps": true,
+    "scope": "prospective consumer closure only; source equivalence/transaction unproved"
+  },
+  "unmatchedFrontier": [
+    {
+      "face": [
+        1,
+        3662165,
+        1
+      ],
+      "parameters": [
+        [
+          66,
+          5.083647992574102
+        ]
+      ],
+      "consumers": [
+        [
+          [
+            8,
+            55,
+            114,
+            172
+          ],
+          0
+        ]
+      ]
+    }
+  ],
+  "activationLocationCertified": false,
+  "completeComponentAccepted": false,
+  "neighborConsumerReconstructionPerformed": false,
+  "allFaceTransactionPrepared": false,
+  "tests": {
+    "Base": 55,
+    "C-replay": 2,
+    "A-authority": 3,
+    "B-inventory-fixed": 4,
+    "B-paired": 4,
+    "B-typed-final": 9,
+    "C-local-fixed": 10,
+    "C-local-validated": 65
+  },
+  "finalNonTestLibrary": "PASS",
+  "next": [
+    "certify inner-round activation and correspondence termination/continuation",
+    "extend source interval bounds and certify remaining adaptive paired faces",
+    "prepare complete consumer-closed transaction preserving provenance/parameters and rollback",
+    "rerun full component all geometry/topology/interface/source-ownership gates"
+  ]
+}

@@ -1,0 +1,7 @@
+
+running 2 tests
+test sfcc::cell_mesh::alias_graph_c_tests::alias_c_actual_first_cell_replays_guard_points_and_all_queries ... ok
+test sfcc::cell_mesh::alias_graph_c_tests::alias_c_real_shared_arc_requires_bound_endpoint_identity ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 376 filtered out; finished in 2.16s
+

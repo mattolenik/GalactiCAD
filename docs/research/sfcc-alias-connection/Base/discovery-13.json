@@ -1,0 +1,9 @@
+{
+  "filter": "exposure_a_frontier_",
+  "tests": [
+    "sfcc::trim::exposure_a_endpoint_tests::exposure_a_frontier_keeps_initial_container_when_unknown_bisection_discards_junction",
+    "sfcc::trim::exposure_a_endpoint_tests::exposure_a_frontier_retains_raw_orientation_and_work_exhaustion",
+    "sfcc::trim::exposure_a_endpoint_tests::exposure_a_frontier_wrap_keeps_both_raw_search_containers"
+  ],
+  "exitCode": 0
+}

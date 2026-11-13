@@ -1,0 +1,8 @@
+{
+  "filter": "orientation_a_",
+  "tests": [
+    "sfcc::private_arc_a::graph_b::orientation_tests::orientation_a_event_and_byte_limits_are_explicit",
+    "sfcc::private_arc_a::graph_b::orientation_tests::orientation_a_target_capture_is_lazy_and_survives_next_cell"
+  ],
+  "exitCode": 0
+}

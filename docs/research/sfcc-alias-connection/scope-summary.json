@@ -1,0 +1,109 @@
+{
+  "candidateGlobalFamily": {
+    "directFaces": 161,
+    "cells": 360,
+    "requiredFaces": 1834,
+    "withinCaps": false,
+    "scope": "overbroad candidate; not necessary minimum"
+  },
+  "pairedOnly": {
+    "faces": 6,
+    "pointUserFaces": 6,
+    "cells": 205,
+    "requiredFaces": 1031,
+    "newCells": [
+      [
+        8,
+        51,
+        115,
+        172
+      ],
+      [
+        8,
+        52,
+        115,
+        172
+      ],
+      [
+        8,
+        53,
+        114,
+        172
+      ],
+      [
+        8,
+        53,
+        115,
+        172
+      ],
+      [
+        8,
+        54,
+        114,
+        172
+      ],
+      [
+        8,
+        55,
+        114,
+        172
+      ]
+    ],
+    "withinCaps": true,
+    "scope": "prospective consumer closure only; source equivalence/transaction unproved"
+  },
+  "unmatchedFrontier": [
+    {
+      "face": [
+        1,
+        3662165,
+        1
+      ],
+      "parameters": [
+        [
+          66,
+          5.083647992574102
+        ]
+      ],
+      "consumers": [
+        [
+          [
+            8,
+            55,
+            114,
+            172
+          ],
+          0
+        ]
+      ]
+    }
+  ],
+  "nativeEndpointCounterexample": {
+    "chart": 46,
+    "point": [
+      -8.893713185734509,
+      -2.7372316133322885,
+      5.452787631173462
+    ],
+    "pointBits": [
+      13844568370333185958,
+      13836718153291708234,
+      4617825311513358717
+    ],
+    "sourceLevels": {
+      "cap": -7.737231613332288,
+      "cylinder": -0.36778896011079887,
+      "full": -2.1116441928370477e-13,
+      "groovePlusRadius": 7.800749026731779e-07,
+      "inner": -7.800752013231715e-07,
+      "innerRadius": 1.4,
+      "native": -1.4210854715202004e-14,
+      "other": 1.3985220923125579,
+      "sphere": -4.315490670443401
+    },
+    "t": 16.0
+  },
+  "nativeEndpointAliasEquality": false,
+  "activationLocationCertified": false,
+  "fullMergePrepared": false
+}

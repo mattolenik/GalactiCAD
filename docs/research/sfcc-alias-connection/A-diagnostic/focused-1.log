@@ -1,0 +1,25 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_generated_scope_charges_exact_actual_attempts_and_cleans_up ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_generated_scope_charges_exact_actual_attempts_and_cleans_up' (2428157) panicked at kernel/src/sfcc/alias_a_tests.rs:166:70:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_rejects_foreign_sources_ranges_points_and_budget ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_rejects_foreign_sources_ranges_points_and_budget' (2428310) panicked at kernel/src/sfcc/alias_a_tests.rs:102:70:
+called `Option::unwrap()` on a `None` value
+FAILED
+test sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_whole_ideal_interval_and_checked_consumed_events ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_whole_ideal_interval_and_checked_consumed_events' (2428363) panicked at kernel/src/sfcc/alias_a_tests.rs:62:9:
+whole consumed source interval/tubes refused at tube_nearest_profile
+FAILED
+
+failures:
+
+failures:
+    sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_generated_scope_charges_exact_actual_attempts_and_cleans_up
+    sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_rejects_foreign_sources_ranges_points_and_budget
+    sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_whole_ideal_interval_and_checked_consumed_events
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 377 filtered out; finished in 3.32s
+

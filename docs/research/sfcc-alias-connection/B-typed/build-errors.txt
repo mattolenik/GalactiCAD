@@ -1,0 +1,37 @@
+error[E0284]: type annotations needed for `([f64; _], [f64; _])`
+   --> kernel/src/sfcc/alias_typed_face_b.rs:126:9
+    |
+126 |     let hull = (
+    |         ^^^^
+127 |         std::array::from_fn(|k| boxes[0].0[k].min(boxes[1].0[k])),
+    |         --------------------------------------------------------- type must be known at this point
+    |
+note: required by a const generic parameter in `std::array::from_fn`
+   --> /opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/core/src/array/mod.rs:110:43
+    |
+110 | pub const fn from_fn<T: [const] Destruct, const N: usize, F>(f: F) -> [T; N]
+    |                                           ^^^^^^^^^^^^^^ required by this const generic parameter in `from_fn`
+help: consider giving `hull` an explicit type, where the value of const parameter `N` is specified
+    |
+126 |     let hull: ([_; N], [_; N]) = (
+    |             ++++++++++++++++++
+
+
+error[E0284]: type annotations needed for `([f64; _], [f64; _])`
+   --> kernel/src/sfcc/alias_typed_face_b.rs:126:9
+    |
+126 |     let hull = (
+    |         ^^^^
+127 |         std::array::from_fn(|k| boxes[0].0[k].min(boxes[1].0[k])),
+128 |         std::array::from_fn(|k| boxes[0].1[k].max(boxes[1].1[k])),
+    |         --------------------------------------------------------- type must be known at this point
+    |
+note: required by a const generic parameter in `std::array::from_fn`
+   --> /opt/homebrew/Cellar/rust/1.99.1/lib/rustlib/src/rust/library/core/src/array/mod.rs:110:43
+    |
+110 | pub const fn from_fn<T: [const] Destruct, const N: usize, F>(f: F) -> [T; N]
+    |                                           ^^^^^^^^^^^^^^ required by this const generic parameter in `from_fn`
+help: consider giving `hull` an explicit type, where the value of const parameter `N` is specified
+    |
+126 |     let hull: ([_; N], [_; N]) = (
+    |             ++++++++++++++++++

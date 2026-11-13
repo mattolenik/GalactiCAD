@@ -1,0 +1,13 @@
+{
+  "step": "focused-3",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round31-alias-connection/B-typed-final/kernel-tests",
+    "stage4_c_source_reidentification_and_clone_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 53.3347088330047,
+  "elapsedSeconds": 1.0693106670005363,
+  "exitCode": 0,
+  "timedOut": false
+}

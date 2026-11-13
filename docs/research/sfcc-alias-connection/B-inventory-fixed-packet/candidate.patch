@@ -1,0 +1,331 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/alias_face_b.rs
+@@ -0,0 +1,306 @@
++//! Read-only adaptive face and consumer inventory for the second source alias.
++use super::*;
++use crate::{
++    math::grid::{
++        face_axes, pack_point, point_to_world, stride_at_level, unpack_point, SfccLattice,
++    },
++    sfcc::{
++        face_contour::FaceRecord, feature_set::SfccFeatureSet, octree::SfccOctree,
++        point_table::PointTable, shared_arc_plan::cell_faces, triangle_quality as q,
++    },
++};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet, HashMap};
++type FaceId = (usize, i64, i64);
++
++pub(crate) fn select(f: &SfccFeatureSet) -> Option<([usize; 3], usize, [usize; 2])> {
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f).ok()?;
++    let branch =
++        HelixBranch::identify(f, ids[0], ids[1], f.curves[ids[0]].projection_tube(0., 1.)?)?;
++    let source = [branch.native, branch.field, branch.cylinder_id];
++    let root = f.strata[branch.native].exposure_root_a()?;
++    let (cap, _, _) = pair(root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++    let (cut, _, _) = pair(cap, None).ok()?;
++    let (hard, groove, _) = pair(cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++    let common: Vec<_> = f
++        .strata
++        .iter()
++        .filter(|s| s.connection_compound(hard, groove, cut).is_some())
++        .map(|s| s.id)
++        .collect();
++    if common.len() != 1 {
++        return None;
++    }
++    let corner = f.curves[ids[0]].corner_start;
++    let find = |sid| {
++        let found: Vec<_> = f
++            .curves
++            .iter()
++            .filter(|c| {
++                let pair = c.adjacent_strata;
++                !c.closed
++                    && c.corner_start == corner
++                    && pair.contains(&sid)
++                    && pair.contains(&common[0])
++                    && c.traced_carriers().is_some_and(|(a, b, _)| {
++                        a.connection_same_source(&f.strata[pair[0]])
++                            && b.connection_same_source(&f.strata[pair[1]])
++                    })
++            })
++            .map(|c| c.id)
++            .collect();
++        (found.len() == 1).then(|| found[0])
++    };
++    Some((
++        source,
++        common[0],
++        [find(branch.native)?, find(branch.field)?],
++    ))
++}
++
++pub(crate) fn rectangle(
++    lat: &SfccLattice,
++    axis: usize,
++    key: i64,
++    record: &FaceRecord,
++) -> std::result::Result<[[f64; 3]; 2], &'static str> {
++    if axis >= 3 || record.axis != axis || record.key != key || record.len <= 0 {
++        return Err("typed_face_identity");
++    }
++    let g = unpack_point(lat, key);
++    let axes = face_axes(axis);
++    if g.iter().any(|&x| x < 0 || x > lat.res)
++        || pack_point(lat, g[0], g[1], g[2]) != key
++        || axes
++            .iter()
++            .any(|&k| g[k].checked_add(record.len).is_none_or(|x| x > lat.res))
++    {
++        return Err("typed_face_domain");
++    }
++    let lo = point_to_world(lat, g[0], g[1], g[2]);
++    let mut hi = lo;
++    let width = record.len as f64 * lat.step;
++    if !width.is_finite() || width <= 0. {
++        return Err("typed_face_extent");
++    }
++    for k in axes {
++        hi[k] += width;
++    }
++    if !(0..3).all(|k| lo[k].is_finite() && hi[k].is_finite() && lo[k] <= hi[k]) {
++        return Err("typed_face_rectangle");
++    }
++    Ok([lo, hi])
++}
++
++fn cell_id(c: &crate::sfcc::octree::SfccCell) -> [i64; 4] {
++    [c.level as i64, c.ix, c.iy, c.iz]
++}
++fn consumers(
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    changed: &BTreeSet<FaceId>,
++) -> std::result::Result<
++    (
++        BTreeSet<[i64; 4]>,
++        BTreeSet<FaceId>,
++        BTreeMap<FaceId, Vec<([i64; 4], usize)>>,
++    ),
++    &'static str,
++> {
++    let mut cells = BTreeSet::new();
++    let mut required = BTreeSet::new();
++    let mut users: BTreeMap<_, Vec<_>> = BTreeMap::new();
++    for c in &oct.leaves {
++        let used = cell_faces(oct, faces, c);
++        if !used.iter().any(|f| changed.contains(f)) {
++            continue;
++        }
++        cells.insert(cell_id(c));
++        required.extend(used.iter().copied());
++        let stride = stride_at_level(&oct.lat, c.level);
++        let base = [c.ix * stride, c.iy * stride, c.iz * stride];
++        for id in used {
++            let g = unpack_point(&oct.lat, id.1);
++            let side = if g[id.0] == base[id.0] {
++                0
++            } else if g[id.0] == base[id.0] + stride {
++                1
++            } else {
++                return Err("consumer_face_plane");
++            };
++            users.entry(id).or_default().push((cell_id(c), side));
++        }
++    }
++    Ok((cells, required, users))
++}
++
++pub(crate) fn inspect(
++    f: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++) -> std::result::Result<Value, &'static str> {
++    let (source, common, pair) = select(f).ok_or("secondary_source_selection")?;
++    let primary = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f)
++        .map_err(|_| "primary_selection")?;
++    let branch = HelixBranch::identify(
++        f,
++        primary[0],
++        primary[1],
++        f.curves[primary[0]]
++            .projection_tube(0., 1.)
++            .ok_or("primary_tube")?,
++    )
++    .ok_or("primary_source")?;
++    let physical = *primary
++        .iter()
++        .find(|&&id| f.curves[id].adjacent_strata.contains(&branch.native))
++        .ok_or("primary_physical")?;
++    let alias = *primary
++        .iter()
++        .find(|&&id| id != physical)
++        .ok_or("primary_alias")?;
++    let mut old_changed = BTreeSet::new();
++    let mut old_alias_points = BTreeSet::new();
++    let mut secondary = BTreeSet::new();
++    let mut secondary_points = BTreeSet::new();
++    let mut rows = Vec::new();
++    let mut parameters: [Vec<f64>; 2] = [vec![], vec![]];
++    for axis in 0..3 {
++        let mut keys: Vec<_> = faces[axis].keys().copied().collect();
++        keys.sort_unstable();
++        for key in keys {
++            let r = &faces[axis][&key];
++            let id = (axis, key, r.len);
++            if r.pins.iter().any(|p| primary.contains(&p.curve_id)) {
++                old_changed.insert(id);
++                old_alias_points.extend(
++                    r.pins
++                        .iter()
++                        .filter(|p| p.curve_id == alias)
++                        .map(|p| p.point_id),
++                );
++            }
++            let pins: Vec<_> = r
++                .pins
++                .iter()
++                .filter(|p| pair.contains(&p.curve_id))
++                .collect();
++            if pins.is_empty() {
++                continue;
++            }
++            if rows.len() >= 1536 {
++                return Err("secondary_face_cap");
++            }
++            let rect = rectangle(&oct.lat, axis, key, r)?;
++            secondary.insert(id);
++            secondary_points.extend(pins.iter().map(|p| p.point_id));
++            for p in &pins {
++                if p.point_id >= live.count() {
++                    return Err("secondary_point_binding");
++                }
++                parameters[usize::from(p.curve_id == pair[1])].push(p.t);
++            }
++            let p_rows:Vec<_>=pins.iter().map(|p|json!({"chart":p.curve_id,"point":p.point_id,"parameterBits":p.t.to_bits(),"positionBits":q::pos(live,p.point_id).map(f64::to_bits),"key":format!("{:?}",live.key_at(p.point_id))})).collect();
++            rows.push(json!({"face":id,"rectangleBits":rect.map(|p|p.map(f64::to_bits)),"allPins":r.pins.iter().map(|p|json!({"chart":p.curve_id,"point":p.point_id,"parameterBits":p.t.to_bits()})).collect::<Vec<_>>(),"targetPins":p_rows,"segments":r.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>(),"consumedForward":r.consumed_fwd,"consumedReverse":r.consumed_rev}));
++        }
++    }
++    let mut indirect = BTreeSet::new();
++    for axis in 0..3 {
++        for (&key, r) in &faces[axis] {
++            if r.segments
++                .iter()
++                .any(|s| old_alias_points.contains(&s.a) || old_alias_points.contains(&s.b))
++                || r.pins
++                    .iter()
++                    .any(|p| old_alias_points.contains(&p.point_id))
++            {
++                old_changed.insert((axis, key, r.len));
++            }
++            if r.segments
++                .iter()
++                .any(|s| secondary_points.contains(&s.a) || secondary_points.contains(&s.b))
++                || r.pins
++                    .iter()
++                    .any(|p| secondary_points.contains(&p.point_id))
++            {
++                indirect.insert((axis, key, r.len));
++            }
++        }
++    }
++    let (old_cells, old_required, _) = consumers(oct, faces, &old_changed)?;
++    let mut combined = old_changed.clone();
++    combined.extend(indirect.iter().copied());
++    let (combined_cells, combined_required, users) = consumers(oct, faces, &combined)?;
++    for row in &mut rows {
++        let v = &row["face"];
++        let id = (
++            v[0].as_u64().unwrap() as usize,
++            v[1].as_i64().unwrap(),
++            v[2].as_i64().unwrap(),
++        );
++        row["consumers"] = json!(users.get(&id));
++        row["inOldRequired"] = json!(old_required.contains(&id));
++    }
++    for ts in &mut parameters {
++        ts.sort_by(f64::total_cmp);
++        ts.dedup_by(|a, b| a.to_bits() == b.to_bits());
++    }
++    let report = json!({"scope":"read-only source-family candidate/typed-record/consumer inventory; no query, root certificate, equivalence or mutation authority","featureFingerprint":f.fingerprint().to_string(),"sourceRoles":source,"common":common,"pair":pair,
++        "lattice":{"depth":oct.lat.max_depth,"res":oct.lat.res,"span":oct.lat.span,"origin":[oct.lat.origin_x,oct.lat.origin_y,oct.lat.origin_z],"size":oct.lat.world_size,"step":oct.lat.step},
++        "curves":pair.map(|id|{let c=&f.curves[id];json!({"id":id,"strata":c.adjacent_strata,"rangeBits":[c.t_min.to_bits(),c.t_max.to_bits()],"corners":[c.corner_start,c.corner_end],"indexPointBits":c.index_polyline.iter().map(|v|v.to_bits()).collect::<Vec<_>>()})}),
++        "actualPinParametersBits":parameters.map(|ts|ts.into_iter().map(f64::to_bits).collect::<Vec<_>>()),"faces":rows,"directSecondaryFaces":secondary,"allSecondaryPointUserFaces":indirect,
++        "oldSelection":{"cells":old_cells,"requiredFaces":old_required},"combinedSelection":{"cells":combined_cells,"requiredFaces":combined_required,"newCells":combined_cells.difference(&old_cells).copied().collect::<Vec<_>>()},
++        "withinUnchangedCellFaceCaps":combined_cells.len()<=256&&combined_required.len()<=1536,"newCurveQueries":0,"quotientPrepared":false});
++    if serde_json::to_vec(&report)
++        .map_err(|_| "inventory_serialization")?
++        .len()
++        > 512 * 1024
++    {
++        return Err("inventory_512KiB_cap");
++    }
++    Ok(report)
++}
++
++#[test]
++fn alias_b_typed_rectangle_rejects_wrong_slot_and_extent() {
++    let lat = crate::math::grid::make_lattice(3, -2., -3., -4., 8.);
++    let key = pack_point(&lat, 2, 3, 4);
++    let mut r = FaceRecord {
++        axis: 1,
++        key,
++        len: 1,
++        segments: vec![],
++        pins: vec![],
++        interior_cycle: false,
++        consumed_fwd: vec![],
++        consumed_rev: vec![],
++    };
++    assert_eq!(
++        rectangle(&lat, 1, key, &r).unwrap(),
++        [[0., 0., 0.], [1., 0., 1.]]
++    );
++    assert_eq!(rectangle(&lat, 0, key, &r), Err("typed_face_identity"));
++    r.len = 8;
++    assert_eq!(rectangle(&lat, 1, key, &r), Err("typed_face_domain"));
++    r.len = 0;
++    assert_eq!(rectangle(&lat, 1, key, &r), Err("typed_face_identity"));
++}
++#[test]
++fn alias_b_source_pair_uses_original_occurrences() {
++    let v: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let tree =
++        crate::scene_bridge::build_csg_tree_from_json(v["sceneJson"].as_str().unwrap()).unwrap();
++    let size = v["cube"]["max"][0].as_f64().unwrap() - v["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        size * 3_f64.sqrt(),
++    );
++    let (f, _) = crate::sfcc::feature_set::compile_feature_set(&tree, &tol);
++    let (source, common, ids) = select(&f).unwrap();
++    assert_ne!(ids[0], ids[1]);
++    assert_eq!(f.curves[ids[0]].adjacent_strata, [common, source[0]]);
++    assert_eq!(f.curves[ids[1]].adjacent_strata, [common, source[1]]);
++    assert_eq!(f.curves[ids[0]].corner_start, f.curves[ids[1]].corner_start);
++}
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -418,3 +418,7 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "orientation_b_tests.rs"]
+ mod orientation_b_tests;
++
++#[cfg(all(test, feature="serde"))]
++#[path="alias_face_b.rs"]
++pub(crate) mod alias_face_b;
+--- a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -270,6 +270,9 @@
+             report["sources"] = source_rows(f, ids);
+             report["consumerInventory"] = match super::diagnostic::inventory(oct,faces,live,ids) {
+                 Ok(v)=>v,Err(reason)=>json!({"status":"refused","reason":reason}),
++            };
++            report["secondaryAliasFaceB"] = match crate::sfcc::shared_twisted_proof::exposure_a::alias_face_b::inspect(f, oct, faces, live) {
++                Ok(v) => v, Err(reason) => json!({"status":"refused","reason":reason}),
+             };
+             report["constructionAttempted"] = json!(true);
+             match crate::sfcc::shared_arc_plan::construct_private(

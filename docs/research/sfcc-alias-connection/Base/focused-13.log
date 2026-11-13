@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::trim::exposure_a_endpoint_tests::exposure_a_frontier_keeps_initial_container_when_unknown_bisection_discards_junction ... ok
+test sfcc::trim::exposure_a_endpoint_tests::exposure_a_frontier_retains_raw_orientation_and_work_exhaustion ... ok
+test sfcc::trim::exposure_a_endpoint_tests::exposure_a_frontier_wrap_keeps_both_raw_search_containers ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 373 filtered out; finished in 0.00s
+

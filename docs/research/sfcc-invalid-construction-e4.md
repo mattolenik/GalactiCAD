@@ -1603,6 +1603,38 @@ The evidence includes two independently executed exact topology checkers, three
 offset-aware source tests, failed initial diagnostic-build evidence and a fourth
 reviewer's explicit limits. Production remains unchanged.
 
+## Secondary alias: validated local reconstruction and bounded full scope
+
+The [next alias milestone](sfcc-alias-connection/README.md) reconstructs the captured
+first-cell graph using a typed adaptive Y-face certificate and source-qualified
+46/66 prefix sharing. The scoped replay retains both chart identities, exact target
+endpoint parameters, direct canonical-point checks and the repeated-vertex guard.
+It produces 23 triangles with no duplicate faces, invalid links, directed-incidence
+errors or detected f64/f32 orientation/contact conflict. All 182 generated events
+pass the post-query contract at 2,495 charges. The combined source passes 65 focused
+checks and a non-test library build.
+
+The interval authority is conditional on every accepted query lying in both its
+original projection tube and the certified source-image neighbourhood. The initial
+attempt to qualify the entire broad raw tube failed and is preserved; no old Newton
+continuity or totality is inferred. The first actual adaptive FaceRecord and both
+opposite consumers are checked under the unchanged ledger, but no whole-component
+contour transaction is performed.
+
+Fresh scope enumeration finds six paired faces and 155 additional curve-66-only
+faces. Merging the entire family would exceed existing caps, whereas the paired-face
+prospective closure fits: 205 cells and 1,031 required faces. Its final cell has a
+single-66 frontier. At native curve46's t=16 endpoint, the inner-round field differs
+from the native field because the competitor is below the blend radius. Whole-curve
+alias equality is therefore false. A conservative proof-helper refusal elsewhere
+must not be mistaken for that physical activation.
+
+Next certify the activation event, extend only supported interval correspondence,
+bind the remaining adaptive faces and prepare an atomic consumer-closed transaction.
+The successful local mechanism does not authorize publication or inherit the earlier
+199-cell completion. Production remains unchanged; full-component geometry, topology,
+contacts and source-patch ownership remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

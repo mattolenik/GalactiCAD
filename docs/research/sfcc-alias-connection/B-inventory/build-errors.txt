@@ -1,0 +1,46 @@
+error[E0107]: type alias takes 1 generic argument but 2 generic arguments were supplied
+  --> kernel/src/sfcc/alias_face_b.rs:66:6
+   |
+66 | ) -> Result<[[f64; 3]; 2], &'static str> {
+   |      ^^^^^^              -------------- help: remove the unnecessary generic argument
+   |      |
+   |      expected 1 generic argument
+   |
+note: type alias defined here, with 1 generic parameter: `T`
+  --> kernel/src/sfcc/exposure_a.rs:8:6
+   |
+ 8 | type Result<T> = std::result::Result<T, &'static str>;
+   |      ^^^^^^ -
+
+
+error[E0107]: type alias takes 1 generic argument but 2 generic arguments were supplied
+   --> kernel/src/sfcc/alias_face_b.rs:102:6
+    |
+102 |   ) -> Result<
+    |        ^^^^^^ expected 1 generic argument
+...
+107 |       ),
+    |  ______-
+108 | |     &'static str,
+    | |________________- help: remove the unnecessary generic argument
+    |
+note: type alias defined here, with 1 generic parameter: `T`
+   --> kernel/src/sfcc/exposure_a.rs:8:6
+    |
+  8 | type Result<T> = std::result::Result<T, &'static str>;
+    |      ^^^^^^ -
+
+
+error[E0107]: type alias takes 1 generic argument but 2 generic arguments were supplied
+   --> kernel/src/sfcc/alias_face_b.rs:142:6
+    |
+142 | ) -> Result<Value, &'static str> {
+    |      ^^^^^^      -------------- help: remove the unnecessary generic argument
+    |      |
+    |      expected 1 generic argument
+    |
+note: type alias defined here, with 1 generic parameter: `T`
+   --> kernel/src/sfcc/exposure_a.rs:8:6
+    |
+  8 | type Result<T> = std::result::Result<T, &'static str>;
+    |      ^^^^^^ -

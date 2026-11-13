@@ -1,0 +1,81 @@
+{
+  "parentCommit": "4bd4ab7",
+  "selectedRuntime": "A-guard",
+  "selectedSourceEvidence": "B-offset",
+  "productionRuntimeChanged": false,
+  "fullComponentAccepted": false,
+  "captureEquivalentToPrevious": true,
+  "sourceFingerprint": "10977506807348230851",
+  "liveDigestBeforeAfter": "707005205ae34fd4",
+  "cause": {
+    "cell": [
+      7,
+      25,
+      58,
+      86
+    ],
+    "cornerPoint": 628,
+    "selectedStratum": 38,
+    "fanCenter": 636,
+    "faceWalkLength": 20,
+    "repeatedVertices": 8,
+    "twiceTraversedEdges": 7,
+    "oppositeDuplicateGroups": 7,
+    "nonmanifoldEdges": 8,
+    "actualRotationEulerCharacteristic": 0,
+    "actualRotationGenus": 1,
+    "genusScope": "orientable combinatorial rotation system, not the CAD surface"
+  },
+  "sourceProof": {
+    "bothPrecisionAreaVectorsOpposeAllLocalFacetGradientIntervals": true,
+    "localNativeAndInnerRoundSupportingEquationsEqual": true,
+    "wholeRawArcTransportProved": false,
+    "ports": [
+      454,
+      455
+    ],
+    "charts": [
+      46,
+      66
+    ],
+    "physicalRootAssociationUpper": [
+      1.2185321384891279e-11,
+      1.0494293679449649e-07
+    ],
+    "allowance": 3.796655370190979e-07,
+    "generatedRadiusErrorBounds": [
+      -2.2204460492503136e-16,
+      2.2204460492503136e-16
+    ],
+    "physicalGeneratedRootSeparationUpper": 2.1050578051203235e-13,
+    "physicalAndGeneratedRootsClaimedIdentical": false,
+    "typedAdaptiveFaceBindingProved": false
+  },
+  "guard": {
+    "reason": "non_simple_patch_boundary",
+    "repeatedPoint": 628,
+    "returned": "private_graph_refused",
+    "generatedQueries": 50,
+    "validatedQueries": 50,
+    "chargedQueries": 3534,
+    "discardedFallbackTriangles": 10,
+    "liveStatePreserved": true,
+    "limitsWeakened": false
+  },
+  "tests": {
+    "Base": 42,
+    "A": 8,
+    "A-guard": 52,
+    "B-proof": 2,
+    "B-face": 3,
+    "B-offset": 3,
+    "B-initial": "compile failure, JSON macro syntax",
+    "C-checkers": "2 scripts and embedded controls pass"
+  },
+  "next": [
+    "source-bound ordered46/66 whole consumed interval correspondence",
+    "typed adaptive face root/container/consumer transaction",
+    "physical arc graph identification before angular sorting with rollback",
+    "fresh fullcomponent and remaininggeometry/topology/contact/ownership gates"
+  ]
+}

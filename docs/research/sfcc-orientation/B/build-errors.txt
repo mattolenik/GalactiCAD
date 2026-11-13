@@ -1,0 +1,16 @@
+error: no rules expected `.`
+   --> kernel/src/sfcc/orientation_b_tests.rs:106:453
+    |
+106 | ... [source[0],source[1],source[2],common[0]].map(|id|json!({"id":id,"value":f.strata[id].f(p[0],p[1],p[2]),"normal":f.strata[id].n...
+    |                                              ^ no rules expected this token in macro call
+    |
+    = note: while trying to match end of macro
+
+
+error: no rules expected `.`
+   --> kernel/src/sfcc/orientation_b_tests.rs:114:227
+    |
+114 | ...:[source[0],source[1],source[2],common[0]].map(|id|f.strata[id].graph_capture_identity_b()),"curve":curve_id,"curvePair":curve.a...
+    |                                              ^ no rules expected this token in macro call
+    |
+    = note: while trying to match end of macro

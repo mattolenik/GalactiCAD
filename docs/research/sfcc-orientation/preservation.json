@@ -1,0 +1,44 @@
+[
+  {
+    "packet": "A",
+    "executedInputs": 179,
+    "sourceRestoresExactly": true,
+    "binaryMatches": true,
+    "changedFiles": 2
+  },
+  {
+    "packet": "A-guard",
+    "executedInputs": 179,
+    "sourceRestoresExactly": true,
+    "binaryMatches": true,
+    "changedFiles": 2
+  },
+  {
+    "packet": "B",
+    "executedInputs": 181,
+    "sourceRestoresExactly": true,
+    "binaryMatches": null,
+    "changedFiles": 3
+  },
+  {
+    "packet": "B-proof",
+    "executedInputs": 181,
+    "sourceRestoresExactly": true,
+    "binaryMatches": true,
+    "changedFiles": 3
+  },
+  {
+    "packet": "B-face",
+    "executedInputs": 182,
+    "sourceRestoresExactly": true,
+    "binaryMatches": true,
+    "changedFiles": 4
+  },
+  {
+    "packet": "B-offset",
+    "executedInputs": 182,
+    "sourceRestoresExactly": true,
+    "binaryMatches": true,
+    "changedFiles": 4
+  }
+]

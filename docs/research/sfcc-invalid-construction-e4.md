@@ -1571,6 +1571,38 @@ topology, outside contacts, source-patch coverage and production acceptance rema
 open. Full receipts, restoration patches and the fourth-agent decision are linked
 from the runtime report.
 
+## Orientation cause: repeated patch walk and locally equivalent curves
+
+The [orientation investigation](sfcc-orientation/README.md) captures the actual
+successful graph and stratum-38 fan. Its 20-entry boundary revisits eight vertices
+and traverses seven feature edges twice. The first cell accounts for all seven
+opposite duplicate-face groups and eight nonmanifold edges in the saved component.
+Its corner rotation swaps ports 454/455 relative to boundary order, yielding an
+Euler-zero combinatorial rotation system. This is not a claim that the CAD surface
+has genus one. A topology-only reordering leaves an unjustified fifth represented
+ray and is not selected as a repair.
+
+Finite-source interval checks prove that the working and exported triangle normals
+oppose every possible local active facet normal. Native and inactive inner-round
+supporting fields coincide locally; charts 46/66 share the other compiled carrier.
+Their actual face-port queries associate directly with a unique physical source
+crossing within unchanged tolerance. The rounded generated-carrier offset is bounded
+separately; exact physical/generated root identity is not asserted. Whole consumed
+interval transport and the exact adaptive FaceRecord/container binding remain open.
+
+The selected five-line guard rejects a repeated patch vertex before fan construction.
+It passes 52 focused checks and a non-test build. A fresh component returns
+`private_graph_refused` at `non_simple_patch_boundary`, validates all 50 generated
+queries at 3,534 charges, discards ten fallback triangles, and preserves live state.
+It prevents false local acceptance but does not reconstruct a usable component.
+
+Next establish ordered 46/66 interval correspondence and shared adaptive-face
+consumer closure before merging their physical representation. Preserve the new
+guard, all source identities, numerical checks, limits and rollback requirements.
+The evidence includes two independently executed exact topology checkers, three
+offset-aware source tests, failed initial diagnostic-build evidence and a fourth
+reviewer's explicit limits. Production remains unchanged.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

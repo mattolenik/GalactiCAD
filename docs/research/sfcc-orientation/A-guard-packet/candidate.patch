@@ -1,0 +1,175 @@
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -995,6 +995,11 @@
+             if polygon.len() < 3 {
+                 reject_b!("polygon_lt_three",serde_json::json!({"polygon":polygon}));
+             }
++            // A repeated-vertex face walk is not a disk boundary for this fan mesher.
++            let mut unique_vertices = BTreeSet::new();
++            if let Some(repeated) = polygon.iter().copied().find(|p| !unique_vertices.insert(*p)) {
++                reject_b!("non_simple_patch_boundary",serde_json::json!({"first":[first.0,first.1],"polygon":polygon,"repeatedPoint":repeated,"candidateStrata":candidates}));
++            }
+             let Some(candidates) = candidates else {
+                 reject_b!("no_patch_candidates",serde_json::json!({"first":[first.0,first.1],"polygonLength":polygon.len()}));
+             };
+@@ -1026,11 +1031,23 @@
+     {
+         reject_b!("boundary_or_feature_incidence",serde_json::json!({"usedBoundaryCount":used_boundary.len(),"requiredBoundaryCount":boundary_forward.len(),"featureEdgeCount":used_features.len()}));
+     }
++    #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++    super::private_arc_a::graph_b::orientation_note("graph",||serde_json::json!({
++        "edges":edges.iter().map(|(&(a,b),s)|serde_json::json!({"edge":[a,b],"strata":s})).collect::<Vec<_>>(),
++        "around":around.iter().map(|(&id,n)|serde_json::json!({"point":id,"neighbors":n})).collect::<Vec<_>>(),
++        "boundaryForward":boundary_forward,"patches":patches,
++        "memberships":memberships.iter().map(|(a,b,m)|serde_json::json!({"edge":[a,b],"chart":m.curve_id,"rangeBits":[m.start.to_bits(),m.end.to_bits()]})).collect::<Vec<_>>(),
++        "points":super::private_arc_a::graph_b::orientation_points(points,0)}));
+     let mut triangles = Vec::new();
+     let mut unresolved=false;
+     for (id, polygon) in patches {
+         let start = triangles.len();
+-        if !fan_from_stratum_vertex(&polygon, &features.strata[id], cell_box, tree, points, opts, &mut triangles) {unresolved=true;}
++        #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++        let before_points_a=points.count();
++        let fan_ok=fan_from_stratum_vertex(&polygon, &features.strata[id], cell_box, tree, points, opts, &mut triangles);
++        if !fan_ok {unresolved=true;}
++        #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++        super::private_arc_a::graph_b::orientation_note("patch_output",||serde_json::json!({"stratum":id,"polygon":polygon,"triangleStart":start/3,"triangles":triangles[start..],"fanReturned":fan_ok,"newPoints":super::private_arc_a::graph_b::orientation_points(points,before_points_a)}));
+         if loops.len() > 1 {
+             for tri in triangles[start..].chunks_exact(3) {
+                 let p = [tri[0], tri[1], tri[2]].map(|i| q::pos(points, i));
+@@ -1073,6 +1090,8 @@
+     for (a, b, interval) in memberships {
+         points.protect_curve_edge(a, b, interval);
+     }
++    #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++    super::private_arc_a::graph_b::orientation_note("success",||serde_json::json!({"triangles":triangles,"retainedUnresolved":unresolved}));
+     out.extend(triangles);
+     *retained_unresolved|=unresolved;
+     #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
+@@ -1599,12 +1618,16 @@
+         let (_, g) = tree.grad([px, py, pz]);
+         let gl = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+         wrong_patch = gl > 1e-12 && (g[0] * n[0] + g[1] * n[1] + g[2] * n[2]).abs() / gl < 0.8;
++        #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++        super::private_arc_a::graph_b::orientation_note("fan_projection",||serde_json::json!({"stratum":stratum.id,"boundary":boundary,"averageBits":[cx.to_bits(),cy.to_bits(),cz.to_bits()],"projectedBits":proj.map(f64::to_bits),"carrierNormalBits":n.map(f64::to_bits),"treeGradientBits":g.map(f64::to_bits),"wrongPatch":wrong_patch}));
+     }
+     if !in_box(cell_box, px, py, pz, margin)
+         || wrong_patch
+         || tree.f([px, py, pz]).abs() > opts.surface_tol
+     {
+         let kb = best_fan_apex(points, boundary);
++        #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++        super::private_arc_a::graph_b::orientation_note("boundary_fan",||serde_json::json!({"stratum":stratum.id,"boundary":boundary,"apexIndex":kb,"projectedBits":proj.map(f64::to_bits),"wrongPatch":wrong_patch}));
+         for k in 1..m - 1 {
+             out_tris.extend_from_slice(&[
+                 boundary[kb],
+@@ -1624,6 +1647,8 @@
+     }
+     let n = stratum.normal(px, py, pz);
+     let c = points.add(px, py, pz, n[0], n[1], n[2]);
++    #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
++    super::private_arc_a::graph_b::orientation_note("projected_fan",||serde_json::json!({"stratum":stratum.id,"boundary":boundary,"center":c,"projectedBits":proj.map(f64::to_bits),"carrierNormalBits":n.map(f64::to_bits)}));
+     for k in 0..m {
+         out_tris.extend_from_slice(&[c, boundary[k], boundary[(k + 1) % m]]);
+     }
+--- a/gcad-wasm/kernel/src/sfcc/graph_capture_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/graph_capture_b.rs
+@@ -72,6 +72,41 @@
+             v.as_object_mut().unwrap().remove("graphCaptureB");
+         }
+     });
++}
++// This selector only chooses diagnostic evidence; it never changes geometry authority.
++fn orientation_target() -> bool {
++    DIAGNOSTIC.with(|s| {
++        s.borrow()
++            .as_ref()
++            .is_some_and(|v| v["graphContextB"]["cell"] == json!([7, 25, 58, 86]))
++    })
++}
++pub(crate) fn orientation_note(stage: &'static str, record: impl FnOnce() -> Value) {
++    if !orientation_target() {
++        return;
++    }
++    DIAGNOSTIC.with(|s| {
++        if let Some(v)=s.borrow_mut().as_mut() {
++            if v["orientationCaptureA"].is_null() {
++                v["orientationCaptureA"]=json!({"scope":"selected successful cell graph/patch provenance; observational, no added geometry queries","preGraph":v["graphCaptureB"],"events":[],"complete":true,"byteCap":CAP});
++            }
++            let capture=&mut v["orientationCaptureA"];
++            if capture["complete"]!=json!(true) { return; }
++            let events=capture["events"].as_array_mut().unwrap();
++            if events.len()>=128 {
++                capture["complete"]=json!(false);capture["refusal"]=json!("orientation_event_cap");return;
++            }
++            events.push(json!({"stage":stage,"data":record()}));
++            let checked=bounded(capture.take());
++            *capture=checked;
++        }
++    });
++}
++pub(crate) fn orientation_points(points: &PointTable, start: usize) -> Value {
++    if start > points.count() || !points_supported(points) {
++        return json!({"complete":false,"refusal":"orientation_point_cap"});
++    }
++    json!({"complete":true,"points":(start..points.count()).map(|id|point_record(points,id)).collect::<Vec<_>>()})
+ }
+ pub(crate) struct Capture {
+     active: bool,
+@@ -382,3 +417,56 @@
+         DIAGNOSTIC.with(|s| *s.borrow_mut() = None);
+     }
+ }
++
++#[cfg(test)]
++mod orientation_tests {
++    use super::*;
++    #[test]
++    fn orientation_a_target_capture_is_lazy_and_survives_next_cell() {
++        DIAGNOSTIC.with(|s| *s.borrow_mut() = Some(json!({"graphContextB":{"cell":[1,0,0,0]}})));
++        orientation_note("inactive", || panic!("inactive capture must not evaluate"));
++        assert!(test_peek().get("orientationCaptureA").is_none());
++        DIAGNOSTIC.with(|s|*s.borrow_mut()=Some(json!({"graphContextB":{"cell":[7,25,58,86]},"graphCaptureB":{"pre":{"loops":[[1,2,3]]},"complete":true}})));
++        orientation_note("graph", || json!({"stratum":31,"boundary":[1,2,3]}));
++        new_cell();
++        let value = test_take();
++        assert!(value.get("graphContextB").is_none());
++        assert_eq!(
++            value["orientationCaptureA"]["preGraph"]["pre"]["loops"],
++            json!([[1, 2, 3]])
++        );
++        assert_eq!(
++            value["orientationCaptureA"]["events"][0]["data"]["stratum"],
++            31
++        );
++        assert_eq!(value["orientationCaptureA"]["complete"], true);
++    }
++    #[test]
++    fn orientation_a_event_and_byte_limits_are_explicit() {
++        DIAGNOSTIC.with(|s| {
++            *s.borrow_mut() =
++                Some(json!({"graphContextB":{"cell":[7,25,58,86]},"graphCaptureB":{}}))
++        });
++        for i in 0..128 {
++            orientation_note("row", || json!(i));
++        }
++        orientation_note("overflow", || panic!("overflow closure must not run"));
++        assert_eq!(
++            test_peek()["orientationCaptureA"]["refusal"],
++            "orientation_event_cap"
++        );
++        orientation_note("after", || panic!("refused capture must not evaluate"));
++        test_take();
++        DIAGNOSTIC.with(|s| {
++            *s.borrow_mut() =
++                Some(json!({"graphContextB":{"cell":[7,25,58,86]},"graphCaptureB":{}}))
++        });
++        orientation_note("large", || json!({"text":"x".repeat(CAP)}));
++        let value = test_take();
++        assert_eq!(value["orientationCaptureA"]["complete"], false);
++        assert_eq!(
++            value["orientationCaptureA"]["refusal"],
++            "graph_capture_512KiB_cap"
++        );
++    }
++}

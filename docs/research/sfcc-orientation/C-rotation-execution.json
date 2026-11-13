@@ -1,0 +1,11 @@
+{
+  "command": [
+    "python3",
+    "/tmp/sfcc-orientation-c/rotation.py",
+    ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/component-attempt.json",
+    ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/orientation-C-rotation.json"
+  ],
+  "capSeconds": 60,
+  "elapsedSeconds": 0.04558895899754134,
+  "exitCode": 0
+}

@@ -1,0 +1,13 @@
+{
+  "step": "focused-21",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/kernel-tests",
+    "planar_collinear_fan_is_retriangulated_without_erasing_its_feature_vertex",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 17.719929167000373,
+  "elapsedSeconds": 0.004752499997266568,
+  "exitCode": 0,
+  "timedOut": false
+}

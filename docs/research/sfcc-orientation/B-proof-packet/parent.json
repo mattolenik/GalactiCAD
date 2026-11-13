@@ -1,0 +1,12 @@
+{
+  "parent": "round29 Geometry-capture selected source",
+  "parentManifest": "docs/research/sfcc-lower-runtime/Geometry-capture/manifest.json",
+  "parentManifestSha256": "e6d9b266c6f81f7d18bff1e1ef54f0fc08da6c00e68596d84f57e751b7ccd716",
+  "patchMode": "incremental against restored parent; candidates are alternatives",
+  "changedFiles": [
+    "gcad-wasm/kernel/fixtures/orientation-first-triangle.json",
+    "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+    "gcad-wasm/kernel/src/sfcc/orientation_b_tests.rs"
+  ],
+  "patchSha256": "636150b30a40337dd5fa101c507de6c477fc0d38b167d5767d56eff7c65a317f"
+}

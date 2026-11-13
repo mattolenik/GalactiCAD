@@ -1,0 +1,7 @@
+
+running 2 tests
+test sfcc::shared_twisted_proof::exposure_a::orientation_b_tests::orientation_b_actual_source_facets_and_reference ... ok
+test sfcc::shared_twisted_proof::exposure_a::orientation_b_tests::orientation_b_whole_triangle_source_normal_cone_and_alias_equations ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 2.14s
+

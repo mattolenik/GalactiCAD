@@ -1,0 +1,11 @@
+
+running 2 tests
+test sfcc::cell_mesh::upper_cell_sampler_tests::upper_cell_actual_sampler_consumes_proved_closure ... ok
+test sfcc::cell_mesh::upper_cell_sampler_tests::upper_cell_unsupported_bad_query_source_and_budget_still_refuse ... 
+thread 'sfcc::cell_mesh::upper_cell_sampler_tests::upper_cell_unsupported_bad_query_source_and_budget_still_refuse' (1895305) panicked at kernel/src/sfcc/upper_cell_sampler_tests.rs:307:51:
+scope control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 369 filtered out; finished in 2.17s
+

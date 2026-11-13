@@ -1,0 +1,8 @@
+{
+  "filter": "orientation_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::orientation_b_tests::orientation_b_actual_source_facets_and_reference",
+    "sfcc::shared_twisted_proof::exposure_a::orientation_b_tests::orientation_b_whole_triangle_source_normal_cone_and_alias_equations"
+  ],
+  "exitCode": 0
+}

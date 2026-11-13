@@ -1,0 +1,158 @@
+{
+  "common": 31,
+  "commonOffsetBits": 4602588292259442002,
+  "commonWeightBits": 4604544271217802189,
+  "cylinderLevelBounds": [
+    -0.0036831545290940686,
+    -0.0011625173337090897
+  ],
+  "faceAxis": 1,
+  "faceBox": [
+    -9.579888970564955,
+    -2.4943226517164696,
+    5.3896361967837,
+    -9.334576470564954,
+    -2.24901015171647,
+    5.6349486967837
+  ],
+  "faceCoordinateBits": 13836171170937199256,
+  "generatedEffectiveRadiusBounds": [
+    0.6999999999999997,
+    0.7000000000000002
+  ],
+  "generatedOffsetErrorBounds": [
+    -2.2204460492503136e-16,
+    2.2204460492503136e-16
+  ],
+  "generatedRhoBounds": [
+    10.796573076012894,
+    10.796573076012905
+  ],
+  "generatedRootBounds": [
+    [
+      -9.354501807818515,
+      -9.354501807818371
+    ],
+    [
+      -2.4943226517164696,
+      -2.4943226517164696
+    ],
+    [
+      5.3906665741081925,
+      5.390666574108346
+    ]
+  ],
+  "idealRootBounds": [
+    [
+      -9.354501807818515,
+      -9.354501807818371
+    ],
+    [
+      -2.4943226517164696,
+      -2.4943226517164696
+    ],
+    [
+      5.3906665741081925,
+      5.390666574108346
+    ]
+  ],
+  "physicalAndGeneratedRootsClaimedIdentical": false,
+  "physicalChamferRadiusBits": 4604480259023595110,
+  "ports": [
+    {
+      "actualQueryBits": [
+        13844827771266531156,
+        13836171170937187002,
+        4617755369420993716
+      ],
+      "chart": 46,
+      "pair": [
+        31,
+        10
+      ],
+      "parameterHex": "400c825ab9f01b99",
+      "pointId": 454,
+      "queryToGeneratedRootUpper": 1.2185321384891279e-11,
+      "queryToIdealRootUpper": 1.2185321384891279e-11,
+      "storedPointBits": [
+        13844827771266531156,
+        13836171170937187002,
+        4617755369420993716
+      ],
+      "storedToGeneratedRootUpper": 1.2185321384891279e-11,
+      "storedToIdealRootUpper": 1.2185321384891279e-11,
+      "storedToOwnQueryUpper": 5.444624757545262e-162
+    },
+    {
+      "actualQueryBits": [
+        13844827771288457826,
+        13836171170937199256,
+        4617755369311285198
+      ],
+      "chart": 66,
+      "pair": [
+        31,
+        30
+      ],
+      "parameterHex": "40073d314f708f3d",
+      "pointId": 455,
+      "queryToGeneratedRootUpper": 1.0494293679449649e-7,
+      "queryToIdealRootUpper": 1.0494293679449649e-7,
+      "storedPointBits": [
+        13844827771288457826,
+        13836171170937199256,
+        4617755369311285198
+      ],
+      "storedToGeneratedRootUpper": 1.0494293679449649e-7,
+      "storedToIdealRootUpper": 1.0494293679449649e-7,
+      "storedToOwnQueryUpper": 5.444624757545262e-162
+    }
+  ],
+  "proofBox": [
+    [
+      -9.357115199880214,
+      -2.4943226517164696,
+      5.390153370296788
+    ],
+    [
+      -9.354501807818371,
+      -2.4929838318220647,
+      5.390666574108346
+    ]
+  ],
+  "quotientAuthorized": false,
+  "radialDerivativeBounds": [
+    -0.5547001962252297,
+    -0.5547001962252286
+  ],
+  "rawArcTransportProved": false,
+  "rhoBounds": [
+    10.796573076012894,
+    10.796573076012905
+  ],
+  "sameAllowance": 3.796655370190979e-7,
+  "scope": "one physical source crossing and one generated-common-carrier crossing on the original Y face, with bounded offset difference and separate direct associations for distinct numerical ports; no mutation, snap, or whole-arc authority",
+  "sourceGeneratedRootSeparationUpper": 2.1050578051203235e-13,
+  "sourceMargins": [
+    0.6076076667535142,
+    6.501638935415071,
+    7.5019941937544345,
+    0.4862782235594227,
+    0.999906420714578,
+    0.4318906657332319,
+    7.489491253841169,
+    3.078031593276122
+  ],
+  "sourceReceiptSha256": "40ac149d65c6422d421d79b78f992b7e1c0a63d621b051183f5dc735264af050",
+  "sourceRoles": [
+    10,
+    30,
+    15
+  ],
+  "storedPinsBitIdentical": false,
+  "uniqueSourceRoot": true,
+  "untwistedBranchBounds": [
+    7.248500749012406,
+    7.254971160463893
+  ]
+}

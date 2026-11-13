@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/kernel-tests",
+    "orientation_b_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.7928020420004,
+  "elapsedSeconds": 3.2901183329995547,
+  "exitCode": 0,
+  "timedOut": false
+}

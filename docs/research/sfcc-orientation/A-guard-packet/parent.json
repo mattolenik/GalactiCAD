@@ -1,0 +1,11 @@
+{
+  "parent": "round29 Geometry-capture selected source",
+  "parentManifest": "docs/research/sfcc-lower-runtime/Geometry-capture/manifest.json",
+  "parentManifestSha256": "e6d9b266c6f81f7d18bff1e1ef54f0fc08da6c00e68596d84f57e751b7ccd716",
+  "patchMode": "incremental against restored parent; candidates are alternatives",
+  "changedFiles": [
+    "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+    "gcad-wasm/kernel/src/sfcc/graph_capture_b.rs"
+  ],
+  "patchSha256": "4067993e349ac8ec003fa24f71fe42fe2497430953355d79eedd69088bf2198f"
+}

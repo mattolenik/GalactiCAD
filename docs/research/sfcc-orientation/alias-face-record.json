@@ -1,0 +1,61 @@
+{
+  "scope": "observed staged FaceRecord; not completed typed source-root binding",
+  "receiptSha256": "67a8ed8c9f9d1ec4b49106c685b5ff0b0ae70003792e69826b896a54b125c8f1",
+  "face": {
+    "consumedForwardPrefix": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "consumedReversePrefix": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "face": [
+      1,
+      3398483,
+      1
+    ],
+    "pinCount": 3,
+    "pins": [
+      {
+        "chart": 46,
+        "parameterBits": 4615207044326103961,
+        "pointId": 454
+      },
+      {
+        "chart": 66,
+        "parameterBits": 4613723625259831101,
+        "pointId": 455
+      },
+      {
+        "chart": 75,
+        "parameterBits": 4623492522256922494,
+        "pointId": 456
+      }
+    ],
+    "segmentCount": 4,
+    "segments": [
+      [
+        453,
+        455
+      ],
+      [
+        455,
+        454
+      ],
+      [
+        454,
+        456
+      ],
+      [
+        456,
+        38
+      ]
+    ]
+  },
+  "sourceFeatureFingerprint": "10977506807348230851"
+}

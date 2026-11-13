@@ -1,0 +1,9 @@
+{
+  "filter": "lower_runtime_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_missing_rays_metadata_and_bad_queries_refuse",
+    "sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_prepared_transaction_rolls_back_and_scopes_cleanup",
+    "sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_source_transaction_preserves_joins_and_admits_complete_event"
+  ],
+  "exitCode": 0
+}

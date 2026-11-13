@@ -1,0 +1,7 @@
+{
+  "filter": "component_geometry_capture_",
+  "tests": [
+    "sfcc::private_arc_a::component_geometry_capture_separates_working_exported_and_orientation"
+  ],
+  "exitCode": 0
+}

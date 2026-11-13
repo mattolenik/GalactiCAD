@@ -1,0 +1,13 @@
+{
+  "step": "focused-17",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/kernel-tests",
+    "stage4_component_b_topology_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 17.75582916699932,
+  "elapsedSeconds": 0.0042501249990891665,
+  "exitCode": 0,
+  "timedOut": false
+}

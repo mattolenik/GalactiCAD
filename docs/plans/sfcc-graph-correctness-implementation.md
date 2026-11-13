@@ -1,12 +1,14 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [lower runtime connection and checked inverse proposals](../research/sfcc-lower-runtime/README.md)
-pass 41 focused checks and a non-test build. All 199 selected cells now mesh, and
-all 1,167 generated events validate at 5,568 charges under the unchanged 16,384 cap.
-The next guard rejects triangle 11 in cell `[7,25,58,86]`: its nonzero-area normal
-opposes the existing centroid gradient in both f64 and f32. **Stage 4 and production
-acceptance remain open.** Next establish this triangle's source-patch attribution
-and loop orientation before repairing it, then finish the component validation.
+Status: the [orientation investigation](../research/sfcc-orientation/README.md)
+traces triangle 11 to an inconsistent graph rotation and a repeated-vertex patch
+walk. Its fan creates seven opposite duplicate pairs and eight nonmanifold edges.
+The selected guard passes 52 checks and refuses this exact walk before triangulation.
+Independent source proofs establish local supporting-equation equality for charts
+46/66 and associate their distinct ports with one local source crossing; complete
+interval correspondence and typed adaptive-face binding remain open. **Stage 4 and
+production acceptance remain open.** Next establish those two obligations and
+identify the physical arc transactionally before angular sorting.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and
@@ -20,8 +22,12 @@ The lower source proof now supports an atomic last-span attachment, complete
 incident source-role checks and qualified query/sampling consumers. Two bounded
 height-interpolated inverse proposals reduce fresh query work under the existing
 actual-query and three-dimensional checks. No limits were raised and no reserved
-slots were refunded. The newly reached orientation refusal is captured exactly;
-later triangle and post-graph transport checks remain open.
+slots were refunded. That predecessor meshed 199 selected cells and validated
+1,167 generated events at 5,568 charges before exposing the orientation failure.
+The new repeated-vertex guard refuses earlier; it does not inherit that component
+completion. The source normal-cone proof confirms the orientation conflict across
+all possible local source facets, while graph rotation and alias handling explain
+the malformed fan. Later geometry and post-graph transport checks remain open.
 These are bounded witness results, not general mesh correctness.
 
 Current production baseline:

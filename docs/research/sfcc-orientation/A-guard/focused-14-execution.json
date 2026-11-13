@@ -1,0 +1,13 @@
+{
+  "step": "focused-14",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/kernel-tests",
+    "stage4_c_source_reidentification_and_clone_controls",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 19.939334167000197,
+  "elapsedSeconds": 1.0696603750002396,
+  "exitCode": 0,
+  "timedOut": false
+}

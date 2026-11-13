@@ -1,0 +1,311 @@
+{
+  "scope": "exact directed-edge permutation and source-neutral counterfactual; no geometry query or runtime change",
+  "sourceReceipt": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/component-attempt.json",
+  "sourceSha256": "40ac149d65c6422d421d79b78f992b7e1c0a63d621b051183f5dc735264af050",
+  "selfControls": {
+    "diskRotationEulerTwo": true,
+    "swappedCenterRaysEulerZero": true
+  },
+  "center": 628,
+  "recordedCenterRotation": [
+    629,
+    632,
+    456,
+    39,
+    461
+  ],
+  "representedRadialPaths": [
+    {
+      "neighbor": 629,
+      "port": 454,
+      "path": [
+        628,
+        629,
+        630,
+        631,
+        454
+      ]
+    },
+    {
+      "neighbor": 632,
+      "port": 455,
+      "path": [
+        628,
+        632,
+        633,
+        455
+      ]
+    },
+    {
+      "neighbor": 456,
+      "port": 456,
+      "path": [
+        628,
+        456
+      ]
+    },
+    {
+      "neighbor": 39,
+      "port": 39,
+      "path": [
+        628,
+        39
+      ]
+    },
+    {
+      "neighbor": 461,
+      "port": 461,
+      "path": [
+        628,
+        461
+      ]
+    }
+  ],
+  "boundaryCycle": [
+    37,
+    40,
+    460,
+    461,
+    453,
+    455,
+    454,
+    456,
+    38,
+    39
+  ],
+  "boundaryOrderedPorts": [
+    461,
+    455,
+    454,
+    456,
+    39
+  ],
+  "boundaryConsistentCenterRotation": [
+    461,
+    632,
+    629,
+    456,
+    39
+  ],
+  "actual": {
+    "vertices": 16,
+    "edges": 20,
+    "faceOrbitsIncludingExterior": 4,
+    "eulerCharacteristic": 0,
+    "orientableRotationSurfaceGenus": 1,
+    "faces": [
+      {
+        "vertices": [
+          37,
+          39,
+          38,
+          456,
+          454,
+          455,
+          453,
+          461,
+          460,
+          40
+        ],
+        "forwardBoundary": 0,
+        "backwardBoundary": 10,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          37,
+          40,
+          460,
+          461,
+          628,
+          39
+        ],
+        "forwardBoundary": 4,
+        "backwardBoundary": 0,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          38,
+          39,
+          628,
+          456
+        ],
+        "forwardBoundary": 2,
+        "backwardBoundary": 0,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          453,
+          455,
+          633,
+          632,
+          628,
+          629,
+          630,
+          631,
+          454,
+          456,
+          628,
+          632,
+          633,
+          455,
+          454,
+          631,
+          630,
+          629,
+          628,
+          461
+        ],
+        "forwardBoundary": 4,
+        "backwardBoundary": 0,
+        "repeatedVertices": [
+          455,
+          633,
+          632,
+          628,
+          629,
+          630,
+          631,
+          454
+        ],
+        "twoSidedSameFaceEdges": [
+          [
+            455,
+            633
+          ],
+          [
+            632,
+            633
+          ],
+          [
+            628,
+            632
+          ],
+          [
+            628,
+            629
+          ],
+          [
+            629,
+            630
+          ],
+          [
+            630,
+            631
+          ],
+          [
+            454,
+            631
+          ]
+        ]
+      }
+    ],
+    "scope": "genus of the orientable combinatorial rotation system, not proof of CAD surface topology"
+  },
+  "counterfactual": {
+    "vertices": 16,
+    "edges": 20,
+    "faceOrbitsIncludingExterior": 6,
+    "eulerCharacteristic": 2,
+    "orientableRotationSurfaceGenus": 0,
+    "faces": [
+      {
+        "vertices": [
+          37,
+          39,
+          38,
+          456,
+          454,
+          455,
+          453,
+          461,
+          460,
+          40
+        ],
+        "forwardBoundary": 0,
+        "backwardBoundary": 10,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          37,
+          40,
+          460,
+          461,
+          628,
+          39
+        ],
+        "forwardBoundary": 4,
+        "backwardBoundary": 0,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          38,
+          39,
+          628,
+          456
+        ],
+        "forwardBoundary": 2,
+        "backwardBoundary": 0,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          453,
+          455,
+          633,
+          632,
+          628,
+          461
+        ],
+        "forwardBoundary": 2,
+        "backwardBoundary": 0,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          454,
+          456,
+          628,
+          629,
+          630,
+          631
+        ],
+        "forwardBoundary": 1,
+        "backwardBoundary": 0,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      },
+      {
+        "vertices": [
+          454,
+          631,
+          630,
+          629,
+          628,
+          632,
+          633,
+          455
+        ],
+        "forwardBoundary": 1,
+        "backwardBoundary": 0,
+        "repeatedVertices": [],
+        "twoSidedSameFaceEdges": []
+      }
+    ],
+    "scope": "genus of the orientable combinatorial rotation system, not proof of CAD surface topology"
+  },
+  "counterfactualChangesOnlyCenterRotation": true,
+  "counterfactualPhysicalRepairAuthorized": false,
+  "reasonNotRepair": "boundary-consistent rotation retains every represented radial branch, including possible aliases; source quotient and face-port association are unproved by topology alone"
+}

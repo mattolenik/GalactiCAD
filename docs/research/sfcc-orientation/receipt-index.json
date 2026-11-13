@@ -1,0 +1,867 @@
+[
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/closure-A-rollback.json",
+    "sha256": "b739b274103d76808c9a9babec39339a73a640b8cce182f354530e770f807b34",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-13-execution.json",
+    "sha256": "ae15ad841c271de03966abb2aff3e572b592676dbc75ca518a259027090fe7be",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-6-execution.json",
+    "sha256": "b50ecc674c7b8490512ecf64227f075469cde0a966aef95cd4172af79b9b2832",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/repair-B.json",
+    "sha256": "b53f51f04c4d2413f04f671ea0f4d9afdc3403bfab11a6c065d402c4c3ead9f0",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-9-execution.json",
+    "sha256": "cee51b155c0f6001963eb786b8e105dc3647bb6c65dce707055eab16ecee8f58",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/lower-A.json",
+    "sha256": "efd5be53f43534343a7564c556168ae283056297ddee5a8f14051014b023f78c",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-13.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-2.json",
+    "sha256": "828f0930bf4711bab64ba6825d97601c08fe44fcfcb4a253ec33baf6a8c3661d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-14-execution.json",
+    "sha256": "dd3d9d43469ec4bd29767a7c8d8021b4e01dff6362c6af1eb5f5c43d2fafd89e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-1-execution.json",
+    "sha256": "1adf49c27b0675caee6c888eca52e3c6e91ff3ad663c9d587e3da00bb225eb05",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-0-execution.json",
+    "sha256": "b333e77d18832c5314dd1cd3afbb18b8c2bd8350b0c7ecf721cd2796350ff4d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-3.json",
+    "sha256": "564676d65d2057e8025a7771e1a0e29d69dd59b8d241fceb952cdf50ea9bd11f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-8-execution.json",
+    "sha256": "f07e48e37beff862d9b6dd665cb6ae9a03d7fd04632bc354da153ea4a75919c2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-12.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-15-execution.json",
+    "sha256": "cce619fa8203f23ec25af2daca3402bd5271d0e4b1f8d7c14a6686fc6d24e62f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/source-preflight.json",
+    "sha256": "d03ca47a2c8c57edc3840d6bff2bb99938f7b888ccd4a9d7413e137ae2734a9b",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/lower-B-association.json",
+    "sha256": "d1b52ed48c140e647b02beb0d5f21244b2ead7850be84633c3f44c4f422340cb",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-7-execution.json",
+    "sha256": "a9a238964811049510f8192dc894d08118d0639854a3eefc548445f255ccadfb",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-12-execution.json",
+    "sha256": "c0f0f7ab0db1db981e9a493e0f0015fbbc89397318464ddfbd2672f8875865f9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-5-execution.json",
+    "sha256": "cc51d4f0085d7c3109dd3ad913c3199d2d5712e50074b9db02014f307890879d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-15.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-4.json",
+    "sha256": "d6d1c4f24b808c25140a71894a297acafe4a29283845add9fa58cece6c6051f7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-10-execution.json",
+    "sha256": "3b41539e1956d6c13d993b547a658e9f5bbfb3fb36eee69fb6fca54acda45cc0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-2-execution.json",
+    "sha256": "0daf8da2eb8e62c711e36405784cd81d0c1a13c2fd9b434d5e91d30eb70c0bb1",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-8.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-17-execution.json",
+    "sha256": "daa6df6a8cb596ca703522acbcf30c100cb89e73f4f316434b2507278b73dba8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/connection-A.json",
+    "sha256": "d44f6e7c0e20e7110360ab1b63e06c9a47983dfc89532fa490d8ee3db83e7880",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/inverse-C.json",
+    "sha256": "e4fc177c4695f1ea1474994f129cc62cde5d8dd03bb3e9d103a45bd3bb97512a",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-16-execution.json",
+    "sha256": "d0d4f16c3967b3e679d902b0becb7e657aa9f8a45d6de8ebec6fdd8c81fcdce3",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-3-execution.json",
+    "sha256": "9f967155ad1736e99949198680295dcab4ee60176d14a54fb660470e0bf5f9c9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-9.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-11-execution.json",
+    "sha256": "9c9de47d3a206e1484c95b06c2bab1c52217dae710117dd3cb782399344f8ca2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/upper-A.json",
+    "sha256": "31afa90791ddcdaf6ccbb6d3387242eb3359e4bbf3741f91475a38f323c5c395",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-5.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/focused-4-execution.json",
+    "sha256": "25bdd22cd66d0a4a8423de32efbfb6c879bce7bb1af807ad74f3c263533335f3",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-14.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-6.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-17.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/clean-kernel-execution.json",
+    "sha256": "c6760a55020723ade2848ed45e65b99f36b9353c2748fd505df0c36db5d47ba0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/manifest.json",
+    "sha256": "86bd5ce1b8248450f0701c013171dd3d01ffd18669bae2f1417c3c7953140d2b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/connection-A-rollback.json",
+    "sha256": "030238d282802a1862852d387c72052d32ce14fa45a0b8cd86cc9ca7b06fc656",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-16.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-7.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-0.json",
+    "sha256": "de8af4b87d8d4e900012212bf75a6f73e8f8160a2ed7a84e29e38fabdca3259e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-11.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/lower-C.json",
+    "sha256": "82a1c53da0f75597513f8b69bd048225c5bea54ee1c5de7f45761930cd8b2a74",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/binary.json",
+    "sha256": "5093435e9247b795dabc5ef534ed753d1027bdaa214d8c333beaee0749a4c4e6",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/lower-B.json",
+    "sha256": "afbc61da85f06c9d509fa58061e3348d5af8a7813e02b9163b324b098fccb595",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-10.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/discovery-1.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/closure-A.json",
+    "sha256": "6055d65ee60ea5cfcffe0b80ea1cc60eba70e199fb55600d6df9142e4ed1f3b7",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/Base/build-execution.json",
+    "sha256": "e4d5539610fd5aea691ad6d08dc0b31da46d4c09438eebed9585bc54795bfb7f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/discovery-2.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/focused-1-execution.json",
+    "sha256": "edf471b76edca7831c796e6f632e964bf12c40b3efc6db102caf45b6e2eef89a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/focused-0-execution.json",
+    "sha256": "62221ce1b42afc8db585fdba95e2e364dbf2a9919653875e2d519158b497e84d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/discovery-3.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/source-preflight.json",
+    "sha256": "a9d9d802e32f8ef105da2002d655a73f8007dc396515d70784805db53d4549ab",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/discovery-4.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/component-attempt.json",
+    "sha256": "40ac149d65c6422d421d79b78f992b7e1c0a63d621b051183f5dc735264af050",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/focused-2-execution.json",
+    "sha256": "8b5c5edf37735859849521ebe792e292e297e394c87a223b2affc782c46697ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/focused-3-execution.json",
+    "sha256": "b9d68422610cfc6901fade627d4a31ac2bbb82647f5325e0dd09cb0a1f66c66b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/library-check-execution.json",
+    "sha256": "2863dffb79ac259fad825d10b1495035e499a42274eb9bb27bd0053091ccb257",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/focused-4-execution.json",
+    "sha256": "f3c2fd930ec2895fa3fd37905045625b086fb17b773146c1312750227cb6b8ac",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/clean-kernel-execution.json",
+    "sha256": "a20b7d6192032a35f4c60bcfb8aaf99574eb93f6cbe17b69a0eecf603a96b83d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/manifest.json",
+    "sha256": "4082a3672cd97ee3136efa4c85b9c3bc30633e6fa690bd89ad25e644c55aa041",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/component-attempt-execution.json",
+    "sha256": "dac6877d8998206709ade4806d157f70059baf2fa0c1e8732fa79b7b7949fc0b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/discovery-0.json",
+    "sha256": "d99ea9c646acd7389860ca4651f66973d868573508772842cb5052da5486bd2a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/binary.json",
+    "sha256": "b83c884878c247ca2a1741be1927da3fa7dc460e3afc75a2077f7bf441e0268f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/discovery-1.json",
+    "sha256": "de8af4b87d8d4e900012212bf75a6f73e8f8160a2ed7a84e29e38fabdca3259e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A/build-execution.json",
+    "sha256": "50645c3df476f754d057c03a5cc7056fc7ae6d61a29fe5902aaebe55d49f31bd",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/closure-A-rollback.json",
+    "sha256": "b739b274103d76808c9a9babec39339a73a640b8cce182f354530e770f807b34",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-13-execution.json",
+    "sha256": "285fc10f85dbfb4854bb1f4ae3d214e8326f9e26928dfea00d784844e9334d34",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-6-execution.json",
+    "sha256": "78e72f6b71f4bdbf8c09c065147ecde63a8d3667ec1ca02628b2156c43ae38b9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/repair-B.json",
+    "sha256": "b53f51f04c4d2413f04f671ea0f4d9afdc3403bfab11a6c065d402c4c3ead9f0",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-9-execution.json",
+    "sha256": "2915d2dbe7fb9e6c3a5c5ca0ee741c38855d003dfe3d613a1ca2ac5b04e00185",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/lower-A.json",
+    "sha256": "4222f97a0a78f4845a75fe26f47a6b955fdb5382a398a8ab3eb0c57f8dc7d385",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-13.json",
+    "sha256": "d23219963ce6611e60b3501cdbb5086fe24c43d8dbae3b757f4e126470f272f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-2.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-14-execution.json",
+    "sha256": "fa788af0b1316867af8a2ec2a87b9d0e2c4f9ba359d38016f75beb13396e59a6",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-1-execution.json",
+    "sha256": "391a6ab01165cc451b9b449421d91be8d1a299bb57ce469db21dca6492b13e0b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-0-execution.json",
+    "sha256": "0cc9624f78a3a241c58eb11c56f0087104f56745c25d6d8ca649e0866ca32ea1",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-3.json",
+    "sha256": "828f0930bf4711bab64ba6825d97601c08fe44fcfcb4a253ec33baf6a8c3661d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-8-execution.json",
+    "sha256": "650bd78d47a63011337b8d2bcae5178227cabaf531a398935a759c649339213f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-12.json",
+    "sha256": "6fc0abc5598afc2f5356f7bdbc59c94f499928e631b05a86995c685ea2e0ce13",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-15-execution.json",
+    "sha256": "8f2cb849ddf75a77ddeacbe28929bcaf1fd7bc5163e35b2e4953b62f35502528",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/source-preflight.json",
+    "sha256": "971e9210f8f64efbfab90e417e6e6cae6bc7cf89b6132a36df930283825bf176",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/lower-B-association.json",
+    "sha256": "d1b52ed48c140e647b02beb0d5f21244b2ead7850be84633c3f44c4f422340cb",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-7-execution.json",
+    "sha256": "d8472df7f7f2f6789efa83cf9a347228146befd6bc33feba7ac6a59a22aea40d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-12-execution.json",
+    "sha256": "1fb8cef6a20c764e98661ede45e1fc2ce5f453bb8480778198595b534c356570",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-5-execution.json",
+    "sha256": "abda6251244e4b0ade68714a29247d360afa7f22bbc7ec326b94459e7c3fae0e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-15.json",
+    "sha256": "910edb0bdbcf132a5c9660811becc0dafe5486188fb15c5d050b018ca139774c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/closure-A-event-refusal.json",
+    "sha256": "1657cd3cbc974a5642ea75e7fce3ebc56f0ff9c720fb52a2b98c7ad2551637c4",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-4.json",
+    "sha256": "564676d65d2057e8025a7771e1a0e29d69dd59b8d241fceb952cdf50ea9bd11f",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-18-execution.json",
+    "sha256": "706d2402d8df475a113f08bab9a9ef77e5220a4980b57cab2da296949578d317",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/component-attempt.json",
+    "sha256": "67a8ed8c9f9d1ec4b49106c685b5ff0b0ae70003792e69826b896a54b125c8f1",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-10-execution.json",
+    "sha256": "7ae896c002f1ad9589c529369b5282d1f38a65261071b38491613cb026b1efa5",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-19.json",
+    "sha256": "b0bcf0782395f692e33109067d80de0eba9309e6675c2893d5563fa5ac244bb2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-2-execution.json",
+    "sha256": "b6893f30863f12ffce3a7a1c33fb04714e1c6c79a74917bd5636fb92f6fa7a8d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-8.json",
+    "sha256": "8099f541679b0686eee523ee3bdfa29d2dbaeb72886f0ecb646403e186b942dc",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/storage-lifecycle.json",
+    "sha256": "b92119c0460a1b6a41367bbb8b3cddbff9773e2a13cb3a2bb4e34b7ac6694731",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-17-execution.json",
+    "sha256": "3a3df39db4674b36c6ddb8f7c5188f8cb5ee942dd0127a132ce56907d19871c3",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/connection-A.json",
+    "sha256": "d44f6e7c0e20e7110360ab1b63e06c9a47983dfc89532fa490d8ee3db83e7880",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/inverse-C.json",
+    "sha256": "e4fc177c4695f1ea1474994f129cc62cde5d8dd03bb3e9d103a45bd3bb97512a",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-16-execution.json",
+    "sha256": "ae0c42fa16f12e1a19b5715494bc7ccccfdae2e181e7e7de596b5e6444de7891",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-3-execution.json",
+    "sha256": "100d490f605651599f0de62bba622e47a88b44c3364185d864eae04985c87da9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-9.json",
+    "sha256": "9c83f12915153318e1e6d13c2eee228a8642949535a03df59d087b9311a5f3ff",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-18.json",
+    "sha256": "754fed157be1b1313c03b73bb1056003f6ef195575653bd95a7d2c60d244147c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/library-check-execution.json",
+    "sha256": "f1cb2f904eeb513ed4869871e8115ad7fa8760bafce4fef3210b4e6884fb04f4",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-11-execution.json",
+    "sha256": "bd9f0c8e362724d8ef13de11ca7bede35e8f87905086c4a989ce04e3d392463e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/upper-A.json",
+    "sha256": "04e3d49ba369ff98e66ac512b4bfaabcdd69bd10b7954b770db81754aefa1d28",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-5.json",
+    "sha256": "d6d1c4f24b808c25140a71894a297acafe4a29283845add9fa58cece6c6051f7",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-4-execution.json",
+    "sha256": "2fe88c3372ccbfdbdb17845fa5384ee79131eb9868eb5c59aec1a879d3ed7407",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-14.json",
+    "sha256": "c886aed9edc2bb698b821e3a3cb73b6eb507121755052023ef96eeb7507aa9d8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-19-execution.json",
+    "sha256": "72dfc759cb22b36fa077050932dbc4f59a00a2d8828bf394f1ac43b7e92937de",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-6.json",
+    "sha256": "10fd0705c5ae169ce796cf1ce76ce28b10ce8d529e29b7c15fc4abdaa052d3a9",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-17.json",
+    "sha256": "ff1dfaabc1fcf2482c45eb957de7479593b5de9ebb51c949397cfdb353fe6e46",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/clean-kernel-execution.json",
+    "sha256": "e47e5c58d180833c64ce01ffcf6ab36fa480eb56151d974cc9824205b94138cb",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-21.json",
+    "sha256": "2308dd359516ae44ab5c812a4982a9ffdafe7148976c1ebd2c5a16f778db99a8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/cell-replay.json",
+    "sha256": "7535bc5263d701e3a538c9839520be3918ae41ea5eed2adee49521541fe712c9",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-20.json",
+    "sha256": "f5b502c0fd6840e49c393089a141ff1b22a511e0165df8f950b280d85f7b2436",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/manifest.json",
+    "sha256": "1e2b86157c593d94389dfbe6c082e88d0a361854a8d9f977a5a64f164ff053e3",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/connection-A-rollback.json",
+    "sha256": "030238d282802a1862852d387c72052d32ce14fa45a0b8cd86cc9ca7b06fc656",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-16.json",
+    "sha256": "4ea2ba944e83958b5f1d850bd2739c3430127835b9138c4b53ddf813bd692bb0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-7.json",
+    "sha256": "0d2fad78a7278e80ea457fbbbda2a13baceb31c9d00a02450eba0729da79917d",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/component-attempt-execution.json",
+    "sha256": "49b3875306a2ef443586f21ff98c9ff8829036730b2ff5fe38f6f4856d5610ed",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-0.json",
+    "sha256": "d99ea9c646acd7389860ca4651f66973d868573508772842cb5052da5486bd2a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-11.json",
+    "sha256": "a0f3014f479e30e5934cce120bb0f9750d7c148fc21fb794c8bb6365b07a7a9e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/lower-C.json",
+    "sha256": "82a1c53da0f75597513f8b69bd048225c5bea54ee1c5de7f45761930cd8b2a74",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/binary.json",
+    "sha256": "41d94989097ba4e5ff46a16a0f7ccd072bf9b3f311387e234de7565f1c81b2d1",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-21-execution.json",
+    "sha256": "712146e4246a93c946355b674950b3baa40c0398eec1ca2349396701ade0c684",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/lower-B.json",
+    "sha256": "f48dc4113c0ee1258de87d910f80a3f003b58e9d17adfdec11ea9f8c008e3883",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-10.json",
+    "sha256": "eebf54276b8f277f0a080ca91933662806181a9b7bc468b91f7754cdf6700489",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/focused-20-execution.json",
+    "sha256": "82f48ba7373812a893f7274da557ba205a23ac169d02d8bfef0b8c383bf03011",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/discovery-1.json",
+    "sha256": "de8af4b87d8d4e900012212bf75a6f73e8f8160a2ed7a84e29e38fabdca3259e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/closure-A.json",
+    "sha256": "6055d65ee60ea5cfcffe0b80ea1cc60eba70e199fb55600d6df9142e4ed1f3b7",
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/A-guard/build-execution.json",
+    "sha256": "4533d1e95aba11c4e625201ae4141eb48c35bb9d16281cc7652b1149b52672a4",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B/clean-kernel-execution.json",
+    "sha256": "7a251df99920e3223b62e38778021c227ff452ec0bf2f519624a8f5de3f4f897",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B/manifest.json",
+    "sha256": "5b276346914a570d891ec4845f1b821d08bd20f0e21a2ecc89ce72122dac6970",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B/build-execution.json",
+    "sha256": "73372a3077ce6c61152e146d62d3bd93dd7d2fdd1a651b4779859f745d61455e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/focused-0-execution.json",
+    "sha256": "caf621042f66f27862e7b113b50b175a62bc5e3c83b221652017f1e5c5603e29",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/clean-kernel-execution.json",
+    "sha256": "f5c16f5f200df3fdc4f61c6ca966d129b87178a2068c65037436f2d4b79dee83",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/manifest.json",
+    "sha256": "3bfa48c224571cbed10342ba37424e38fe5099238bdb3b88c80ddfb8a6252870",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/orientation-B-proof.json",
+    "sha256": "ed9416e537d105344f54e22f66f7d38f0c8470590b72dcaf7cbd1e20e8fdbbf0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/discovery-0.json",
+    "sha256": "c3678bdfcdea06d7cdd154d78b42d8ea173e8c8ed6c1b88b08130dd85e4dd62c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/binary.json",
+    "sha256": "df4a364eb2625242b55354ebcccee2562117f576ba025b9bf23aa5e5a57fbd3a",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/orientation-B.json",
+    "sha256": "95a8b7fa27e5802a2d30bfa29cffd732ca0c0f54024f478225981369cf7396c8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-proof/build-execution.json",
+    "sha256": "5c4cfee67c6d3f0f4ff0c5c84b6e74641af353207f6137b9eb44ee187e72c3f8",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/focused-0-execution.json",
+    "sha256": "caa8c27c8316919506f02846fd280fb3898f4bb0a939a4315b9c78e02f9278be",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/orientation-B-face.json",
+    "sha256": "52685bb3bb0e4a684afdd2526064aacab7eb6611da26c9dfd083b4da5797b955",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/clean-kernel-execution.json",
+    "sha256": "87e55aa7da66d679958340cba3e570f5f0259b9c9a8beb3da275fbedbef484be",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/manifest.json",
+    "sha256": "035e5e37371d6f60c93858da0afcd12cdbc88917b48fdd1a158ccb183645e838",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/orientation-B-proof.json",
+    "sha256": "ed9416e537d105344f54e22f66f7d38f0c8470590b72dcaf7cbd1e20e8fdbbf0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/discovery-0.json",
+    "sha256": "38150c99073508a46d2e8cb549cda7e92842024fbcf7bd53147db4f5c3a68de2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/binary.json",
+    "sha256": "54870353c0cab150a77cf9a69a1926da10f32158118a58062e40e101dbf635a3",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/orientation-B.json",
+    "sha256": "1d50947ecf5b7efadeee69668b13def802ff7fc95ff36c40f280bbabf5592c06",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-face/build-execution.json",
+    "sha256": "82f82b557df86ee2e4800ac26bf41cd8fa7c6472733ddbe8b69416b9f2597f9b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/focused-0-execution.json",
+    "sha256": "58623ba109e9928defb380a6066c503e97c561b639119cd4ff4922d43e4ad253",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/orientation-B-face.json",
+    "sha256": "e6b2820341d078fbe5524f94329477ebf6166e6dc1a8e17e5ddc0233c37b96e1",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/clean-kernel-execution.json",
+    "sha256": "75bb1b8cc5b06df1e67f4f84774f05d5a1476316843190865001f7289bf4996c",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/manifest.json",
+    "sha256": "5ac3740a3ac86d0e42538565f07ffc0208549ddd618b868bcb69a79ed0422daf",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/orientation-B-proof.json",
+    "sha256": "ed9416e537d105344f54e22f66f7d38f0c8470590b72dcaf7cbd1e20e8fdbbf0",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/discovery-0.json",
+    "sha256": "38150c99073508a46d2e8cb549cda7e92842024fbcf7bd53147db4f5c3a68de2",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/binary.json",
+    "sha256": "56e49a75b79c16eca79ac3de83ddc17aa19c5e268569f546d56d5030895c5e0b",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/orientation-B.json",
+    "sha256": "8db46fbfcabdbf5f6617fb4559ddc2a15aa55b3992b3a64452db647d3626213e",
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/B-offset/build-execution.json",
+    "sha256": "97a7e7a6b1a04715c8eefd894d261bb5057391cc3ced3b7bfcdae614e7cf1913",
+    "archived": true
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "currentReceiptSha256": "40ac149d65c6422d421d79b78f992b7e1c0a63d621b051183f5dc735264af050",
+  "previousReceiptSha256": "406f36c23795aa8d44e6bf68302ba3210f5b786dc43cb2d4d55bcaf6aaff7a33",
+  "allPreviousFieldsEqual": true,
+  "ignoredFields": [
+    "rootAddressProcessLocal",
+    "orientationCaptureA"
+  ]
+}

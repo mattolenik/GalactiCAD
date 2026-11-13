@@ -1,0 +1,11 @@
+{
+  "command": [
+    "python3",
+    "/tmp/sfcc-orientation-c/audit.py",
+    "docs/research/sfcc-lower-runtime/Geometry-capture/component-attempt.json",
+    ".testresults/sfcc-critical-repairs/e4-invalid-construction/round30-orientation/orientation-C.json"
+  ],
+  "capSeconds": 60,
+  "elapsedSeconds": 0.0962054999981774,
+  "exitCode": 0
+}

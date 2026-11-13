@@ -1,0 +1,276 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/orientation-first-triangle.json
+@@ -0,0 +1,140 @@
++{
++  "allEarlierTrianglesPassedExistingPredicate": true,
++  "allLaterTrianglesChecked": false,
++  "cellRanges": [
++    {
++      "cell": [
++        7,
++        25,
++        58,
++        86
++      ],
++      "count": 30,
++      "start": 0
++    }
++  ],
++  "edgeMemberships": [
++    {
++      "edge": [
++        636,
++        455
++      ],
++      "intervals": []
++    },
++    {
++      "edge": [
++        455,
++        633
++      ],
++      "intervals": [
++        {
++          "curve": 66,
++          "rangeBits": [
++            4613723625259831101,
++            4611686018427387904
++          ]
++        }
++      ]
++    },
++    {
++      "edge": [
++        633,
++        636
++      ],
++      "intervals": []
++    }
++  ],
++  "exported": {
++    "finiteArea": true,
++    "finiteCoordinates": true,
++    "normalBits": [
++      4508123256577851392,
++      4512356550290964480,
++      13710533278195253248
++    ],
++    "orientationRejectedByExistingComparison": true,
++    "passesExistingStagePredicate": false,
++    "pointBits": [
++      [
++        13844829164399493120,
++        13836168307012534272,
++        4617755021965000704
++      ],
++      [
++        13844827771219476480,
++        13836171170681978880,
++        4617755369320480768
++      ],
++      [
++        13844829242245775360,
++        13836168156151808000,
++        4617754791647379456
++      ]
++    ],
++    "referenceDot": -5.218854907818899e-07,
++    "referenceDotBits": 13736404332951771048,
++    "twiceArea": 5.218858315133539e-07,
++    "twiceAreaBits": 4513032299315112931,
++    "zeroArea": false
++  },
++  "geometryDetailByteCap": 524288,
++  "newFieldQueries": 0,
++  "patchOwner": null,
++  "pointKeys": [
++    "Unkeyed",
++    "Str(\"F1:3398483:66:2.904879208205\")",
++    "Unkeyed"
++  ],
++  "referenceBits": [
++    13825312337061533544,
++    13829547449881954499,
++    4581538107277878383
++  ],
++  "referenceFinite": true,
++  "scope": "first failure of unchanged triangle predicate; reference is the already computed working-centroid gradient, reused for both precisions",
++  "sourceCloneLedgerIncludesDiagnosticJson": false,
++  "totalPoints": 1064,
++  "totalTriangles": 1700,
++  "triangle": [
++    636,
++    455,
++    633
++  ],
++  "triangleIndex": 11,
++  "working": {
++    "finiteArea": true,
++    "finiteCoordinates": true,
++    "normalBits": [
++      4508121926576705694,
++      4512350019409823852,
++      13710887620025745280
++    ],
++    "orientationRejectedByExistingComparison": true,
++    "passesExistingStagePredicate": false,
++    "pointBits": [
++      [
++        13844829164480657603,
++        13836168306838169979,
++        4617755021808465438
++      ],
++      [
++        13844827771288457826,
++        13836171170937199256,
++        4617755369311285198
++      ],
++      [
++        13844829242475464625,
++        13836168156182810477,
++        4617754791604872513
++      ]
++    ],
++    "referenceDot": -5.215580451572934e-07,
++    "referenceDotBits": 13736401240315285934,
++    "twiceArea": 5.21558045319592e-07,
++    "twiceAreaBits": 4513029203462042993,
++    "zeroArea": false
++  },
++  "receiptSha256": "406f36c23795aa8d44e6bf68302ba3210f5b786dc43cb2d4d55bcaf6aaff7a33",
++  "featureFingerprint": "10977506807348230851",
++  "fixtureScope": "exact failed predicate inputs, not complete cell replay"
++}
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -414,3 +414,7 @@
+ 
+ #[path = "lower_source_a.rs"]
+ pub(crate) mod lower_source_a;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "orientation_b_tests.rs"]
++mod orientation_b_tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/orientation_b_tests.rs
+@@ -0,0 +1,120 @@
++use super::*;
++use crate::sfcc::{
++    pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++    triangle_quality as q,
++};
++use serde_json::{json, Value};
++fn fixture() -> (
++    CsgNode,
++    crate::sfcc::feature_set::SfccFeatureSet,
++    Value,
++    [[f64; 3]; 3],
++) {
++    let config: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(config["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let cube = SfccWorldCube {
++        min_x: config["cube"]["min"][0].as_f64().unwrap(),
++        min_y: config["cube"]["min"][1].as_f64().unwrap(),
++        min_z: config["cube"]["min"][2].as_f64().unwrap(),
++        size: config["cube"]["max"][0].as_f64().unwrap()
++            - config["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = build_pipeline_context(&root, &cube, &PipelineTuning::default()).features;
++    let captured: Value = serde_json::from_str(include_str!(
++        "../../fixtures/orientation-first-triangle.json"
++    ))
++    .unwrap();
++    assert_eq!(
++        f.fingerprint().to_string(),
++        captured["featureFingerprint"].as_str().unwrap()
++    );
++    let pts = std::array::from_fn(|i| {
++        std::array::from_fn(|k| {
++            f64::from_bits(captured["working"]["pointBits"][i][k].as_u64().unwrap())
++        })
++    });
++    (root, f, captured, pts)
++}
++fn roles(f: &crate::sfcc::feature_set::SfccFeatureSet) -> [usize; 3] {
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f).unwrap();
++    let tube = f.curves[ids[0]].projection_tube(0., 1.).unwrap();
++    let b = HelixBranch::identify(f, ids[0], ids[1], tube).unwrap();
++    [b.native, b.field, b.cylinder_id]
++}
++#[test]
++fn orientation_b_actual_source_facets_and_reference() {
++    let (root, f, captured, pts) = fixture();
++    let source = roles(&f);
++    let registered = f.strata[source[0]].exposure_root_a().unwrap();
++    let (cap_cut, sphere, outer_r) =
++        pair(registered, Some((BlendKind::Smax, SminMode::Round))).unwrap();
++    let (groove_cut, cap, _) = pair(cap_cut, None).unwrap();
++    let (hard, groove_node, r) =
++        pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).unwrap();
++    let (inner, cylinder_node, _) = pair(hard, None).unwrap();
++    let (other_node, native_node, inner_r) =
++        pair(inner, Some((BlendKind::Smin, SminMode::Round))).unwrap();
++    let native = leaf(native_node, 1.).unwrap();
++    let cylinder = leaf(cylinder_node, 1.).unwrap();
++    let groove = leaf(groove_node, -1.).unwrap();
++    let common: Vec<_> = f
++        .strata
++        .iter()
++        .filter(|s| {
++            s.connection_compound(hard, groove_node, groove_cut)
++                .is_some()
++        })
++        .map(|s| s.id)
++        .collect();
++    assert_eq!(common.len(), 1);
++    let curve_id = captured["edgeMemberships"][1]["intervals"][0]["curve"]
++        .as_u64()
++        .unwrap() as usize;
++    let curve = &f.curves[curve_id];
++    assert!(
++        curve.adjacent_strata.contains(&source[1]) && curve.adjacent_strata.contains(&common[0])
++    );
++    let n = q::normal(pts);
++    let mut weights = vec![[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]];
++    weights.extend(q::SAMPLES);
++    let mut rows = Vec::new();
++    for w in weights {
++        let p = q::bary(pts, w);
++        let e = native.f(p);
++        let c = cylinder.f(p);
++        let g = groove.f(p) + r;
++        let k = std::f64::consts::FRAC_1_SQRT_2;
++        let facets = [e, c, k * (e + g), k * (c + g)];
++        let full = root.grad(p);
++        let raw = [native_node, cylinder_node, groove_node]
++            .map(|node| crate::sfcc::field_branches::sample_tree(node, p));
++        let normals = [
++            raw[0].gradient,
++            raw[1].gradient,
++            std::array::from_fn(|j| k * (raw[0].gradient[j] + raw[2].gradient[j])),
++            std::array::from_fn(|j| k * (raw[1].gradient[j] + raw[2].gradient[j])),
++        ];
++        let max = facets.into_iter().fold(f64::NEG_INFINITY, f64::max);
++        let active = facets
++            .iter()
++            .enumerate()
++            .max_by(|(_, a), (_, b)| a.total_cmp(b))
++            .unwrap()
++            .0;
++        rows.push(json!({"weights":w,"pointBits":p.map(f64::to_bits),"levels":[e,c,g],"fourFacets":facets,"activeFacet":active,"full":full.0,"maxFacet":max,"fullNormal":full.1,"normalDots":normals.map(|x|q::dot(n,x)),"fullNormalDot":q::dot(n,full.1),"finitePrimitiveNormals":normals,"ancestors":{"other":other_node.f(p),"innerRadius":inner_r,"cap":cap.f(p),"sphere":sphere.f(p),"outerRadius":outer_r},"strata": [source[0],source[1],source[2],common[0]].map(|id|json!({"id":id,"value":f.strata[id].f(p[0],p[1],p[2]),"normal":f.strata[id].normal(p[0],p[1],p[2]),"owned":f.strata[id].domain_contains(p,1e-7)}))}));
++    }
++    let centroid = std::array::from_fn(|j| (pts[0][j] + pts[1][j] + pts[2][j]) / 3.);
++    let refn = root.grad(centroid).1;
++    assert_eq!(
++        refn.map(f64::to_bits),
++        std::array::from_fn(|j| captured["referenceBits"][j].as_u64().unwrap())
++    );
++    let report = json!({"scope":"sampled actual source decomposition and normals, not wholetriangle patch certificate","sourceRoles":source,"commonChamfer":common[0],"sourceIdentities":[source[0],source[1],source[2],common[0]].map(|id|f.strata[id].graph_capture_identity_b()),"curve":curve_id,"curvePair":curve.adjacent_strata,"curveRange":[curve.t_min,curve.t_max],"curveCorners":[curve.corner_start,curve.corner_end],"triangle":captured["triangle"],"triangleNormal":n,"sameCapturedReference":true,"samples":rows,"runtimeChanged":false});
++    std::fs::write(
++        std::env::var("SFCC_ORIENTATION_B_RECEIPT").unwrap(),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}

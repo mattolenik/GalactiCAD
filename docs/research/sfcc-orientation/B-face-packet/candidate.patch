@@ -1,0 +1,870 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/orientation-face-ports.json
+@@ -0,0 +1,65 @@
++{
++  "sourceReceiptSha256": "40ac149d65c6422d421d79b78f992b7e1c0a63d621b051183f5dc735264af050",
++  "featureFingerprint": "10977506807348230851",
++  "cell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "cellBoxHex": [
++    "c02328e73507c672",
++    "c003f45f6f365a98",
++    "40158efcca8a1862",
++    "c022ab4d9b6e2cd8",
++    "c001fdf908cff432",
++    "40168a2ffdbd4b95"
++  ],
++  "faceAxis": 1,
++  "faceCoordinateHex": "c003f45f6f365a98",
++  "ports": [
++    {
++      "chart": 46,
++      "id": 454,
++      "parameterHex": "400c825ab9f01b99",
++      "point": {
++        "id": 454,
++        "key": {
++          "string": "F1:3398483:46:3.563649609222"
++        },
++        "normalHex": [
++          "bfdcca7504e216be",
++          "bfec8ddbaacf2f62",
++          "bfa327aa5e6a2ea4"
++        ],
++        "positionHex": [
++          "c022b58142cdff54",
++          "c003f45f6f362aba",
++          "4015900ae5fdb4b4"
++        ]
++      }
++    },
++    {
++      "chart": 66,
++      "id": 455,
++      "parameterHex": "40073d314f708f3d",
++      "point": {
++        "id": 455,
++        "key": {
++          "string": "F1:3398483:66:2.904879208205"
++        },
++        "normalHex": [
++          "bfdcca750925f85e",
++          "bfec8ddba9b57fa6",
++          "bfa327aa6808d3b5"
++        ],
++        "positionHex": [
++          "c022b581441c9262",
++          "c003f45f6f365a98",
++          "4015900adf73afce"
++        ]
++      }
++    }
++  ],
++  "scope": "captured source-labeled face pins; equality not assumed"
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/orientation-first-triangle.json
+@@ -0,0 +1,140 @@
++{
++  "allEarlierTrianglesPassedExistingPredicate": true,
++  "allLaterTrianglesChecked": false,
++  "cellRanges": [
++    {
++      "cell": [
++        7,
++        25,
++        58,
++        86
++      ],
++      "count": 30,
++      "start": 0
++    }
++  ],
++  "edgeMemberships": [
++    {
++      "edge": [
++        636,
++        455
++      ],
++      "intervals": []
++    },
++    {
++      "edge": [
++        455,
++        633
++      ],
++      "intervals": [
++        {
++          "curve": 66,
++          "rangeBits": [
++            4613723625259831101,
++            4611686018427387904
++          ]
++        }
++      ]
++    },
++    {
++      "edge": [
++        633,
++        636
++      ],
++      "intervals": []
++    }
++  ],
++  "exported": {
++    "finiteArea": true,
++    "finiteCoordinates": true,
++    "normalBits": [
++      4508123256577851392,
++      4512356550290964480,
++      13710533278195253248
++    ],
++    "orientationRejectedByExistingComparison": true,
++    "passesExistingStagePredicate": false,
++    "pointBits": [
++      [
++        13844829164399493120,
++        13836168307012534272,
++        4617755021965000704
++      ],
++      [
++        13844827771219476480,
++        13836171170681978880,
++        4617755369320480768
++      ],
++      [
++        13844829242245775360,
++        13836168156151808000,
++        4617754791647379456
++      ]
++    ],
++    "referenceDot": -5.218854907818899e-07,
++    "referenceDotBits": 13736404332951771048,
++    "twiceArea": 5.218858315133539e-07,
++    "twiceAreaBits": 4513032299315112931,
++    "zeroArea": false
++  },
++  "geometryDetailByteCap": 524288,
++  "newFieldQueries": 0,
++  "patchOwner": null,
++  "pointKeys": [
++    "Unkeyed",
++    "Str(\"F1:3398483:66:2.904879208205\")",
++    "Unkeyed"
++  ],
++  "referenceBits": [
++    13825312337061533544,
++    13829547449881954499,
++    4581538107277878383
++  ],
++  "referenceFinite": true,
++  "scope": "first failure of unchanged triangle predicate; reference is the already computed working-centroid gradient, reused for both precisions",
++  "sourceCloneLedgerIncludesDiagnosticJson": false,
++  "totalPoints": 1064,
++  "totalTriangles": 1700,
++  "triangle": [
++    636,
++    455,
++    633
++  ],
++  "triangleIndex": 11,
++  "working": {
++    "finiteArea": true,
++    "finiteCoordinates": true,
++    "normalBits": [
++      4508121926576705694,
++      4512350019409823852,
++      13710887620025745280
++    ],
++    "orientationRejectedByExistingComparison": true,
++    "passesExistingStagePredicate": false,
++    "pointBits": [
++      [
++        13844829164480657603,
++        13836168306838169979,
++        4617755021808465438
++      ],
++      [
++        13844827771288457826,
++        13836171170937199256,
++        4617755369311285198
++      ],
++      [
++        13844829242475464625,
++        13836168156182810477,
++        4617754791604872513
++      ]
++    ],
++    "referenceDot": -5.215580451572934e-07,
++    "referenceDotBits": 13736401240315285934,
++    "twiceArea": 5.21558045319592e-07,
++    "twiceAreaBits": 4513029203462042993,
++    "zeroArea": false
++  },
++  "receiptSha256": "406f36c23795aa8d44e6bf68302ba3210f5b786dc43cb2d4d55bcaf6aaff7a33",
++  "featureFingerprint": "10977506807348230851",
++  "fixtureScope": "exact failed predicate inputs, not complete cell replay"
++}
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -414,3 +414,7 @@
+ 
+ #[path = "lower_source_a.rs"]
+ pub(crate) mod lower_source_a;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "orientation_b_tests.rs"]
++mod orientation_b_tests;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/orientation_b_tests.rs
+@@ -0,0 +1,646 @@
++use super::*;
++use crate::sfcc::{
++    pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++    triangle_quality as q,
++};
++use serde_json::{json, Value};
++fn fixture() -> (
++    CsgNode,
++    crate::sfcc::feature_set::SfccFeatureSet,
++    Value,
++    [[f64; 3]; 3],
++) {
++    let config: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(config["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let cube = SfccWorldCube {
++        min_x: config["cube"]["min"][0].as_f64().unwrap(),
++        min_y: config["cube"]["min"][1].as_f64().unwrap(),
++        min_z: config["cube"]["min"][2].as_f64().unwrap(),
++        size: config["cube"]["max"][0].as_f64().unwrap()
++            - config["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = build_pipeline_context(&root, &cube, &PipelineTuning::default()).features;
++    let captured: Value = serde_json::from_str(include_str!(
++        "../../fixtures/orientation-first-triangle.json"
++    ))
++    .unwrap();
++    assert_eq!(
++        f.fingerprint().to_string(),
++        captured["featureFingerprint"].as_str().unwrap()
++    );
++    let pts = std::array::from_fn(|i| {
++        std::array::from_fn(|k| {
++            f64::from_bits(captured["working"]["pointBits"][i][k].as_u64().unwrap())
++        })
++    });
++    (root, f, captured, pts)
++}
++fn roles(f: &crate::sfcc::feature_set::SfccFeatureSet) -> [usize; 3] {
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f).unwrap();
++    let tube = f.curves[ids[0]].projection_tube(0., 1.).unwrap();
++    let b = HelixBranch::identify(f, ids[0], ids[1], tube).unwrap();
++    [b.native, b.field, b.cylinder_id]
++}
++#[test]
++fn orientation_b_actual_source_facets_and_reference() {
++    let (root, f, captured, pts) = fixture();
++    let source = roles(&f);
++    let registered = f.strata[source[0]].exposure_root_a().unwrap();
++    let (cap_cut, sphere, outer_r) =
++        pair(registered, Some((BlendKind::Smax, SminMode::Round))).unwrap();
++    let (groove_cut, cap, _) = pair(cap_cut, None).unwrap();
++    let (hard, groove_node, r) =
++        pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).unwrap();
++    let (inner, cylinder_node, _) = pair(hard, None).unwrap();
++    let (other_node, native_node, inner_r) =
++        pair(inner, Some((BlendKind::Smin, SminMode::Round))).unwrap();
++    let native = leaf(native_node, 1.).unwrap();
++    let cylinder = leaf(cylinder_node, 1.).unwrap();
++    let groove = leaf(groove_node, -1.).unwrap();
++    let common: Vec<_> = f
++        .strata
++        .iter()
++        .filter(|s| {
++            s.connection_compound(hard, groove_node, groove_cut)
++                .is_some()
++        })
++        .map(|s| s.id)
++        .collect();
++    assert_eq!(common.len(), 1);
++    let curve_id = captured["edgeMemberships"][1]["intervals"][0]["curve"]
++        .as_u64()
++        .unwrap() as usize;
++    let curve = &f.curves[curve_id];
++    assert!(
++        curve.adjacent_strata.contains(&source[1]) && curve.adjacent_strata.contains(&common[0])
++    );
++    let n = q::normal(pts);
++    let mut weights = vec![[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]];
++    weights.extend(q::SAMPLES);
++    let mut rows = Vec::new();
++    for w in weights {
++        let p = q::bary(pts, w);
++        let e = native.f(p);
++        let c = cylinder.f(p);
++        let g = groove.f(p) + r;
++        let k = std::f64::consts::FRAC_1_SQRT_2;
++        let facets = [e, c, k * (e + g), k * (c + g)];
++        let full = root.grad(p);
++        let raw = [native_node, cylinder_node, groove_node]
++            .map(|node| crate::sfcc::field_branches::sample_tree(node, p));
++        let normals = [
++            raw[0].gradient,
++            raw[1].gradient,
++            std::array::from_fn(|j| k * (raw[0].gradient[j] + raw[2].gradient[j])),
++            std::array::from_fn(|j| k * (raw[1].gradient[j] + raw[2].gradient[j])),
++        ];
++        let max = facets.into_iter().fold(f64::NEG_INFINITY, f64::max);
++        let active = facets
++            .iter()
++            .enumerate()
++            .max_by(|(_, a), (_, b)| a.total_cmp(b))
++            .unwrap()
++            .0;
++        rows.push(json!({"weights":w,"pointBits":p.map(f64::to_bits),"levels":[e,c,g],"fourFacets":facets,"activeFacet":active,"full":full.0,"maxFacet":max,"fullNormal":full.1,"normalDots":normals.map(|x|q::dot(n,x)),"fullNormalDot":q::dot(n,full.1),"finitePrimitiveNormals":normals,"ancestors":{"other":other_node.f(p),"innerRadius":inner_r,"cap":cap.f(p),"sphere":sphere.f(p),"outerRadius":outer_r},"strata": ([source[0],source[1],source[2],common[0]]).map(|id|json!({"id":id,"value":f.strata[id].f(p[0],p[1],p[2]),"normal":f.strata[id].normal(p[0],p[1],p[2]),"owned":f.strata[id].domain_contains(p,1e-7)}))}));
++    }
++    let centroid = std::array::from_fn(|j| (pts[0][j] + pts[1][j] + pts[2][j]) / 3.);
++    let refn = root.grad(centroid).1;
++    assert_eq!(
++        refn.map(f64::to_bits),
++        std::array::from_fn(|j| captured["referenceBits"][j].as_u64().unwrap())
++    );
++    let report = json!({"scope":"sampled actual source decomposition and normals, not wholetriangle patch certificate","sourceRoles":source,"commonChamfer":common[0],"sourceIdentities":([source[0],source[1],source[2],common[0]]).map(|id|f.strata[id].graph_capture_identity_b()),"curve":curve_id,"curvePair":curve.adjacent_strata,"curveRange":[curve.t_min,curve.t_max],"curveCorners":[curve.corner_start,curve.corner_end],"triangle":captured["triangle"],"triangleNormal":n,"sameCapturedReference":true,"samples":rows,"runtimeChanged":false});
++    std::fs::write(
++        std::env::var("SFCC_ORIENTATION_B_RECEIPT").unwrap(),
++        serde_json::to_vec_pretty(&report).unwrap(),
++    )
++    .unwrap();
++}
++
++fn quotient_b(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn cross_b(a: [I; 3], b: [I; 3]) -> Option<[I; 3]> {
++    Some([
++        mul(a[1], b[2])?.sub(mul(a[2], b[1])?)?,
++        mul(a[2], b[0])?.sub(mul(a[0], b[2])?)?,
++        mul(a[0], b[1])?.sub(mul(a[1], b[0])?)?,
++    ])
++}
++fn dot_b(a: [I; 3], b: [I; 3]) -> Option<I> {
++    let mut sum = I::point(0.);
++    for k in 0..3 {
++        sum = sum.add(mul(a[k], b[k])?)?;
++    }
++    Some(sum)
++}
++fn bounds_b(x: I) -> [f64; 2] {
++    [x.lo, x.hi]
++}
++struct RegionB {
++    fields: [I; 4],
++    gradients: [[I; 3]; 4],
++    margins: [f64; 8],
++    rank: f64,
++    common: usize,
++}
++// Test-only finite-source certificate; the box does not authorize assigning a mesh patch.
++fn region_b(
++    root: &CsgNode,
++    f: &crate::sfcc::feature_set::SfccFeatureSet,
++    lo: [f64; 3],
++    hi: [f64; 3],
++) -> Option<RegionB> {
++    if (0..3).any(|k| !lo[k].is_finite() || !hi[k].is_finite() || lo[k] > hi[k]) {
++        return None;
++    }
++    let source = roles(f);
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f).ok()?;
++    let tube = f.curves[ids[0]].projection_tube(0., 1.)?;
++    let branch = HelixBranch::identify(f, ids[0], ids[1], tube)?;
++    let corner = f.corners.get(f.curves[ids[0]].corner_start as usize)?;
++    let junction = junction::prove_junction(
++        root,
++        &f.strata,
++        source,
++        [corner.x, corner.y, corner.z],
++        1e-6,
++    )?;
++    let registered = f.strata[source[0]].exposure_root_a()?;
++    let (cap_cut, sphere, outer_r) =
++        pair(registered, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++    let (groove_cut, cap, _) = pair(cap_cut, None).ok()?;
++    let (hard, groove_node, r) =
++        pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++    let (inner, cylinder_node, _) = pair(hard, None).ok()?;
++    let (other_node, native_node, inner_r) =
++        pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++    let native = leaf(native_node, 1.).ok()?;
++    let other = leaf(other_node, 1.).ok()?;
++    let cylinder = leaf(cylinder_node, 1.).ok()?;
++    let groove = leaf(groove_node, -1.).ok()?;
++    let (params, registered_native, registered_other, registered_r) =
++        f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++    if !std::ptr::eq(native, registered_native)
++        || !std::ptr::eq(other, registered_other)
++        || inner_r != registered_r
++    {
++        return None;
++    }
++    let (e, ge, _, uv) = twisted(params, lo, hi)?;
++    let profile = upper_source_a::finite_profile_level(params, native, uv, e)?;
++    let y = interval(lo[1], hi[1])?;
++    let native_cap = upper_source_a::cap_margin(y, params.pos_y, params.h, e)?;
++    let x = interval(lo[0], hi[0])?.sub(I::point(branch.cylinder.0[0]))?;
++    let z = interval(lo[2], hi[2])?.sub(I::point(branch.cylinder.0[2]))?;
++    let rho = sqrt(square(x)?.add(square(z)?)?)?;
++    if rho.lo <= 0. {
++        return None;
++    }
++    let c = rho.sub(I::point(branch.cylinder.2))?;
++    let Shape::Cylinder { h, .. } = &cylinder.shape else {
++        return None;
++    };
++    let cylinder_cap = upper_source_a::cap_margin(y, cylinder.pos[1], *h, c)?;
++    let gc = [quotient_b(x, rho)?, I::point(0.), quotient_b(z, rho)?];
++    let Shape::Lathe { edges } = &groove.shape else {
++        return None;
++    };
++    let edge = edges.get(junction.groove_edge)?;
++    let orientation = crate::sfcc::predicates::orient2d(
++        [edges[0].r0, edges[0].y0],
++        [edges[1].r0, edges[1].y0],
++        [edges[2].r0, edges[2].y0],
++    ) as f64;
++    let dr = I::point(edge.r1).sub(I::point(edge.r0))?;
++    let dy = I::point(edge.y1).sub(I::point(edge.y0))?;
++    let len = sqrt(square(dr)?.add(square(dy)?)?)?;
++    let nr = quotient_b(dy.mul(orientation)?, len)?;
++    let ny = quotient_b(dr.mul(-orientation)?, len)?;
++    let wr = rho.sub(I::point(edge.r0))?;
++    let wy = y.sub(I::point(groove.pos[1]))?.sub(I::point(edge.y0))?;
++    let along = quotient_b(
++        mul(dr, wr)?.add(mul(dy, wy)?)?,
++        square(dr)?.add(square(dy)?)?,
++    )?;
++    let projection = along.lo.min(1. - along.hi);
++    if projection <= 0. {
++        return None;
++    }
++    let distance = mul(nr, wr)?.add(mul(ny, wy)?)?;
++    if distance.lo <= 0. {
++        return None;
++    }
++    let mut nearest = f64::INFINITY;
++    for (i, other) in edges.iter().enumerate() {
++        if i == junction.groove_edge {
++            continue;
++        }
++        let dx = I::point(other.r1).sub(I::point(other.r0))?;
++        let dy = I::point(other.y1).sub(I::point(other.y0))?;
++        let wx = rho.sub(I::point(other.r0))?;
++        let wy = y.sub(I::point(groove.pos[1]))?.sub(I::point(other.y0))?;
++        let t = quotient_b(
++            mul(dx, wx)?.add(mul(dy, wy)?)?,
++            square(dx)?.add(square(dy)?)?,
++        )?;
++        let t = interval(t.lo.clamp(0., 1.), t.hi.clamp(0., 1.))?;
++        let d = sqrt(square(wx.sub(mul(dx, t)?)?)?.add(square(wy.sub(mul(dy, t)?)?)?)?)?;
++        nearest = nearest.min(d.sub(I::point(distance.hi))?.lo);
++    }
++    if nearest <= 0. {
++        return None;
++    }
++    let g = I::point(r).sub(distance)?;
++    let gg = [
++        mul(nr, gc[0])?.mul(-1.)?,
++        ny.mul(-1.)?,
++        mul(nr, gc[2])?.mul(-1.)?,
++    ];
++    let inner_margin = I::point(lathe_lower(other, lo, hi)?)
++        .sub(I::point(inner_r))?
++        .lo
++        .min(I::point(inner_r).sub(e)?.lo);
++    if inner_margin <= 0. {
++        return None;
++    }
++    let w = std::f64::consts::FRAC_1_SQRT_2;
++    let fields = [e, c, e.add(g)?.mul(w)?, c.add(g)?.mul(w)?];
++    let f_box = interval(
++        fields
++            .iter()
++            .map(|x| x.lo)
++            .fold(f64::NEG_INFINITY, f64::max),
++        fields
++            .iter()
++            .map(|x| x.hi)
++            .fold(f64::NEG_INFINITY, f64::max),
++    )?;
++    // G is inactive relative to E throughout this box, so max(H,G,w(H+G+r)) is max of four facets.
++    if e.lo <= -distance.lo {
++        return None;
++    }
++    let cap = leaf(cap, -1.).ok()?;
++    let Shape::Extrude { h, .. } = &cap.shape else {
++        return None;
++    };
++    let cap_upper = y.sub(I::point(cap.pos[1]))?.add(I::point(*h))?.hi;
++    let cap_margin = I::point(f_box.lo).sub(I::point(cap_upper))?.lo;
++    if cap_upper >= 0. || cap_margin <= 0. {
++        return None;
++    }
++    let sphere = leaf(sphere, 1.).ok()?;
++    let Shape::Sphere { r: sphere_r } = &sphere.shape else {
++        return None;
++    };
++    let sphere_distance = sqrt(square(rho)?.add(square(y.sub(I::point(sphere.pos[1]))?)?)?)?;
++    let sphere_margin = I::point(*sphere_r)
++        .sub(I::point(outer_r))?
++        .sub(sphere_distance)?
++        .lo;
++    if sphere_margin <= 0. || f_box.lo <= -outer_r {
++        return None;
++    }
++    let chamfer_e = [
++        ge[0].add(gg[0])?.mul(w)?,
++        ge[1].add(gg[1])?.mul(w)?,
++        ge[2].add(gg[2])?.mul(w)?,
++    ];
++    let chamfer_c = [
++        gc[0].add(gg[0])?.mul(w)?,
++        gc[1].add(gg[1])?.mul(w)?,
++        gc[2].add(gg[2])?.mul(w)?,
++    ];
++    let transverse = cross_b(ge, gg)?;
++    let rank = transverse
++        .iter()
++        .filter(|x| x.lo > 0. || x.hi < 0.)
++        .map(|x| x.lo.abs().min(x.hi.abs()))
++        .fold(0., f64::max);
++    if rank <= 0. {
++        return None;
++    }
++    let common: Vec<_> = f
++        .strata
++        .iter()
++        .filter(|s| {
++            s.connection_compound(hard, groove_node, groove_cut)
++                .is_some()
++        })
++        .map(|s| s.id)
++        .collect();
++    if common.len() != 1 {
++        return None;
++    }
++    Some(RegionB {
++        fields,
++        gradients: [ge, gc, chamfer_e, chamfer_c],
++        margins: [
++            profile,
++            native_cap,
++            cylinder_cap,
++            projection,
++            nearest,
++            inner_margin,
++            cap_margin,
++            sphere_margin,
++        ],
++        rank,
++        common: common[0],
++    })
++}
++#[test]
++fn orientation_b_whole_triangle_source_normal_cone_and_alias_equations() {
++    let (root, f, captured, points) = fixture();
++    let exported = points.map(q::rounded);
++    let lo = std::array::from_fn(|k| {
++        points
++            .iter()
++            .chain(exported.iter())
++            .map(|p| p[k])
++            .fold(f64::INFINITY, f64::min)
++    });
++    let hi = std::array::from_fn(|k| {
++        points
++            .iter()
++            .chain(exported.iter())
++            .map(|p| p[k])
++            .fold(f64::NEG_INFINITY, f64::max)
++    });
++    let cert = region_b(&root, &f, lo, hi)
++        .expect("finite source box and local max-four branch restrictions");
++    let mut stages = Vec::new();
++    for (name, p) in [("working", points), ("exported", exported)] {
++        let a = std::array::from_fn(|k| I::point(p[1][k]).sub(I::point(p[0][k])).unwrap());
++        let b = std::array::from_fn(|k| I::point(p[2][k]).sub(I::point(p[0][k])).unwrap());
++        let normal = cross_b(a, b).unwrap();
++        let dots = cert.gradients.map(|g| dot_b(normal, g).unwrap());
++        assert!(
++            dots.iter().all(|d| d.hi < 0.),
++            "triangle opposes every possible local facet normal, not just sampled centroid: {:?}",
++            dots.map(bounds_b)
++        );
++        stages.push(json!({"stage":name,"exactNormalEnclosure":normal.map(bounds_b),"dotEveryFacetEnclosures":dots.map(bounds_b)}));
++    }
++    let source = roles(&f);
++    let mut native = Vec::new();
++    let mut alias = Vec::new();
++    for curve in &f.curves {
++        let pair = curve.adjacent_strata;
++        if pair.contains(&cert.common) && pair.contains(&source[0]) {
++            native.push(curve.id);
++        }
++        if pair.contains(&cert.common) && pair.contains(&source[1]) {
++            alias.push(curve.id);
++        }
++    }
++    let report = json!({"scope":"interval certificate over box enclosing both precision triangles; source facets and normal cone, no wholecell patch assignment or numerical chart correspondence",
++ "fixtureReceiptSha256":captured["receiptSha256"],"box":[lo,hi],"sourceRoles":source,"common":cert.common,"marginOrder":["finite profile","native cap","cylinder cap","groove projection","groove other edges","inner round","cap cutter","outer sphere"],"margins":cert.margins,"facetIntervals":cert.fields.map(bounds_b),"facetGradientIntervals":cert.gradients.map(|g|g.map(bounds_b)),"nativeGrooveTransverseComponentLower":cert.rank,"normalStages":stages,"nativeChamferCurves":native,"aliasChamferCurves":alias,"nativeAndInnerFieldIdenticalOnBox":true,"sameCommonCarrierPreserved":true,"rawChartTransportProved":false,"sourcePatchAssignmentAuthorized":false});
++    let base = std::env::var("SFCC_ORIENTATION_B_RECEIPT").unwrap();
++    let path = std::path::Path::new(&base).with_file_name("orientation-B-proof.json");
++    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    let mut wrong = root.clone();
++    let CsgNode::Blend { r, .. } = &mut wrong else {
++        panic!()
++    };
++    *r += 0.1;
++    assert!(
++        region_b(&wrong, &f, lo, hi).is_none(),
++        "foreign source cannot use the registry's interval theorem"
++    );
++    assert!(region_b(&root, &f, [f64::NAN, lo[1], lo[2]], hi).is_none());
++}
++
++fn from_hex_b(v: &Value) -> f64 {
++    f64::from_bits(u64::from_str_radix(v.as_str().unwrap(), 16).unwrap())
++}
++fn point_distance_b(point: [f64; 3], image: [I; 3]) -> Option<f64> {
++    let mut total = I::point(0.);
++    for k in 0..3 {
++        total = total.add(square(I::point(point[k]).sub(image[k])?)?)?;
++    }
++    Some(sqrt(total)?.hi)
++}
++#[test]
++fn orientation_b_distinct_ports_bind_one_unique_source_face_crossing() {
++    let (root, f, captured, tri) = fixture();
++    let source = roles(&f);
++    let ports: Value =
++        serde_json::from_str(include_str!("../../fixtures/orientation-face-ports.json")).unwrap();
++    assert_eq!(ports["featureFingerprint"], captured["featureFingerprint"]);
++    let y = from_hex_b(&ports["faceCoordinateHex"]);
++    assert_eq!(ports["faceAxis"], 1);
++    let box6: [f64; 6] = std::array::from_fn(|k| from_hex_b(&ports["cellBoxHex"][k]));
++    assert_eq!(y.to_bits(), box6[1].to_bits());
++    let ids = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++    let branch = HelixBranch::identify(
++        &f,
++        ids[0],
++        ids[1],
++        f.curves[ids[0]].projection_tube(0., 1.).unwrap(),
++    )
++    .unwrap();
++    let ci = f.curves[ids[0]].corner_start as usize;
++    let corner = &f.corners[ci];
++    let registered = f.strata[source[0]].exposure_root_a().unwrap();
++    let (cap, _, _) = pair(registered, Some((BlendKind::Smax, SminMode::Round))).unwrap();
++    let (cut, _, _) = pair(cap, None).unwrap();
++    let (hard, gnode, r) = pair(cut, Some((BlendKind::Smax, SminMode::Chamfer))).unwrap();
++    let groove = leaf(gnode, -1.).unwrap();
++    let junction = junction::prove_junction(
++        &root,
++        &f.strata,
++        source,
++        [corner.x, corner.y, corner.z],
++        1e-6,
++    )
++    .unwrap();
++    let Shape::Lathe { edges } = &groove.shape else {
++        panic!()
++    };
++    let edge = edges[junction.groove_edge];
++    let orientation = crate::sfcc::predicates::orient2d(
++        [edges[0].r0, edges[0].y0],
++        [edges[1].r0, edges[1].y0],
++        [edges[2].r0, edges[2].y0],
++    ) as f64;
++    let dr = I::point(edge.r1).sub(I::point(edge.r0)).unwrap();
++    let dy = I::point(edge.y1).sub(I::point(edge.y0)).unwrap();
++    let len = sqrt(square(dr).unwrap().add(square(dy).unwrap()).unwrap()).unwrap();
++    let nr = quotient_b(dy.mul(orientation).unwrap(), len).unwrap();
++    let ny = quotient_b(dr.mul(-orientation).unwrap(), len).unwrap();
++    assert!(
++        nr.hi < 0. || nr.lo > 0.,
++        "fixed faceY has a unique radial solution"
++    );
++    let rho = I::point(edge.r0)
++        .add(
++            quotient_b(
++                I::point(r)
++                    .sub(
++                        mul(
++                            ny,
++                            I::point(y)
++                                .sub(I::point(groove.pos[1]))
++                                .unwrap()
++                                .sub(I::point(edge.y0))
++                                .unwrap(),
++                        )
++                        .unwrap(),
++                    )
++                    .unwrap(),
++                nr,
++            )
++            .unwrap(),
++        )
++        .unwrap();
++    assert!(
++        rho.lo > 0. && rho.hi < branch.cylinder.2,
++        "crossing lies strictly inside cylinder side"
++    );
++    let p = branch.p;
++    let mut u = sqrt(
++        square(rho)
++            .unwrap()
++            .sub(square(I::point(p.v0z)).unwrap())
++            .unwrap(),
++    )
++    .unwrap();
++    if branch.sign < 0 {
++        u = u.mul(-1.).unwrap();
++    }
++    let theta = div(
++        I::point(y)
++            .sub(I::point(p.pos_y))
++            .unwrap()
++            .add(I::point(p.h))
++            .unwrap(),
++        2. * p.h,
++    )
++    .unwrap()
++    .mul(p.twist_rad)
++    .unwrap();
++    let (sn, cs) = sin_cos(theta).unwrap();
++    let image = [
++        mul(u, cs)
++            .unwrap()
++            .sub(sn.mul(p.v0z).unwrap())
++            .unwrap()
++            .add(I::point(p.pos_x))
++            .unwrap(),
++        I::point(y),
++        mul(u, sn)
++            .unwrap()
++            .add(cs.mul(p.v0z).unwrap())
++            .unwrap()
++            .add(I::point(p.pos_z))
++            .unwrap(),
++    ];
++    assert!(
++        image[0].lo > box6[0]
++            && image[0].hi < box6[3]
++            && image[2].lo > box6[2]
++            && image[2].hi < box6[5],
++        "unique source crossing lies strictly inside same original face rectangle"
++    );
++    let config: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let size =
++        config["cube"]["max"][0].as_f64().unwrap() - config["cube"]["min"][0].as_f64().unwrap();
++    let tol = crate::tolerances::resolve_tolerances(
++        &crate::tuning::SfccTuning::default(),
++        3_f64.sqrt() * size,
++    );
++    let allowance = tol.curve_eps * 8.;
++    let points: Vec<[f64; 3]> = ports["ports"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|v| std::array::from_fn(|k| from_hex_b(&v["point"]["positionHex"][k])))
++        .collect();
++    assert_ne!(
++        points[0].map(f64::to_bits),
++        points[1].map(f64::to_bits),
++        "stored face pins remain distinct numerical positions"
++    );
++    let queries: Vec<[f64; 3]> = ports["ports"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|v| {
++            let curve = &f.curves[v["chart"].as_u64().unwrap() as usize];
++            curve
++                .point_at_checked(from_hex_b(&v["parameterHex"]))
++                .unwrap()
++        })
++        .collect();
++    let mut lo = std::array::from_fn(|k| image[k].lo);
++    let mut hi = std::array::from_fn(|k| image[k].hi);
++    for point in points.iter().chain(tri.iter()).chain(queries.iter()) {
++        for k in 0..3 {
++            lo[k] = lo[k].min(point[k]);
++            hi[k] = hi[k].max(point[k]);
++        }
++    }
++    let cert = region_b(&root, &f, lo, hi)
++        .expect("same finite primitives and ancestors over crossing/port box");
++    assert!(
++        cert.fields[1].hi < 0.,
++        "hard intersection reduces to E at E=0 throughout face-root box"
++    );
++    let untwisted = twisted(p, lo, hi).unwrap().3[0];
++    assert!(
++        if branch.sign > 0 {
++            untwisted.lo > 0.
++        } else {
++            untwisted.hi < 0.
++        },
++        "opposite radial branch excluded on box"
++    );
++    let common = f
++        .strata
++        .iter()
++        .find(|s| s.connection_compound(hard, gnode, cut).is_some())
++        .unwrap()
++        .id;
++    assert_eq!(common, cert.common);
++    let mut rows = Vec::new();
++    for (i, v) in ports["ports"].as_array().unwrap().iter().enumerate() {
++        let curve = &f.curves[v["chart"].as_u64().unwrap() as usize];
++        let t = from_hex_b(&v["parameterHex"]);
++        let actual = queries[i];
++        assert_eq!(
++            curve.point_at_checked(t).unwrap().map(f64::to_bits),
++            actual.map(f64::to_bits)
++        );
++        assert!(curve.adjacent_strata.contains(&common));
++        assert!(
++            curve.adjacent_strata.contains(&source[0])
++                || curve.adjacent_strata.contains(&source[1])
++        );
++        assert_eq!(curve.corner_start, ci as i64);
++        let (a, b, _) = curve.traced_carriers().unwrap();
++        assert!(
++            a.connection_same_source(&f.strata[curve.adjacent_strata[0]])
++                && b.connection_same_source(&f.strata[curve.adjacent_strata[1]])
++        );
++        let stored_bound = point_distance_b(points[i], image).unwrap();
++        let query_bound = point_distance_b(actual, image).unwrap();
++        let point_query_bound = point_distance_b(points[i], actual.map(I::point)).unwrap();
++        assert!(stored_bound<=allowance&&query_bound<=allowance&&point_query_bound<=allowance,"actual own query and stored port must bind the ideal root directly under the same allowance");
++        assert!((0..3).all(
++            |k| points[i][k] >= box6[k] - allowance && points[i][k] <= box6[k + 3] + allowance
++        ));
++        assert!((points[i][1] - y).abs() <= allowance && (actual[1] - y).abs() <= allowance);
++        rows.push(json!({"pointId":v["id"],"chart":curve.id,"pair":curve.adjacent_strata,"parameterHex":v["parameterHex"],"storedPointBits":points[i].map(f64::to_bits),"actualQueryBits":actual.map(f64::to_bits),"storedToIdealRootUpper":stored_bound,"queryToIdealRootUpper":query_bound,"storedToOwnQueryUpper":point_query_bound}));
++    }
++    let report = json!({"scope":"one unique represented source crossing on the original Y face with separate checked associations for two distinct numerical ports; no mutation, snap, or whole-arc transport authority","sourceReceiptSha256":ports["sourceReceiptSha256"],"faceAxis":1,"faceCoordinateBits":y.to_bits(),"faceBox":box6,"sourceRoles":source,"common":common,"rhoBounds":bounds_b(rho),"radialDerivativeBounds":bounds_b(nr),"idealRootBounds":image.map(bounds_b),"proofBox":[lo,hi],"sourceMargins":cert.margins,"cylinderLevelBounds":bounds_b(cert.fields[1]),"untwistedBranchBounds":bounds_b(untwisted),"sameAllowance":allowance,"ports":rows,"uniqueSourceRoot":true,"storedPinsBitIdentical":false,"rawArcTransportProved":false,"quotientAuthorized":false});
++    let base = std::env::var("SFCC_ORIENTATION_B_RECEIPT").unwrap();
++    let path = std::path::Path::new(&base).with_file_name("orientation-B-face.json");
++    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++}

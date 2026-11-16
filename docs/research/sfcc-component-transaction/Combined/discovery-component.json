@@ -1,0 +1,7 @@
+{
+  "filter": "stage4_component_b_original_source_attempt",
+  "tests": [
+    "sfcc::private_arc_a::stage4_component_b::stage4_component_b_original_source_attempt"
+  ],
+  "exitCode": 0
+}

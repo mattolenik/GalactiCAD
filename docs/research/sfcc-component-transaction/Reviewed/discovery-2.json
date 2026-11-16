@@ -1,0 +1,7 @@
+{
+  "filter": "component_b_frontier_request_reconstructs",
+  "tests": [
+    "sfcc::cell_mesh::activation_frontier_replay_c_tests::component_b_frontier_request_reconstructs_and_validates_actual_graph"
+  ],
+  "exitCode": 0
+}

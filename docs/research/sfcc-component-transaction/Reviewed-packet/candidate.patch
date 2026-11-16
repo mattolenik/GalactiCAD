@@ -1,0 +1,1337 @@
+--- a/gcad-wasm/kernel/src/sfcc/activation_frontier_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/activation_frontier_c.rs
+@@ -31,7 +31,7 @@
+ fn cell_id(cell: &crate::sfcc::octree::SfccCell) -> [i64; 4] {
+     [cell.level as i64, cell.ix, cell.iy, cell.iz]
+ }
+-fn pair_and_frontier(inventory: &Value) -> CResult<([usize; 2], (usize, i64, i64), [i64; 4])> {
++pub(super) fn pair_and_frontier(inventory: &Value) -> CResult<([usize; 2], (usize, i64, i64), [i64; 4])> {
+     let pair: [usize; 2] =
+         std::array::from_fn(|i| inventory["pair"][i].as_u64().unwrap_or(u64::MAX) as usize);
+     let faces = inventory["faces"].as_array().ok_or("inventory_faces")?;
+--- a/gcad-wasm/kernel/src/sfcc/activation_frontier_replay_c_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/activation_frontier_replay_c_tests.rs
+@@ -20,19 +20,29 @@
+ };
+ 
+ #[derive(Clone)]
+-struct Plan {
+-    root: Arc<CsgNode>,
+-    fingerprint: u64,
+-    source: [usize; 4],
+-    charts: [usize; 2],
+-    cuts: [f64; 2],
+-    point: [f64; 3],
+-    cell_box: [f64; 6],
+-    epsilon: f64,
++pub(super) struct Plan {
++    pub(super) root: Arc<CsgNode>,
++    pub(super) fingerprint: u64,
++    pub(super) source: [usize; 4],
++    pub(super) charts: [usize; 2],
++    pub(super) cuts: [f64; 2],
++    pub(super) point: [f64; 3],
++    pub(super) cell_box: [f64; 6],
++    pub(super) epsilon: f64,
+ }
+ thread_local! { static PLAN: RefCell<Option<Plan>> = const { RefCell::new(None) }; static SHARING:Cell<(usize,bool)>=const{Cell::new((0,false))}; }
++pub(super) fn needs_insertion() -> bool {
++    PLAN.with(|p| p.borrow().is_some()) || super::component_consumers_b::event_required()
++}
++pub(super) fn sharing_state() -> (usize,bool) { SHARING.with(Cell::get) }
++pub(super) fn replace_sharing(value: (usize,bool)) -> (usize,bool) {
++    SHARING.with(|s| s.replace(value))
++}
++pub(super) fn local_scope_active() -> bool {
++    PLAN.with(|p| p.borrow().is_some())
++}
+ pub(super) fn enabled() -> bool {
+-    PLAN.with(|p| p.borrow().is_some())
++    plan().is_some()
+ }
+ fn scoped<T>(plan: Plan, f: impl FnOnce() -> T) -> T {
+     struct Restore(Option<Plan>, (usize, bool));
+@@ -49,9 +59,9 @@
+     f()
+ }
+ fn plan() -> Option<Plan> {
+-    PLAN.with(|p| p.borrow().clone())
+-}
+-fn source<'a>(plan: &Plan, features: &'a SfccFeatureSet) -> Option<activation_a::Certificate<'a>> {
++    PLAN.with(|p| p.borrow().clone()).or_else(super::component_consumers_b::current_plan)
++}
++pub(super) fn source<'a>(plan: &Plan, features: &'a SfccFeatureSet) -> Option<activation_a::Certificate<'a>> {
+     if !private_arc_a::generated_queries_active()
+         || features.fingerprint() != plan.fingerprint
+         || !plan.epsilon.is_finite()
+@@ -700,7 +710,7 @@
+     }
+     (loops, pins)
+ }
+-fn fixture() -> (
++pub(super) fn fixture() -> (
+     CsgNode,
+     SfccFeatureSet,
+     Value,
+@@ -836,6 +846,13 @@
+ 
+ #[test]
+ fn activation_c_frontier_typed_handoff_reconstructs_and_validates_actual_graph() {
++    frontier_reconstruction(false);
++}
++#[test]
++fn component_b_frontier_request_reconstructs_and_validates_actual_graph() {
++    frontier_reconstruction(true);
++}
++fn frontier_reconstruction(component:bool) {
+     let _numerics = NumericalGuard::new();
+     let (root, f, capture, lat, cell, mut points, mut records) = fixture();
+     let opts = options(&f, &capture);
+@@ -1019,8 +1036,8 @@
+     let generated = private_arc_a::GeneratedQueries::begin(&mut budget).unwrap();
+     let mut triangles = Vec::new();
+     let mut unresolved = false;
+-    let (accepted, sharing) = scoped(scoped_plan.clone(), || {
+-        let ok = mesh_feature_graph(
++    let mut reconstruct = || {
++        mesh_feature_graph(
+             &loops,
+             &pins,
+             &[],
+@@ -1031,9 +1048,26 @@
+             &f,
+             &mut triangles,
+             &mut unresolved,
+-        );
+-        (ok, SHARING.with(Cell::get))
+-    });
++        )
++    };
++    let (accepted,sharing) = if component {
++        let incoming=charts.map(|chart| {
++            let mut rows:Vec<_>=pins.iter().filter(|p|p.curve_id==chart).map(|p|(p.t,p.point_id)).collect();
++            rows.sort_by(|a,b|a.0.total_cmp(&b.0));rows
++        });
++        let plan=super::component_consumers_b::Plan {
++            root:scoped_plan.root.clone(),fingerprint:scoped_plan.fingerprint,source:scoped_plan.source,
++            charts,cuts,point,epsilon:numerical,
++            consumers:vec![super::component_consumers_b::Consumer{cell,cell_box:box_,incoming,activation:true}],
++        };
++        let (ok,report)=super::component_consumers_b::with_scope(plan,&mut reconstruct).unwrap();
++        assert_eq!(report["complete"],true,"{report}");
++        assert_eq!(report["completedConsumers"],1);
++        let sharing=&report["consumers"][0]["sharing"];
++        (ok,(sharing[0].as_u64().unwrap() as usize,sharing[1].as_bool().unwrap()))
++    } else {
++        scoped(scoped_plan.clone(),|| {let ok=reconstruct();(ok,SHARING.with(Cell::get))})
++    };
+     let queries = generated.finish().unwrap();
+     let charged_before_validation = budget.charged_queries();
+     let validation_eps =
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -407,7 +407,11 @@
+                     .iter()
+                     .any(|&(curve, _)| features.curves[curve].kind() != CurveKind::Segment)
+             });
+-            if corners.len() > 1 || ((cell.degenerate || loops.len() > 1) && distinct_curves.len() > 1) || curved_corner {
++            #[cfg(all(test, feature="serde"))]
++            let component_graph = component_consumers_b::requires_graph(&cbox);
++            #[cfg(not(all(test, feature="serde")))]
++            let component_graph = false;
++            if component_graph || corners.len() > 1 || ((cell.degenerate || loops.len() > 1) && distinct_curves.len() > 1) || curved_corner {
+                 #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
+                 super::private_arc_a::graph_b::context(cell, curved_corner, distinct_curves.len(), pruned.is_some());
+                 if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris, &mut retained_unresolved) {
+@@ -849,7 +853,12 @@
+         }
+     }
+     #[cfg(all(test,feature="serde"))]
+-    if activation_frontier_replay_c_tests::enabled()
++    let component_graph = match component_consumers_b::begin(cell_box,&paths,features) {
++        Ok(guard) => guard,
++        Err(reason) => { reject_b!("component_consumer_binding",serde_json::json!({"reason":reason})); }
++    };
++    #[cfg(all(test,feature="serde"))]
++    if activation_frontier_replay_c_tests::needs_insertion()
+         && !activation_frontier_replay_c_tests::insert_activation(&mut paths,cell_box,points,features) {
+         reject_b!("activation_event_preparation",serde_json::json!({"reason":"scoped event did not bind actual graph input"}));
+     }
+@@ -1095,6 +1104,10 @@
+             if index.conflicts(ids, p) { reject_b!("triangle_contact",serde_json::json!({"triangle":ids})); }
+             index.extend([(ids, p)]);
+         }
++    }
++    #[cfg(all(test,feature="serde"))]
++    if let Some(guard) = component_graph.as_ref() {
++        guard.completed(&triangles, &memberships, unresolved);
+     }
+     for (a, b, interval) in memberships {
+         points.protect_curve_edge(a, b, interval);
+@@ -2285,3 +2298,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="activation_frontier_replay_c_tests.rs"]
+ mod activation_frontier_replay_c_tests;
++
++#[cfg(all(test,feature="serde"))]
++#[path="component_consumers_b.rs"]
++pub(crate) mod component_consumers_b;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/component_consumers_b.rs
+@@ -0,0 +1,244 @@
++//! Request-local consumer bindings for the existing checked incoming/activation algorithm.
++use super::*;
++use super::activation_frontier_replay_c_tests as checked;
++use serde_json::{json, Value};
++use std::{cell::{Cell,RefCell}, collections::BTreeMap, sync::Arc};
++
++#[derive(Clone)]
++pub(crate) struct Consumer {
++    pub cell: SfccCell,
++    pub cell_box: [f64; 6],
++    pub incoming: [Vec<(f64, usize)>; 2],
++    pub activation: bool,
++}
++#[derive(Clone)]
++pub(crate) struct Plan {
++    pub root: Arc<CsgNode>,
++    pub fingerprint: u64,
++    pub source: [usize; 4],
++    pub charts: [usize; 2],
++    pub cuts: [f64; 2],
++    pub point: [f64; 3],
++    pub epsilon: f64,
++    pub consumers: Vec<Consumer>,
++}
++struct Request {
++    plan: Plan,
++    visits: Vec<bool>,
++    completed: Vec<bool>,
++    rows: Vec<Value>,
++    report_bytes: usize,
++    report_overflow: bool,
++}
++impl Request {
++    fn append(&mut self,row:Value)->bool {
++        let Ok(bytes)=serde_json::to_vec(&row) else {self.report_overflow=true;return false};
++        let Some(total)=self.report_bytes.checked_add(bytes.len().saturating_add(1)) else {
++            self.report_overflow=true;return false;
++        };
++        // Leave the fixed report header inside the existing 512 KiB diagnostic cap.
++        if total>512*1024-4096 {self.report_overflow=true;return false;}
++        self.report_bytes=total;self.rows.push(row);true
++    }
++}
++thread_local! {
++    static REQUEST: RefCell<Option<Request>> = const { RefCell::new(None) };
++    static CURRENT: RefCell<Option<(checked::Plan,bool)>> = const { RefCell::new(None) };
++}
++
++pub(crate) fn prepare_consumer(
++    oct: &SfccOctree,
++    faces: &[HashMap<i64,FaceRecord>;3],
++    cell: &SfccCell,
++    points: &mut PointTable,
++    features: &SfccFeatureSet,
++    charts: [usize;2],
++    activation: bool,
++) -> Result<Consumer, &'static str> {
++    if charts[0] == charts[1] || charts.iter().any(|&c| c >= features.curves.len()) {
++        return Err("consumer charts");
++    }
++    let cell_box=cell_aabb(&oct.lat,cell.level,cell.ix,cell.iy,cell.iz);
++    let mut segments=Vec::new();let mut pins=Vec::new();
++    gather_segments(faces,&oct.lat,cell,&mut segments,&mut pins);
++    let mut incoming:[Vec<(f64,usize)>;2]=std::array::from_fn(|_|Vec::new());
++    for pin in pins {
++        if segments.iter().any(|s| s.a==pin.point_id || s.b==pin.point_id) {
++            if let Some(slot)=charts.iter().position(|&id|id==pin.curve_id) {
++                incoming[slot].push((pin.t,pin.point_id));
++            }
++        }
++    }
++    for id in features.index.corners_in_box([cell_box[0],cell_box[1],cell_box[2]],[cell_box[3],cell_box[4],cell_box[5]]) {
++        let corner=&features.corners[id];
++        if corner.curve_ends.is_empty() || !in_box(&cell_box,corner.x,corner.y,corner.z,0.) {continue;}
++        for &(chart,end) in &corner.curve_ends {
++            if let Some(slot)=charts.iter().position(|&c|c==chart) {
++                let c=&features.curves[chart];
++                let id=corner_point_id(corner,features,points);
++                incoming[slot].push((if end==0 {c.t_min} else {c.t_max},id));
++            }
++        }
++    }
++    for rows in &mut incoming {normalize(rows);}
++    let result=Consumer{cell:*cell,cell_box,incoming,activation};
++    check_consumer(&result)?;
++    Ok(result)
++}
++fn normalize(rows:&mut Vec<(f64,usize)>) {
++    rows.sort_by(|a,b|a.0.total_cmp(&b.0));
++    rows.dedup_by(|a,b|a.1==b.1);
++}
++fn check_consumer(c:&Consumer)->Result<(),&'static str> {
++    if c.cell_box.iter().any(|v|!v.is_finite()) || (0..3).any(|k|c.cell_box[k]>=c.cell_box[k+3])
++        || c.incoming[0].len()!=(if c.activation{1}else{2}) || c.incoming[1].len()!=2
++        || c.incoming.iter().any(|rows|rows.iter().any(|(t,_)|!t.is_finite()) || rows.windows(2).any(|r|r[0].0>=r[1].0 || r[0].1==r[1].1)) {
++        return Err("consumer original nodes");
++    }
++    if c.incoming[0][0].1!=c.incoming[1][0].1 || (!c.activation && c.incoming[0][1].1!=c.incoming[1][1].1) {
++        return Err("consumer canonical endpoints");
++    }
++    Ok(())
++}
++fn validate(plan:&Plan)->Result<(),&'static str> {
++    if plan.charts[0]==plan.charts[1] || !plan.epsilon.is_finite() || plan.epsilon<=0.
++        || plan.point.iter().chain(&plan.cuts).any(|v|!v.is_finite())
++        || plan.consumers.is_empty() || plan.consumers.len()>256
++        || plan.consumers.iter().filter(|c|c.activation).count()!=1 {
++        return Err("consumer request configuration");
++    }
++    for (i,c) in plan.consumers.iter().enumerate() {
++        check_consumer(c)?;
++        if plan.consumers[..i].iter().any(|other|other.cell_box.map(f64::to_bits)==c.cell_box.map(f64::to_bits)
++            || (other.cell.level,other.cell.ix,other.cell.iy,other.cell.iz)==(c.cell.level,c.cell.ix,c.cell.iy,c.cell.iz)) {
++            return Err("duplicate consumer");
++        }
++        if c.incoming[0].iter().any(|(t,_)|*t>=plan.cuts[0])
++            || (!c.activation && c.incoming[1].iter().any(|(t,_)|*t>=plan.cuts[1]))
++            || (c.activation && !(c.incoming[1][0].0<plan.cuts[1] && c.incoming[1][1].0>plan.cuts[1])) {
++            return Err("consumer event order");
++        }
++    }
++    Ok(())
++}
++
++pub(crate) fn with_scope<T>(plan:Plan,f:impl FnOnce()->T)->Result<(T,Value),&'static str> {
++    validate(&plan)?;
++    if REQUEST.with(|p|p.borrow().is_some()) || CURRENT.with(|p|p.borrow().is_some()) || checked::local_scope_active() {
++        return Err("nested consumer request");
++    }
++    struct Restore;
++    impl Drop for Restore {fn drop(&mut self){REQUEST.with(|p|p.take());CURRENT.with(|p|p.take());}}
++    let count=plan.consumers.len();
++    REQUEST.with(|p|p.replace(Some(Request{plan,visits:vec![false;count],completed:vec![false;count],rows:Vec::with_capacity(count),report_bytes:0,report_overflow:false})));
++    let _restore=Restore;
++    let result=f();
++    let receipt=REQUEST.with(|p| {
++        let borrowed=p.borrow();let r=borrowed.as_ref().unwrap();
++        json!({"complete":!r.report_overflow && r.completed.iter().all(|x|*x),"reportOverflow":r.report_overflow,"expectedConsumers":r.completed.len(),
++            "visitedConsumers":r.visits.iter().filter(|x|**x).count(),"completedConsumers":r.completed.iter().filter(|x|**x).count(),
++            "sourceFingerprint":r.plan.fingerprint.to_string(),"charts":r.plan.charts,"cutBits":r.plan.cuts.map(f64::to_bits),
++            "consumers":r.rows,"publicationAuthorized":false})
++    });
++    Ok((result,receipt))
++}
++pub(super) fn requires_graph(box_:&[f64;6])->bool {
++    REQUEST.with(|p|p.borrow().as_ref().is_some_and(|r|r.plan.consumers.iter().any(|c|c.cell_box.map(f64::to_bits)==box_.map(f64::to_bits))))
++}
++pub(super) fn current_plan()->Option<checked::Plan> {CURRENT.with(|p|p.borrow().as_ref().map(|v|v.0.clone()))}
++pub(super) fn event_required()->bool {CURRENT.with(|p|p.borrow().as_ref().is_some_and(|v|v.1))}
++
++pub(super) struct GraphGuard {
++    index:usize,
++    sharing:(usize,bool),
++    recorded:Cell<bool>,
++}
++impl Drop for GraphGuard {
++    fn drop(&mut self) {
++        CURRENT.with(|p|p.take());
++        checked::replace_sharing(self.sharing);
++        REQUEST.with(|p| {
++            if let Some(r)=p.borrow_mut().as_mut() {
++                if !self.recorded.get() {r.append(json!({"consumerIndex":self.index,"completed":false}));}
++            }
++        });
++    }
++}
++impl GraphGuard {
++    pub(super) fn completed(&self,triangles:&[usize],memberships:&[(usize,usize,CurveInterval)],unresolved:bool) {
++        REQUEST.with(|p| {
++            let mut borrowed=p.borrow_mut();let r=borrowed.as_mut().unwrap();
++            r.completed[self.index]=!unresolved && checked::sharing_complete();
++            let c=&r.plan.consumers[self.index];
++            let row=json!({"consumerIndex":self.index,"cell":[c.cell.level as i64,c.cell.ix,c.cell.iy,c.cell.iz],
++                "cellBoxBits":c.cell_box.map(f64::to_bits),"activation":c.activation,"completed":r.completed[self.index],"sharing":checked::sharing_state(),
++                "incoming":c.incoming.iter().map(|rows|rows.iter().map(|(t,id)|json!([t.to_bits(),id])).collect::<Vec<_>>()).collect::<Vec<_>>(),
++                "triangleCount":triangles.len()/3,"secondaryMembershipCount":memberships.iter().filter(|(_,_,iv)|r.plan.charts.contains(&iv.curve_id)).count() });
++            self.recorded.set(true);
++            if !r.append(row) {r.completed[self.index]=false;}
++        });
++    }
++}
++pub(super) fn begin(box_:&[f64;6], paths:&BTreeMap<usize,Vec<(f64,usize)>>, features:&SfccFeatureSet)->Result<Option<GraphGuard>,&'static str> {
++    let selected=REQUEST.with(|p| {
++        let borrowed=p.borrow();let r=borrowed.as_ref()?;
++        let i=r.plan.consumers.iter().position(|c|c.cell_box.map(f64::to_bits)==box_.map(f64::to_bits))?;
++        let plan=checked::Plan{root:r.plan.root.clone(),fingerprint:r.plan.fingerprint,source:r.plan.source,
++            charts:r.plan.charts,cuts:r.plan.cuts,point:r.plan.point,cell_box:*box_,epsilon:r.plan.epsilon};
++        Some((i,plan,r.plan.consumers[i].clone(),r.visits[i]))
++    });
++    let Some((index,plan,c,visited))=selected else{return Ok(None)};
++    if visited || CURRENT.with(|p|p.borrow().is_some()) {
++        REQUEST.with(|p|p.borrow_mut().as_mut().unwrap().completed[index]=false);
++        return Err("consumer repeated or nested graph");
++    }
++    REQUEST.with(|p|p.borrow_mut().as_mut().unwrap().visits[index]=true);
++    for slot in 0..2 {
++        let mut actual=paths.get(&plan.charts[slot]).cloned().ok_or("consumer missing chart")?;
++        normalize(&mut actual);
++        if actual.len()!=c.incoming[slot].len() || actual.iter().zip(&c.incoming[slot]).any(|(a,b)|a.0.to_bits()!=b.0.to_bits() || a.1!=b.1) {
++            return Err("consumer original path mismatch");
++        }
++    }
++    checked::source(&plan,features).ok_or("consumer immutable source binding")?;
++    CURRENT.with(|p|p.replace(Some((plan,c.activation))));
++    let sharing=checked::replace_sharing((0,false));
++    Ok(Some(GraphGuard{index,sharing,recorded:Cell::new(false)}))
++}
++
++#[test]
++fn component_b_request_controls_preserve_refusal_and_cleanup() {
++    let _guard=crate::sfcc::validation::NumericalGuard::new();
++    let (_root,f,_capture,lat,cell,_points,_faces)=checked::fixture();
++    let (source,_,charts)=crate::sfcc::shared_twisted_proof::exposure_a::alias_face_b::select(&f).unwrap();
++    // Synthetic windows exercise configuration and lifecycle only; source queries are not authorized.
++    let plan=Plan{root:f.strata[source[0]].upper_source_root_handle().unwrap(),fingerprint:f.fingerprint(),
++        source:[source[0],source[1],source[2],0],charts,cuts:[2.,2.],point:[0.;3],epsilon:1e-9,
++        consumers:vec![Consumer{cell,cell_box:cell_aabb(&lat,cell.level,cell.ix,cell.iy,cell.iz),
++            incoming:[vec![(1.,0)],vec![(1.,0),(3.,1)]],activation:true}]};
++    assert!(validate(&plan).is_ok());
++    let mut report=Request{plan:plan.clone(),visits:vec![false],completed:vec![false],rows:Vec::with_capacity(1),report_bytes:0,report_overflow:false};
++    assert!(!report.append(json!({"oversized":"x".repeat(512*1024)})));
++    assert!(report.report_overflow && report.rows.is_empty());
++    let ((),report)=with_scope(plan.clone(),||{
++        assert!(requires_graph(&plan.consumers[0].cell_box));
++        assert!(with_scope(plan.clone(),||()).is_err());
++        assert!(begin(&plan.consumers[0].cell_box,&BTreeMap::new(),&f).is_err());
++    }).unwrap();
++    assert_eq!(report["complete"],false);
++    assert_eq!(report["visitedConsumers"],1);
++    assert!(!requires_graph(&plan.consumers[0].cell_box));
++    let mut bad=plan.clone();bad.consumers.push(bad.consumers[0].clone());
++    assert!(with_scope(bad,||panic!("bad plan executed")).is_err());
++    let mut bad=plan.clone();bad.consumers[0].incoming[1][0].1=99;
++    assert!(with_scope(bad,||panic!("bad endpoint executed")).is_err());
++    let mut bad=plan.clone();bad.consumers[0].incoming[0][0].0=f64::NAN;
++    assert!(with_scope(bad,||panic!("bad parameter executed")).is_err());
++    let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||{
++        let _=with_scope(plan.clone(),||panic!("consumer scope unwind"));
++    }));
++    assert!(result.is_err());
++    assert!(!requires_graph(&plan.consumers[0].cell_box));
++    assert!(!checked::enabled());
++    assert_eq!(checked::sharing_state(),(0,false));
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -572,3 +572,11 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "activation_frontier_c.rs"]
+ pub(crate) mod activation_frontier_c;
++
++#[cfg(all(test,feature="serde"))]
++#[path="secondary_component_a.rs"]
++pub(crate) mod secondary_component_a;
++
++#[cfg(all(test,feature="serde"))]
++#[path="secondary_component_validation_c.rs"]
++pub(crate) mod secondary_component_validation_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/secondary_component_a.rs
+@@ -0,0 +1,520 @@
++//! Request-local secondary alias preparation; live faces and source features stay immutable.
++use crate::sfcc::{
++    cell_mesh::component_consumers_b::{self, Consumer, Plan},
++    face_contour::FaceRecord,
++    feature_set::SfccFeatureSet,
++    octree::{SfccCell, SfccOctree},
++    point_table::PointTable,
++    shared_arc_plan::cell_faces,
++    shared_twisted_proof::{
++        correlated_c::transport_a::Transport,
++        exposure_a::{activation_a, activation_event_c, alias_face_b, alias_typed_face_b},
++    },
++};
++use crate::{math::grid::cell_aabb, sdf::CsgNode};
++use serde_json::{json, Value};
++use std::{
++    cell::Cell,
++    collections::{BTreeMap, BTreeSet, HashMap},
++    sync::Arc,
++};
++type FaceId = (usize, i64, i64);
++type Result<T> = std::result::Result<T, &'static str>;
++thread_local! {static ACTIVE:Cell<bool>=const{Cell::new(false)};}
++pub(crate) struct Scope(bool);
++impl Scope {
++    pub(crate) fn begin() -> Self {
++        Self(ACTIVE.with(|s| s.replace(true)))
++    }
++}
++impl Drop for Scope {
++    fn drop(&mut self) {
++        ACTIVE.with(|s| s.set(self.0));
++    }
++}
++pub(crate) fn enabled() -> bool {
++    ACTIVE.with(Cell::get)
++}
++pub(crate) fn note(key: &str, value: Value) {
++    super::DIAGNOSTIC.with(|s| {
++        if let Some(v) = s.borrow_mut().as_mut() {
++            v["secondaryTransactionA"][key] = value;
++        }
++    });
++}
++fn id(c: &SfccCell) -> [i64; 4] {
++    [c.level as i64, c.ix, c.iy, c.iz]
++}
++fn image_bits(p: ([f64; 3], [f64; 3])) -> [[u64; 3]; 2] {
++    [p.0.map(f64::to_bits), p.1.map(f64::to_bits)]
++}
++
++pub(crate) struct Prepared<'a> {
++    features: &'a SfccFeatureSet,
++    root: Arc<CsgNode>,
++    source: [usize; 4],
++    charts: [usize; 2],
++    epsilon: f64,
++    event: activation_event_c::Event<'a>,
++    images: [[[u64; 3]; 2]; 2],
++    frontier: [i64; 4],
++    equivalences: BTreeMap<usize, usize>,
++    changed: BTreeSet<FaceId>,
++}
++impl Prepared<'_> {
++    pub(crate) fn install(
++        &self,
++        equivalences: &mut BTreeMap<usize, usize>,
++        changed: &mut BTreeSet<FaceId>,
++    ) -> Result<()> {
++        merge_equivalences(equivalences, &self.equivalences)?;
++        changed.extend(&self.changed);
++        Ok(())
++    }
++    pub(crate) fn meshing_plan(
++        &self,
++        tree: &CsgNode,
++        view: &SfccFeatureSet,
++        primary: [usize; 2],
++        oct: &SfccOctree,
++        faces: &[HashMap<i64, FaceRecord>; 3],
++        selected: &[SfccCell],
++        points: &mut PointTable,
++    ) -> Result<Plan> {
++        if !self.event.bound_to(self.features) || self.charts.iter().any(|c| primary.contains(c)) {
++            return Err("secondary_view_source");
++        }
++        // The caller creates this view only by cloning and removing the independent primary alias.
++        // Rebind the secondary source on that actual instance and require its event images unchanged.
++        let (source, _, charts) = alias_face_b::select(view).ok_or("secondary_view_selection")?;
++        if charts != self.charts || source != [self.source[0], self.source[1], self.source[2]] {
++            return Err("secondary_view_selection");
++        }
++        let cert = activation_a::bind(tree, view, source, charts, 0.2)
++            .ok_or("secondary_view_certificate")?;
++        let root = view.strata[self.source[0]]
++            .upper_source_root_handle()
++            .ok_or("secondary_view_root")?;
++        if !Arc::ptr_eq(&root, &self.root)
++            || cert.source != self.source
++            || [
++                image_bits(cert.activation_image(false).ok_or("secondary_view_image")?),
++                image_bits(cert.activation_image(true).ok_or("secondary_view_image")?),
++            ] != self.images
++        {
++            return Err("secondary_view_source_drift");
++        }
++        for chart in charts {
++            let a = &self.features.curves[chart];
++            let b = &view.curves[chart];
++            if a.id != b.id
++                || a.t_min.to_bits() != b.t_min.to_bits()
++                || a.t_max.to_bits() != b.t_max.to_bits()
++                || a.closed != b.closed
++                || a.corner_start != b.corner_start
++                || a.corner_end != b.corner_end
++                || a.adjacent_strata != b.adjacent_strata
++            {
++                return Err("secondary_view_chart_drift");
++            }
++        }
++        let mut consumers: Vec<Consumer> = Vec::new();
++        for cell in selected {
++            let relevant = id(cell) == self.frontier
++                || cell_faces(oct, faces, cell)
++                    .iter()
++                    .any(|f| self.changed.contains(f));
++            if !relevant {
++                continue;
++            }
++            consumers.push(component_consumers_b::prepare_consumer(
++                oct,
++                faces,
++                cell,
++                points,
++                view,
++                charts,
++                id(cell) == self.frontier,
++            )?);
++        }
++        if consumers.is_empty()
++            || consumers.len() > 256
++            || consumers.iter().filter(|c| c.activation).count() != 1
++        {
++            return Err("secondary_consumer_inventory");
++        }
++        note("preparedConsumers",json!(consumers.iter().map(|c|json!({"cell":id(&c.cell),"cellBoxBits":c.cell_box.map(f64::to_bits),"activation":c.activation,"windows":c.incoming.iter().map(|p|p.iter().map(|&(t,id)|json!([t.to_bits(),id])).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect::<Vec<_>>()));
++        Ok(Plan {
++            root,
++            fingerprint: view.fingerprint(),
++            source: self.source,
++            charts,
++            cuts: self.event.parameters(),
++            point: self.event.point(),
++            epsilon: self.epsilon,
++            consumers,
++        })
++    }
++}
++fn merge_equivalences(
++    existing: &mut BTreeMap<usize, usize>,
++    added: &BTreeMap<usize, usize>,
++) -> Result<()> {
++    if added.iter().any(|(&from, &to)| {
++        from == to
++            || existing.get(&from).is_some_and(|&old| old != to)
++            || existing.contains_key(&to)
++            || added.contains_key(&to)
++            || existing.values().any(|&v| v == from)
++    }) {
++        return Err("secondary_equivalence_conflict");
++    }
++    existing.extend(added);
++    Ok(())
++}
++fn paired_inventory(
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    charts: [usize; 2],
++) -> Result<BTreeSet<FaceId>> {
++    let mut intended = BTreeSet::new();
++    for (axis, records) in faces.iter().enumerate() {
++        for (&key, r) in records {
++            let counts = charts.map(|chart| r.pins.iter().filter(|p| p.curve_id == chart).count());
++            if counts.contains(&0) {
++                continue;
++            }
++            if counts != [1, 1] {
++                return Err("secondary_paired_inventory_ambiguous");
++            }
++            if r.axis != axis || r.key != key || r.len <= 0 {
++                return Err("secondary_paired_inventory_identity");
++            }
++            if axis > 1 {
++                return Err("secondary_paired_inventory_unsupported_axis");
++            }
++            intended.insert((axis, key, r.len));
++            if intended.len() > 64 {
++                return Err("secondary_paired_inventory_cap");
++            }
++        }
++    }
++    if intended.is_empty() {
++        return Err("secondary_paired_inventory_empty");
++    }
++    Ok(intended)
++}
++fn complete_face_proof<'a>(
++    proof: &'a Value,
++    intended: &BTreeSet<FaceId>,
++) -> Result<&'a Vec<Value>> {
++    if proof.get("refusal").is_some() {
++        return Err("secondary_face_proof_refused");
++    }
++    let rows = proof["rows"].as_array().ok_or("secondary_face_proof")?;
++    if rows.is_empty() || rows.len() > 64 || rows.iter().any(|r| r.get("refusal").is_some()) {
++        return Err("secondary_face_proof");
++    }
++    let mut certified = BTreeSet::new();
++    for row in rows {
++        let axis = row["face"][0]
++            .as_u64()
++            .filter(|&a| a < 3)
++            .ok_or("secondary_face_id")? as usize;
++        let id = (
++            axis,
++            row["face"][1].as_i64().ok_or("secondary_face_id")?,
++            row["face"][2].as_i64().ok_or("secondary_face_id")?,
++        );
++        if !certified.insert(id) {
++            return Err("secondary_face_proof_duplicate");
++        }
++    }
++    if &certified != intended {
++        return Err("secondary_face_proof_incomplete_inventory");
++    }
++    Ok(rows)
++}
++pub(crate) fn prepare<'a>(
++    tree: &CsgNode,
++    f: &'a SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    tolerance: f64,
++    budget: &mut Transport<'_>,
++) -> Result<Prepared<'a>> {
++    if !enabled() || !budget.bound_to(f) {
++        return Err("secondary_request_source");
++    }
++    let (source, _, charts) = alias_face_b::select(f).ok_or("secondary_source")?;
++    let epsilon = crate::sfcc::shared_arc_plan::numerical(f, charts[0], charts[1], tolerance)
++        .ok_or("secondary_allowance")?;
++    let intended = paired_inventory(faces, charts)?;
++    let proof = alias_typed_face_b::observe(tree, f, oct, faces, live, budget);
++    super::note_secondary_faces_b(proof.clone());
++    let rows = complete_face_proof(&proof, &intended)?;
++    let mut changed = BTreeSet::new();
++    let mut equivalences = BTreeMap::new();
++    for row in rows {
++        let face = (
++            row["face"][0].as_u64().ok_or("secondary_face_id")? as usize,
++            row["face"][1].as_i64().ok_or("secondary_face_id")?,
++            row["face"][2].as_i64().ok_or("secondary_face_id")?,
++        );
++        if face.0 >= 3 || !changed.insert(face) {
++            return Err("secondary_face_identity");
++        }
++        let r = faces[face.0].get(&face.1).ok_or("secondary_face_record")?;
++        let pins = charts.map(|c| {
++            r.pins
++                .iter()
++                .filter(|p| p.curve_id == c)
++                .collect::<Vec<_>>()
++        });
++        if pins.iter().any(|p| p.len() != 1) || r.len != face.2 {
++            return Err("secondary_face_pins");
++        }
++        if row["canonicalCandidate"].as_u64() != Some(pins[0][0].point_id as u64)
++            || row["canonicalPointDirectlyCheckedAgainstBothOwnQueries"] != true
++        {
++            return Err("secondary_face_canonical");
++        }
++        let from = pins[1][0].point_id;
++        let to = pins[0][0].point_id;
++        if equivalences.insert(from, to).is_some_and(|old| old != to) {
++            return Err("secondary_face_equivalence");
++        }
++    }
++    let inventory = alias_face_b::inspect(f, oct, faces, live)?;
++    let inventory_paired: BTreeSet<FaceId> =
++        serde_json::from_value(inventory["pairedFaces"].clone())
++            .map_err(|_| "secondary_inventory_paired_faces")?;
++    if inventory_paired != intended || inventory_paired != changed {
++        return Err("secondary_inventory_paired_faces_mismatch");
++    }
++    let (inventory_pair, frontier_face, frontier) =
++        super::activation_frontier_c::pair_and_frontier(&inventory)?;
++    if inventory_pair != charts {
++        return Err("secondary_frontier_pair");
++    }
++    let cells: Vec<_> = oct.leaves.iter().filter(|c| id(c) == frontier).collect();
++    if cells.len() != 1 {
++        return Err("secondary_frontier_leaf");
++    }
++    let cell = cells[0];
++    let used = cell_faces(oct, faces, cell);
++    if !used.contains(&frontier_face) || !used.iter().any(|f| changed.contains(f)) {
++        return Err("secondary_frontier_binding");
++    }
++    let mut params: [Vec<f64>; 2] = std::array::from_fn(|_| Vec::new());
++    for &(axis, key, _) in &used {
++        for pin in &faces[axis][&key].pins {
++            for i in 0..2 {
++                if pin.curve_id == charts[i]
++                    && !params[i].iter().any(|t| t.to_bits() == pin.t.to_bits())
++                {
++                    params[i].push(pin.t);
++                }
++            }
++        }
++    }
++    if params[0].len() != 1 || params[1].len() != 2 {
++        return Err("secondary_frontier_paths");
++    }
++    params[1].sort_by(f64::total_cmp);
++    let cert =
++        activation_a::bind(tree, f, source, charts, 0.2).ok_or("secondary_activation_source")?;
++    let box_ = cell_aabb(&oct.lat, cell.level, cell.ix, cell.iy, cell.iz);
++    let mut trace = Vec::new();
++    let event = activation_event_c::prepare(
++        f,
++        &cert,
++        [
++            [params[0][0], f.curves[charts[0]].t_max],
++            [params[1][0], params[1][1]],
++        ],
++        box_,
++        epsilon,
++        budget,
++        &mut trace,
++    )
++    .map_err(|e| {
++        note(
++            "eventRefusal",
++            json!({"reason":format!("{e:?}"),"queries":trace}),
++        );
++        "secondary_activation_event"
++    })?;
++    let root = f.strata[source[0]]
++        .upper_source_root_handle()
++        .ok_or("secondary_root")?;
++    let images = [
++        image_bits(cert.activation_image(false).ok_or("secondary_image")?),
++        image_bits(cert.activation_image(true).ok_or("secondary_image")?),
++    ];
++    note(
++        "preparation",
++        json!({"pairedFaces":changed,"equivalences":equivalences.iter().map(|(&a,&b)|[a,b]).collect::<Vec<_>>(),"frontierFace":frontier_face,"frontierCell":frontier,"event":event.report(),"eventQueries":trace,"sourceFingerprint":f.fingerprint().to_string(),"mutationPerformed":false,"publicationReady":false}),
++    );
++    Ok(Prepared {
++        features: f,
++        root,
++        source: cert.source,
++        charts,
++        epsilon,
++        event,
++        images,
++        frontier,
++        equivalences,
++        changed,
++    })
++}
++
++#[test]
++fn component_a_scope_restores_and_conflicting_merge_is_atomic() {
++    assert!(!enabled());
++    {
++        let _s = Scope::begin();
++        assert!(enabled());
++        {
++            let _nested = Scope::begin();
++            assert!(enabled());
++        }
++        assert!(enabled());
++    }
++    assert!(!enabled());
++    let result = std::panic::catch_unwind(|| {
++        let _s = Scope::begin();
++        panic!("secondary transaction scope");
++    });
++    assert!(result.is_err());
++    assert!(!enabled());
++    let mut map = BTreeMap::from([(2, 1)]);
++    let before = map.clone();
++    assert!(merge_equivalences(&mut map, &BTreeMap::from([(2, 4), (5, 6)])).is_err());
++    assert_eq!(map, before);
++    assert!(merge_equivalences(&mut map, &BTreeMap::from([(1, 4)])).is_err());
++    assert_eq!(map, before);
++    merge_equivalences(&mut map, &BTreeMap::from([(5, 6)])).unwrap();
++    assert_eq!(map[&5], 6);
++}
++
++/// Additional retained request layouts; diagnostic JSON is separately capped and is not RSS.
++pub(crate) fn reserve_plan_storage(
++    features: &SfccFeatureSet,
++    staged: usize,
++    plan: &Plan,
++) -> Result<()> {
++    use crate::sfcc::source_storage_a::Ledger;
++    use std::mem::{align_of, size_of};
++    let mut ledger = Ledger::new();
++    for _ in 0..3 {
++        ledger
++            .allocation("secondary_plan", 1, size_of::<Plan>(), align_of::<Plan>())
++            .map_err(|_| "secondary_storage_arithmetic")?;
++        ledger
++            .vector("secondary_consumers", &plan.consumers)
++            .map_err(|_| "secondary_storage_arithmetic")?;
++        for c in &plan.consumers {
++            for v in &c.incoming {
++                ledger
++                    .vector("secondary_nodes", v)
++                    .map_err(|_| "secondary_storage_arithmetic")?;
++            }
++        }
++    }
++    ledger
++        .allocation(
++            "secondary_visits",
++            2 * plan.consumers.len(),
++            size_of::<bool>(),
++            align_of::<bool>(),
++        )
++        .map_err(|_| "secondary_storage_arithmetic")?;
++    ledger
++        .allocation(
++            "secondary_receipt_rows",
++            plan.consumers.len(),
++            size_of::<Value>(),
++            align_of::<Value>(),
++        )
++        .map_err(|_| "secondary_storage_arithmetic")?;
++    let total = staged
++        .checked_add(ledger.owned_reservation)
++        .ok_or("secondary_storage_arithmetic")?;
++    note(
++        "requestStorage",
++        json!({"layoutLedger":ledger,"baseStagedBytes":staged,"combinedStagedBytes":total,"scope":"retained request layouts with three simultaneous Plan copies; diagnostic JSON and validator workspace not an RSS guarantee"}),
++    );
++    super::reserve_source_view(features, total)
++        .map_err(|_| "secondary_source_and_request_storage_cap")
++}
++
++#[test]
++fn component_a_face_proof_rejects_refused_prefix_and_incomplete_inventory() {
++    let expected = BTreeSet::from([(0, 7, 1), (1, 8, 1)]);
++    let full = json!({"rows":[{"face":[0,7,1]},{"face":[1,8,1]}]});
++    assert_eq!(complete_face_proof(&full, &expected).unwrap().len(), 2);
++    let mut refused = full.clone();
++    refused["refusal"] = json!("64_face_proof_cap");
++    assert_eq!(
++        complete_face_proof(&refused, &expected).unwrap_err(),
++        "secondary_face_proof_refused"
++    );
++    let prefix = json!({"rows":[{"face":[0,7,1]}]});
++    assert_eq!(
++        complete_face_proof(&prefix, &expected).unwrap_err(),
++        "secondary_face_proof_incomplete_inventory"
++    );
++    let duplicate = json!({"rows":[{"face":[0,7,1]},{"face":[0,7,1]}]});
++    assert_eq!(
++        complete_face_proof(&duplicate, &expected).unwrap_err(),
++        "secondary_face_proof_duplicate"
++    );
++}
++#[test]
++fn component_a_paired_inventory_rejects_unsupported_axis_and_ambiguous_pins() {
++    use crate::sfcc::face_contour::FacePin;
++    let mut faces: [HashMap<i64, FaceRecord>; 3] = std::array::from_fn(|_| HashMap::new());
++    let record = |axis| FaceRecord {
++        axis,
++        key: 7,
++        len: 1,
++        segments: Vec::new(),
++        pins: vec![
++            FacePin {
++                curve_id: 46,
++                point_id: 0,
++                t: 1.,
++            },
++            FacePin {
++                curve_id: 66,
++                point_id: 1,
++                t: 2.,
++            },
++        ],
++        interior_cycle: false,
++        consumed_fwd: Vec::new(),
++        consumed_rev: Vec::new(),
++    };
++    faces[0].insert(7, record(0));
++    assert_eq!(
++        paired_inventory(&faces, [46, 66]).unwrap(),
++        BTreeSet::from([(0, 7, 1)])
++    );
++    faces[2].insert(7, record(2));
++    assert_eq!(
++        paired_inventory(&faces, [46, 66]).unwrap_err(),
++        "secondary_paired_inventory_unsupported_axis"
++    );
++    faces[2].clear();
++    faces[0].get_mut(&7).unwrap().pins.push(FacePin {
++        curve_id: 46,
++        point_id: 2,
++        t: 3.,
++    });
++    assert_eq!(
++        paired_inventory(&faces, [46, 66]).unwrap_err(),
++        "secondary_paired_inventory_ambiguous"
++    );
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/secondary_component_validation_c.rs
+@@ -0,0 +1,222 @@
++//! Exact indexed coverage of the supplied secondary consumer windows, not source exposure.
++use crate::sfcc::point_table::PointTable;
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++
++type Node = (f64, usize);
++type Span = (Node, Node);
++type Edge = (usize, usize);
++fn edge(a: usize, b: usize) -> Edge { (a.min(b), a.max(b)) }
++fn pos(p: &PointTable, id: usize) -> [f64; 3] { [p.x(id), p.y(id), p.z(id)] }
++fn same_node(a: Node, b: Node) -> bool { a.0.to_bits() == b.0.to_bits() && a.1 == b.1 }
++
++fn path(spans: &mut [Span], expected: [Node; 2]) -> Result<Vec<Node>, &'static str> {
++    if spans.is_empty() || spans.len() > 2048 || !(expected[0].0 < expected[1].0) {
++        return Err("secondary_empty_or_invalid_window");
++    }
++    spans.sort_by(|a, b| a.0.0.total_cmp(&b.0.0));
++    let mut nodes = vec![expected[0]];
++    let mut vertices = BTreeSet::from([expected[0].1]);
++    let mut previous = expected[0];
++    for &(lo, hi) in spans.iter() {
++        if !same_node(lo, previous) || !(lo.0 < hi.0) || hi.0 > expected[1].0 {
++            return Err("secondary_interval_gap_overlap_or_disconnected_vertex");
++        }
++        if !vertices.insert(hi.1) { return Err("secondary_repeated_path_vertex"); }
++        nodes.push(hi);
++        previous = hi;
++    }
++    if !same_node(previous, expected[1]) { return Err("secondary_window_endpoint_missing"); }
++    Ok(nodes)
++}
++
++/// Call for each prepared consumer, using that consumer's emitted triangle range.
++/// The caller supplies source-certified windows; this adds no geometric authority.
++pub(crate) fn validate_consumer(
++    points: &PointTable,
++    triangles: &[usize],
++    charts: [usize; 2],
++    cuts: [f64; 2],
++    incoming: &[Vec<Node>; 2],
++    activation: bool,
++    event_point: [f64; 3],
++) -> Result<Value, &'static str> {
++    if charts[0] == charts[1] || !cuts.iter().all(|x| x.is_finite())
++        || points.count() > 4096 || triangles.is_empty()
++        || triangles.len() > 3 * 4096 || triangles.len() % 3 != 0 {
++        return Err("secondary_invalid_scope_or_geometry_cap");
++    }
++    if incoming[0].len() != if activation { 1 } else { 2 } || incoming[1].len() != 2 {
++        return Err("secondary_consumer_window_inventory");
++    }
++    if incoming.iter().flatten().any(|&(t, id)| !t.is_finite() || id >= points.count()) {
++        return Err("secondary_invalid_window_node");
++    }
++    let mut mesh_edges = BTreeSet::new();
++    for t in triangles.chunks_exact(3) {
++        if t.iter().any(|&id| id >= points.count()) || t[0] == t[1] || t[1] == t[2] || t[2] == t[0] {
++            return Err("secondary_invalid_triangle_indices");
++        }
++        for k in 0..3 { mesh_edges.insert(edge(t[k], t[(k + 1) % 3])); }
++    }
++    let mut spans: [Vec<Span>; 2] = std::array::from_fn(|_| Vec::new());
++    let mut edges: [BTreeMap<Edge, Span>; 2] = std::array::from_fn(|_| BTreeMap::new());
++    let mut memberships = 0usize;
++    for &e in &mesh_edges {
++        for interval in points.curve_intervals(e.0, e.1) {
++            let Some(k) = charts.iter().position(|&chart| chart == interval.curve_id) else { continue; };
++            memberships += 1;
++            if memberships > 2048 { return Err("secondary_interval_cap"); }
++            if !interval.start.is_finite() || !interval.end.is_finite() || interval.start == interval.end {
++                return Err("secondary_invalid_interval");
++            }
++            let mut span = ((interval.start, e.0), (interval.end, e.1));
++            if span.0.0 > span.1.0 { span = (span.1, span.0); }
++            if edges[k].insert(e, span).is_some() { return Err("secondary_multiple_chart_memberships"); }
++            spans[k].push(span);
++        }
++    }
++    let mut expected: [[Node; 2]; 2] = [[(0., 0); 2]; 2];
++    let mut other = [incoming[1][0], incoming[1][1]];
++    other.sort_by(|a, b| a.0.total_cmp(&b.0));
++    expected[1] = other;
++    let event_id = if activation {
++        if !event_point.iter().all(|x| x.is_finite()) || !(incoming[0][0].0 < cuts[0])
++            || !(other[0].0 < cuts[1] && cuts[1] < other[1].0)
++            || incoming[0][0].1 != other[0].1 {
++            return Err("secondary_activation_window_order");
++        }
++        let nodes: BTreeSet<_> = spans[0].iter().flat_map(|&(a,b)| [a,b])
++            .filter(|&(t,_)| t.to_bits() == cuts[0].to_bits()).map(|(_,id)| id).collect();
++        if nodes.len() != 1 { return Err("secondary_activation_node_missing_or_ambiguous"); }
++        let id = *nodes.iter().next().ok_or("secondary_activation_node_missing_or_ambiguous")?;
++        if pos(points, id).map(f64::to_bits) != event_point.map(f64::to_bits) {
++            return Err("secondary_activation_point_bits");
++        }
++        expected[0] = [incoming[0][0], (cuts[0], id)];
++        Some(id)
++    } else {
++        expected[0] = [incoming[0][0], incoming[0][1]];
++        expected[0].sort_by(|a, b| a.0.total_cmp(&b.0));
++        if expected[0][1].0 > cuts[0] || expected[1][1].0 > cuts[1]
++            || expected[0][0].1 != expected[1][0].1 || expected[0][1].1 != expected[1][1].1 {
++            return Err("secondary_incoming_endpoint_correspondence");
++        }
++        None
++    };
++    let paths = [path(&mut spans[0], expected[0])?, path(&mut spans[1], expected[1])?];
++    let native_edges: BTreeSet<_> = edges[0].keys().copied().collect();
++    let mut expected_dual = BTreeSet::new();
++    for (&e, &(lo, hi)) in &edges[1] {
++        if activation && lo.0 < cuts[1] && hi.0 > cuts[1] {
++            return Err("secondary_composite_straddles_activation");
++        }
++        if !activation || hi.0 <= cuts[1] { expected_dual.insert(e); }
++    }
++    if native_edges != expected_dual { return Err("secondary_incoming_dual_membership_or_outgoing_native_tail"); }
++    if let Some(id) = event_id {
++        if !paths[1].iter().any(|&n| same_node(n, (cuts[1],id))) {
++            return Err("secondary_composite_activation_parameter");
++        }
++        if native_edges.iter().filter(|&&(a,b)| a==id || b==id).count()!=1
++            || edges[1].keys().filter(|&&(a,b)| a==id || b==id).count()!=2 {
++            return Err("secondary_activation_feature_degree");
++        }
++    }
++    Ok(json!({"scope":"exact indexed coverage of supplied certified consumer windows only; no field, patch-ownership or outside-contact assertion",
++        "charts":charts,"activation":activation,"eventPointId":event_id,
++        "triangleCount":triangles.len()/3,"memberships":memberships,
++        "paths":paths.map(|p|p.into_iter().map(|(t,id)|json!({"point":id,"parameterBits":t.to_bits()})).collect::<Vec<_>>()),
++        "exactWindowCoverage":true,"incomingDualMembership":true,"rawTailPruningAuthorized":false}))
++}
++
++/// Validate the whole private candidate, including contacts between different cells.
++/// Source-normal orientation is still checked by construct_private before this call.
++pub(crate) fn validate_mesh(points: &PointTable, triangles: &[usize]) -> Result<Value, &'static str> {
++    use crate::sfcc::{mesh_edit::GrowingIndex, triangle_quality as q};
++    let topology = super::stage4_component_b::topology(triangles, points.count())?;
++    if topology["localTopologyValid"] != true { return Err("secondary_component_topology"); }
++    let mut indices = [GrowingIndex::new(), GrowingIndex::new()];
++    let mut unknown_patch_count = 0;
++    for t in triangles.chunks_exact(3) {
++        let ids=[t[0],t[1],t[2]];
++        let working=ids.map(|id|pos(points,id));
++        let normal=q::cross(q::sub(working[1],working[0]),q::sub(working[2],working[0]));
++        if !q::valid_orientation(working,normal) { return Err("secondary_component_degenerate_or_export_flip"); }
++        for (precision,p) in [working,working.map(q::rounded)].into_iter().enumerate() {
++            if indices[precision].conflicts(ids,p) { return Err(if precision==0 {"secondary_component_contact_working_or_exported"} else {"secondary_component_f32_contact"}); }
++            indices[precision].extend([(ids,p)]);
++        }
++        unknown_patch_count += usize::from(points.patch(ids).is_none());
++    }
++    Ok(json!({"scope":"whole private candidate indexed topology and self-contact only",
++        "topology":topology,"contactConflictWorkingAndExported":[false,false],
++        "unknownPatchLabels":unknown_patch_count,"continuousSourcePatchOwnershipProved":false,
++        "sameStageOutsideContactsChecked":false,"publicationReady":false}))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::sfcc::point_table::CurveInterval;
++    fn points() -> PointTable {
++        let mut p=PointTable::new();
++        for i in 0..6 {p.add(i as f64,0.,0.,0.,1.,0.);}
++        p
++    }
++    fn span(p:&mut PointTable,a:usize,b:usize,chart:usize,start:f64,end:f64) {
++        p.protect_curve_edge(a,b,CurveInterval{curve_id:chart,start,end});
++    }
++    fn fixture() -> (PointTable, Vec<usize>, [Vec<Node>;2]) {
++        let mut p=points();
++        span(&mut p,0,1,46,1.,2.);span(&mut p,0,1,66,3.,4.);span(&mut p,1,2,66,4.,5.);
++        (p,vec![0,1,3,1,2,3],[vec![(1.,0)],vec![(3.,0),(5.,2)]])
++    }
++    #[test]
++    fn component_c_exact_activation_coverage_and_dual_incoming() {
++        let (p,t,w)=fixture();
++        let r=validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.,0.,0.]).unwrap();
++        assert_eq!(r["eventPointId"],1);assert_eq!(r["exactWindowCoverage"],true);
++        let w=[vec![(1.,0),(2.,1)],vec![(3.,0),(4.,1)]];
++        assert!(validate_consumer(&p,&[0,1,3],[46,66],[2.,4.],&w,false,[1.,0.,0.]).is_ok());
++    }
++    #[test]
++    fn component_c_refuses_missing_dual_membership_and_native_tail() {
++        let (mut p,t,w)=fixture();
++        span(&mut p,1,2,46,2.,2.5);
++        assert!(validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.,0.,0.]).is_err());
++        let mut p=points();span(&mut p,0,1,46,1.,2.);span(&mut p,0,4,66,3.,3.5);span(&mut p,4,1,66,3.5,4.);span(&mut p,1,2,66,4.,5.);
++        assert_eq!(validate_consumer(&p,&[0,4,3,4,1,3,0,1,3,1,2,3],[46,66],[2.,4.],&w,true,[1.,0.,0.]),Err("secondary_incoming_dual_membership_or_outgoing_native_tail"));
++    }
++    #[test]
++    fn component_c_refuses_disconnected_equal_parameter_and_gaps() {
++        let mut spans=[((1.,0),(2.,1)),((2.,4),(3.,2))];
++        assert_eq!(path(&mut spans,[(1.,0),(3.,2)]),Err("secondary_interval_gap_overlap_or_disconnected_vertex"));
++        let mut spans=[((1.,0),(2.,1)),((2.1,1),(3.,2))];
++        assert!(path(&mut spans,[(1.,0),(3.,2)]).is_err());
++        let mut spans=[((1.,0),(2.,1)),((1.9,1),(3.,2))];
++        assert!(path(&mut spans,[(1.,0),(3.,2)]).is_err());
++    }
++    #[test]
++    fn component_c_refuses_event_relabel_and_duplicate_membership() {
++        let (mut p,t,w)=fixture();
++        assert_eq!(validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.1,0.,0.]),Err("secondary_activation_point_bits"));
++        span(&mut p,0,1,46,1.,1.9);
++        assert_eq!(validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.,0.,0.]),Err("secondary_multiple_chart_memberships"));
++    }
++    #[test]
++    fn component_c_whole_mesh_rejects_cross_cell_contacts_and_export_collapse() {
++        let mut p=PointTable::new();
++        for v in [[0.,0.,0.],[2.,0.,0.],[0.,2.,0.],[0.5,0.5,-1.],[0.5,0.5,1.],[1.,1.,0.]] {
++            p.add(v[0],v[1],v[2],0.,0.,1.);
++        }
++        assert_eq!(validate_mesh(&p,&[0,1,2,3,4,5]),Err("secondary_component_contact_working_or_exported"));
++        assert!(validate_mesh(&p,&[0,1,2]).is_ok());
++        let mut p=PointTable::new();
++        for v in [[100_000_000.,0.,0.],[100_000_001.,0.,0.],[100_000_000.,1.,0.]] {
++            p.add(v[0],v[1],v[2],0.,0.,1.);
++        }
++        assert_eq!(validate_mesh(&p,&[0,1,2]),Err("secondary_component_degenerate_or_export_flip"));
++    }
++
++}
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -220,11 +220,17 @@
+ ) -> Result<PrivateCandidate, Refusal> {
+     let (plan, mut transport) = super::private_arc_a::admit(features, ids, opts.curve_chord_tol)?;
+     super::private_arc_a::note_admission(&plan, transport.charged_queries());
+-    #[cfg(all(test,feature="serde"))] {
++    #[cfg(all(test,feature="serde"))]
++    let secondary = if super::private_arc_a::secondary_component_a::enabled() {
++        transport.phase("secondary_transaction_prepare");
++        Some(super::private_arc_a::secondary_component_a::prepare(tree,features,oct,faces,live,opts.curve_chord_tol,&mut transport)
++            .map_err(|e|fail(features,ids,e,"complete secondary preparation refused"))?)
++    } else {
+         transport.phase("secondary_face_points_b");
+         let observation=super::shared_twisted_proof::exposure_a::alias_typed_face_b::observe(tree,features,oct,faces,live,&mut transport);
+         super::private_arc_a::note_secondary_faces_b(observation);
+-    }
++        None
++    };
+     transport.phase("original_rechecks");
+     let mut checked_events = BTreeMap::new();
+     for event in &plan.events {
+@@ -349,6 +355,10 @@
+             "missing_pregraph_inventory",
+             "no actual canonical-face bindings; final refined IDs are not substitutes",
+         ));
++    }
++    #[cfg(all(test,feature="serde"))]
++    if let Some(secondary)=&secondary {
++        secondary.install(&mut equivalences,&mut changed).map_err(|e|fail(features,ids,e,"secondary maps conflict with primary transaction"))?;
+     }
+     // A changed global point affects every face using it, not only tagged faces.
+     for axis in 0..3 {
+@@ -429,6 +439,10 @@
+             required.len().to_string(),
+         ));
+     }
++    #[cfg(all(test,feature="serde"))]
++    if secondary.is_some() {
++        super::private_arc_a::secondary_component_a::note("closure",serde_json::json!({"selectedCells":selected.len(),"requiredFaces":required.len(),"changedFaces":changed,"consumers":consumers.iter().map(|(id,sides)|serde_json::json!({"face":id,"sides":sides})).collect::<Vec<_>>(),"privateOnly":true}));
++    }
+     let canonical = |p: usize| equivalences.get(&p).copied().unwrap_or(p);
+     let mut needed = BTreeSet::new();
+     let mut required_pins=0usize;
+@@ -482,6 +496,8 @@
+     if !allowed{return Err(fail(features,ids,reason,"checked caller staging refused; exact inputs, terms and failure retained in typed storage observation"));}
+     let staged_bytes=staged_bytes.ok_or_else(||fail(features,ids,"private_byte_overflow","missing checked staging total"))?;
+     let mut private = PointTable::new();
++    #[cfg(all(test,feature="serde"))]
++    if secondary.is_some(){private.arrangement = live.arrangement;}
+     let mut map = BTreeMap::new();
+     let mut original_bindings = Vec::new();
+     for &id in &needed {
+@@ -654,6 +670,16 @@
+             cell.feature_curve = plan.physical as i64;
+         }
+     }
++    #[cfg(all(test,feature="serde"))]
++    let secondary_plan=secondary.as_ref().map(|s|s.meshing_plan(tree,&view,ids,oct,&staged,&selected,&mut private))
++        .transpose().map_err(|e|fail(features,ids,e,"actual secondary mesher consumers could not be bound"))?;
++    #[cfg(all(test,feature="serde"))]
++    if let Some(plan)=&secondary_plan {
++        super::private_arc_a::secondary_component_a::reserve_plan_storage(features,staged_bytes,plan)
++            .map_err(|e|fail(features,ids,e,"retained secondary request layouts exceed original storage cap"))?;
++    }
++    #[cfg(all(test,feature="serde"))]
++    let secondary_validation_plan=secondary_plan.clone();
+     let local_opts = CellMeshOptions {
+         features: Some(&view),
+         ..*opts
+@@ -663,6 +689,7 @@
+     let generated_scope = super::private_arc_a::GeneratedQueries::begin(&mut transport)
+         .map_err(|e| fail(features, ids, "generated_query_budget", e))?;
+     let mut graph_failed = false;
++    let mut run_cells = || -> Result<(),Refusal> {
+     for cell in &selected {
+         if super::cancel::is_cancelled() {
+             return Err(fail(
+@@ -687,6 +714,19 @@
+             super::private_arc_a::note_private_mesher_failure(oct,&staged,cell,&private,&result);
+             graph_failed = true;
+             break;
++        }
++        #[cfg(all(test,feature="serde"))]
++        if let Some(plan)=&secondary_validation_plan {
++            if let Some(consumer)=plan.consumers.iter().find(|c|[c.cell.level as i64,c.cell.ix,c.cell.iy,c.cell.iz]==[cell.level as i64,cell.ix,cell.iy,cell.iz]) {
++                match super::private_arc_a::secondary_component_validation_c::validate_consumer(&private,&result.tris,plan.charts,plan.cuts,&consumer.incoming,consumer.activation,plan.point) {
++                    Ok(receipt)=>super::private_arc_a::secondary_component_a::note(&format!("consumer:{}:{}:{}:{}",cell.level,cell.ix,cell.iy,cell.iz),receipt),
++                    Err(reason)=>{
++                        super::private_arc_a::secondary_component_a::note("consumerValidationRefusal",serde_json::json!({"cell":[cell.level as i64,cell.ix,cell.iy,cell.iz],"reason":reason}));
++                        graph_failed=true;
++                        break;
++                    }
++                }
++            }
+         }
+         super::private_arc_a::note_cell_triangles(cell, triangles.len() / 3, result.tris.len() / 3);
+         triangles.extend(result.tris);
+@@ -699,6 +739,28 @@
+             ));
+         }
+     }
++        Ok(())
++    };
++    #[cfg(all(test,feature="serde"))]
++    if let Some(plan)=secondary_plan {
++        match super::cell_mesh::component_consumers_b::with_scope(plan,||run_cells()) {
++            Ok((result,receipt))=>{
++                let complete=receipt["complete"]==serde_json::json!(true);
++                super::private_arc_a::secondary_component_a::note("meshing",receipt);
++                if let Err(reason)=result {
++                    super::private_arc_a::secondary_component_a::note("meshingRefusal",serde_json::json!(reason));
++                    graph_failed=true;
++                }
++                if !complete {graph_failed=true;}
++            }
++            Err(reason)=>{
++                super::private_arc_a::secondary_component_a::note("scopeRefusal",serde_json::json!(reason));
++                graph_failed=true;
++            }
++        }
++    } else {run_cells()?;}
++    #[cfg(not(all(test,feature="serde")))]
++    run_cells()?;
+     let generated = generated_scope
+         .finish()
+         .map_err(|e| fail(features, ids, "generated_query_budget", e))?;
+@@ -968,6 +1030,12 @@
+             ));
+         }
+     }
++    #[cfg(all(test,feature="serde"))]
++    if secondary.is_some() {
++        let geometry=super::private_arc_a::secondary_component_validation_c::validate_mesh(&private,&triangles)
++            .map_err(|e|fail(features,ids,e,"complete private mesh topology/contact check refused"))?;
++        super::private_arc_a::secondary_component_a::note("wholeMesh",geometry);
++    }
+     let final_intervals: Vec<_> = private
+         .identified_edges()
+         .flat_map(|((a, b), is)| {
+--- a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -309,6 +309,7 @@
+ 
+ #[test]
+ fn stage4_component_b_original_source_attempt() {
++    let _secondary_scope = (std::env::var("SFCC_COMPONENT_TRANSACTION_A").as_deref()==Ok("1")).then(super::secondary_component_a::Scope::begin);
+     let fixture: Value =
+         serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
+     let root =

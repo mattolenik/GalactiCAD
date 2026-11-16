@@ -1,0 +1,51 @@
+{
+  "selected": "Reviewed",
+  "sourceManifestSha256": "8197a37bc3104faebf0a0119dda9f6c568922f0a8075bb036d0bc6fbfc23c2a9",
+  "componentReceiptSha256": "c6d12b6a99c6cfd914e936a66f009f73f3eded377697872f1e9a2ba1b9155da3",
+  "selectedCells": 205,
+  "requiredFaces": 1031,
+  "changedFaces": 204,
+  "triangles": 1775,
+  "allocatedVertices": 1114,
+  "usedVertices": 1109,
+  "edges": 2883,
+  "boundaryEdges": 441,
+  "frontierFaces": 827,
+  "secondaryConsumers": 7,
+  "generatedQueries": 1929,
+  "chargedQueries": 8413,
+  "generatedQueryCost": {
+    "attempted": 1929,
+    "exhausted": false,
+    "finished": true,
+    "refunded": 0,
+    "reserved": 2048,
+    "scope": "reservation remains charged, including unused slots; failed and discarded attempts retained",
+    "successful": 1929,
+    "unusedReserved": 119
+  },
+  "checkedEvents": 1864,
+  "intervals": 508,
+  "allQueryEventsValidated": true,
+  "topologyValid": true,
+  "boundaryMatches": true,
+  "workingAndExportedContactConflicts": [
+    false,
+    false
+  ],
+  "unknownPatchLabels": 1775,
+  "liveStatePreserved": true,
+  "fullComponentAccepted": false,
+  "publicationReady": false,
+  "guardRevisionPreservation": {
+    "candidatePointsIdentical": true,
+    "candidateTrianglesIdentical": true,
+    "intervalsIdenticalAfterSorting": true,
+    "ledgerChargesUnchanged": true,
+    "generatedQueriesUnchanged": true
+  },
+  "focusedTestsPassed": 43,
+  "focusedCampaignSeconds": 33.67442283296259,
+  "focusedCapSeconds": 60,
+  "componentSeconds": 32.1934074999881
+}

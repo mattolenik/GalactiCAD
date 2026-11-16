@@ -1,0 +1,11 @@
+{
+  "filter": "component_b_",
+  "tests": [
+    "sfcc::cell_mesh::activation_frontier_replay_c_tests::component_b_frontier_request_reconstructs_and_validates_actual_graph",
+    "sfcc::cell_mesh::component_consumers_b::component_b_request_controls_preserve_refusal_and_cleanup",
+    "sfcc::private_arc_a::stage4_component_b::stage4_component_b_original_source_attempt",
+    "sfcc::private_arc_a::stage4_component_b::stage4_component_b_request_scope_cleans_up",
+    "sfcc::private_arc_a::stage4_component_b::stage4_component_b_topology_controls"
+  ],
+  "exitCode": 0
+}

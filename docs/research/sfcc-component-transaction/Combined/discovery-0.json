@@ -1,0 +1,7 @@
+{
+  "filter": "component_a_",
+  "tests": [
+    "sfcc::private_arc_a::secondary_component_a::component_a_scope_restores_and_conflicting_merge_is_atomic"
+  ],
+  "exitCode": 0
+}

@@ -1,0 +1,141 @@
+{
+  "fixtureScope": "original target FaceRecord and target point bindings; filler point slots are not a full scene replay",
+  "negativeControlsPassed": true,
+  "proof": {
+    "allowance": 3.796655370190979e-7,
+    "authorityRegionCount": 1,
+    "canonicalCandidate": 35832,
+    "canonicalPointDirectlyCheckedAgainstBothOwnQueries": true,
+    "chargedAfter": 263,
+    "chargedBefore": 261,
+    "face": [
+      1,
+      3398483,
+      1
+    ],
+    "generatedAxisDerivative": [
+      0.6666666666666651,
+      0.6666666666666684
+    ],
+    "generatedRadialRoot": [
+      10.796573076012894,
+      10.796573076012905
+    ],
+    "generatedRootBits": [
+      [
+        13844827771266525232,
+        13836171170937199256,
+        4617755369420995938
+      ],
+      [
+        13844827771266525124,
+        13836171170937199256,
+        4617755369420996165
+      ]
+    ],
+    "latticeCornerHighBits": [
+      13844816554298846424,
+      13836171170937199256,
+      4617892307979710970
+    ],
+    "mutationPerformed": false,
+    "originalRoundingHullBits": [
+      [
+        13844827771487911936,
+        13836171170937199256,
+        4617755369052045312
+      ],
+      [
+        13844827770951041024,
+        13836171170937199256,
+        4617755369588916224
+      ]
+    ],
+    "physicalAxisDerivative": [
+      0.6666666666666651,
+      0.6666666666666684
+    ],
+    "physicalRadialRoot": [
+      10.796573076012896,
+      10.796573076012905
+    ],
+    "physicalRootBits": [
+      [
+        13844827771266525231,
+        13836171170937199256,
+        4617755369420995945
+      ],
+      [
+        13844827771266525128,
+        13836171170937199256,
+        4617755369420996161
+      ]
+    ],
+    "planeBits": 13836171170937199256,
+    "pointBindings": [
+      {
+        "chart": 46,
+        "directRootBounds": [
+          1.220608223936858e-11,
+          1.220608223936858e-11,
+          1.2212948250753426e-11,
+          1.2212948250753426e-11
+        ],
+        "ownBits": [
+          13844827771266531156,
+          13836171170937187002,
+          4617755369420993716
+        ],
+        "parameterBits": 4615207044326103961,
+        "pointId": 35832,
+        "storedBits": [
+          13844827771266531156,
+          13836171170937187002,
+          4617755369420993716
+        ]
+      },
+      {
+        "chart": 66,
+        "directRootBounds": [
+          1.049429630168847e-7,
+          1.049429630168847e-7,
+          1.0494296895359854e-7,
+          1.0494296895359854e-7
+        ],
+        "ownBits": [
+          13844827771288457826,
+          13836171170937199256,
+          4617755369311285198
+        ],
+        "parameterBits": 4613723625259831101,
+        "pointId": 35833,
+        "storedBits": [
+          13844827771288457826,
+          13836171170937199256,
+          4617755369311285198
+        ]
+      }
+    ],
+    "publicationAuthority": false,
+    "recordFace": [
+      1,
+      3398483,
+      1
+    ],
+    "rectangleBits": [
+      [
+        13844885603629070758,
+        13836171170937199256,
+        4617754209319262306
+      ],
+      [
+        13844816554298846425,
+        13836171170937199256,
+        4617892307979710972
+      ]
+    ],
+    "scope": "typed original adaptive X/Y-face point certificate only; complete arc/consumer transaction still required",
+    "strictResidual": 4.745819212738724e-8
+  },
+  "sourceReceiptSha256": "7e0ab13a041785be3929940dfd946016f51c983d06ef2cd0e9e446d2ed60afee"
+}

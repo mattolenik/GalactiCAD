@@ -1,0 +1,40 @@
+{
+  "parentManifest": "docs/research/sfcc-inner-activation/Frontier-fixed/manifest.json",
+  "parentManifestSha256": "cd0418180fced3203d98d141da2ee3d9265d1a84675243f615671008d8151dfe",
+  "parentInputCount": 199,
+  "selected": "Reviewed",
+  "restorations": [
+    {
+      "packet": "B-check",
+      "patchSha256": "cdb286cf862f7d3224df6a171ede6ef3b3b03e1f4f0ab9a42162c516556c77f8",
+      "manifestSha256": "e6b6301a9f48d12234a4a9189b630ea3b03480e485158815d0cd34e84837f498",
+      "verifiedInputCount": 200,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-component-restore-ak8q99_b",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-check",
+      "patchSha256": "b6f537d614d67a8718469e746ce8a3e43cf12f1e798bbb44c3afa854234959ee",
+      "manifestSha256": "312d7a76e902926c804d3fc6ada244c4e82cbb30407965cf59eaa425f68695ed",
+      "verifiedInputCount": 200,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-component-restore-sgx6jmer",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Combined",
+      "patchSha256": "971ac41a9a60462a7af1b886a443f53b6c4be637f7ee9260deb8632503f7cc9f",
+      "manifestSha256": "bccf6e64b610796d914d3fb69fd566a094252e28a13d9bf4b00c6e1960b7bfc1",
+      "verifiedInputCount": 202,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-component-restore-1x8x7v_a",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Reviewed",
+      "patchSha256": "bbe9faf761025942d51a6c20f777d541a38efe409312ee19e19f2535d1332763",
+      "manifestSha256": "8197a37bc3104faebf0a0119dda9f6c568922f0a8075bb036d0bc6fbfc23c2a9",
+      "verifiedInputCount": 202,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-component-restore-ingezx0h",
+      "result": "all input hashes match"
+    }
+  ]
+}

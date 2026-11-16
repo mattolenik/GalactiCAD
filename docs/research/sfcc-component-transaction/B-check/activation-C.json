@@ -1,0 +1,1180 @@
+{
+  "allGeneratedQueriesSucceeded": true,
+  "candidatePublished": false,
+  "cell": [
+    8,
+    55,
+    114,
+    172
+  ],
+  "chargedAfter": 2112,
+  "chargedBeforeGeneratedReservation": 64,
+  "curves": [
+    {
+      "chart": 46,
+      "ends": [
+        13,
+        -1
+      ],
+      "rangeBits": [
+        0,
+        4625196817309499392
+      ],
+      "strata": [
+        31,
+        10
+      ]
+    },
+    {
+      "chart": 66,
+      "ends": [
+        13,
+        29
+      ],
+      "rangeBits": [
+        0,
+        4630826316843712512
+      ],
+      "strata": [
+        31,
+        30
+      ]
+    }
+  ],
+  "diagnosticByteCap": 524288,
+  "faces": [
+    {
+      "consumedForward": [
+        0,
+        0,
+        0
+      ],
+      "consumedReverse": [
+        0,
+        0,
+        0
+      ],
+      "face": [
+        0,
+        3662165,
+        1
+      ],
+      "interiorCycle": false,
+      "originalPins": [
+        {
+          "chart": 46,
+          "parameterBits": 4624533397549305636,
+          "point": 36652
+        },
+        {
+          "chart": 66,
+          "parameterBits": 4616945693897282548,
+          "point": 36653
+        }
+      ],
+      "originalSegments": [
+        [
+          36651,
+          36652
+        ],
+        [
+          36652,
+          36653
+        ],
+        [
+          36653,
+          36650
+        ]
+      ]
+    },
+    {
+      "consumedForward": [],
+      "consumedReverse": [],
+      "face": [
+        0,
+        3728214,
+        1
+      ],
+      "interiorCycle": false,
+      "originalPins": [],
+      "originalSegments": []
+    },
+    {
+      "consumedForward": [
+        0,
+        0
+      ],
+      "consumedReverse": [
+        0,
+        0
+      ],
+      "face": [
+        1,
+        3662165,
+        1
+      ],
+      "interiorCycle": false,
+      "originalPins": [
+        {
+          "chart": 66,
+          "parameterBits": 4617409697228647778,
+          "point": 36916
+        }
+      ],
+      "originalSegments": [
+        [
+          5128,
+          36916
+        ],
+        [
+          36916,
+          36915
+        ]
+      ]
+    },
+    {
+      "consumedForward": [],
+      "consumedReverse": [],
+      "face": [
+        1,
+        3662422,
+        1
+      ],
+      "interiorCycle": false,
+      "originalPins": [],
+      "originalSegments": []
+    },
+    {
+      "consumedForward": [
+        0
+      ],
+      "consumedReverse": [
+        0
+      ],
+      "face": [
+        2,
+        3662165,
+        1
+      ],
+      "interiorCycle": false,
+      "originalPins": [],
+      "originalSegments": [
+        [
+          36650,
+          5128
+        ]
+      ]
+    },
+    {
+      "consumedForward": [
+        0
+      ],
+      "consumedReverse": [
+        0
+      ],
+      "face": [
+        2,
+        3662166,
+        1
+      ],
+      "interiorCycle": false,
+      "originalPins": [],
+      "originalSegments": [
+        [
+          36651,
+          36915
+        ]
+      ]
+    }
+  ],
+  "failedCellCount": 0,
+  "fallbackCellCount": 1,
+  "featureFingerprint": "10977506807348230851",
+  "finalPoints": 8,
+  "frontierFace": [
+    1,
+    3662165,
+    1
+  ],
+  "fullTransactionPrepared": false,
+  "generatedPostValidationPerformed": false,
+  "generatedQueries": [],
+  "graphEvidence": {
+    "activePrivateCell": [
+      8,
+      55,
+      114,
+      172
+    ],
+    "finalChargedQueries": 2112,
+    "generatedQueries": [],
+    "generatedQueryCost": {
+      "attempted": 0,
+      "exhausted": false,
+      "finished": true,
+      "refunded": 0,
+      "reserved": 2048,
+      "scope": "reservation remains charged, including unused slots; failed and discarded attempts retained",
+      "successful": 0,
+      "unusedReserved": 2048
+    },
+    "graphCaptureB": {
+      "bounds": {
+        "corners": 64,
+        "curves": 128,
+        "edges": 1024,
+        "loopEntries": 1024,
+        "memberships": 1024,
+        "pins": 1024,
+        "points": 1024,
+        "serializedBytes": 524288,
+        "strata": 128
+      },
+      "complete": true,
+      "completeReplayEstablished": false,
+      "context": {
+        "cell": [
+          8,
+          55,
+          114,
+          172
+        ],
+        "curvedCorner": false,
+        "degenerate": true,
+        "distinctPinCurves": 2,
+        "featureCorner": -1,
+        "featureCurve": 46,
+        "queryViewPruned": false
+      },
+      "finalPrivateFailure": true,
+      "graph": {
+        "edges": [
+          {
+            "edge": [
+              0,
+              1
+            ],
+            "strata": null
+          },
+          {
+            "edge": [
+              0,
+              6
+            ],
+            "strata": null
+          },
+          {
+            "edge": [
+              1,
+              4
+            ],
+            "strata": null
+          },
+          {
+            "edge": [
+              2,
+              3
+            ],
+            "strata": null
+          },
+          {
+            "edge": [
+              2,
+              5
+            ],
+            "strata": null
+          },
+          {
+            "edge": [
+              3,
+              4
+            ],
+            "strata": null
+          },
+          {
+            "edge": [
+              5,
+              6
+            ],
+            "strata": null
+          }
+        ],
+        "memberships": [],
+        "newPoints": [],
+        "pointCount": 7
+      },
+      "pre": {
+        "allPrivatePoints": [
+          {
+            "id": 0,
+            "key": {
+              "numericHex": "0000000001bf0aa8"
+            },
+            "normalHex": [
+              "bfdf41d5907154f6",
+              "bfebd989b04e1b8a",
+              "bfb046464c831dbd"
+            ],
+            "positionHex": [
+              "c021c2dc424ac745",
+              "c005eac5d59cc0fc",
+              "40158efcca8a1862"
+            ]
+          },
+          {
+            "id": 1,
+            "key": {
+              "numericHex": "0000000001bf0aa9"
+            },
+            "normalHex": [
+              "bfde0fdc3f85c50e",
+              "bfec25a769a0fce9",
+              "bfb34908a007d4d6"
+            ],
+            "positionHex": [
+              "c021eee73507c672",
+              "c0058b1245638ded",
+              "40158efcca8a1862"
+            ]
+          },
+          {
+            "id": 2,
+            "key": {
+              "numericHex": "0000000001bf0ab1"
+            },
+            "normalHex": [
+              "bfde4c7ba2196e08",
+              "bfec27389a0ef399",
+              "3fa603cbdf532062"
+            ],
+            "positionHex": [
+              "c021eee73507c672",
+              "c0058e8700385529",
+              "40160c966423b1fa"
+            ]
+          },
+          {
+            "id": 3,
+            "key": {
+              "string": "F0:3662165:46:14.821529771587"
+            },
+            "normalHex": [
+              "bfde4187ef3a72ad",
+              "bfec31990862016f",
+              "bf9037d2ceeabf5f"
+            ],
+            "positionHex": [
+              "c021eee73507c38f",
+              "c005950f1cdb02cb",
+              "4015c9a866f70ecd"
+            ]
+          },
+          {
+            "id": 4,
+            "key": {
+              "string": "F0:3662165:66:4.671530246987"
+            },
+            "normalHex": [
+              "bfde4187f05c8154",
+              "bfec3199081498ca",
+              "bf9037d2cc118d98"
+            ],
+            "positionHex": [
+              "c021eee73507c672",
+              "c005950f1d3f6eef",
+              "4015c9a865f4fbc5"
+            ]
+          },
+          {
+            "id": 5,
+            "key": {
+              "numericHex": "0000000001bf0ab0"
+            },
+            "normalHex": [
+              "bfde9196c53d5f56",
+              "bfec1265a67993d8",
+              "3fa893158174cf26"
+            ],
+            "positionHex": [
+              "c021c44d0ef261f1",
+              "c005eac5d59cc0fc",
+              "40160c966423b1fa"
+            ]
+          },
+          {
+            "id": 6,
+            "key": {
+              "string": "F1:3662165:66:5.083647992574"
+            },
+            "normalHex": [
+              "bfdea716f887dee1",
+              "bfec16c94434c214",
+              "bf854abe05e5c305"
+            ],
+            "positionHex": [
+              "c021c753519caea0",
+              "c005eac5d59cc0ea",
+              "4015cff23bc2b886"
+            ]
+          }
+        ],
+        "cellBoxHex": [
+          "c021eee73507c672",
+          "c005eac5d59cc0fc",
+          "40158efcca8a1862",
+          "c021b01a683af9a5",
+          "c004ef92a2698dc9",
+          "40160c966423b1fc"
+        ],
+        "corners": [],
+        "curves": [
+          {
+            "closed": false,
+            "cornerEnds": [
+              13,
+              -1
+            ],
+            "id": 46,
+            "kind": "Traced",
+            "native": false,
+            "ownerNodeId": -1,
+            "rangeHex": [
+              "0000000000000000",
+              "4030000000000000"
+            ],
+            "strata": [
+              31,
+              10
+            ],
+            "wrapHex": null
+          },
+          {
+            "closed": false,
+            "cornerEnds": [
+              13,
+              29
+            ],
+            "id": 66,
+            "kind": "Traced",
+            "native": false,
+            "ownerNodeId": -1,
+            "rangeHex": [
+              "0000000000000000",
+              "4044000000000000"
+            ],
+            "strata": [
+              31,
+              30
+            ],
+            "wrapHex": null
+          }
+        ],
+        "loops": [
+          [
+            2,
+            3,
+            4,
+            1,
+            0,
+            6,
+            5
+          ]
+        ],
+        "options": {
+          "chordTolHex": "3f947ae147ae147b",
+          "interiorMode": "Project",
+          "maxPolylinePoints": 16,
+          "projectMaxIters": 8,
+          "qualityTriangulation": false,
+          "surfaceTolHex": "3f847ae147ae147b"
+        },
+        "pins": [
+          {
+            "chart": 46,
+            "id": 3,
+            "parameterHex": "402da49f8cdb4f24"
+          },
+          {
+            "chart": 66,
+            "id": 4,
+            "parameterHex": "4012afa5a00453f4"
+          },
+          {
+            "chart": 66,
+            "id": 6,
+            "parameterHex": "401455a7d1c1ed62"
+          }
+        ],
+        "strata": [
+          {
+            "compoundPresent": false,
+            "compoundTermsIncluded": false,
+            "domain": [
+              {
+                "branch": null,
+                "partners": [],
+                "path": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  1
+                ],
+                "rootAddressProcessLocal": "74c7104010"
+              }
+            ],
+            "field": null,
+            "id": 10,
+            "leafIndex": 1,
+            "localIndex": 3,
+            "ownerNodeId": -1,
+            "signHex": "3ff0000000000000"
+          },
+          {
+            "compoundPresent": false,
+            "compoundTermsIncluded": false,
+            "domain": [
+              {
+                "branch": null,
+                "partners": [],
+                "path": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "rootAddressProcessLocal": "74c7104010"
+              }
+            ],
+            "field": {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                0
+              ],
+              "rootAddressProcessLocal": "74c7104010"
+            },
+            "id": 30,
+            "leafIndex": 18446744073709551615,
+            "localIndex": 0,
+            "ownerNodeId": -1,
+            "signHex": "3ff0000000000000"
+          },
+          {
+            "compoundPresent": true,
+            "compoundTermsIncluded": false,
+            "domain": [
+              {
+                "branch": null,
+                "partners": [],
+                "path": [
+                  0,
+                  0
+                ],
+                "rootAddressProcessLocal": "74c7104010"
+              }
+            ],
+            "field": null,
+            "id": 31,
+            "leafIndex": 18446744073709551615,
+            "localIndex": 0,
+            "ownerNodeId": -1,
+            "signHex": "3ff0000000000000"
+          }
+        ]
+      },
+      "queryEnd": 0,
+      "queryIndexConvention": "half-open indices into generatedQueries; excludes later fallback work",
+      "queryStart": 0,
+      "rejection": {
+        "code": "path_nodes_lt_two",
+        "operands": {
+          "chart": 46,
+          "nodeCount": 1,
+          "nodes": [
+            [
+              "402da49f8cdb4f24",
+              3
+            ]
+          ]
+        }
+      },
+      "rejectionCode": "path_nodes_lt_two",
+      "returned": false,
+      "scope": "local pre-call inputs and executed guard; replay also requires pinned source and private feature-view edits",
+      "sourceGeometryIncluded": false
+    },
+    "graphContextB": {
+      "cell": [
+        8,
+        55,
+        114,
+        172
+      ],
+      "curvedCorner": false,
+      "degenerate": true,
+      "distinctPinCurves": 2,
+      "featureCorner": -1,
+      "featureCurve": 46,
+      "queryViewPruned": false
+    },
+    "lastQueryPhase": "bind",
+    "privateMesherFailure": {
+      "cell": [
+        8,
+        55,
+        114,
+        172
+      ],
+      "cornerCellCount": 0,
+      "diagnosticLimits": {
+        "bytes": 524288,
+        "counterEntriesPerFace": 512,
+        "faces": 24,
+        "keyPrefixCharacters": 64,
+        "points": 512,
+        "totalSegmentPinEntries": 512
+      },
+      "edgeCellCount": 0,
+      "faces": [
+        {
+          "consumedForwardPrefix": [
+            1,
+            1,
+            1
+          ],
+          "consumedReversePrefix": [
+            0,
+            0,
+            0
+          ],
+          "face": [
+            0,
+            3662165,
+            1
+          ],
+          "pinCount": 2,
+          "pins": [
+            {
+              "chart": 46,
+              "parameterBits": 4624533397549305636,
+              "pointId": 3
+            },
+            {
+              "chart": 66,
+              "parameterBits": 4616945693897282548,
+              "pointId": 4
+            }
+          ],
+          "segmentCount": 3,
+          "segments": [
+            [
+              2,
+              3
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              4,
+              1
+            ]
+          ]
+        },
+        {
+          "consumedForwardPrefix": [],
+          "consumedReversePrefix": [],
+          "face": [
+            0,
+            3728214,
+            1
+          ],
+          "pinCount": 0,
+          "pins": [],
+          "segmentCount": 0,
+          "segments": []
+        },
+        {
+          "consumedForwardPrefix": [
+            1,
+            1
+          ],
+          "consumedReversePrefix": [
+            0,
+            0
+          ],
+          "face": [
+            1,
+            3662165,
+            1
+          ],
+          "pinCount": 1,
+          "pins": [
+            {
+              "chart": 66,
+              "parameterBits": 4617409697228647778,
+              "pointId": 6
+            }
+          ],
+          "segmentCount": 2,
+          "segments": [
+            [
+              0,
+              6
+            ],
+            [
+              6,
+              5
+            ]
+          ]
+        },
+        {
+          "consumedForwardPrefix": [],
+          "consumedReversePrefix": [],
+          "face": [
+            1,
+            3662422,
+            1
+          ],
+          "pinCount": 0,
+          "pins": [],
+          "segmentCount": 0,
+          "segments": []
+        },
+        {
+          "consumedForwardPrefix": [
+            1
+          ],
+          "consumedReversePrefix": [
+            0
+          ],
+          "face": [
+            2,
+            3662165,
+            1
+          ],
+          "pinCount": 0,
+          "pins": [],
+          "segmentCount": 1,
+          "segments": [
+            [
+              1,
+              0
+            ]
+          ]
+        },
+        {
+          "consumedForwardPrefix": [
+            0
+          ],
+          "consumedReversePrefix": [
+            1
+          ],
+          "face": [
+            2,
+            3662166,
+            1
+          ],
+          "pinCount": 0,
+          "pins": [],
+          "segmentCount": 1,
+          "segments": [
+            [
+              2,
+              5
+            ]
+          ]
+        }
+      ],
+      "failedCellCount": 0,
+      "failedCellsPrefix": [],
+      "fallbackCellCount": 1,
+      "fallbackCellsPrefix": [
+        [
+          8,
+          55,
+          114,
+          172
+        ]
+      ],
+      "featureCellFallbackCount": 1,
+      "multiLoopCellCount": 0,
+      "nativeLedger16KiBClaimApplies": false,
+      "pointIdSpace": "private staged PointTable",
+      "points": [
+        {
+          "id": 0,
+          "key": {
+            "kind": "numeric",
+            "value": 29297320
+          },
+          "normalBits": [
+            13825841766557897974,
+            13829386266162895754,
+            13812617324890627517
+          ],
+          "positionBits": [
+            13844560980774405957,
+            13836723565578993916,
+            4617754209319262306
+          ]
+        },
+        {
+          "id": 1,
+          "key": {
+            "kind": "numeric",
+            "value": 29297321
+          },
+          "normalBits": [
+            13825505344706954510,
+            13829469956709874921,
+            13813464783468877014
+          ],
+          "positionBits": [
+            13844609406308173426,
+            13836618340755541485,
+            4617754209319262306
+          ]
+        },
+        {
+          "id": 2,
+          "key": {
+            "kind": "numeric",
+            "value": 29297329
+          },
+          "normalBits": [
+            13825571999958265352,
+            13829471679804273561,
+            4586357444683440226
+          ],
+          "positionBits": [
+            13844609406308173426,
+            13836622140641137961,
+            4617892307979710970
+          ]
+        },
+        {
+          "id": 3,
+          "key": {
+            "byteLength": 29,
+            "kind": "string",
+            "prefix": "F0:3662165:46:14.821529771587",
+            "prefixTruncated": false
+          },
+          "normalBits": [
+            13825559958163976877,
+            13829483089088348527,
+            13803594236444720991
+          ],
+          "positionBits": [
+            13844609406308172687,
+            13836629322306880203,
+            4617818718057467597
+          ]
+        },
+        {
+          "id": 4,
+          "key": {
+            "byteLength": 28,
+            "kind": "string",
+            "prefix": "F0:3662165:66:4.671530246987",
+            "prefixTruncated": false
+          },
+          "normalBits": [
+            13825559958182986068,
+            13829483089083275466,
+            13803594236396932504
+          ],
+          "positionBits": [
+            13844609406308173426,
+            13836629322313461487,
+            4617818718040554437
+          ]
+        },
+        {
+          "id": 5,
+          "key": {
+            "kind": "numeric",
+            "value": 29297328
+          },
+          "normalBits": [
+            13825647982814256982,
+            13829448783541933016,
+            4587077941052362534
+          ],
+          "positionBits": [
+            13844562564755907057,
+            13836723565578993916,
+            4617892307979710970
+          ]
+        },
+        {
+          "id": 6,
+          "key": {
+            "byteLength": 28,
+            "kind": "string",
+            "prefix": "F1:3662165:66:5.083647992574",
+            "prefixTruncated": false
+          },
+          "normalBits": [
+            13825671623174774497,
+            13829453609436496404,
+            13800518813149938437
+          ],
+          "positionBits": [
+            13844565890179051168,
+            13836723565578993898,
+            4617825632229963910
+          ]
+        }
+      ],
+      "privatePointCount": 8,
+      "returnedTriangleCount": 7,
+      "scope": "after failed private mesh return; available staged boundary state only",
+      "truncated": false
+    },
+    "queryCosts": {
+      "bind": {
+        "cacheHits": 0,
+        "cachedEvents": 64,
+        "charged": 2112,
+        "consumeAttempts": 64,
+        "consumeFailures": 0,
+        "cumulative": true,
+        "externalDirectAttempts": 0,
+        "externalReservationCalls": 1,
+        "externalReserved": 2048,
+        "failedMaps": 0,
+        "generatedTotal": 0,
+        "generatedValidated": 0,
+        "graphFailedBeforeValidation": false,
+        "inverseIterations": 0,
+        "ledgerEquationHolds": true,
+        "limits": {
+          "iterations": 64,
+          "request": 64,
+          "total": 16384
+        },
+        "lookups": 64,
+        "mapCalls": 0,
+        "mapRequestNewQueryHistogram": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "maximumRequest": 1,
+        "requestCapRefusals": 0,
+        "scope": "curve-query attempts; no field-evaluation or CPU-time equivalence; reservations are not performed work",
+        "totalCapRefusals": 0
+      }
+    }
+  },
+  "initialPoints": 7,
+  "inputArrangement": false,
+  "inputPointBindings": [
+    {
+      "global": 5128,
+      "key": "Num(29297320)",
+      "local": 0,
+      "normalBits": [
+        13825841766557897974,
+        13829386266162895754,
+        13812617324890627517
+      ],
+      "positionBits": [
+        13844560980774405957,
+        13836723565578993916,
+        4617754209319262306
+      ]
+    },
+    {
+      "global": 36650,
+      "key": "Num(29297321)",
+      "local": 1,
+      "normalBits": [
+        13825505344706954510,
+        13829469956709874921,
+        13813464783468877014
+      ],
+      "positionBits": [
+        13844609406308173426,
+        13836618340755541485,
+        4617754209319262306
+      ]
+    },
+    {
+      "global": 36651,
+      "key": "Num(29297329)",
+      "local": 2,
+      "normalBits": [
+        13825571999958265352,
+        13829471679804273561,
+        4586357444683440226
+      ],
+      "positionBits": [
+        13844609406308173426,
+        13836622140641137961,
+        4617892307979710970
+      ]
+    },
+    {
+      "global": 36652,
+      "key": "Str(\"F0:3662165:46:14.821529771587\")",
+      "local": 3,
+      "normalBits": [
+        13825559958163976877,
+        13829483089088348527,
+        13803594236444720991
+      ],
+      "positionBits": [
+        13844609406308172687,
+        13836629322306880203,
+        4617818718057467597
+      ]
+    },
+    {
+      "global": 36653,
+      "key": "Str(\"F0:3662165:66:4.671530246987\")",
+      "local": 4,
+      "normalBits": [
+        13825559958182986068,
+        13829483089083275466,
+        13803594236396932504
+      ],
+      "positionBits": [
+        13844609406308173426,
+        13836629322313461487,
+        4617818718040554437
+      ]
+    },
+    {
+      "global": 36915,
+      "key": "Num(29297328)",
+      "local": 5,
+      "normalBits": [
+        13825647982814256982,
+        13829448783541933016,
+        4587077941052362534
+      ],
+      "positionBits": [
+        13844562564755907057,
+        13836723565578993916,
+        4617892307979710970
+      ]
+    },
+    {
+      "global": 36916,
+      "key": "Str(\"F1:3662165:66:5.083647992574\")",
+      "local": 6,
+      "normalBits": [
+        13825671623174774497,
+        13829453609436496404,
+        13800518813149938437
+      ],
+      "positionBits": [
+        13844565890179051168,
+        13836723565578993898,
+        4617825632229963910
+      ]
+    }
+  ],
+  "inputProtectedEdges": [],
+  "liveDigestAfter": "707005205ae34fd4",
+  "liveDigestBefore": "707005205ae34fd4",
+  "liveStatePreserved": true,
+  "queryBudgetScope": "separate isolated diagnostic ledger; not added to the main constructor ledger",
+  "returnedTriangles": [
+    7,
+    2,
+    3,
+    7,
+    3,
+    4,
+    7,
+    4,
+    1,
+    7,
+    1,
+    0,
+    7,
+    0,
+    6,
+    7,
+    6,
+    5,
+    7,
+    5,
+    2
+  ],
+  "scope": "isolated original frontier-cell mesher, reconstructed from actual unconsumed FaceRecords; no primary or secondary quotient and no publication",
+  "secondaryPair": [
+    46,
+    66
+  ]
+}

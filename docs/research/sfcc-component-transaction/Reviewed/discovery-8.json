@@ -1,0 +1,9 @@
+{
+  "filter": "alias_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_generated_scope_charges_exact_actual_attempts_and_cleans_up",
+    "sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_rejects_foreign_sources_ranges_points_and_budget",
+    "sfcc::shared_twisted_proof::exposure_a::alias_a::tests::alias_a_whole_ideal_interval_and_checked_consumed_events"
+  ],
+  "exitCode": 0
+}

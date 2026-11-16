@@ -1,16 +1,17 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [inner-activation milestone](../research/sfcc-inner-activation/README.md)
-certifies the source activation and bounded C1 continuation, admits all six paired
-adaptive-face point gates and reconstructs the actual frontier cell with 12 triangles.
-Its incoming edge retains both 46/66 identities and its outgoing edge only 66;
-all 96 generated events validate. The selected source passes 47 distinct focused
-checks within the unchanged 60-second budget and a non-test library check.
-The previous captured-cell repair remains covered by retained tests.
-**Stage 4 and production acceptance remain open.** Next prepare the atomic complete
-205-cell / 1,031-face transaction, reconstruct opposite consumers and validate
-coverage, interfaces, ownership, outside contacts and rollback. Neither local replay
-establishes those complete-component exits.
+Status: the [complete affected-component transaction](../research/sfcc-component-transaction/README.md)
+now reconstructs all 205 cells / 1,031 required faces into 1,775 triangles. All
+seven secondary consumers complete; all 1,929 generated queries postvalidate at
+8,413 ledger charges. Indexed topology, f64/f32 winding/self-contact and original
+frontier bindings pass. The reviewed source passes 43 focused tests and a non-test
+library check. A refused-proof-prefix guard found during review is fixed, with
+identical reconstructed geometry on the fresh run.
+**Stage 4 publication and production acceptance remain open.** No triangle has
+certified source-patch ownership; matching-stage outside geometry/contact, complete
+metadata transport and checker allocation accounting remain unchecked. Next derive
+positive ownership for the first unsupported fan, then close outside compatibility
+and resource obligations before production/native-WASM/GPU preservation.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and
@@ -26,14 +27,15 @@ height-interpolated inverse proposals reduce fresh query work under the existing
 actual-query and three-dimensional checks. No limits were raised and no reserved
 slots were refunded. That predecessor meshed 199 selected cells and validated
 1,167 generated events at 5,568 charges before exposing the orientation failure.
-The repeated-vertex guard remains enabled. The source normal-cone proof confirms
-the orientation conflict across all possible local source facets, while graph
-rotation and alias handling explain the malformed fan. Scoped local sharing now
-repairs that captured graph, but the ordinary component still refuses: the replay
-does not reconstruct opposite consumers; the activation frontier now succeeds only
-in a separate scoped graph-entry replay. Later full-constructor geometry, edge
-coverage and interface checks remain open.
-These are bounded witness results, not general mesh correctness.
+The repeated-vertex guard remains enabled. The source normal-cone proof identified
+the malformed fan; scoped alias sharing repaired the first captured cell, and the
+activation certificate supplied the frontier handoff. Their request-local
+composition now succeeds across the complete affected component, retaining both
+incoming identities and the physical composite continuation. Indexed feature-edge
+coverage and a valid boundary do not prove continuous two-dimensional source-patch
+ownership. That distinction, along with matching-stage outside compatibility,
+remains the barrier to publication. These are bounded witness results, not general
+mesh correctness.
 
 Current production baseline:
 `421f5a9`. This expands the next five steps of

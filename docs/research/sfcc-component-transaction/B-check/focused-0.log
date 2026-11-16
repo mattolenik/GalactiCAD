@@ -1,0 +1,20 @@
+
+running 5 tests
+test sfcc::cell_mesh::activation_frontier_replay_c_tests::component_b_frontier_request_reconstructs_and_validates_actual_graph ... ok
+test sfcc::cell_mesh::component_consumers_b::component_b_request_controls_preserve_refusal_and_cleanup ... 
+thread 'sfcc::cell_mesh::component_consumers_b::component_b_request_controls_preserve_refusal_and_cleanup' (16743840) panicked at kernel/src/sfcc/component_consumers_b.rs:218:41:
+consumer scope unwind
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::private_arc_a::stage4_component_b::stage4_component_b_original_source_attempt ... ok
+test sfcc::private_arc_a::stage4_component_b::stage4_component_b_request_scope_cleans_up ... 
+thread 'sfcc::private_arc_a::stage4_component_b::stage4_component_b_request_scope_cleans_up' (16747504) panicked at kernel/src/sfcc/stage4_component_b.rs:402:9:
+scope control
+
+thread 'sfcc::private_arc_a::stage4_component_b::stage4_component_b_request_scope_cleans_up' (16747504) panicked at kernel/src/sfcc/stage4_component_b.rs:30:5:
+another diagnostic owns the capture
+ok
+test sfcc::private_arc_a::stage4_component_b::stage4_component_b_topology_controls ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 398 filtered out; finished in 32.72s
+

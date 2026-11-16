@@ -1,0 +1,47 @@
+[
+  {
+    "source": "/tmp/sfcc-component-a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/stage4_component_b.rs",
+    "sha256": "638a1d2afce522ac910d3490b480aeaf3f037a1ef9bd187aa5c158a96bdf4702"
+  },
+  {
+    "source": "/tmp/sfcc-component-a/gcad-wasm/kernel/src/sfcc/activation_frontier_c.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/activation_frontier_c.rs",
+    "sha256": "6f3ff4a4ad00022025ba354c27582156263f00dbbe67d2afe82018699b2f64ab"
+  },
+  {
+    "source": "/tmp/sfcc-component-a/gcad-wasm/kernel/src/sfcc/secondary_component_a.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/secondary_component_a.rs",
+    "sha256": "e97eb13afc76d1f9ee2136968f5b9919ad080e57adfadf1a14c4336e2dc23241"
+  },
+  {
+    "source": "/tmp/sfcc-component-a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+    "sha256": "a952f88445fa9b4284aa1d27a3c00fc90f14590a55befd44b036a0c5d38a1080"
+  },
+  {
+    "source": "/tmp/sfcc-component-a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+    "sha256": "e0650a427e0ca3369ed9c1bbc71364917321d4e8a67244a30b9239878fb71e81"
+  },
+  {
+    "source": "/tmp/sfcc-component-b-bounded/gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+    "sha256": "74c8b22f6f9d6ebeb19d3f1591340a0cd481eab2761a92ed188bfabf6f3e182f"
+  },
+  {
+    "source": "/tmp/sfcc-component-b-bounded/gcad-wasm/kernel/src/sfcc/activation_frontier_replay_c_tests.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/activation_frontier_replay_c_tests.rs",
+    "sha256": "22b6b8ec8ed61668f03279cf15109ea3531c6024a44088fbf14b1024d20670ef"
+  },
+  {
+    "source": "/tmp/sfcc-component-b-bounded/gcad-wasm/kernel/src/sfcc/component_consumers_b.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/component_consumers_b.rs",
+    "sha256": "1c665b6224ecea1b4b1c745c7b6d4eb28365952af82d750248e16630927af1cd"
+  },
+  {
+    "source": "/tmp/sfcc-component-c/gcad-wasm/kernel/src/sfcc/secondary_component_validation_c.rs",
+    "target": "gcad-wasm/kernel/src/sfcc/secondary_component_validation_c.rs",
+    "sha256": "cd1de14d4caf38c244ae2a63cd2d11126195fef3becb01c7a8ba94ee77608fb2"
+  }
+]

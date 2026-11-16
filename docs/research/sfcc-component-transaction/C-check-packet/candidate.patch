@@ -1,0 +1,235 @@
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -572,3 +572,7 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "activation_frontier_c.rs"]
+ pub(crate) mod activation_frontier_c;
++
++#[cfg(all(test, feature = "serde"))]
++#[path = "secondary_component_validation_c.rs"]
++pub(crate) mod secondary_component_validation_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/secondary_component_validation_c.rs
+@@ -0,0 +1,222 @@
++//! Exact indexed coverage of the supplied secondary consumer windows, not source exposure.
++use crate::sfcc::point_table::PointTable;
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++
++type Node = (f64, usize);
++type Span = (Node, Node);
++type Edge = (usize, usize);
++fn edge(a: usize, b: usize) -> Edge { (a.min(b), a.max(b)) }
++fn pos(p: &PointTable, id: usize) -> [f64; 3] { [p.x(id), p.y(id), p.z(id)] }
++fn same_node(a: Node, b: Node) -> bool { a.0.to_bits() == b.0.to_bits() && a.1 == b.1 }
++
++fn path(spans: &mut [Span], expected: [Node; 2]) -> Result<Vec<Node>, &'static str> {
++    if spans.is_empty() || spans.len() > 2048 || !(expected[0].0 < expected[1].0) {
++        return Err("secondary_empty_or_invalid_window");
++    }
++    spans.sort_by(|a, b| a.0.0.total_cmp(&b.0.0));
++    let mut nodes = vec![expected[0]];
++    let mut vertices = BTreeSet::from([expected[0].1]);
++    let mut previous = expected[0];
++    for &(lo, hi) in spans.iter() {
++        if !same_node(lo, previous) || !(lo.0 < hi.0) || hi.0 > expected[1].0 {
++            return Err("secondary_interval_gap_overlap_or_disconnected_vertex");
++        }
++        if !vertices.insert(hi.1) { return Err("secondary_repeated_path_vertex"); }
++        nodes.push(hi);
++        previous = hi;
++    }
++    if !same_node(previous, expected[1]) { return Err("secondary_window_endpoint_missing"); }
++    Ok(nodes)
++}
++
++/// Call for each prepared consumer, using that consumer's emitted triangle range.
++/// The caller supplies source-certified windows; this adds no geometric authority.
++pub(crate) fn validate_consumer(
++    points: &PointTable,
++    triangles: &[usize],
++    charts: [usize; 2],
++    cuts: [f64; 2],
++    incoming: &[Vec<Node>; 2],
++    activation: bool,
++    event_point: [f64; 3],
++) -> Result<Value, &'static str> {
++    if charts[0] == charts[1] || !cuts.iter().all(|x| x.is_finite())
++        || points.count() > 4096 || triangles.is_empty()
++        || triangles.len() > 3 * 4096 || triangles.len() % 3 != 0 {
++        return Err("secondary_invalid_scope_or_geometry_cap");
++    }
++    if incoming[0].len() != if activation { 1 } else { 2 } || incoming[1].len() != 2 {
++        return Err("secondary_consumer_window_inventory");
++    }
++    if incoming.iter().flatten().any(|&(t, id)| !t.is_finite() || id >= points.count()) {
++        return Err("secondary_invalid_window_node");
++    }
++    let mut mesh_edges = BTreeSet::new();
++    for t in triangles.chunks_exact(3) {
++        if t.iter().any(|&id| id >= points.count()) || t[0] == t[1] || t[1] == t[2] || t[2] == t[0] {
++            return Err("secondary_invalid_triangle_indices");
++        }
++        for k in 0..3 { mesh_edges.insert(edge(t[k], t[(k + 1) % 3])); }
++    }
++    let mut spans: [Vec<Span>; 2] = std::array::from_fn(|_| Vec::new());
++    let mut edges: [BTreeMap<Edge, Span>; 2] = std::array::from_fn(|_| BTreeMap::new());
++    let mut memberships = 0usize;
++    for &e in &mesh_edges {
++        for interval in points.curve_intervals(e.0, e.1) {
++            let Some(k) = charts.iter().position(|&chart| chart == interval.curve_id) else { continue; };
++            memberships += 1;
++            if memberships > 2048 { return Err("secondary_interval_cap"); }
++            if !interval.start.is_finite() || !interval.end.is_finite() || interval.start == interval.end {
++                return Err("secondary_invalid_interval");
++            }
++            let mut span = ((interval.start, e.0), (interval.end, e.1));
++            if span.0.0 > span.1.0 { span = (span.1, span.0); }
++            if edges[k].insert(e, span).is_some() { return Err("secondary_multiple_chart_memberships"); }
++            spans[k].push(span);
++        }
++    }
++    let mut expected: [[Node; 2]; 2] = [[(0., 0); 2]; 2];
++    let mut other = [incoming[1][0], incoming[1][1]];
++    other.sort_by(|a, b| a.0.total_cmp(&b.0));
++    expected[1] = other;
++    let event_id = if activation {
++        if !event_point.iter().all(|x| x.is_finite()) || !(incoming[0][0].0 < cuts[0])
++            || !(other[0].0 < cuts[1] && cuts[1] < other[1].0)
++            || incoming[0][0].1 != other[0].1 {
++            return Err("secondary_activation_window_order");
++        }
++        let nodes: BTreeSet<_> = spans[0].iter().flat_map(|&(a,b)| [a,b])
++            .filter(|&(t,_)| t.to_bits() == cuts[0].to_bits()).map(|(_,id)| id).collect();
++        if nodes.len() != 1 { return Err("secondary_activation_node_missing_or_ambiguous"); }
++        let id = *nodes.iter().next().ok_or("secondary_activation_node_missing_or_ambiguous")?;
++        if pos(points, id).map(f64::to_bits) != event_point.map(f64::to_bits) {
++            return Err("secondary_activation_point_bits");
++        }
++        expected[0] = [incoming[0][0], (cuts[0], id)];
++        Some(id)
++    } else {
++        expected[0] = [incoming[0][0], incoming[0][1]];
++        expected[0].sort_by(|a, b| a.0.total_cmp(&b.0));
++        if expected[0][1].0 > cuts[0] || expected[1][1].0 > cuts[1]
++            || expected[0][0].1 != expected[1][0].1 || expected[0][1].1 != expected[1][1].1 {
++            return Err("secondary_incoming_endpoint_correspondence");
++        }
++        None
++    };
++    let paths = [path(&mut spans[0], expected[0])?, path(&mut spans[1], expected[1])?];
++    let native_edges: BTreeSet<_> = edges[0].keys().copied().collect();
++    let mut expected_dual = BTreeSet::new();
++    for (&e, &(lo, hi)) in &edges[1] {
++        if activation && lo.0 < cuts[1] && hi.0 > cuts[1] {
++            return Err("secondary_composite_straddles_activation");
++        }
++        if !activation || hi.0 <= cuts[1] { expected_dual.insert(e); }
++    }
++    if native_edges != expected_dual { return Err("secondary_incoming_dual_membership_or_outgoing_native_tail"); }
++    if let Some(id) = event_id {
++        if !paths[1].iter().any(|&n| same_node(n, (cuts[1],id))) {
++            return Err("secondary_composite_activation_parameter");
++        }
++        if native_edges.iter().filter(|&&(a,b)| a==id || b==id).count()!=1
++            || edges[1].keys().filter(|&&(a,b)| a==id || b==id).count()!=2 {
++            return Err("secondary_activation_feature_degree");
++        }
++    }
++    Ok(json!({"scope":"exact indexed coverage of supplied certified consumer windows only; no field, patch-ownership or outside-contact assertion",
++        "charts":charts,"activation":activation,"eventPointId":event_id,
++        "triangleCount":triangles.len()/3,"memberships":memberships,
++        "paths":paths.map(|p|p.into_iter().map(|(t,id)|json!({"point":id,"parameterBits":t.to_bits()})).collect::<Vec<_>>()),
++        "exactWindowCoverage":true,"incomingDualMembership":true,"rawTailPruningAuthorized":false}))
++}
++
++/// Validate the whole private candidate, including contacts between different cells.
++/// Source-normal orientation is still checked by construct_private before this call.
++pub(crate) fn validate_mesh(points: &PointTable, triangles: &[usize]) -> Result<Value, &'static str> {
++    use crate::sfcc::{mesh_edit::GrowingIndex, triangle_quality as q};
++    let topology = super::stage4_component_b::topology(triangles, points.count())?;
++    if topology["localTopologyValid"] != true { return Err("secondary_component_topology"); }
++    let mut indices = [GrowingIndex::new(), GrowingIndex::new()];
++    let mut unknown_patch_count = 0;
++    for t in triangles.chunks_exact(3) {
++        let ids=[t[0],t[1],t[2]];
++        let working=ids.map(|id|pos(points,id));
++        let normal=q::cross(q::sub(working[1],working[0]),q::sub(working[2],working[0]));
++        if !q::valid_orientation(working,normal) { return Err("secondary_component_degenerate_or_export_flip"); }
++        for (precision,p) in [working,working.map(q::rounded)].into_iter().enumerate() {
++            if indices[precision].conflicts(ids,p) { return Err(if precision==0 {"secondary_component_f64_contact"} else {"secondary_component_f32_contact"}); }
++            indices[precision].extend([(ids,p)]);
++        }
++        unknown_patch_count += usize::from(points.patch(ids).is_none());
++    }
++    Ok(json!({"scope":"whole private candidate indexed topology and self-contact only",
++        "topology":topology,"contactConflictWorkingAndExported":[false,false],
++        "unknownPatchLabels":unknown_patch_count,"continuousSourcePatchOwnershipProved":false,
++        "sameStageOutsideContactsChecked":false,"publicationReady":false}))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::sfcc::point_table::CurveInterval;
++    fn points() -> PointTable {
++        let mut p=PointTable::new();
++        for i in 0..6 {p.add(i as f64,0.,0.,0.,1.,0.);}
++        p
++    }
++    fn span(p:&mut PointTable,a:usize,b:usize,chart:usize,start:f64,end:f64) {
++        p.protect_curve_edge(a,b,CurveInterval{curve_id:chart,start,end});
++    }
++    fn fixture() -> (PointTable, Vec<usize>, [Vec<Node>;2]) {
++        let mut p=points();
++        span(&mut p,0,1,46,1.,2.);span(&mut p,0,1,66,3.,4.);span(&mut p,1,2,66,4.,5.);
++        (p,vec![0,1,3,1,2,3],[vec![(1.,0)],vec![(3.,0),(5.,2)]])
++    }
++    #[test]
++    fn component_c_exact_activation_coverage_and_dual_incoming() {
++        let (p,t,w)=fixture();
++        let r=validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.,0.,0.]).unwrap();
++        assert_eq!(r["eventPointId"],1);assert_eq!(r["exactWindowCoverage"],true);
++        let w=[vec![(1.,0),(2.,1)],vec![(3.,0),(4.,1)]];
++        assert!(validate_consumer(&p,&[0,1,3],[46,66],[2.,4.],&w,false,[1.,0.,0.]).is_ok());
++    }
++    #[test]
++    fn component_c_refuses_missing_dual_membership_and_native_tail() {
++        let (mut p,t,w)=fixture();
++        span(&mut p,1,2,46,2.,2.5);
++        assert!(validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.,0.,0.]).is_err());
++        let mut p=points();span(&mut p,0,1,46,1.,2.);span(&mut p,0,4,66,3.,3.5);span(&mut p,4,1,66,3.5,4.);span(&mut p,1,2,66,4.,5.);
++        assert_eq!(validate_consumer(&p,&[0,4,3,4,1,3,0,1,3,1,2,3],[46,66],[2.,4.],&w,true,[1.,0.,0.]),Err("secondary_incoming_dual_membership_or_outgoing_native_tail"));
++    }
++    #[test]
++    fn component_c_refuses_disconnected_equal_parameter_and_gaps() {
++        let mut spans=[((1.,0),(2.,1)),((2.,4),(3.,2))];
++        assert_eq!(path(&mut spans,[(1.,0),(3.,2)]),Err("secondary_interval_gap_overlap_or_disconnected_vertex"));
++        let mut spans=[((1.,0),(2.,1)),((2.1,1),(3.,2))];
++        assert!(path(&mut spans,[(1.,0),(3.,2)]).is_err());
++        let mut spans=[((1.,0),(2.,1)),((1.9,1),(3.,2))];
++        assert!(path(&mut spans,[(1.,0),(3.,2)]).is_err());
++    }
++    #[test]
++    fn component_c_refuses_event_relabel_and_duplicate_membership() {
++        let (mut p,t,w)=fixture();
++        assert_eq!(validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.1,0.,0.]),Err("secondary_activation_point_bits"));
++        span(&mut p,0,1,46,1.,1.9);
++        assert_eq!(validate_consumer(&p,&t,[46,66],[2.,4.],&w,true,[1.,0.,0.]),Err("secondary_multiple_chart_memberships"));
++    }
++    #[test]
++    fn component_c_whole_mesh_rejects_cross_cell_contacts_and_export_collapse() {
++        let mut p=PointTable::new();
++        for v in [[0.,0.,0.],[2.,0.,0.],[0.,2.,0.],[0.5,0.5,-1.],[0.5,0.5,1.],[1.,1.,0.]] {
++            p.add(v[0],v[1],v[2],0.,0.,1.);
++        }
++        assert_eq!(validate_mesh(&p,&[0,1,2,3,4,5]),Err("secondary_component_f64_contact"));
++        assert!(validate_mesh(&p,&[0,1,2]).is_ok());
++        let mut p=PointTable::new();
++        for v in [[100_000_000.,0.,0.],[100_000_001.,0.,0.],[100_000_000.,1.,0.]] {
++            p.add(v[0],v[1],v[2],0.,0.,1.);
++        }
++        assert_eq!(validate_mesh(&p,&[0,1,2]),Err("secondary_component_degenerate_or_export_flip"));
++    }
++
++}

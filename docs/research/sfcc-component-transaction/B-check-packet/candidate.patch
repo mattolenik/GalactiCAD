@@ -1,0 +1,394 @@
+--- a/gcad-wasm/kernel/src/sfcc/activation_frontier_replay_c_tests.rs
++++ b/gcad-wasm/kernel/src/sfcc/activation_frontier_replay_c_tests.rs
+@@ -20,19 +20,29 @@
+ };
+ 
+ #[derive(Clone)]
+-struct Plan {
+-    root: Arc<CsgNode>,
+-    fingerprint: u64,
+-    source: [usize; 4],
+-    charts: [usize; 2],
+-    cuts: [f64; 2],
+-    point: [f64; 3],
+-    cell_box: [f64; 6],
+-    epsilon: f64,
++pub(super) struct Plan {
++    pub(super) root: Arc<CsgNode>,
++    pub(super) fingerprint: u64,
++    pub(super) source: [usize; 4],
++    pub(super) charts: [usize; 2],
++    pub(super) cuts: [f64; 2],
++    pub(super) point: [f64; 3],
++    pub(super) cell_box: [f64; 6],
++    pub(super) epsilon: f64,
+ }
+ thread_local! { static PLAN: RefCell<Option<Plan>> = const { RefCell::new(None) }; static SHARING:Cell<(usize,bool)>=const{Cell::new((0,false))}; }
++pub(super) fn needs_insertion() -> bool {
++    PLAN.with(|p| p.borrow().is_some()) || super::component_consumers_b::event_required()
++}
++pub(super) fn sharing_state() -> (usize,bool) { SHARING.with(Cell::get) }
++pub(super) fn replace_sharing(value: (usize,bool)) -> (usize,bool) {
++    SHARING.with(|s| s.replace(value))
++}
++pub(super) fn local_scope_active() -> bool {
++    PLAN.with(|p| p.borrow().is_some())
++}
+ pub(super) fn enabled() -> bool {
+-    PLAN.with(|p| p.borrow().is_some())
++    plan().is_some()
+ }
+ fn scoped<T>(plan: Plan, f: impl FnOnce() -> T) -> T {
+     struct Restore(Option<Plan>, (usize, bool));
+@@ -49,9 +59,9 @@
+     f()
+ }
+ fn plan() -> Option<Plan> {
+-    PLAN.with(|p| p.borrow().clone())
+-}
+-fn source<'a>(plan: &Plan, features: &'a SfccFeatureSet) -> Option<activation_a::Certificate<'a>> {
++    PLAN.with(|p| p.borrow().clone()).or_else(super::component_consumers_b::current_plan)
++}
++pub(super) fn source<'a>(plan: &Plan, features: &'a SfccFeatureSet) -> Option<activation_a::Certificate<'a>> {
+     if !private_arc_a::generated_queries_active()
+         || features.fingerprint() != plan.fingerprint
+         || !plan.epsilon.is_finite()
+@@ -700,7 +710,7 @@
+     }
+     (loops, pins)
+ }
+-fn fixture() -> (
++pub(super) fn fixture() -> (
+     CsgNode,
+     SfccFeatureSet,
+     Value,
+@@ -836,6 +846,13 @@
+ 
+ #[test]
+ fn activation_c_frontier_typed_handoff_reconstructs_and_validates_actual_graph() {
++    frontier_reconstruction(false);
++}
++#[test]
++fn component_b_frontier_request_reconstructs_and_validates_actual_graph() {
++    frontier_reconstruction(true);
++}
++fn frontier_reconstruction(component:bool) {
+     let _numerics = NumericalGuard::new();
+     let (root, f, capture, lat, cell, mut points, mut records) = fixture();
+     let opts = options(&f, &capture);
+@@ -1019,8 +1036,8 @@
+     let generated = private_arc_a::GeneratedQueries::begin(&mut budget).unwrap();
+     let mut triangles = Vec::new();
+     let mut unresolved = false;
+-    let (accepted, sharing) = scoped(scoped_plan.clone(), || {
+-        let ok = mesh_feature_graph(
++    let mut reconstruct = || {
++        mesh_feature_graph(
+             &loops,
+             &pins,
+             &[],
+@@ -1031,9 +1048,26 @@
+             &f,
+             &mut triangles,
+             &mut unresolved,
+-        );
+-        (ok, SHARING.with(Cell::get))
+-    });
++        )
++    };
++    let (accepted,sharing) = if component {
++        let incoming=charts.map(|chart| {
++            let mut rows:Vec<_>=pins.iter().filter(|p|p.curve_id==chart).map(|p|(p.t,p.point_id)).collect();
++            rows.sort_by(|a,b|a.0.total_cmp(&b.0));rows
++        });
++        let plan=super::component_consumers_b::Plan {
++            root:scoped_plan.root.clone(),fingerprint:scoped_plan.fingerprint,source:scoped_plan.source,
++            charts,cuts,point,epsilon:numerical,
++            consumers:vec![super::component_consumers_b::Consumer{cell,cell_box:box_,incoming,activation:true}],
++        };
++        let (ok,report)=super::component_consumers_b::with_scope(plan,&mut reconstruct).unwrap();
++        assert_eq!(report["complete"],true,"{report}");
++        assert_eq!(report["completedConsumers"],1);
++        let sharing=&report["consumers"][0]["sharing"];
++        (ok,(sharing[0].as_u64().unwrap() as usize,sharing[1].as_bool().unwrap()))
++    } else {
++        scoped(scoped_plan.clone(),|| {let ok=reconstruct();(ok,SHARING.with(Cell::get))})
++    };
+     let queries = generated.finish().unwrap();
+     let charged_before_validation = budget.charged_queries();
+     let validation_eps =
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -407,7 +407,11 @@
+                     .iter()
+                     .any(|&(curve, _)| features.curves[curve].kind() != CurveKind::Segment)
+             });
+-            if corners.len() > 1 || ((cell.degenerate || loops.len() > 1) && distinct_curves.len() > 1) || curved_corner {
++            #[cfg(all(test, feature="serde"))]
++            let component_graph = component_consumers_b::requires_graph(&cbox);
++            #[cfg(not(all(test, feature="serde")))]
++            let component_graph = false;
++            if component_graph || corners.len() > 1 || ((cell.degenerate || loops.len() > 1) && distinct_curves.len() > 1) || curved_corner {
+                 #[cfg(all(feature="serde",any(test,feature="sfcc-profile")))]
+                 super::private_arc_a::graph_b::context(cell, curved_corner, distinct_curves.len(), pruned.is_some());
+                 if mesh_feature_graph(&loops, &pins, &corners, &cbox, q, points, opts, features, &mut tris, &mut retained_unresolved) {
+@@ -849,7 +853,12 @@
+         }
+     }
+     #[cfg(all(test,feature="serde"))]
+-    if activation_frontier_replay_c_tests::enabled()
++    let component_graph = match component_consumers_b::begin(cell_box,&paths,features) {
++        Ok(guard) => guard,
++        Err(reason) => { reject_b!("component_consumer_binding",serde_json::json!({"reason":reason})); }
++    };
++    #[cfg(all(test,feature="serde"))]
++    if activation_frontier_replay_c_tests::needs_insertion()
+         && !activation_frontier_replay_c_tests::insert_activation(&mut paths,cell_box,points,features) {
+         reject_b!("activation_event_preparation",serde_json::json!({"reason":"scoped event did not bind actual graph input"}));
+     }
+@@ -1095,6 +1104,10 @@
+             if index.conflicts(ids, p) { reject_b!("triangle_contact",serde_json::json!({"triangle":ids})); }
+             index.extend([(ids, p)]);
+         }
++    }
++    #[cfg(all(test,feature="serde"))]
++    if let Some(guard) = component_graph.as_ref() {
++        guard.completed(&triangles, &memberships, unresolved);
+     }
+     for (a, b, interval) in memberships {
+         points.protect_curve_edge(a, b, interval);
+@@ -2285,3 +2298,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="activation_frontier_replay_c_tests.rs"]
+ mod activation_frontier_replay_c_tests;
++
++#[cfg(all(test,feature="serde"))]
++#[path="component_consumers_b.rs"]
++pub(crate) mod component_consumers_b;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/component_consumers_b.rs
+@@ -0,0 +1,224 @@
++//! Request-local consumer bindings for the existing checked incoming/activation algorithm.
++use super::*;
++use super::activation_frontier_replay_c_tests as checked;
++use serde_json::{json, Value};
++use std::{cell::RefCell, collections::BTreeMap, sync::Arc};
++
++#[derive(Clone)]
++pub(crate) struct Consumer {
++    pub cell: SfccCell,
++    pub cell_box: [f64; 6],
++    pub incoming: [Vec<(f64, usize)>; 2],
++    pub activation: bool,
++}
++#[derive(Clone)]
++pub(crate) struct Plan {
++    pub root: Arc<CsgNode>,
++    pub fingerprint: u64,
++    pub source: [usize; 4],
++    pub charts: [usize; 2],
++    pub cuts: [f64; 2],
++    pub point: [f64; 3],
++    pub epsilon: f64,
++    pub consumers: Vec<Consumer>,
++}
++struct Request {
++    plan: Plan,
++    visits: Vec<bool>,
++    completed: Vec<bool>,
++    rows: Vec<Value>,
++}
++thread_local! {
++    static REQUEST: RefCell<Option<Request>> = const { RefCell::new(None) };
++    static CURRENT: RefCell<Option<(checked::Plan,bool)>> = const { RefCell::new(None) };
++}
++
++pub(crate) fn prepare_consumer(
++    oct: &SfccOctree,
++    faces: &[HashMap<i64,FaceRecord>;3],
++    cell: &SfccCell,
++    points: &mut PointTable,
++    features: &SfccFeatureSet,
++    charts: [usize;2],
++    activation: bool,
++) -> Result<Consumer, &'static str> {
++    if charts[0] == charts[1] || charts.iter().any(|&c| c >= features.curves.len()) {
++        return Err("consumer charts");
++    }
++    let cell_box=cell_aabb(&oct.lat,cell.level,cell.ix,cell.iy,cell.iz);
++    let mut segments=Vec::new();let mut pins=Vec::new();
++    gather_segments(faces,&oct.lat,cell,&mut segments,&mut pins);
++    let mut incoming:[Vec<(f64,usize)>;2]=std::array::from_fn(|_|Vec::new());
++    for pin in pins {
++        if segments.iter().any(|s| s.a==pin.point_id || s.b==pin.point_id) {
++            if let Some(slot)=charts.iter().position(|&id|id==pin.curve_id) {
++                incoming[slot].push((pin.t,pin.point_id));
++            }
++        }
++    }
++    for id in features.index.corners_in_box([cell_box[0],cell_box[1],cell_box[2]],[cell_box[3],cell_box[4],cell_box[5]]) {
++        let corner=&features.corners[id];
++        if corner.curve_ends.is_empty() || !in_box(&cell_box,corner.x,corner.y,corner.z,0.) {continue;}
++        for &(chart,end) in &corner.curve_ends {
++            if let Some(slot)=charts.iter().position(|&c|c==chart) {
++                let c=&features.curves[chart];
++                let id=corner_point_id(corner,features,points);
++                incoming[slot].push((if end==0 {c.t_min} else {c.t_max},id));
++            }
++        }
++    }
++    for rows in &mut incoming {normalize(rows);}
++    let result=Consumer{cell:*cell,cell_box,incoming,activation};
++    check_consumer(&result)?;
++    Ok(result)
++}
++fn normalize(rows:&mut Vec<(f64,usize)>) {
++    rows.sort_by(|a,b|a.0.total_cmp(&b.0));
++    rows.dedup_by(|a,b|a.1==b.1);
++}
++fn check_consumer(c:&Consumer)->Result<(),&'static str> {
++    if c.cell_box.iter().any(|v|!v.is_finite()) || (0..3).any(|k|c.cell_box[k]>=c.cell_box[k+3])
++        || c.incoming[0].len()!=(if c.activation{1}else{2}) || c.incoming[1].len()!=2
++        || c.incoming.iter().any(|rows|rows.iter().any(|(t,_)|!t.is_finite()) || rows.windows(2).any(|r|r[0].0>=r[1].0 || r[0].1==r[1].1)) {
++        return Err("consumer original nodes");
++    }
++    if c.incoming[0][0].1!=c.incoming[1][0].1 || (!c.activation && c.incoming[0][1].1!=c.incoming[1][1].1) {
++        return Err("consumer canonical endpoints");
++    }
++    Ok(())
++}
++fn validate(plan:&Plan)->Result<(),&'static str> {
++    if plan.charts[0]==plan.charts[1] || !plan.epsilon.is_finite() || plan.epsilon<=0.
++        || plan.point.iter().chain(&plan.cuts).any(|v|!v.is_finite())
++        || plan.consumers.is_empty() || plan.consumers.len()>256
++        || plan.consumers.iter().filter(|c|c.activation).count()!=1 {
++        return Err("consumer request configuration");
++    }
++    for (i,c) in plan.consumers.iter().enumerate() {
++        check_consumer(c)?;
++        if plan.consumers[..i].iter().any(|other|other.cell_box.map(f64::to_bits)==c.cell_box.map(f64::to_bits)
++            || (other.cell.level,other.cell.ix,other.cell.iy,other.cell.iz)==(c.cell.level,c.cell.ix,c.cell.iy,c.cell.iz)) {
++            return Err("duplicate consumer");
++        }
++        if c.incoming[0].iter().any(|(t,_)|*t>=plan.cuts[0])
++            || (!c.activation && c.incoming[1].iter().any(|(t,_)|*t>=plan.cuts[1]))
++            || (c.activation && !(c.incoming[1][0].0<plan.cuts[1] && c.incoming[1][1].0>plan.cuts[1])) {
++            return Err("consumer event order");
++        }
++    }
++    Ok(())
++}
++
++pub(crate) fn with_scope<T>(plan:Plan,f:impl FnOnce()->T)->Result<(T,Value),&'static str> {
++    validate(&plan)?;
++    if REQUEST.with(|p|p.borrow().is_some()) || CURRENT.with(|p|p.borrow().is_some()) || checked::local_scope_active() {
++        return Err("nested consumer request");
++    }
++    struct Restore;
++    impl Drop for Restore {fn drop(&mut self){REQUEST.with(|p|p.take());CURRENT.with(|p|p.take());}}
++    let count=plan.consumers.len();
++    REQUEST.with(|p|p.replace(Some(Request{plan,visits:vec![false;count],completed:vec![false;count],rows:Vec::new()})));
++    let _restore=Restore;
++    let result=f();
++    let receipt=REQUEST.with(|p| {
++        let borrowed=p.borrow();let r=borrowed.as_ref().unwrap();
++        json!({"complete":r.completed.iter().all(|x|*x),"expectedConsumers":r.completed.len(),
++            "visitedConsumers":r.visits.iter().filter(|x|**x).count(),"completedConsumers":r.completed.iter().filter(|x|**x).count(),
++            "sourceFingerprint":r.plan.fingerprint.to_string(),"charts":r.plan.charts,"cutBits":r.plan.cuts.map(f64::to_bits),
++            "consumers":r.rows,"publicationAuthorized":false})
++    });
++    Ok((result,receipt))
++}
++pub(super) fn requires_graph(box_:&[f64;6])->bool {
++    REQUEST.with(|p|p.borrow().as_ref().is_some_and(|r|r.plan.consumers.iter().any(|c|c.cell_box.map(f64::to_bits)==box_.map(f64::to_bits))))
++}
++pub(super) fn current_plan()->Option<checked::Plan> {CURRENT.with(|p|p.borrow().as_ref().map(|v|v.0.clone()))}
++pub(super) fn event_required()->bool {CURRENT.with(|p|p.borrow().as_ref().is_some_and(|v|v.1))}
++
++pub(super) struct GraphGuard {
++    index:usize,
++    sharing:(usize,bool),
++}
++impl Drop for GraphGuard {
++    fn drop(&mut self) {
++        CURRENT.with(|p|p.take());
++        checked::replace_sharing(self.sharing);
++        REQUEST.with(|p| {
++            if let Some(r)=p.borrow_mut().as_mut() {
++                if !r.completed[self.index] {r.rows.push(json!({"consumerIndex":self.index,"completed":false}));}
++            }
++        });
++    }
++}
++impl GraphGuard {
++    pub(super) fn completed(&self,triangles:&[usize],memberships:&[(usize,usize,CurveInterval)],unresolved:bool) {
++        REQUEST.with(|p| {
++            let mut borrowed=p.borrow_mut();let r=borrowed.as_mut().unwrap();
++            r.completed[self.index]=!unresolved && checked::sharing_complete();
++            let c=&r.plan.consumers[self.index];
++            r.rows.push(json!({"consumerIndex":self.index,"cell":[c.cell.level as i64,c.cell.ix,c.cell.iy,c.cell.iz],
++                "cellBoxBits":c.cell_box.map(f64::to_bits),"activation":c.activation,"completed":r.completed[self.index],"sharing":checked::sharing_state(),
++                "incoming":c.incoming.iter().map(|rows|rows.iter().map(|(t,id)|json!([t.to_bits(),id])).collect::<Vec<_>>()).collect::<Vec<_>>(),
++                "triangles":triangles,"memberships":memberships.iter().filter(|(_,_,iv)|r.plan.charts.contains(&iv.curve_id))
++                    .map(|(a,b,iv)|json!({"edge":[a,b],"chart":iv.curve_id,"startBits":iv.start.to_bits(),"endBits":iv.end.to_bits()})).collect::<Vec<_>>() }));
++        });
++    }
++}
++pub(super) fn begin(box_:&[f64;6], paths:&BTreeMap<usize,Vec<(f64,usize)>>, features:&SfccFeatureSet)->Result<Option<GraphGuard>,&'static str> {
++    let selected=REQUEST.with(|p| {
++        let borrowed=p.borrow();let r=borrowed.as_ref()?;
++        let i=r.plan.consumers.iter().position(|c|c.cell_box.map(f64::to_bits)==box_.map(f64::to_bits))?;
++        Some((i,r.plan.clone(),r.visits[i]))
++    });
++    let Some((index,request,visited))=selected else{return Ok(None)};
++    if visited || CURRENT.with(|p|p.borrow().is_some()) {return Err("consumer repeated or nested graph");}
++    REQUEST.with(|p|p.borrow_mut().as_mut().unwrap().visits[index]=true);
++    let c=&request.consumers[index];
++    for slot in 0..2 {
++        let mut actual=paths.get(&request.charts[slot]).cloned().ok_or("consumer missing chart")?;
++        normalize(&mut actual);
++        if actual.len()!=c.incoming[slot].len() || actual.iter().zip(&c.incoming[slot]).any(|(a,b)|a.0.to_bits()!=b.0.to_bits() || a.1!=b.1) {
++            return Err("consumer original path mismatch");
++        }
++    }
++    let plan=checked::Plan{root:request.root,fingerprint:request.fingerprint,source:request.source,charts:request.charts,
++        cuts:request.cuts,point:request.point,cell_box:*box_,epsilon:request.epsilon};
++    checked::source(&plan,features).ok_or("consumer immutable source binding")?;
++    CURRENT.with(|p|p.replace(Some((plan,c.activation))));
++    let sharing=checked::replace_sharing((0,false));
++    Ok(Some(GraphGuard{index,sharing}))
++}
++
++#[test]
++fn component_b_request_controls_preserve_refusal_and_cleanup() {
++    let _guard=crate::sfcc::validation::NumericalGuard::new();
++    let (_root,f,_capture,lat,cell,_points,_faces)=checked::fixture();
++    let (source,_,charts)=crate::sfcc::shared_twisted_proof::exposure_a::alias_face_b::select(&f).unwrap();
++    // Synthetic windows exercise configuration and lifecycle only; source queries are not authorized.
++    let plan=Plan{root:f.strata[source[0]].upper_source_root_handle().unwrap(),fingerprint:f.fingerprint(),
++        source:[source[0],source[1],source[2],0],charts,cuts:[2.,2.],point:[0.;3],epsilon:1e-9,
++        consumers:vec![Consumer{cell,cell_box:cell_aabb(&lat,cell.level,cell.ix,cell.iy,cell.iz),
++            incoming:[vec![(1.,0)],vec![(1.,0),(3.,1)]],activation:true}]};
++    assert!(validate(&plan).is_ok());
++    let ((),report)=with_scope(plan.clone(),||{
++        assert!(requires_graph(&plan.consumers[0].cell_box));
++        assert!(with_scope(plan.clone(),||()).is_err());
++        assert!(begin(&plan.consumers[0].cell_box,&BTreeMap::new(),&f).is_err());
++    }).unwrap();
++    assert_eq!(report["complete"],false);
++    assert_eq!(report["visitedConsumers"],1);
++    assert!(!requires_graph(&plan.consumers[0].cell_box));
++    let mut bad=plan.clone();bad.consumers.push(bad.consumers[0].clone());
++    assert!(with_scope(bad,||panic!("bad plan executed")).is_err());
++    let mut bad=plan.clone();bad.consumers[0].incoming[1][0].1=99;
++    assert!(with_scope(bad,||panic!("bad endpoint executed")).is_err());
++    let mut bad=plan.clone();bad.consumers[0].incoming[0][0].0=f64::NAN;
++    assert!(with_scope(bad,||panic!("bad parameter executed")).is_err());
++    let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||{
++        let _=with_scope(plan.clone(),||panic!("consumer scope unwind"));
++    }));
++    assert!(result.is_err());
++    assert!(!requires_graph(&plan.consumers[0].cell_box));
++    assert!(!checked::enabled());
++    assert_eq!(checked::sharing_state(),(0,false));
++}

@@ -1678,6 +1678,43 @@ refuses the preceding graph; the frontier result is a separate local test, not a
 205-cell acceptance. Production, native/WASM/GPU parity and full-model acceptance
 remain unchanged and unestablished by this milestone.
 
+## Round 33: complete affected component reconstructs; ownership remains open
+
+The [complete transaction milestone](sfcc-component-transaction/README.md) prepares
+all six paired adaptive faces and the source-bound activation inside one private
+request. It computes the complete 205-cell / 1,031-face closure and requires all
+seven secondary consumers to finish, including opposite consumers. Exact indexed
+window checks retain both incoming chart identities and the composite-only outgoing
+edge; no global native tail is deleted. Primary full-range obligations remain.
+
+The reviewed original-scene run produces 1,775 triangles, with 1,109 used vertices
+and 441 boundary edges. Indexed topology, source-reference winding and working/
+exported self-contact checks pass. All 827 frontier face records preserve original
+bindings and their oriented boundary segments match. All 1,929 generated queries
+postvalidate at 8,413 ledger charges, with the original 2,048-slot reservation
+retained and 119 slots unused. Live state is unchanged. The selected 43-test campaign
+passes in 33.674 seconds of its 60-second budget; the complete diagnostic takes
+32.193 seconds of its 120-second budget. Non-test library validation passes.
+
+Fourth-agent review found that a top-level observer refusal could be ignored if
+its successful row prefix was retained. The selected revision rejects that case,
+independently enumerates all-axis paired inventory, refuses unsupported Z pairs
+and requires exact intended/certified/installed set equality. Negative controls
+cover incomplete/duplicate proof inventories and ambiguous pins. The fresh reviewed
+run has identical points, triangles, intervals and generated-query evidence.
+
+Full acceptance remains false. All 1,775 triangles lack certified patch-owner labels;
+the fallback fan path deliberately does not assign such authority. Simply copying
+graph stratum IDs would not establish continuous surface exposure or coverage.
+The pre-cell-meshing barrier also lacks matching-stage outside triangles. Retained-
+outside contacts/topology, complete metadata transport and new checker workspace
+accounting remain open; measured retained layouts are not a total-RSS bound.
+
+Next establish positive two-dimensional source ownership for the first unsupported
+fan and matching-stage outside compatibility, retaining all existing limits. The
+complete reconstruction is a substantial new result but does not authorize
+publication or establish production/native-WASM/GPU or full-model acceptance.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

@@ -1,0 +1,10 @@
+{
+  "filter": "activation_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_coherently_shifted_other_center_is_unsupported",
+    "sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_ghost_tail_is_single_smooth_facet_not_the_continued_crease",
+    "sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_rejects_invalid_sources_ranges_and_interior_meridians",
+    "sfcc::shared_twisted_proof::exposure_a::activation_a::tests::activation_a_source_activation_and_regular_physical_continuation"
+  ],
+  "exitCode": 0
+}

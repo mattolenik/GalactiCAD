@@ -1,0 +1,10 @@
+
+running 1 test
+test sfcc::private_arc_a::secondary_component_a::component_a_scope_restores_and_conflicting_merge_is_atomic ... 
+thread 'sfcc::private_arc_a::secondary_component_a::component_a_scope_restores_and_conflicting_merge_is_atomic' (16769764) panicked at kernel/src/sfcc/secondary_component_a.rs:322:9:
+secondary transaction scope
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 408 filtered out; finished in 0.00s
+

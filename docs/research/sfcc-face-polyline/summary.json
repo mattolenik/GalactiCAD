@@ -1,0 +1,109 @@
+{
+  "selected": "Combined",
+  "manifestSha256": "b52b03fd5398a88a1fe50ee0f63963dc1ba92705f51bf41df65200e1996402d8",
+  "sourceInputs": 231,
+  "componentReceiptSha256": "6036ac3cd6bce25dad97e487528657ecff650f0bcae9dba4ba9f2923751d5dac",
+  "polylineReceiptSha256": "e76d3e538601d078beb7e583b66515cc3747b3e44754ff4075bc3c906de12d8e",
+  "compatibilityReceiptSha256": "eace8220cd99e8ed3c84cebdf67cf01a1fee5021693c7a3deb104dbcd6c2e89d",
+  "provenanceReceiptSha256": "23f1c517156af62d7f0e0a1d24cb093c7aa809311e3a1ef6e2ca8d7ed1a248ff",
+  "preservationAndBinding": {
+    "entireParentRuntimePreservedModuloAddressesAndUnorderedMetadata": true,
+    "round39AdoptionProofReceiptUnchanged": true,
+    "allManifestedInputsUnchanged": true,
+    "originalFaceInventoryAndConsumersBound": true,
+    "exactPointKeysBitsAndIncidentGeometryBound": true,
+    "freshFaceProofsAgree": true,
+    "liveStatePreserved": true,
+    "sharedJoinEnclosuresConsistent": true,
+    "sharedJoinDefiningBindingsConsistent": true
+  },
+  "sameJoinIdentityArgument": "shared admitted physical source, original X-face, rho=R and groove=r constraints plus unique face branch join; matching enclosures are consistency evidence only",
+  "face": [
+    0,
+    3464532,
+    2
+  ],
+  "chain": [
+    39,
+    40,
+    38
+  ],
+  "globalChain": [
+    4073,
+    4074,
+    4072
+  ],
+  "sourceChecks": 10,
+  "faceSourceCap": 128,
+  "faceLegacyDepthCap": 16,
+  "sourceAcceptedStrips": 5,
+  "spans": [
+    {
+      "branch": "chamfer",
+      "edge": [
+        39,
+        40
+      ],
+      "exportedPointwiseErrorUpper": 2.0955268988113107e-05,
+      "idealChordRemainderUpper": 1.0173171334551778e-07,
+      "secondDerivativeUpper": 0.155926496591796,
+      "workingPointwiseErrorUpper": 2.0587588041979173e-05
+    },
+    {
+      "branch": "cylinder",
+      "edge": [
+        40,
+        38
+      ],
+      "exportedPointwiseErrorUpper": 7.923986452773597e-06,
+      "idealChordRemainderUpper": 0.0,
+      "secondDerivativeUpper": 0.0,
+      "workingPointwiseErrorUpper": 7.689286788625798e-06
+    }
+  ],
+  "exportedCorrespondenceBound": 2.0955268988113107e-05,
+  "surfaceTolerance": 0.01,
+  "originalChordTolerance": 0.02,
+  "endpointObstructions": [
+    {
+      "fixedYZLiftCanEqualIdealFaceEndpoint": false,
+      "idealRootZBounds": [
+        5.4294818831714915,
+        5.429481883171608
+      ],
+      "onCapturedOuterBoundary": true,
+      "point": 39,
+      "positiveZGapLower": 2.048585621228227e-05,
+      "retainedZ": 5.42950236902782
+    },
+    {
+      "fixedYZLiftCanEqualIdealFaceEndpoint": false,
+      "idealRootZBounds": [
+        5.4319133015149506,
+        5.431913301514966
+      ],
+      "onCapturedOuterBoundary": true,
+      "point": 38,
+      "positiveZGapLower": 7.689286773526758e-06,
+      "retainedZ": 5.431920990801739
+    }
+  ],
+  "strictChamferSecondDerivative": [
+    -0.1559264965917958,
+    -0.15571720411240936
+  ],
+  "closedFaceContourCoveredExactlyOnce": true,
+  "newCompatibleTwoDimensionalMapProved": false,
+  "existingFeatureArcAdoptionPreserved": true,
+  "productionChanged": false,
+  "publicationReady": false,
+  "focusedTestsPassed": 86,
+  "focusedCampaignSeconds": 42.73031754093245,
+  "provenanceNegativeControlsPassed": 6,
+  "librarySeconds": 2.9135047079762444,
+  "componentSeconds": 36.9832816250273,
+  "mainTriangles": 1775,
+  "mainGeneratedQueries": 1929,
+  "mainCharges": 8413,
+  "newGeometryQueriesInFaceCertificates": 0
+}

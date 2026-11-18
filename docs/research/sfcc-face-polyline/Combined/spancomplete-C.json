@@ -1,0 +1,60 @@
+{
+  "chart": 49,
+  "consumedFeatureEdgesJoinedIds": [
+    [
+      40,
+      647
+    ],
+    [
+      1116,
+      1117
+    ],
+    [
+      40,
+      1117
+    ]
+  ],
+  "consumedFeatureNodes": [
+    40,
+    647,
+    1116,
+    1117
+  ],
+  "cylinder": 15,
+  "grooveCenterYBits": 0,
+  "limitation": "nonzero exact membership does not imply a material displacement; adopting new ideal targets at outer vertices requires additional compatible boundary transport, while independent arc/chord approximation may still pass",
+  "meridianEdge": 2,
+  "meridianEndpointBits": [
+    [
+      4623226492472524800,
+      13835508415244900762
+    ],
+    [
+      4621706527598287258,
+      13839561654909534208
+    ]
+  ],
+  "meshInvalidityProved": false,
+  "meshMutationPerformed": false,
+  "newGeometryOrCurveQueries": 0,
+  "numericalAssociationOrToleranceFailureProved": false,
+  "outerFeatureNodesFixedByPriorStarMap": [
+    647,
+    1116
+  ],
+  "parentReceiptSha256": "64b62c86aca4d3354d0e2cc9770aebbdf0feb5d41397ee966f50b8045c257a68",
+  "physicalChamferRadiusBits": 4604480259023595110,
+  "physicalIdealFeatureRequiresCylinderAndGrooveConstraints": true,
+  "positiveExteriorDistanceAndFiniteBranchProved": true,
+  "predicate": "sign((dy*(R-r0)-dr*((Y-centerY)-y0))^2-r^2*(dr^2+dy^2)), evaluated without rounded intermediate products/differences",
+  "priorMovedEndpoint40IsNotRefuted": true,
+  "priorOuterBoundaryFixedMapCannotExactlyTransportTheseIdealFeatureEndpoints": true,
+  "publicationReady": false,
+  "radiusBits": 4622269477551708570,
+  "retainedHeightExactlyIdealFeatureHeight": false,
+  "retainedYBits": 13836166026439335478,
+  "scope": "exact retained-height membership discriminator on an independently admitted finite exterior meridian branch; no mesh-error magnitude or acceptance claim",
+  "sourceFingerprint": "10977506807348230851",
+  "squaredLineDistanceMinusPhysicalLevelSquaredSign": -1,
+  "wholeCurveParameterizationProved": false
+}

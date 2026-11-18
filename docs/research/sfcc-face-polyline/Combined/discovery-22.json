@@ -1,0 +1,14 @@
+{
+  "filter": "activation_c_",
+  "tests": [
+    "sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_original_records_replay_missing_native_node",
+    "sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_scope_preserves_contract_and_required_sharing_refuses",
+    "sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_typed_handoff_reconstructs_and_validates_actual_graph",
+    "sfcc::private_arc_a::activation_frontier_c::activation_c_diagnostic_scope_restores_after_unwind",
+    "sfcc::private_arc_a::activation_frontier_c::activation_c_frontier_selection_requires_one_actual_inventory_consumer",
+    "sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_actual_event_parameters_and_frontier_branch_associations",
+    "sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_event_preparation_rejects_wrong_source_cell_range_and_budget",
+    "sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_event_rejects_coherent_malformed_original_ranges"
+  ],
+  "exitCode": 0
+}

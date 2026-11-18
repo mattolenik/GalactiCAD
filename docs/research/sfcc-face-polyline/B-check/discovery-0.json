@@ -1,0 +1,8 @@
+{
+  "filter": "face_polyline_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::face_polyline_b::face_polyline_b_discriminators_do_not_infer_nonidentity_from_overlap_or_flatness",
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::face_polyline_b::face_polyline_b_fixed_outer_endpoints_and_affine_chamfer_are_incompatible"
+  ],
+  "exitCode": 0
+}

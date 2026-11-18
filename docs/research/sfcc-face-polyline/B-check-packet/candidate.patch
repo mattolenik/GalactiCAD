@@ -1,0 +1,140 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/face_polyline_b.rs
+@@ -0,0 +1,127 @@
++//! Discriminators for reusing a fixed-boundary affine projected correspondence on the full face contour.
++use super::*;
++use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++use std::collections::BTreeMap;
++
++type Point = [f64; 3];
++
++fn positive_separation(retained: f64, ideal: I) -> Option<I> {
++    if !retained.is_finite() || !ideal.lo.is_finite() || !ideal.hi.is_finite() || ideal.lo > ideal.hi {
++        return None;
++    }
++    let difference = I::point(retained).sub(ideal)?;
++    (difference.lo > 0.).then_some(difference)
++}
++
++// For z(Y)=sqrt((aY+b)^2-c^2), z''=-a^2*c^2/(rho^2-c^2)^(3/2).
++fn strict_chamfer_concavity(ny: I, one_minus_nr: I, c: I, rho: I) -> Option<I> {
++    if ny.lo <= 0. || one_minus_nr.lo <= 0. || rho.lo <= 0. || (c.lo <= 0. && c.hi >= 0.) {
++        return None;
++    }
++    let a = quotient(ny, one_minus_nr)?;
++    let z2 = square(rho)?.sub(square(c)?)?;
++    if z2.lo <= 0. { return None; }
++    let magnitude = quotient(mul(square(a)?, square(c)?)?, mul(z2, sqrt(z2)?)?)?;
++    if magnitude.lo <= 0. || !magnitude.hi.is_finite() { return None; }
++    magnitude.mul(-1.)
++}
++
++#[test]
++fn face_polyline_b_fixed_outer_endpoints_and_affine_chamfer_are_incompatible() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let original: Value = serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let face_input: Value = serde_json::from_str(include_str!("../../fixtures/face-fans-c.json")).unwrap();
++    let incident: Value = serde_json::from_str(include_str!("../../fixtures/incident-union-c.json")).unwrap();
++    let tree = crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap() - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
++    let fingerprint = context.features.fingerprint().to_string();
++    assert_eq!(face_input["sourceFingerprint"], fingerprint);
++    assert_eq!(incident["sourceFingerprint"], fingerprint);
++    assert_eq!(incident["complete"], true);
++    let points: BTreeMap<usize, Point> = incident["points"].as_array().unwrap().iter().map(|p| {
++        let bits: [u64; 3] = serde_json::from_value(p["positionBits"].clone()).unwrap();
++        (p["id"].as_u64().unwrap() as usize, bits.map(f64::from_bits))
++    }).collect();
++    assert_eq!(points.len(), incident["points"].as_array().unwrap().len());
++    for row in face_input["points"].as_array().unwrap() {
++        assert_eq!(row["positionBits"], json!(points[&(row["id"].as_u64().unwrap() as usize)].map(f64::to_bits)));
++    }
++    let groups: Vec<Vec<usize>> = incident["cells"].as_array().unwrap().iter().map(|c| serde_json::from_value(c["triangles"].clone()).unwrap()).collect();
++    let segments: [[usize; 2]; 2] = serde_json::from_value(incident["sharedSegments"].clone()).unwrap();
++    assert_eq!(segments, [[40,38],[39,40]]);
++    assert_eq!(face_input["sharedSegments"], incident["sharedSegments"]);
++    let domain = super::super::face_join_c::audit(&points, &groups, segments, 40).unwrap();
++    let geometry = domain.report();
++    assert_eq!(geometry["triangles"].as_array().unwrap().len(), 44*3);
++    let boundary: Vec<usize> = serde_json::from_value(geometry["outerBoundary"].clone()).unwrap();
++    assert!(boundary.contains(&38) && boundary.contains(&39));
++    assert!(!boundary.contains(&40));
++    let pins = face_input["originalTarget"]["originalPins"].as_array().unwrap();
++    let pin = pins.iter().find(|p| p["candidatePoint"]==40).unwrap();
++    let chart = pin["chart"].as_u64().unwrap() as usize;
++    let face: [i64;3] = serde_json::from_value(face_input["face"].clone()).unwrap();
++    assert_eq!(face_input["originalTarget"]["face"], face_input["face"]);
++    let complete = face_complete_b::certify_face(&context.features, chart, &context.lat, face).unwrap();
++    assert_eq!(complete["rootPerClosedYFiber"], 1);
++    assert_eq!(complete["completeFaceIntersectionProved"], true);
++    let rect: [[f64;3];2] = serde_json::from_value(complete["rectangle"].clone()).unwrap();
++    assert_eq!(points[&38][0].to_bits(), rect[0][0].to_bits());
++    assert_eq!(points[&39][0].to_bits(), rect[0][0].to_bits());
++    assert_eq!(points[&38][1].to_bits(), rect[1][1].to_bits());
++    assert_eq!(points[&39][1].to_bits(), rect[0][1].to_bits());
++    let read_interval = |v: &Value| interval(v[0].as_f64().unwrap(),v[1].as_f64().unwrap()).unwrap();
++    let top_z = read_interval(&complete["cylinderBranchZBounds"]);
++    let bottom_z = read_interval(&complete["lowerBoundaryChamferRootZBounds"]);
++    let top_gap = positive_separation(points[&38][2], top_z);
++    let bottom_gap = positive_separation(points[&39][2], bottom_z);
++    let source = Source::bind(&context.features, chart).unwrap();
++    let ny = read_interval(&complete["grooveCoefficients"]["ny"]);
++    let one_minus_nr = I::point(1.).sub(read_interval(&complete["grooveCoefficients"]["nr"])).unwrap();
++    let c = I::point(rect[0][0]).sub(I::point(source.center[0])).unwrap();
++    let bottom_radius = quotient(I::point(source.radius).add(mul(ny,I::point(rect[0][1])).unwrap()).unwrap()
++        .add(read_interval(&complete["grooveCoefficients"]["offset"])).unwrap()
++        .sub(I::point(source.chamfer_radius)).unwrap(), one_minus_nr).unwrap();
++    let rho = interval(bottom_radius.lo, source.radius).unwrap();
++    let concavity = strict_chamfer_concavity(ny, one_minus_nr, c, rho);
++    let report = json!({
++        "scope":"fresh full-face source certificate plus exact captured44-triangle boundary; incompatibility discriminators, not a transport repair",
++        "sourceFingerprint":fingerprint,"face":face,"parentIncidentReceiptSha256":incident["parentReceiptSha256"],
++        "geometry":geometry,"completeFace":complete,
++        "outerEndpoints":[
++            {"id":38,"retainedPointBits":points[&38].map(f64::to_bits),"idealZ":[top_z.lo,top_z.hi],"positiveZSeparation":top_gap.map(|v|[v.lo,v.hi])},
++            {"id":39,"retainedPointBits":points[&39].map(f64::to_bits),"idealZ":[bottom_z.lo,bottom_z.hi],"positiveZSeparation":bottom_gap.map(|v|[v.lo,v.hi])}],
++        "bothEndpointsOnOriginalYBoundary":true,"bothEndpointsOnProjectedDiskBoundary":true,
++        "fixedYZLiftCannotMapEndpointsToFullFaceContour":top_gap.is_some() && bottom_gap.is_some(),
++        "reason":"the unique ideal face root at each preserved Y has a Z enclosure disjoint from retained Z; a same-YZ source lift cannot equal that face root",
++        "chamferStrictSecondDerivative":concavity.map(|v|[v.lo,v.hi]),
++        "nondegenerateChamferBranch":rect[0][1] < complete["transitionHeightBounds"][0].as_f64().unwrap(),
++        "affineProjectedChamferEdgeCannotEqualIdealBranch":concavity.is_some(),
++        "affineObstructionSurvivesIdealEndpointMoves":true,
++        "geometricErrorLimitFailureProved":false,"existingRound39FeatureArcAdoptionRefuted":false,
++        "newDiskTransportProved":false,"fullContourCompatible2DAdoptionProved":false,
++        "sourceGraphBudgetResetOrRepeated":false,"newGeometryQueries":0,"meshMutationPerformed":false,"publicationReady":false
++    });
++    if let Ok(path) = std::env::var("SFCC_POLYLINE_B_RECEIPT") {
++        std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    }
++    assert!(top_gap.is_some() && bottom_gap.is_some(),"preserve actual interval result before asserting: {report}");
++    assert!(concavity.is_some_and(|v|v.hi<0.),"{report}");
++}
++
++#[test]
++fn face_polyline_b_discriminators_do_not_infer_nonidentity_from_overlap_or_flatness() {
++    assert!(positive_separation(2., I {lo:1.,hi:3.}).is_none());
++    assert!(positive_separation(3., I {lo:1.,hi:3.}).is_none());
++    assert!(positive_separation(f64::NAN, I::point(1.)).is_none());
++    assert!(positive_separation(2., I::point(1.)).is_some());
++    assert!(strict_chamfer_concavity(I::point(1.),I::point(1.),I::point(1.),I{lo:2.,hi:3.}).is_some_and(|v|v.hi<0.));
++    assert!(strict_chamfer_concavity(I::point(1.),I::point(1.),I::point(0.),I{lo:2.,hi:3.}).is_none());
++    assert!(strict_chamfer_concavity(I::point(0.),I::point(1.),I::point(1.),I{lo:2.,hi:3.}).is_none());
++    assert!(strict_chamfer_concavity(I::point(1.),I::point(1.),I::point(1.),I{lo:0.5,hi:3.}).is_none());
++}
+--- a/gcad-wasm/kernel/src/sfcc/feature49_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature49_a.rs
+@@ -539,3 +539,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="face_complete_b.rs"]
+ pub(crate) mod face_complete_b;
++
++#[cfg(all(test,feature="serde"))]
++#[path="face_polyline_b.rs"]
++pub(crate) mod face_polyline_b;

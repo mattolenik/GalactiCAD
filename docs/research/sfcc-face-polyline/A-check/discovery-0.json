@@ -1,0 +1,7 @@
+{
+  "filter": "face_polyline_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::face_polyline_a::face_polyline_a_actual_complete_chain_and_fixed_boundary_obstruction"
+  ],
+  "exitCode": 0
+}

@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/kernel-tests",
+    "adoption_composition_c_actual_44_consumed_arc_transport",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 57.170789125026204,
+  "elapsedSeconds": 1.3004514580243267,
+  "exitCode": 0,
+  "timedOut": false
+}

@@ -1951,6 +1951,43 @@ next bind the captured face polyline to the exhaustive ideal contour and adopted
 correspondence, then establish remaining interface/interior ownership, outside
 coverage, allocation accounting and native/WASM/GPU/full-model acceptance.
 
+## Round 40: complete face-polyline coverage and a curved-map obligation
+
+The [face-polyline packet](sfcc-face-polyline/README.md) binds the entire original
+FaceRecord on [0,3464532,2], its two segments and feature pin, both opposite emitted
+consumers, exact keyed point bits and fan source identities. A fresh exhaustive
+source proof establishes a standalone homeomorphism from chain 39→40→38 onto the
+complete closed ideal face contour. Strict working/f32 Y order and the unique
+source root on every closed ideal Y fiber prove coverage exactly once. A curvature
+remainder plus endpoint association and export rounding gives the whole exported
+bound 0.000020955268988113107 mm below the unchanged 0.01 mm limit. The face proof
+uses 10 of128 checks with its preexisting depth16 cap; the separate surface-graph
+128/depth12 contract is unchanged.
+
+Independent checks prove that the existing round39 2D map cannot restrict to this
+new contour map. Both outer endpoints 38/39 retain Z values strictly separated from
+their ideal face roots. Even after ideal endpoint moves, the chamfer has strictly
+negative second derivative and cannot equal an affine projected mesh edge. These
+are correspondence obstructions, not demonstrated geometric tolerance failures.
+Point40 is the same ideal source/face/feature event as the adopted arc, by its shared
+constraints and the unique face branch join; matching enclosures alone are not the
+identity argument.
+
+All 86 focused tests pass in 42.730 seconds. Six provenance corruption controls,
+library validation and the 36.983-second original-scene replay pass. The entire
+parent runtime is preserved after named address/unordered-metadata normalization;
+the round39 adoption proof receipt is byte-identical. No mesh coordinates, query
+limits/costs or production implementation changed. Fourth-agent review accepts
+the bounded 1D milestone, with compatible 2D adoption explicitly unproved.
+
+Next inventory all original consumers of minimal-edge endpoints 38/39 and test
+their ideal targets against the current boundary. A slide along 38's straight
+boundary may avoid unnecessary neighborhood expansion; 39's adjacent one-ULP Y
+difference requires an exact feasibility check. Then prove a bounded curved edge
+extension, preserving the adopted feature arc, all consumer boundaries, injectivity,
+source-fiber containment and the exported bound. Global ownership/coverage,
+allocation accounting and native/WASM/GPU/full-model acceptance remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

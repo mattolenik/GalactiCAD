@@ -1,0 +1,792 @@
+{
+  "affineObstructionSurvivesIdealEndpointMoves": true,
+  "affineProjectedChamferEdgeCannotEqualIdealBranch": true,
+  "bothEndpointsOnOriginalYBoundary": true,
+  "bothEndpointsOnProjectedDiskBoundary": true,
+  "chamferStrictSecondDerivative": [
+    -0.1559264965917958,
+    -0.15571720411240936
+  ],
+  "completeFace": {
+    "acceptedStrips": 5,
+    "analyticRoot": "rho_*(Y)=min(R,(R+ny*Y+offset-r)/(1-nr)); Z_*(Y)=centerZ+sqrt(rho_*(Y)^2-(faceX-centerX)^2)",
+    "boundaryTangencyExcluded": true,
+    "branchDomains": "chamfer on [Ymin,Y*], cylinder on [Y*,Ymax], with one shared ideal feature/face endpoint",
+    "chartBinding": 49,
+    "completeFaceIntersectionProved": true,
+    "conditionalNonpositiveCylinderRegionCovered": true,
+    "connectedContourComponents": 1,
+    "cylinderBranchZBounds": [
+      5.4319133015149506,
+      5.431913301514966
+    ],
+    "face": [
+      0,
+      3464532,
+      2
+    ],
+    "fullFieldGloballyMonotoneClaimed": false,
+    "globalCheckCap": 128,
+    "grooveCoefficients": {
+      "nr": [
+        -0.5547001962252297,
+        -0.5547001962252286
+      ],
+      "ny": [
+        0.8320502943378428,
+        0.8320502943378445
+      ],
+      "offset": [
+        8.764263100358606,
+        8.764263100358635
+      ]
+    },
+    "lowerBoundaryChamferRootZBounds": [
+      5.4294818831714915,
+      5.429481883171608
+    ],
+    "lowerFaceEdgeSignUpper": -0.02120154105727678,
+    "originalCapturedPolylineCorrespondenceProved": false,
+    "physicalChamferRadius": 0.7,
+    "positiveCylinderRegionExcluded": true,
+    "publicationReady": false,
+    "radius": 10.8,
+    "rectangle": [
+      [
+        -9.334576470564954,
+        -2.4943226517164696,
+        5.3896361967837
+      ],
+      [
+        -9.334576470564954,
+        -2.249010151716469,
+        5.634948696783697
+      ]
+    ],
+    "rectangleBits": [
+      [
+        13844816554298846424,
+        13836171170937199256,
+        4617754209319262306
+      ],
+      [
+        13844816554298846424,
+        13835618776295404592,
+        4618030406640159634
+      ]
+    ],
+    "reducedPositiveZDerivativeLower": 0.49430195878705174,
+    "refinedRefusals": [
+      {
+        "depth": 0,
+        "reason": "face_native_interior",
+        "yStrip": [
+          -2.4943226517164696,
+          -2.249010151716469
+        ]
+      },
+      {
+        "depth": 1,
+        "reason": "face_native_interior",
+        "yStrip": [
+          -2.4943226517164696,
+          -2.3716664017164693
+        ]
+      },
+      {
+        "depth": 2,
+        "reason": "face_native_interior",
+        "yStrip": [
+          -2.4943226517164696,
+          -2.4329945267164694
+        ]
+      },
+      {
+        "depth": 3,
+        "reason": "face_native_interior",
+        "yStrip": [
+          -2.4943226517164696,
+          -2.4636585892164695
+        ]
+      }
+    ],
+    "rootPerClosedYFiber": 1,
+    "scope": "complete zero set of the continuous represented source on this entire original face rectangle; not just captured contour segments",
+    "source": [
+      10,
+      30,
+      15
+    ],
+    "sourceBranches": 2,
+    "sourceChecks": 10,
+    "sourceFingerprint": "10977506807348230851",
+    "strata": [
+      31,
+      15
+    ],
+    "strips": [
+      {
+        "capCutMargin": 7.478990620466468,
+        "conditionalRadius": [
+          10.778798458942715,
+          10.8
+        ],
+        "cylinderCapMargin": 7.484475807226243,
+        "grooveDistanceLower": 0.6980990845919046,
+        "grooveEdge": 2,
+        "nativeChamferNumeratorUpper": -0.00164616063641676,
+        "nativeUpper": -0.0035470760445122044,
+        "otherDistanceLower": 1.817151494075871,
+        "outerRoundMargin": 3.070632969157154,
+        "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+        "yStrip": [
+          -2.4943226517164696,
+          -2.47899062046647
+        ]
+      },
+      {
+        "capCutMargin": 7.463658589216467,
+        "conditionalRadius": [
+          10.778798458942715,
+          10.8
+        ],
+        "cylinderCapMargin": 7.499807838476242,
+        "grooveDistanceLower": 0.710856105706264,
+        "grooveEdge": 2,
+        "nativeChamferNumeratorUpper": -0.045009685174274165,
+        "nativeUpper": -0.03415357946801027,
+        "otherDistanceLower": 1.8240081868975013,
+        "outerRoundMargin": 3.063646502480379,
+        "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+        "yStrip": [
+          -2.47899062046647,
+          -2.4636585892164695
+        ]
+      },
+      {
+        "capCutMargin": 7.432994526716468,
+        "conditionalRadius": [
+          10.778798458942715,
+          10.8
+        ],
+        "cylinderCapMargin": 7.515139869726243,
+        "grooveDistanceLower": 0.7236131268206237,
+        "grooveEdge": 2,
+        "nativeChamferNumeratorUpper": -0.07298130578211658,
+        "nativeUpper": -0.04936817896149295,
+        "otherDistanceLower": 1.8308648797191316,
+        "outerRoundMargin": 3.0496275802110087,
+        "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+        "yStrip": [
+          -2.4636585892164695,
+          -2.4329945267164694
+        ]
+      },
+      {
+        "capCutMargin": 7.3716664017164675,
+        "conditionalRadius": [
+          10.778798458942715,
+          10.8
+        ],
+        "cylinderCapMargin": 7.545803932226242,
+        "grooveDistanceLower": 0.7491271690493427,
+        "grooveEdge": 2,
+        "nativeChamferNumeratorUpper": -0.1298642662994137,
+        "nativeUpper": -0.08073709725007101,
+        "otherDistanceLower": 1.8445782653623919,
+        "outerRoundMargin": 3.021406522361976,
+        "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+        "yStrip": [
+          -2.4329945267164694,
+          -2.3716664017164693
+        ]
+      },
+      {
+        "capCutMargin": 7.249010151716467,
+        "conditionalRadius": [
+          10.778798458942715,
+          10.8
+        ],
+        "cylinderCapMargin": 7.607132057226243,
+        "grooveDistanceLower": 0.8001552535067811,
+        "grooveEdge": 2,
+        "nativeChamferNumeratorUpper": -0.24326319104378222,
+        "nativeUpper": -0.14310793753700124,
+        "otherDistanceLower": 1.8720050366489127,
+        "outerRoundMargin": 2.9642374886131253,
+        "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+        "yStrip": [
+          -2.3716664017164693,
+          -2.249010151716469
+        ]
+      }
+    ],
+    "transitionHeightBounds": [
+      -2.492038035725099,
+      -2.492038035725039
+    ],
+    "unrepresentedFaceContoursExcluded": true,
+    "upperFaceEdgeSignLower": 0.10352991926050768,
+    "wholeCellInteriorCoverageProved": false,
+    "zeroEquivalentReducedFunction": "H=max(rho-R,w*((1-nr)*rho-R-ny*Y-offset+r)); native, native-chamfer, negative groove/cap and outer terms are excluded only under checked conditions"
+  },
+  "existingRound39FeatureArcAdoptionRefuted": false,
+  "face": [
+    0,
+    3464532,
+    2
+  ],
+  "fixedYZLiftCannotMapEndpointsToFullFaceContour": true,
+  "fullContourCompatible2DAdoptionProved": false,
+  "geometricErrorLimitFailureProved": false,
+  "geometry": {
+    "commonEndpoint": 40,
+    "connectedIndexedDisk": true,
+    "endpointIsInterior": true,
+    "idealFeatureEndpointProved": false,
+    "outerBoundary": [
+      38,
+      41,
+      464,
+      465,
+      458,
+      459,
+      460,
+      39,
+      478,
+      1115,
+      1123,
+      1124,
+      1121,
+      1122,
+      1120,
+      1114
+    ],
+    "patchTriangleCounts": [
+      23,
+      11,
+      10
+    ],
+    "pointBits": [
+      [
+        38,
+        [
+          13844816554298846424,
+          13835618776295404592,
+          4617801817764908076
+        ]
+      ],
+      [
+        39,
+        [
+          13844816554298846424,
+          13836171170937199256,
+          4617799094638878133
+        ]
+      ],
+      [
+        40,
+        [
+          13844816554298846762,
+          13836166026439335478,
+          4617801809107539645
+        ]
+      ],
+      [
+        41,
+        [
+          13844830331837451734,
+          13835618776295404592,
+          4617754209319262306
+        ]
+      ],
+      [
+        458,
+        [
+          13844827666411667413,
+          13836171170937199256,
+          4617754209319262306
+        ]
+      ],
+      [
+        459,
+        [
+          13844827771266531156,
+          13836171170937187002,
+          4617755369420993716
+        ]
+      ],
+      [
+        460,
+        [
+          13844827650848918399,
+          13836171170937199257,
+          4617760755969393917
+        ]
+      ],
+      [
+        464,
+        [
+          13844830331837451734,
+          13835894973616301924,
+          4617754209319262306
+        ]
+      ],
+      [
+        465,
+        [
+          13844830331814374579,
+          13836165891772662319,
+          4617754209319262306
+        ]
+      ],
+      [
+        478,
+        [
+          13844789161382673385,
+          13836171170937199256,
+          4617892307979710970
+        ]
+      ],
+      [
+        647,
+        [
+          13844830282047795546,
+          13836166026439335478,
+          4617754382154335013
+        ]
+      ],
+      [
+        648,
+        [
+          13844830187233903547,
+          13836166220664319136,
+          4617754419537920016
+        ]
+      ],
+      [
+        649,
+        [
+          13844829891361871162,
+          13836166826779996655,
+          4617754536155328740
+        ]
+      ],
+      [
+        650,
+        [
+          13844828706376621362,
+          13836169254640459311,
+          4617755002379997287
+        ]
+      ],
+      [
+        653,
+        [
+          13844825742648919353,
+          13835938411809740731,
+          4617770119601665062
+        ]
+      ],
+      [
+        654,
+        [
+          13844822768012469158,
+          13836168617584839349,
+          4617779019314262603
+        ]
+      ],
+      [
+        655,
+        [
+          13844829261744532900,
+          13836168075307039100,
+          4617754590022194856
+        ]
+      ],
+      [
+        656,
+        [
+          13844829081532605267,
+          13836168445143818604,
+          4617755744270549230
+        ]
+      ],
+      [
+        1114,
+        [
+          13844748356977640844,
+          13835618776295404592,
+          4618030406640159634
+        ]
+      ],
+      [
+        1115,
+        [
+          13844747549898595909,
+          13836171170937199256,
+          4618030406640159634
+        ]
+      ],
+      [
+        1116,
+        [
+          13844748356756957604,
+          13836166026439335478,
+          4618030406640159853
+        ]
+      ],
+      [
+        1117,
+        [
+          13844773025837132680,
+          13836166026439335478,
+          4617949022357655430
+        ]
+      ],
+      [
+        1118,
+        [
+          13844782035343704292,
+          13836169018175885646,
+          4617917375411644382
+        ]
+      ],
+      [
+        1119,
+        [
+          13844780823415619052,
+          13835947126381763123,
+          4617922995774708407
+        ]
+      ],
+      [
+        1120,
+        [
+          13844678455638397759,
+          13835618776295404592,
+          4618253528714040814
+        ]
+      ],
+      [
+        1121,
+        [
+          13844678455638397759,
+          13836171170937199256,
+          4618250984810510084
+        ]
+      ],
+      [
+        1122,
+        [
+          13844678455638397759,
+          13836166026439335478,
+          4618253526875424072
+        ]
+      ],
+      [
+        1123,
+        [
+          13844747504968622092,
+          13836171170937199256,
+          4618030553548975900
+        ]
+      ],
+      [
+        1124,
+        [
+          13844704676989602914,
+          13836171170937199256,
+          4618168505300608302
+        ]
+      ],
+      [
+        1125,
+        [
+          13844713708077402966,
+          13835892401367370035,
+          4618142345450737534
+        ]
+      ],
+      [
+        1126,
+        [
+          13844717691560225764,
+          13836169939663886695,
+          4618127636648362788
+        ]
+      ]
+    ],
+    "projectedWinding": -1,
+    "publicationReady": false,
+    "scope": "complete supplied triangle union around both captured contour segments; source and ideal feature constraints are separate",
+    "sharedSegments": [
+      [
+        40,
+        38
+      ],
+      [
+        39,
+        40
+      ]
+    ],
+    "sourceGraphProvedHere": false,
+    "topology": {
+      "boundaryEdges": [
+        [
+          38,
+          41
+        ],
+        [
+          1114,
+          38
+        ],
+        [
+          460,
+          39
+        ],
+        [
+          39,
+          478
+        ],
+        [
+          41,
+          464
+        ],
+        [
+          458,
+          459
+        ],
+        [
+          465,
+          458
+        ],
+        [
+          459,
+          460
+        ],
+        [
+          464,
+          465
+        ],
+        [
+          478,
+          1115
+        ],
+        [
+          1120,
+          1114
+        ],
+        [
+          1115,
+          1123
+        ],
+        [
+          1122,
+          1120
+        ],
+        [
+          1121,
+          1122
+        ],
+        [
+          1124,
+          1121
+        ],
+        [
+          1123,
+          1124
+        ]
+      ],
+      "duplicateFaces": 0,
+      "edges": 74,
+      "invalidVertexLinks": [],
+      "localTopologyValid": true,
+      "misorientedInternalEdges": 0,
+      "nonManifoldEdges": 0,
+      "scope": "indexed open-component combinatorics only; no geometric or outside-contact verdict",
+      "triangles": 44,
+      "usedVertices": 31
+    },
+    "trianglePairsCheckedPerPrecision": 946,
+    "triangles": [
+      653,
+      40,
+      38,
+      653,
+      38,
+      41,
+      653,
+      41,
+      464,
+      653,
+      464,
+      465,
+      653,
+      465,
+      647,
+      653,
+      647,
+      40,
+      654,
+      39,
+      40,
+      654,
+      40,
+      647,
+      654,
+      647,
+      460,
+      654,
+      460,
+      39,
+      655,
+      458,
+      459,
+      655,
+      459,
+      650,
+      655,
+      650,
+      649,
+      655,
+      649,
+      648,
+      655,
+      648,
+      647,
+      655,
+      647,
+      465,
+      655,
+      465,
+      458,
+      656,
+      459,
+      460,
+      656,
+      460,
+      647,
+      656,
+      647,
+      648,
+      656,
+      648,
+      649,
+      656,
+      649,
+      650,
+      656,
+      650,
+      459,
+      1118,
+      40,
+      39,
+      1118,
+      39,
+      478,
+      1118,
+      478,
+      1115,
+      1118,
+      1115,
+      1116,
+      1118,
+      1116,
+      1117,
+      1118,
+      1117,
+      40,
+      1119,
+      1116,
+      1114,
+      1119,
+      1114,
+      38,
+      1119,
+      38,
+      40,
+      1119,
+      40,
+      1117,
+      1119,
+      1117,
+      1116,
+      1125,
+      1122,
+      1120,
+      1125,
+      1120,
+      1114,
+      1125,
+      1114,
+      1116,
+      1125,
+      1116,
+      1122,
+      1126,
+      1116,
+      1115,
+      1126,
+      1115,
+      1123,
+      1126,
+      1123,
+      1124,
+      1126,
+      1124,
+      1121,
+      1126,
+      1121,
+      1122,
+      1126,
+      1122,
+      1116
+    ],
+    "workingAndExportedProjectedUnionEmbedded": true
+  },
+  "meshMutationPerformed": false,
+  "newDiskTransportProved": false,
+  "newGeometryQueries": 0,
+  "nondegenerateChamferBranch": true,
+  "outerEndpoints": [
+    {
+      "id": 38,
+      "idealZ": [
+        5.4319133015149506,
+        5.431913301514966
+      ],
+      "positiveZSeparation": [
+        7.689286773526758e-6,
+        7.689286788625795e-6
+      ],
+      "retainedPointBits": [
+        13844816554298846424,
+        13835618776295404592,
+        4617801817764908076
+      ]
+    },
+    {
+      "id": 39,
+      "idealZ": [
+        5.4294818831714915,
+        5.429481883171608
+      ],
+      "positiveZSeparation": [
+        0.00002048585621228227,
+        0.000020485856328633648
+      ],
+      "retainedPointBits": [
+        13844816554298846424,
+        13836171170937199256,
+        4617799094638878133
+      ]
+    }
+  ],
+  "parentIncidentReceiptSha256": "28231cbb0f829c201e6b39000a5788d815600b059b7bf0a54e2ea3b382d212c2",
+  "publicationReady": false,
+  "reason": "the unique ideal face root at each preserved Y has a Z enclosure disjoint from retained Z; a same-YZ source lift cannot equal that face root",
+  "scope": "fresh full-face source certificate plus exact captured44-triangle boundary; incompatibility discriminators, not a transport repair",
+  "sourceFingerprint": "10977506807348230851",
+  "sourceGraphBudgetResetOrRepeated": false
+}

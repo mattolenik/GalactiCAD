@@ -1,0 +1,371 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/face_polyline_a.rs
+@@ -0,0 +1,358 @@
++//! Complete captured face chain: a one-dimensional correspondence, not a surface-map adoption.
++use super::*;
++use crate::math::grid::SfccLattice;
++use std::collections::{BTreeMap, BTreeSet};
++type R<T> = std::result::Result<T, String>;
++fn require(ok: bool, reason: &str) -> R<()> {
++    if ok {
++        Ok(())
++    } else {
++        Err(reason.into())
++    }
++}
++fn pair(v: &Value) -> R<I> {
++    let a: [f64; 2] = serde_json::from_value(v.clone()).map_err(|_| "interval_encoding")?;
++    interval(a[0], a[1]).ok_or_else(|| "interval_bounds".into())
++}
++fn point(v: &Value) -> R<[f64; 3]> {
++    let bits: [u64; 3] = serde_json::from_value(v.clone()).map_err(|_| "point_encoding")?;
++    let p = bits.map(f64::from_bits);
++    require(p.iter().all(|x| x.is_finite()), "nonfinite_point")?;
++    Ok(p)
++}
++fn l1_to_box(p: [f64; 3], b: [I; 3]) -> R<f64> {
++    let mut sum = I::point(0.);
++    for k in 0..3 {
++        let d = b[k].sub(I::point(p[k])).ok_or("bound_arithmetic")?;
++        sum = sum
++            .add(I::point(d.lo.abs().max(d.hi.abs())))
++            .ok_or("bound_arithmetic")?;
++    }
++    Ok(sum.hi)
++}
++fn edge(a: usize, b: usize) -> [usize; 2] {
++    [a.min(b), a.max(b)]
++}
++
++/// The caller must bind the compact captured inputs to its actual original-stage runtime.
++pub(crate) fn certify_polyline(
++    f: &SfccFeatureSet,
++    lat: &SfccLattice,
++    saved: &Value,
++    incident: &Value,
++    tolerance: f64,
++    chord_tolerance: f64,
++) -> R<Value> {
++    require(
++        tolerance.is_finite()
++            && tolerance > 0.
++            && chord_tolerance.is_finite()
++            && chord_tolerance > 0.
++            && saved["surfaceTolerance"].as_f64().map(f64::to_bits) == Some(tolerance.to_bits())
++            && incident["surfaceTolerance"].as_f64().map(f64::to_bits) == Some(tolerance.to_bits()),
++        "tolerance_binding",
++    )?;
++    require(
++        saved["sourceFingerprint"] == f.fingerprint().to_string()
++            && incident["sourceFingerprint"] == saved["sourceFingerprint"],
++        "source_binding",
++    )?;
++    require(
++        saved["face"] == saved["originalTarget"]["face"]
++            && saved["commonEndpoint"] == 40
++            && saved["sharedSegments"] == json!([[40, 38], [39, 40]])
++            && incident["sharedSegments"] == saved["sharedSegments"]
++            && saved["originalTarget"]["globalEdgeInCandidateOrder"] == json!([4074, 4072])
++            && saved["originalTarget"]["originalSegments"] == json!([[4072, 4074], [4074, 4073]]),
++        "original_chain_binding",
++    )?;
++    let mut points = BTreeMap::new();
++    for row in saved["points"].as_array().ok_or("point_rows")? {
++        let id = row["id"].as_u64().ok_or("point_id")? as usize;
++        require(
++            points.insert(id, point(&row["positionBits"])?).is_none(),
++            "duplicate_point",
++        )?;
++    }
++    let incident_points: BTreeMap<usize, [f64; 3]> = incident["points"]
++        .as_array()
++        .ok_or("incident_points")?
++        .iter()
++        .map(|row| {
++            Ok((
++                row["id"].as_u64().ok_or("incident_id")? as usize,
++                point(&row["positionBits"])?,
++            ))
++        })
++        .collect::<R<_>>()?;
++    require(
++        incident_points.len()
++            == incident["points"]
++                .as_array()
++                .ok_or("incident_points")?
++                .len()
++            && incident_points.len() <= 128
++            && points.len() <= 128,
++        "incident_point_inventory",
++    )?;
++    require(
++        incident["patches"][0]["chordTolerance"]
++            .as_f64()
++            .map(f64::to_bits)
++            == Some(chord_tolerance.to_bits()),
++        "chord_tolerance_binding",
++    )?;
++    let chain = [39usize, 40, 38];
++    for id in chain {
++        require(
++            points.contains_key(&id)
++                && incident_points.get(&id).map(|p| p.map(f64::to_bits))
++                    == points.get(&id).map(|p| p.map(f64::to_bits)),
++            "incident_point_binding",
++        )?;
++    }
++    let pin = saved["originalTarget"]["originalPins"]
++        .as_array()
++        .ok_or("original_pins")?
++        .iter()
++        .find(|p| p["candidatePoint"] == 40)
++        .ok_or("join_pin")?;
++    require(
++        pin["originalPoint"] == 4074 && pin["chart"] == 49 && pin["strata"] == json!([31, 15]),
++        "join_pin_binding",
++    )?;
++    let face: [i64; 3] =
++        serde_json::from_value(saved["face"].clone()).map_err(|_| "face_encoding")?;
++    let face_proof = face_complete_b::certify_face(f, 49, lat, face)?;
++    let rect: [[f64; 3]; 2] =
++        serde_json::from_value(face_proof["rectangle"].clone()).map_err(|_| "rectangle")?;
++    require(
++        face_proof["completeFaceIntersectionProved"] == true
++            && face_proof["rootPerClosedYFiber"] == 1
++            && face_proof["sourceBranches"] == 2,
++        "face_scope",
++    )?;
++    let low = points[&39];
++    let join = points[&40];
++    let high = points[&38];
++    require(
++        low[0].to_bits() == rect[0][0].to_bits()
++            && high[0].to_bits() == rect[0][0].to_bits()
++            && low[1].to_bits() == rect[0][1].to_bits()
++            && high[1].to_bits() == rect[1][1].to_bits()
++            && low[1] < join[1]
++            && join[1] < high[1],
++        "closed_boundary_endpoints_or_order",
++    )?;
++    require(
++        (low[1] as f32) < (join[1] as f32) && (join[1] as f32) < (high[1] as f32),
++        "exported_chain_order",
++    )?;
++    let transition = pair(&face_proof["transitionHeightBounds"])?;
++    let cz = pair(&face_proof["cylinderBranchZBounds"])?;
++    let bz = pair(&face_proof["lowerBoundaryChamferRootZBounds"])?;
++    require(
++        low[1] < transition.lo && transition.hi < high[1],
++        "ideal_join_order",
++    )?;
++    let target = [
++        [I::point(rect[0][0]), I::point(low[1]), bz],
++        [I::point(rect[0][0]), transition, cz],
++        [I::point(rect[0][0]), I::point(high[1]), cz],
++    ];
++    // Fresh completeness already binds these coefficients and this exact source branch.
++    let source = Source::bind(f, 49).ok_or("source_family")?;
++    let nr = pair(&face_proof["grooveCoefficients"]["nr"])?;
++    let ny = pair(&face_proof["grooveCoefficients"]["ny"])?;
++    let slope =
++        quotient(ny, I::point(1.).sub(nr).ok_or("bound_arithmetic")?).ok_or("bound_arithmetic")?;
++    let dx = I::point(rect[0][0])
++        .sub(I::point(source.center[0]))
++        .ok_or("bound_arithmetic")?;
++    let z = bz
++        .sub(I::point(source.center[2]))
++        .ok_or("bound_arithmetic")?;
++    require(z.lo > 0., "chamfer_graph_denominator")?;
++    let z3 = mul(square(z).ok_or("bound_arithmetic")?, z).ok_or("bound_arithmetic")?;
++    let curvature = quotient(
++        mul(
++            square(slope).ok_or("bound_arithmetic")?,
++            square(dx).ok_or("bound_arithmetic")?,
++        )
++        .ok_or("bound_arithmetic")?,
++        z3,
++    )
++    .ok_or("bound_arithmetic")?
++    .hi;
++    let width = transition.sub(I::point(low[1])).ok_or("bound_arithmetic")?;
++    let remainder = div(
++        mul(
++            I::point(curvature),
++            square(width).ok_or("bound_arithmetic")?,
++        )
++        .ok_or("bound_arithmetic")?,
++        8.,
++    )
++    .ok_or("bound_arithmetic")?
++    .hi;
++    let endpoint_bounds = [
++        l1_to_box(low, target[0])?,
++        l1_to_box(join, target[1])?,
++        l1_to_box(high, target[2])?,
++    ];
++    let rounding = chain.map(|id| {
++        let p = points[&id];
++        let q = p.map(|v| v as f32 as f64);
++        l1_to_box(p, q.map(I::point))
++    });
++    let rounding = [
++        rounding[0].clone()?,
++        rounding[1].clone()?,
++        rounding[2].clone()?,
++    ];
++    let mut spans = Vec::new();
++    let mut maximum = 0.0f64;
++    for k in 0..2 {
++        let curve = if k == 0 { remainder } else { 0. };
++        let working = I::point(endpoint_bounds[k].max(endpoint_bounds[k + 1]))
++            .add(I::point(curve))
++            .ok_or("bound_arithmetic")?
++            .hi;
++        let exported = I::point(working)
++            .add(I::point(rounding[k].max(rounding[k + 1])))
++            .ok_or("bound_arithmetic")?
++            .hi;
++        require(
++            exported <= tolerance.min(chord_tolerance * 0.5),
++            "whole_edge_error_limit",
++        )?;
++        maximum = maximum.max(exported);
++        spans.push(
++            json!({"edge":[chain[k],chain[k+1]],"branch":if k==0 {"chamfer"}else{"cylinder"},
++            "secondDerivativeUpper":if k==0 {curvature}else{0.},"idealChordRemainderUpper":curve,
++            "workingPointwiseErrorUpper":working,"exportedPointwiseErrorUpper":exported}),
++        );
++    }
++    let mut edge_counts = BTreeMap::new();
++    let mut triangle_count = 0usize;
++    for cell in incident["cells"].as_array().ok_or("incident_cells")? {
++        let ts: Vec<usize> =
++            serde_json::from_value(cell["triangles"].clone()).map_err(|_| "incident_triangles")?;
++        require(ts.len() % 3 == 0, "triangle_encoding")?;
++        triangle_count += ts.len() / 3;
++        for t in ts.chunks_exact(3) {
++            for k in 0..3 {
++                *edge_counts
++                    .entry(edge(t[k], t[(k + 1) % 3]))
++                    .or_insert(0usize) += 1;
++            }
++        }
++    }
++    require(
++        triangle_count == 44
++            && edge_counts.get(&edge(39, 40)) == Some(&2)
++            && edge_counts.get(&edge(40, 38)) == Some(&2),
++        "incident_chain_edges",
++    )?;
++    let boundary: BTreeSet<_> = edge_counts
++        .iter()
++        .filter(|(_, n)| **n == 1)
++        .flat_map(|(e, _)| e.iter().copied())
++        .collect();
++    require(
++        boundary.contains(&38) && boundary.contains(&39),
++        "outer_endpoint_binding",
++    )?;
++    let endpoint_obstructions: [R<Value>;2]=[(39,bz),(38,cz)].map(|(id,image)| {
++        let p=points[&id];
++        let gap=I::point(p[2]).sub(image).ok_or("bound_arithmetic")?;
++        require(gap.lo>0.,"retained_endpoint_not_separated")?;
++        Ok(json!({"point":id,"retainedZ":p[2],"idealRootZBounds":[image.lo,image.hi],"positiveZGapLower":gap.lo,
++            "onCapturedOuterBoundary":true,"fixedYZLiftCanEqualIdealFaceEndpoint":false}))
++    });
++    Ok(
++        json!({"sourceFingerprint":f.fingerprint().to_string(),"face":face,"faceProof":face_proof,
++        "originalGlobalChain":[4073,4074,4072],"capturedChain":chain,"capturedPointBits":chain.map(|id|json!([id,points[&id].map(f64::to_bits)])),
++        "canonicalEndpointImages":target.map(|p|p.map(|v|[v.lo,v.hi])),"endpointAssociationL1Upper":endpoint_bounds,
++        "spans":spans,"exportedCorrespondenceErrorUpper":maximum,"tolerance":tolerance,"chordTolerance":chord_tolerance,
++        "closedFaceContourCoveredExactlyOnce":true,"bijectionUsesPiecewiseAffineIdealY":true,
++        "joinIsSameSourceFaceFeatureEvent":true,"workingAndExportedMeshUnchanged":true,
++        "endpointObstructions":[endpoint_obstructions[0].clone()?,endpoint_obstructions[1].clone()?],
++        "round39FixedOuterBoundaryCorrespondenceCompatible":false,"newCompatibleTwoDimensionalMapProved":false,
++        "scope":"standalone one-dimensional homeomorphism from the captured two-edge chain onto the complete original-face source contour",
++        "callerMustBindRuntimeCapture":true,"publicationReady":false}),
++    )
++}
++
++#[test]
++fn face_polyline_a_actual_complete_chain_and_fixed_boundary_obstruction() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let original: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/face-fans-c.json")).unwrap();
++    let incident: Value =
++        serde_json::from_str(include_str!("../../fixtures/incident-union-c.json")).unwrap();
++    let tree =
++        crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let cube = crate::sfcc::pipeline::SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap()
++            - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let c = crate::sfcc::pipeline::build_pipeline_context(
++        &tree,
++        &cube,
++        &crate::sfcc::pipeline::PipelineTuning::default(),
++    );
++    let tolerance = original["tuning"]["surfaceTolMm"].as_f64().unwrap();
++    let chord = original["tuning"]["curveChordTolMm"].as_f64().unwrap();
++    let result = certify_polyline(&c.features, &c.lat, &saved, &incident, tolerance, chord);
++    if let Ok(path) = std::env::var("SFCC_POLYLINE_A_RECEIPT") {
++        std::fs::write(
++            path,
++            serde_json::to_vec_pretty(
++                &json!({"parentReceiptSha256":incident["parentReceiptSha256"],"result":result}),
++            )
++            .unwrap(),
++        )
++        .unwrap();
++    }
++    assert!(result.is_ok(), "{result:?}");
++    let mut bad = saved.clone();
++    bad["sharedSegments"] = json!([[40, 38]]);
++    assert_eq!(
++        certify_polyline(&c.features, &c.lat, &bad, &incident, tolerance, chord).unwrap_err(),
++        "original_chain_binding"
++    );
++    let mut bad = incident.clone();
++    bad["points"][0]["positionBits"][0] = json!(0u64);
++    assert!(certify_polyline(&c.features, &c.lat, &saved, &bad, tolerance, chord).is_err());
++    assert_eq!(
++        certify_polyline(
++            &c.features,
++            &c.lat,
++            &saved,
++            &incident,
++            tolerance * 2.,
++            chord
++        )
++        .unwrap_err(),
++        "tolerance_binding"
++    );
++    assert_eq!(
++        certify_polyline(
++            &c.features,
++            &c.lat,
++            &saved,
++            &incident,
++            tolerance,
++            chord * 2.
++        )
++        .unwrap_err(),
++        "chord_tolerance_binding"
++    );
++}
+--- a/gcad-wasm/kernel/src/sfcc/feature49_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature49_a.rs
+@@ -539,3 +539,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="face_complete_b.rs"]
+ pub(crate) mod face_complete_b;
++
++#[cfg(all(test, feature="serde"))]
++#[path="face_polyline_a.rs"]
++pub(crate) mod face_polyline_a;

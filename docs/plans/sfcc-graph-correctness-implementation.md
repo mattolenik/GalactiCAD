@@ -1,20 +1,22 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [boundary-adoption milestone](../research/sfcc-boundary-adoption/README.md)
-proves one continuous source correspondence on the complete 44-triangle, 31-vertex
-incident neighborhood. All four ideal targets are interior; simultaneous transport
-fixes the outer boundary and identifies the three consumed curve49 edges with their
-ideal physical arcs. The exported bound is 0.0012883081002970905 mm under 0.01 mm.
-Triangle-local source slabs succeed in 108 of 128 checks after the common-slab
-44-triangle attempt refused at 128. All 83 selected tests, library validation and
-fresh runtime preservation pass. Working/exported mesh coordinates are unchanged.
+Status: the [face-polyline milestone](../research/sfcc-face-polyline/README.md)
+binds the entire original two-segment face inventory and both emitted consumers
+and proves a standalone ordered correspondence onto the complete ideal contour.
+The whole exported bound is 0.000020955268988113107 mm under the unchanged 0.01 mm
+limit. All 86 focused tests, six provenance corruption controls, library validation
+and fresh runtime preservation pass. The preceding 44-triangle ideal-feature
+adoption proof, working/exported geometry and query costs are unchanged.
 
-**Stage 4 publication and production acceptance remain open.** Next bind the
-captured face polyline to the complete ideal face contour and this adopted source
-correspondence. Then establish remaining interfaces, whole-cell source ownership
-and outside coverage. The207-cell/1042-face inventory is not a validated expanded
-transaction. Whole-curve/raw-parameter claims, allocation accounting and production
-native/WASM/GPU/full-model parity remain open.
+**Stage 4 publication and production acceptance remain open.** The current 2D map
+cannot adopt this entire face contour: it fixes endpoints 38/39 at Z coordinates
+outside their ideal face-root enclosures, and an affine projected chamfer edge
+cannot equal the strictly curved ideal branch. Next bind those minimal-edge
+endpoint consumers and test boundary-target feasibility, then prove a bounded
+curved extension preserving the adopted feature arc. Do not enlarge the neighborhood
+merely to satisfy the old fixed-boundary checker. Whole-cell ownership, remaining
+outside coverage, allocation accounting and native/WASM/GPU/full-model parity remain
+later gates. The 207-cell inventory is still not a validated expanded transaction.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and

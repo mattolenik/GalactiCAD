@@ -1,0 +1,8 @@
+{
+  "filter": "span_complete_c_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::span_complete_c::span_complete_c_exact_meridian_predicate_controls",
+    "sfcc::shared_twisted_proof::exposure_a::span_complete_c::span_complete_c_retained_height_and_outer_boundary_obligation"
+  ],
+  "exitCode": 0
+}

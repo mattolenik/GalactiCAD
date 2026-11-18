@@ -1,0 +1,16 @@
+{
+  "step": "clean-kernel",
+  "command": [
+    "/opt/homebrew/Cellar/rust/1.99.1/bin/cargo",
+    "clean",
+    "--manifest-path",
+    "/tmp/sfcc-face-polyline-a/gcad-wasm/Cargo.toml",
+    "--release",
+    "-p",
+    "gcad-kernel"
+  ],
+  "capSeconds": 30,
+  "elapsedSeconds": 0.04360849998192862,
+  "exitCode": 0,
+  "timedOut": false
+}

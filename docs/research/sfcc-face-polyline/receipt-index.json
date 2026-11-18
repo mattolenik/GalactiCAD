@@ -1,0 +1,860 @@
+[
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/binary.json",
+    "sha256": "7e8fd5eddec936564d372c9dcedf61f3e450ec259e08e355539fd6ad564d3011",
+    "bytes": 226,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/build-execution.json",
+    "sha256": "7f21de8b9e79edad1ed90d716e41bf54a3f82c9f1f2c30b2d1c66f324759ffef",
+    "bytes": 460,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/build.log",
+    "sha256": "3cc8cfa4b1b0d8e0263b583271faccebfee11c75ed2c50f5dbb9d08693b8d6c7",
+    "bytes": 42553,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/clean-kernel-execution.json",
+    "sha256": "fdcff6bc3e04accb0d825555ff1aac63fb3264560432313710404d338f3c2676",
+    "bytes": 333,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/clean-kernel.log",
+    "sha256": "bdbe7bfca12a63c878340e91a89556f5ecb109e7e350cc19c426f7e0dd9c2df5",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/discovery-0.json",
+    "sha256": "193201386f30f2cc72df24075fcdc444a9d2b48d9432f042cd5a9492d25e80af",
+    "bytes": 215,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/focused-0-execution.json",
+    "sha256": "c3ebad91b7e04a9e48692bba16e84afca523ac012cf46c20ba4c3bede9a237dd",
+    "bytes": 362,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/focused-0.log",
+    "sha256": "b1ab3d84d285fbc01a81d94fb17368f3489ea8d209e0d4285ecf0ea95ca67541",
+    "bytes": 265,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/host-disk.txt",
+    "sha256": "9adfc8dffa9a78526629b5654c5bc396ff4bf28d8cb3cfd677a412757b6ad66e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/host-load.txt",
+    "sha256": "50205e79912b43d906befe8436333d548d3d08ba403b0cb9d602fa262f6c33ae",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/kernel-tests",
+    "sha256": "b8b4a906bd49f9089350ad2bc9ae0e05f323fd58cd980d9c51b45fa34b5d8f6e",
+    "bytes": 11031984,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/manifest.json",
+    "sha256": "59af7793f0e8bc0b5a33231ae3a702d6940a0312ee3c5fa9e4b6c2b8b9488443",
+    "bytes": 37081,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/A-check/polyline-A.json",
+    "sha256": "e76d3e538601d078beb7e583b66515cc3747b3e44754ff4075bc3c906de12d8e",
+    "bytes": 11528,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/binary.json",
+    "sha256": "c03109fed2b0b530ac5e93e2c40a8ab2da6a73e7dda3ecb0e50f8a0dfeb4d8a0",
+    "bytes": 226,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/build-execution.json",
+    "sha256": "4c103cdb1aef0ba8c7a745481fb7a048f84aff20fa6af9062a8256e6e39729c3",
+    "bytes": 459,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/build.log",
+    "sha256": "ee49c3e77c4e0cd7aa89b2aff8886134d93e493e04ee5e230d83d40d3ab498c5",
+    "bytes": 42553,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/clean-kernel-execution.json",
+    "sha256": "734760cd0123eecb20d004b0173c5db4f35331f3cf5e8fc3a340f22be2c51db3",
+    "bytes": 333,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/clean-kernel.log",
+    "sha256": "0960b0a1c32e8fd09878ea852c08c0bd1ab9913f1e133c199173985a89ed42f8",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/discovery-0.json",
+    "sha256": "23acc9ee35aeb1216cfb50a3aa925bb4a05e1f1ef720a2f864b93c227e6cc29a",
+    "bytes": 378,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/focused-0-execution.json",
+    "sha256": "fc72cbc367f267d9214da25ae45fbe49981e373d49c0adb791c6ca6bd0ab14d0",
+    "bytes": 362,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/focused-0.log",
+    "sha256": "2bf68605cbed6ce463b5731e9fc165a3d5b944f8f2c3494f853c95c677aa7ff6",
+    "bytes": 434,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/host-disk.txt",
+    "sha256": "9adfc8dffa9a78526629b5654c5bc396ff4bf28d8cb3cfd677a412757b6ad66e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/host-load.txt",
+    "sha256": "d1991fdaf20a917d0395e3a3d93e0a6708752a531c98a3f165b805df03edc2bb",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/kernel-tests",
+    "sha256": "9eb9cbee366d1a407f8bb9c6d20480632ef2c3976a9c4b3b8543e5c2fd0078ee",
+    "bytes": 10924016,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/manifest.json",
+    "sha256": "7bd710cda3bb2fec12becbeb98694dde1808ec0a025e239a1b8876685f663892",
+    "bytes": 37081,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/B-check/polyline-B.json",
+    "sha256": "eace8220cd99e8ed3c84cebdf67cf01a1fee5021693c7a3deb104dbcd6c2e89d",
+    "bytes": 16581,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/activation-C-association.json",
+    "sha256": "b8e1b683b07a1d718ff7d39b46873b016e7f0958394ddfeabe7dbf9b47e69a47",
+    "bytes": 12511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/activation-C-frontier-local.json",
+    "sha256": "2b6ac309fbcd957e0235d8c344f5ff0d1f7ec128bfd5737ae90b9d67a3bde440",
+    "bytes": 73779,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/activation-C.json",
+    "sha256": "c0b88a18a60011c874c481c47461ecbabd0cad306490a88aeb2e195a1721a389",
+    "bytes": 25232,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/adoption-composition.json",
+    "sha256": "fa570bd54209bf5385af74cddfc1293c979f64e3a53736b705a5f9cb614745b9",
+    "bytes": 260816,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/alias-C-local.json",
+    "sha256": "f20821023bf9ba4912ecec468bbde02bd662288baf05c15b68e724b243d3fbb7",
+    "bytes": 1037475,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/alias-C.json",
+    "sha256": "33e28919e7d21ae4b94394f45a9eeed182d91ac656c8a23942f4831e337c9d7b",
+    "bytes": 1106,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/binary.json",
+    "sha256": "640e1821fef0f12e1bf2607891894f68ca087ddd68fac2747fd369d24fead9b9",
+    "bytes": 227,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/build-execution.json",
+    "sha256": "9168a781b29e5d8488ee5839913c711392dd127cc6bb0380492c5cdaada73318",
+    "bytes": 461,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/build.log",
+    "sha256": "691fbb6f62e817e1cd463eba51ff95b67d2b75e09eb08e15dab1bc749688e122",
+    "bytes": 42659,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/clean-kernel-execution.json",
+    "sha256": "a4fa52bc3b830bbe64df5046788871af6da447305c766b57d760230164e95e80",
+    "bytes": 336,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/clean-kernel.log",
+    "sha256": "60808f5c59941e807bffedb27266572eedd17fc563974aefdd7c1058132a7bc0",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/complete-B.json",
+    "sha256": "8bf8a62c72f46a138f4c066ef7be13ce0c31b030eeffa98f5b54182cbf2a3cc2",
+    "bytes": 7152,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/component-attempt-execution.json",
+    "sha256": "191f145f4db8d21b6b5d6ec446e53838ea9bc028669a92ff5287c73b98e06176",
+    "bytes": 381,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/component-attempt.json",
+    "sha256": "6036ac3cd6bce25dad97e487528657ecff650f0bcae9dba4ba9f2923751d5dac",
+    "bytes": 5051397,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/component-attempt.log",
+    "sha256": "e58e42172d0e063643f04803ba312f4a60e5c05f213e4a3789965acbcd046339",
+    "bytes": 211,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-0.json",
+    "sha256": "193201386f30f2cc72df24075fcdc444a9d2b48d9432f042cd5a9492d25e80af",
+    "bytes": 215,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-1.json",
+    "sha256": "23acc9ee35aeb1216cfb50a3aa925bb4a05e1f1ef720a2f864b93c227e6cc29a",
+    "bytes": 378,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-10.json",
+    "sha256": "a806102d0a924879a17208e621103596d497317761f00071d479750e8d3f4196",
+    "bytes": 539,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-11.json",
+    "sha256": "c34f48db04d213bae51119e9d7a5b8fdfc838db3c54862681b63fad5cc1326f0",
+    "bytes": 319,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-12.json",
+    "sha256": "b5f6c109ed6107d56d2d0291c5b14a0ea941fdff646dae9e8897d5f5d4321a41",
+    "bytes": 418,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-13.json",
+    "sha256": "e0e76bcf9bbad77e6fde999749eeee4a7e35ebe482163c305a81b34458f628a5",
+    "bytes": 401,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-14.json",
+    "sha256": "7b93ea1e72cef9ae2889c40778fb75219f3bc525c683c509b51a5808be88a50d",
+    "bytes": 501,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-15.json",
+    "sha256": "080eb92d76a9bfbdd6377b6ea6331118d4281cfe9a9ca695bd4a8efac2d47a2b",
+    "bytes": 321,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-16.json",
+    "sha256": "f5da343aae6ec9b05dcb81ed3d018dd23419dc09166ac5981e3e8446b7ac4827",
+    "bytes": 404,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-17.json",
+    "sha256": "780afc989ba0436c284a332cd18e27ad121a6249670cf346dc95b7fa83e299c6",
+    "bytes": 551,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-18.json",
+    "sha256": "8ad7a21b0d42eb8968faf3e72433a72e77dbb667758ac22afad01bf00c9f49f6",
+    "bytes": 294,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-19.json",
+    "sha256": "d9aab7c46e25440be52f28a435ce4d6bc98b3688d1765fde5c05466ec87a6d41",
+    "bytes": 421,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-2.json",
+    "sha256": "40ad7ec958529dbf9ff7098559c3e2366fc3d94497f448a29daa62824a4128ea",
+    "bytes": 235,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-20.json",
+    "sha256": "64f3303a126413596116ec9a5b29ee330da783eed5a44c64d40c2fbcec2c8567",
+    "bytes": 192,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-21.json",
+    "sha256": "b0c93041f4260719647670d53cf028e11572e39e410991ba781025684ebfa0c0",
+    "bytes": 714,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-22.json",
+    "sha256": "cfcb2984aa46a4bc7644fe6160ba6e19b97a3a5bb591eb64fad9ccc444bae495",
+    "bytes": 1117,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-23.json",
+    "sha256": "0db0616c582985e3734a4de25abbb37c0ed78597ff567c87911e27dc1741968b",
+    "bytes": 505,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-24.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "bytes": 511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-25.json",
+    "sha256": "b0bcf0782395f692e33109067d80de0eba9309e6675c2893d5563fa5ac244bb2",
+    "bytes": 614,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-3.json",
+    "sha256": "cf24e85db428c1e7c6f2090fd52389a3a99e359bca500eb8416e97b6249f495b",
+    "bytes": 1205,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-4.json",
+    "sha256": "4b1405ccc07020cdf330f32623fed5a557c30b23be0fa9c80cd87ca5249fda18",
+    "bytes": 487,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-5.json",
+    "sha256": "a72d4896102069ea0bd77c6eafa25ed1d1776f4519e8bccaef30a928c1af4fec",
+    "bytes": 563,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-6.json",
+    "sha256": "486b47bf3438942579bed7a841632f5a7a444aff7d6834ab65d9ef3a53882725",
+    "bytes": 395,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-7.json",
+    "sha256": "3d4fe872b629f34d845a3c3b9f3b3eb2e0f89d423f1d0bccb8947c251f861627",
+    "bytes": 440,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-8.json",
+    "sha256": "cd94d3c0b0fead0350a638a6adcb88f3a0ba52d8e15b16fd8aa9039258820476",
+    "bytes": 325,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-9.json",
+    "sha256": "5aa28ab9d9cc4fff37631c96c557515102e6b6a75be1fd532106eb16eb83eb82",
+    "bytes": 309,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "bytes": 186,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/face-C.json",
+    "sha256": "f0f08f7bd99118eda55f74c9de1fdabad0a1b8b2ecd5677ce2227d8b8a4524cf",
+    "bytes": 152992,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/feature49-A.json",
+    "sha256": "e1772e6a85478c0df61930d459370c73b1a1896cd2af263e524b7c477e060639",
+    "bytes": 9490,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-0-execution.json",
+    "sha256": "c21a6aaf905fd868d8c72258fbbe0f6d1b310c517aafff031a3f9b32d5e52be7",
+    "bytes": 363,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-0.log",
+    "sha256": "7ca289b7d1569a7a337ff1bfa7e9d9a3f4a5a93dd0873e6aff2bc53238342310",
+    "bytes": 265,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-1-execution.json",
+    "sha256": "6a602733d8ea5a78688d26b1c313302f6c70ed3723eb78b48365fefd67a9e1db",
+    "bytes": 363,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-1.log",
+    "sha256": "2f190cb2604deca6f467d6f10a89aa0c81cf81f1cf3df8611446645ca74dd158",
+    "bytes": 434,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-10-execution.json",
+    "sha256": "19ee9bc10a1bf0b19bc694dfb41e75973e62faae605d8153ffc1ee81e8f5ef2c",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-10.log",
+    "sha256": "163f51d536e8791081397192ab9248def32933122a779ba1a8b7371e187c6b16",
+    "bytes": 614,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-11-execution.json",
+    "sha256": "d52dd006ca32ae8c35ce42c9ba861d627ac5e3027b8d3dec9a76450109bbafb6",
+    "bytes": 361,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-11.log",
+    "sha256": "428b1c411f68b9fec17e9cc89e69913cf9d31ae3bc0b62d0330acbcc6d2fd1dd",
+    "bytes": 379,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-12-execution.json",
+    "sha256": "17f8018ab2bce999e15b63233b676622193958c0580f1dc0383a7afd4c405bbe",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-12.log",
+    "sha256": "59b07822256bb9f0b51c3f18f94f920ff906f00b332065c04b1bb4c667430fcf",
+    "bytes": 486,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-13-execution.json",
+    "sha256": "bf35c7f958c9b948925afacb044872c36183282084bfa4a18f225e8854f613db",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-13.log",
+    "sha256": "29f87db85bc7fe9c1ef043263d1025884358ae68c3806e5f0b360ea95d5273cc",
+    "bytes": 469,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-14-execution.json",
+    "sha256": "4e7708a00c4ddb24ecb5c6626159fa4d52479edd27aedfa16c0e3d560137ca64",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-14.log",
+    "sha256": "f0f99b22b5b1ef1bc865be34d82ebc96ab182488f15cf71ddfe2ac5bc4c04cae",
+    "bytes": 836,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-15-execution.json",
+    "sha256": "a2d63898402176bca89e6357335b0b8179ebdc0dc3450086de5d43a29e82e609",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-15.log",
+    "sha256": "562cdb0b6954bdb8c78804e26a80e680b41e7e0b10cda08710618616cc08a3fb",
+    "bytes": 384,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-16-execution.json",
+    "sha256": "93cb9a0725a2c73673fbc0e12181bc8f186320a3c5898e1e69fb587da317b5f0",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-16.log",
+    "sha256": "0d58d00fd23ba9661629692a5d1b5375717127c2653aa297e529f9d47799133d",
+    "bytes": 469,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-17-execution.json",
+    "sha256": "a4e3b7ddd4e33c93afb814ee82d42539258ea21173f784d85ce87fd3eb63b27f",
+    "bytes": 361,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-17.log",
+    "sha256": "1dfd07095e8bb1d57590a38fe3dfe34aa40f5e9da198ca117eaf0657af896350",
+    "bytes": 622,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-18-execution.json",
+    "sha256": "d9730edf767a5ed4a4d10df88fe6afbd971ce9b251fed4e46c49442ae1e10349",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-18.log",
+    "sha256": "3624ccb8679092243fda1ae553d937aa752363e5e432bdcd011a23ccfe5c58be",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-19-execution.json",
+    "sha256": "3b415ed7336838ef687629167953efb88fe084e96ed16d78d502a908fa08459d",
+    "bytes": 362,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-19.log",
+    "sha256": "b0a21e01306f817641c343de739f487b3d7bbb14cbad6c877e3275772b29bb8f",
+    "bytes": 776,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-2-execution.json",
+    "sha256": "760d607fac983db0a44035cc4e778ca6514121405b6798f38186249f91316784",
+    "bytes": 403,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-2.log",
+    "sha256": "bcfbd7c1bebe2f0a779b9b79a058abf36e56acbbb453f84edf1c743bec6f0a5f",
+    "bytes": 246,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-20-execution.json",
+    "sha256": "1097ed6a6a104700d4102b72334f5968c7cc24047f88c344ceacc4f16298e5bc",
+    "bytes": 383,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-20.log",
+    "sha256": "7b371504efa19de14785d2f7d2cfe83ee06235835c475d85de0bf3f4ce4416d0",
+    "bytes": 504,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-21-execution.json",
+    "sha256": "cc799214b8ac557b902d240565ec29a821f5b573f10e178ac6d08d91b60a9c07",
+    "bytes": 362,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-21.log",
+    "sha256": "bebb249edcd0583bd2033601ff0cd6489e7ba57b944106fa04434fb2c8752d6a",
+    "bytes": 789,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-22-execution.json",
+    "sha256": "b26a43d24fb45e4119b940a58c5729eb274b83ce49c7a67d8a0298ddf7293ada",
+    "bytes": 360,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-22.log",
+    "sha256": "6e4d597a64d523221327288d00fe6daa193b31e48c0091fb6c3946b7acf411cf",
+    "bytes": 1724,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-23-execution.json",
+    "sha256": "0bd7325ecb9c8e95e19db6067b07be0677267a35cba53ef4b3fddda5af594f35",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-23.log",
+    "sha256": "34b13c3dc2d2e977a3d6631006b100688b261713486c92cbb4a65e7e343035d4",
+    "bytes": 877,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-24-execution.json",
+    "sha256": "8f2a8a88637a0b0289831e05f76747f7949fa7bc5a95b96ad00927129376da29",
+    "bytes": 363,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-24.log",
+    "sha256": "481b86c753b89df48203b2dc2fa2e05833f95fe159f18ced9febf7b05a84cdd4",
+    "bytes": 889,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-25-execution.json",
+    "sha256": "aef7a93e133764c1f2ea64f7c2ca181bdd8613f9d393bf2d3a31126503240a6c",
+    "bytes": 358,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-25.log",
+    "sha256": "5676149f4315ecb990f0a1101e538f6f157fba3c6bde47f1d4e9147d48531ff4",
+    "bytes": 698,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-3-execution.json",
+    "sha256": "31dff11f277e7c43d6f67ed26e4a2cec400e1e6302480db6ae8a8d9b8325d415",
+    "bytes": 361,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-3.log",
+    "sha256": "cf8b7b1aa32f2372d6f5391fd8f68e717b18a57d06c64290d2a86e83ffb337eb",
+    "bytes": 8404,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-4-execution.json",
+    "sha256": "9dc905de41cd914f183c6bbaeca37063a7aebabc66e6905ae27dd08c9eb8baa0",
+    "bytes": 361,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-4.log",
+    "sha256": "ca8458272f959d26d5a57ff584c27db55416649c1cf711f7c692d06afd07cbf1",
+    "bytes": 553,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-5-execution.json",
+    "sha256": "0ba19e382e115ab4cafffd7aa8ef06f68891d3eb140be0f555f6db45ec449576",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-5.log",
+    "sha256": "b5a4efe7bb6a032199a00f105657126d47d825dfc4ac4cb1594f52f80f2efeaf",
+    "bytes": 635,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-6-execution.json",
+    "sha256": "72c7df3ceb67a24ea9704963bde936cb61e5080f8bd46510ff9e88a1820ab2de",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-6.log",
+    "sha256": "15da78718e36359ba64f82b2e589b333436d298f54a893ef4636af7be5b6217a",
+    "bytes": 462,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-7-execution.json",
+    "sha256": "db141b438468f789470a7df4b2df699e4d6a9ac7957793f34452ec6051c3bb96",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-7.log",
+    "sha256": "8df2ab83861bcb2c0ef9e0ba41f358d848609ea6b50f2479e1efcbacbd706c4c",
+    "bytes": 508,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-8-execution.json",
+    "sha256": "977462aaa659d4df598e08fcd94b87cea53864e9375b4cfc42432c8c6b3bb97f",
+    "bytes": 358,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-8.log",
+    "sha256": "9d9343adc7ccce53679bfadeb7ba2947ebb00cadd1e99e7b1ff14a2efc77a246",
+    "bytes": 386,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-9-execution.json",
+    "sha256": "91ca2535aa4cd8c78606ab765ed25f4adda1b138e681d27b8085a0e18184a62a",
+    "bytes": 363,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/focused-9.log",
+    "sha256": "ba1364fc19220d04cfac223c6d174f2d60bc57b075f9019d65733d036907265a",
+    "bytes": 365,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/fullfan-A.json",
+    "sha256": "df1fa16136f474b65134f26bcfe25c8b6962f37f7dfd0ed10aed650304396f89",
+    "bytes": 28261,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/fullfan-C.json",
+    "sha256": "f7a43ce656742fb122d697054b50b445ee4f5ae101176d44b44ad733edd992f8",
+    "bytes": 3923,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/fullfan-combined.json",
+    "sha256": "6f4b9513012f006d5889527aef69b1aebe6d1c18f5e39dd69bbddfbda5d5a88d",
+    "bytes": 30033,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/host-disk.txt",
+    "sha256": "9adfc8dffa9a78526629b5654c5bc396ff4bf28d8cb3cfd677a412757b6ad66e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/host-load.txt",
+    "sha256": "0708191da13aa94c6e9736d9730c6bcb51be21ba038120c9d760aa0759bb0c68",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/host-memory.txt",
+    "sha256": "d18d3d326fc84549de1a68b9d3183129cfe5030a2adeffd1d3daf89f06fa0a63",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/kernel-tests",
+    "sha256": "9dfa0c929b59fb4479eb42843db8968d800ebeeb9f52cf59f7ef5430d91d9b3b",
+    "bytes": 11042112,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/library-check-execution.json",
+    "sha256": "68a610754c0ae1677a7537a8a63c53735f273c241ba7d54f77efca1f89fc90ff",
+    "bytes": 442,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/library-check.log",
+    "sha256": "8a2ef2e4431c57b7ef1a340d8865d54cd9fe728921755798b0511ca1a8904940",
+    "bytes": 113620,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/manifest.json",
+    "sha256": "b52b03fd5398a88a1fe50ee0f63963dc1ba92705f51bf41df65200e1996402d8",
+    "bytes": 37241,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/ownership-A.json",
+    "sha256": "6b2a0dbb186b866c21f908bef64827f7f952048296fb537053bac23044109202",
+    "bytes": 80503,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/paired-B.json",
+    "sha256": "b2dc882af9e92e507af1710adab947c82b3e426f5214ae31b5caa47d51288691",
+    "bytes": 12922,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/paired-C.json",
+    "sha256": "57717e40a0d78d82cd3a3bff0388c2db9db598a122b2463283cbbf80c63d24a0",
+    "bytes": 111437,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/paired-combined.json",
+    "sha256": "a0b1a1707c3809c1d64adba7ea5817df6c067148d69bc57559491e35a82897b4",
+    "bytes": 125847,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/polyline-A.json",
+    "sha256": "e76d3e538601d078beb7e583b66515cc3747b3e44754ff4075bc3c906de12d8e",
+    "bytes": 11528,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/polyline-B.json",
+    "sha256": "eace8220cd99e8ed3c84cebdf67cf01a1fee5021693c7a3deb104dbcd6c2e89d",
+    "bytes": 16581,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "bytes": 123379,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/span49-A.json",
+    "sha256": "737607a5f2a4d65f0831a8b391904c95c534918f28d7404ee6004b0633f924e3",
+    "bytes": 57447,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/spancomplete-C.json",
+    "sha256": "5c75e26020dd2be3235d0670fd6db6a337bf8c09e81666a4edc07977a413adb3",
+    "bytes": 1934,
+    "archived": true
+  }
+]

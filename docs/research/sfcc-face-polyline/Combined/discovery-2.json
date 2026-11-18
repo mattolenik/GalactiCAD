@@ -1,0 +1,7 @@
+{
+  "filter": "adoption_composition_c_actual_44_consumed_arc_transport",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::adoption_composition_c::adoption_composition_c_actual_44_consumed_arc_transport"
+  ],
+  "exitCode": 0
+}

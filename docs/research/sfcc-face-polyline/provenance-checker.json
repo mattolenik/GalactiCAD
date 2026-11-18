@@ -1,0 +1,8 @@
+{
+  "scriptPath": "/tmp/sfcc-face-polyline-provenance-c.py",
+  "sha256": "06f9d4dc1a73552f4ad523a46b95e71e6fbb5fb54063ef1c8028dcb0f04318b0",
+  "finalReceipt": "provenance-C.json",
+  "controls": 6,
+  "earlierParentReceipt": "parent-provenance-C.json",
+  "earlierParentReceiptScope": "five-control predecessor; final sourceIdentity check/control added before source freeze; not selected execution"
+}

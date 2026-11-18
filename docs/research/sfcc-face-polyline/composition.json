@@ -1,0 +1,17 @@
+{
+  "base": "docs/research/sfcc-boundary-adoption/Integrated/manifest.json",
+  "overlays": [
+    {
+      "author": "a",
+      "path": "gcad-wasm/kernel/src/sfcc/face_polyline_a.rs",
+      "sha256": "b03cfeba6a0b2aad51712ab25f506395b63bd1311778e06d3f4a7e9fef134d20"
+    },
+    {
+      "author": "b",
+      "path": "gcad-wasm/kernel/src/sfcc/face_polyline_b.rs",
+      "sha256": "1324099b305ab18441ef0d989dee138e75a2888daf2ab0786775f2a1427b51de"
+    }
+  ],
+  "moduleHook": "gcad-wasm/kernel/src/sfcc/feature49_a.rs",
+  "source": "/tmp/sfcc-polyline-combined"
+}

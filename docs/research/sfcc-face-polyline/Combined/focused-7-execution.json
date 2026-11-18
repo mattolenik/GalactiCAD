@@ -1,0 +1,13 @@
+{
+  "step": "focused-7",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round40-face-polyline/Combined/kernel-tests",
+    "span49_a_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 50.720531333994586,
+  "elapsedSeconds": 2.563069334020838,
+  "exitCode": 0,
+  "timedOut": false
+}

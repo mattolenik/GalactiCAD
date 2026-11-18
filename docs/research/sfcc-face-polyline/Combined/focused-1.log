@@ -1,0 +1,7 @@
+
+running 2 tests
+test sfcc::shared_twisted_proof::exposure_a::feature49_a::face_polyline_b::face_polyline_b_discriminators_do_not_infer_nonidentity_from_overlap_or_flatness ... ok
+test sfcc::shared_twisted_proof::exposure_a::feature49_a::face_polyline_b::face_polyline_b_fixed_outer_endpoints_and_affine_chamfer_are_incompatible ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 470 filtered out; finished in 1.27s
+

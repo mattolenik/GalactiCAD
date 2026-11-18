@@ -1,0 +1,32 @@
+{
+  "parentManifest": "docs/research/sfcc-boundary-adoption/Integrated/manifest.json",
+  "parentManifestSha256": "4be74e6c43a91d3ecdf95a46b4681f95cf4d6a072803c07e807805584393b970",
+  "parentInputCount": 229,
+  "selected": "Combined",
+  "restorations": [
+    {
+      "packet": "A-check",
+      "patchSha256": "f4a661c0787edb18722be85dc290536244cfd4b5e138d5ddbf3c5a051951674f",
+      "manifestSha256": "59af7793f0e8bc0b5a33231ae3a702d6940a0312ee3c5fa9e4b6c2b8b9488443",
+      "verifiedInputCount": 230,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-polyline-restore-3iursxdi",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "B-check",
+      "patchSha256": "84375a5ebd6dc3d279666516be6ebdf89504489d2240564528872b7b8f22d5a3",
+      "manifestSha256": "7bd710cda3bb2fec12becbeb98694dde1808ec0a025e239a1b8876685f663892",
+      "verifiedInputCount": 230,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-polyline-restore-28j8tn49",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Combined",
+      "patchSha256": "e23a9820a5c81b4eb5e6b9dc4f81690af46bc4c55312b76fec14794c33d93314",
+      "manifestSha256": "b52b03fd5398a88a1fe50ee0f63963dc1ba92705f51bf41df65200e1996402d8",
+      "verifiedInputCount": 231,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-polyline-restore-brv9yof1",
+      "result": "all input hashes match"
+    }
+  ]
+}

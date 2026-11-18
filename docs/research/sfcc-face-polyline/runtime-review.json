@@ -1,0 +1,16 @@
+{
+  "runtimeReceiptSha256": "6036ac3cd6bce25dad97e487528657ecff650f0bcae9dba4ba9f2923751d5dac",
+  "parentReceiptSha256": "93ce7a09a8b091d2333c270603c40925372b191a142db47ff9392bf87e4b7a93",
+  "entireRuntimeEqualModuloProcessAddressesAndNamedUnorderedMetadata": true,
+  "normalizations": [
+    "rootAddressProcessLocal",
+    "intervals",
+    "curveMemberships",
+    "candidateMembershipsAtSharedPoints"
+  ],
+  "priorAdoptionReceiptByteIdentical": true,
+  "all231InputsMatchAfterRuntime": true,
+  "sixProvenanceControlsPassedInSavedExecution": true,
+  "provenanceInputsHashesMatch": true,
+  "reviewerRanTestsOrGeometry": false
+}

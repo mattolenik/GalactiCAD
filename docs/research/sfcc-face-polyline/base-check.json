@@ -1,0 +1,7 @@
+{
+  "parentManifest": "/Users/matt/gcad/galacticad/docs/research/sfcc-boundary-adoption/Integrated/manifest.json",
+  "parentManifestSha256": "4be74e6c43a91d3ecdf95a46b4681f95cf4d6a072803c07e807805584393b970",
+  "source": "/tmp/sfcc-adoption-integrated",
+  "inputs": 229,
+  "allHashesMatch": true
+}

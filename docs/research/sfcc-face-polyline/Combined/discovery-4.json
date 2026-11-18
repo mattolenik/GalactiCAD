@@ -1,0 +1,9 @@
+{
+  "filter": "incident_a_",
+  "tests": [
+    "sfcc::private_arc_a::stage4_component_b::outside_b::incident_a::incident_a_incomplete_or_changed_output_cannot_supply_fans",
+    "sfcc::private_arc_a::stage4_component_b::outside_b::incident_a::incident_a_record_owned_tiny_plane_offset_keeps_distinct_geometric_claims",
+    "sfcc::private_arc_a::stage4_component_b::outside_b::incident_a::incident_a_wrong_record_ownership_cannot_be_fixed_by_small_coordinate_defect"
+  ],
+  "exitCode": 0
+}

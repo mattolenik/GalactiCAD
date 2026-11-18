@@ -1,0 +1,72 @@
+{
+  "inputs": [
+    {
+      "path": "docs/research/sfcc-boundary-adoption/Integrated/component-attempt.json",
+      "sha256": "93ce7a09a8b091d2333c270603c40925372b191a142db47ff9392bf87e4b7a93"
+    },
+    {
+      "path": "/tmp/sfcc-adoption-integrated/gcad-wasm/kernel/fixtures/face-fans-c.json",
+      "sha256": "f517cd0ed38c10b272e97ab4b8bd6506b49af0629b02cbbf1e2baaa14cadc32f"
+    },
+    {
+      "path": "/tmp/sfcc-adoption-integrated/gcad-wasm/kernel/fixtures/incident-union-c.json",
+      "sha256": "a8c0145afa01a9cc450fbc1960e4836e0ae04c159d2b41fc3d5619edb7220cbb"
+    }
+  ],
+  "result": {
+    "completeOriginalFaceSegmentInventoryBound": true,
+    "originalSegmentCount": 2,
+    "originalPinCount": 1,
+    "globalToJoined": [
+      [
+        4072,
+        38
+      ],
+      [
+        4073,
+        39
+      ],
+      [
+        4074,
+        40
+      ]
+    ],
+    "orderedJoinedPolyline": [
+      39,
+      40,
+      38
+    ],
+    "oppositeEmittedFanDirectionsBound": true,
+    "allThreePointKeysAndBitsBound": true,
+    "wholeIncidentTriangleAndFanGeometryBound": true,
+    "continuousSourceOrCoverageProofSuppliedHere": false,
+    "scope": "discrete original-record and emitted-consumer provenance only; compose with fresh continuous source theorem"
+  },
+  "negativeControls": [
+    {
+      "case": "duplicate_original_face",
+      "refusal": "original_face_count"
+    },
+    {
+      "case": "extra_original_segment",
+      "refusal": "entire_original_segment_inventory"
+    },
+    {
+      "case": "wrong_joined_mapping",
+      "refusal": "joined_mapping"
+    },
+    {
+      "case": "one_bit_point_mutation",
+      "refusal": "point_bits"
+    },
+    {
+      "case": "reversed_emitted_triangle",
+      "refusal": "fan_fixture_binding"
+    },
+    {
+      "case": "wrong_source_identity",
+      "refusal": "fan_source_identity"
+    }
+  ],
+  "newSourceOrGeometryEvaluations": 0
+}

@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::private_arc_a::stage4_component_b::outside_b::incident_a::incident_a_incomplete_or_changed_output_cannot_supply_fans ... ok
+test sfcc::private_arc_a::stage4_component_b::outside_b::incident_a::incident_a_record_owned_tiny_plane_offset_keeps_distinct_geometric_claims ... ok
+test sfcc::private_arc_a::stage4_component_b::outside_b::incident_a::incident_a_wrong_record_ownership_cannot_be_fixed_by_small_coordinate_defect ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 469 filtered out; finished in 0.00s
+

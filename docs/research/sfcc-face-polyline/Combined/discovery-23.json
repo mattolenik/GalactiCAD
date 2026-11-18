@@ -1,0 +1,10 @@
+{
+  "filter": "alias_c_",
+  "tests": [
+    "sfcc::cell_mesh::alias_graph_c_tests::alias_c_actual_first_cell_replays_guard_points_and_all_queries",
+    "sfcc::cell_mesh::alias_graph_c_tests::alias_c_local_sharing_refuses_missing_scope_wrong_mapping_source_and_query_point",
+    "sfcc::cell_mesh::alias_graph_c_tests::alias_c_local_typed_port_and_qualified_arc_repair_actual_graph",
+    "sfcc::cell_mesh::alias_graph_c_tests::alias_c_real_shared_arc_requires_bound_endpoint_identity"
+  ],
+  "exitCode": 0
+}

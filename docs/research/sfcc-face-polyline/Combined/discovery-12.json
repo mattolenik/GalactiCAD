@@ -1,0 +1,9 @@
+{
+  "filter": "paired_c_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::paired_source_c::paired_c_actual_common_source_graph_and_union",
+    "sfcc::shared_twisted_proof::exposure_a::paired_source_c::paired_c_source_binding_rejects_invalid_and_over_cap_inputs",
+    "sfcc::shared_twisted_proof::exposure_a::paired_source_c::paired_c_source_binding_requires_one_opposite_shared_edge"
+  ],
+  "exitCode": 0
+}

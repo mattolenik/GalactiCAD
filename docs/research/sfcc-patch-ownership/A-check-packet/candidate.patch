@@ -1,0 +1,363 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/ownership-first-fan-a.json
+@@ -0,0 +1,170 @@
++{
++  "parentReceiptSha256": "c6d12b6a99c6cfd914e936a66f009f73f3eded377697872f1e9a2ba1b9155da3",
++  "fingerprint": "10977506807348230851",
++  "cell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "options": {
++    "chordTolHex": "3f947ae147ae147b",
++    "interiorMode": "Project",
++    "maxPolylinePoints": 16,
++    "projectMaxIters": 8,
++    "qualityTriangulation": false,
++    "surfaceTolHex": "3f847ae147ae147b"
++  },
++  "fan": {
++    "fanReturned": true,
++    "newPoints": {
++      "complete": true,
++      "points": [
++        {
++          "id": 653,
++          "key": null,
++          "normalHex": [
++            "bfebb4d459bcb267",
++            "0000000000000000",
++            "3fe002db8ccaf738"
++          ],
++          "positionHex": [
++            "c022b3a8efc5c539",
++            "c00320adfa1a17bb",
++            "40159d7531453426"
++          ]
++        }
++      ]
++    },
++    "polygon": [
++      40,
++      38,
++      41,
++      464,
++      465,
++      647
++    ],
++    "stratum": 15,
++    "triangleStart": 0,
++    "triangles": [
++      653,
++      40,
++      38,
++      653,
++      38,
++      41,
++      653,
++      41,
++      464,
++      653,
++      464,
++      465,
++      653,
++      465,
++      647,
++      653,
++      647,
++      40
++    ]
++  },
++  "points": [
++    {
++      "id": 38,
++      "key": "Num(27720370)",
++      "normalHex": [
++        "bfeba8725311684e",
++        "8000000000000000",
++        "3fe01836105e141e"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2cd8",
++        "c001fdf908cff430",
++        "4015ba497f07cc2c"
++      ]
++    },
++    {
++      "id": 40,
++      "key": "Str(\"F0:3464532:49:32.757331135496\")",
++      "normalHex": [
++        "bfead3ce8a5c94d3",
++        "bfcf224954b17dbb",
++        "3fdf38ef56b3fef2"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2e2a",
++        "c003efb1a33e9e36",
++        "4015ba477b02d6bd"
++      ]
++    },
++    {
++      "id": 41,
++      "key": "Num(27191976)",
++      "normalHex": [
++        "bfebbb035022d7f1",
++        "8000000000000000",
++        "3fdff04717553bec"
++      ],
++      "positionHex": [
++        "c022b7d570b98dd6",
++        "c001fdf908cff430",
++        "40158efcca8a1862"
++      ]
++    },
++    {
++      "id": 464,
++      "key": "Num(27189920)",
++      "normalHex": [
++        "bfebbb035022d7f1",
++        "8000000000000000",
++        "3fdff04717553bec"
++      ],
++      "positionHex": [
++        "c022b7d570b98dd6",
++        "c002f92c3c032764",
++        "40158efcca8a1862"
++      ]
++    },
++    {
++      "id": 465,
++      "key": "Str(\"F2:3398483:20:0.001004350170\")",
++      "normalHex": [
++        "bfe996229cba80ed",
++        "bfe183978fa83744",
++        "3fcfa55a6db0a745"
++      ],
++      "positionHex": [
++        "c022b7d56f596cb3",
++        "c003ef92487c422f",
++        "40158efcca8a1862"
++      ]
++    },
++    {
++      "id": 647,
++      "key": "Str(\"corner:13\")",
++      "normalHex": [
++        "bfe65f7cd6701a29",
++        "bfe5b37839d0d0c8",
++        "3fccfc84df3e36e3"
++      ],
++      "positionHex": [
++        "c022b7c9d907b15a",
++        "c003efb1a33e9e36",
++        "40158f2508500325"
++      ]
++    },
++    {
++      "id": 653,
++      "key": "Unkeyed",
++      "normalHex": [
++        "bfebb4d459bcb267",
++        "0000000000000000",
++        "3fe002db8ccaf738"
++      ],
++      "positionHex": [
++        "c022b3a8efc5c539",
++        "c00320adfa1a17bb",
++        "40159d7531453426"
++      ]
++    }
++  ]
++}
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -1599,7 +1599,16 @@
+ 
+ /// Fan a disk from an interior vertex projected onto the side's smooth carrier.
+ /// Port of `fanFromStratumVertex`.
+-fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
++fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(boundary:&[usize],stratum:&Stratum,cell_box:&[f64;6],tree:&T,points:&mut PointTable,opts:&CellMeshOptions,out_tris:&mut Vec<usize>)->bool {
++    let start=out_tris.len();
++    let returned=fan_from_stratum_vertex_impl(boundary,stratum,cell_box,tree,points,opts,out_tris);
++    #[cfg(all(test,feature="serde"))]
++    ownership_a::record(boundary,stratum,cell_box,points,opts,&out_tris[start..],returned);
++    #[cfg(not(all(test,feature="serde")))] let _=start;
++    returned
++}
++
++fn fan_from_stratum_vertex_impl<T: SdfQuery + ?Sized>(
+     boundary: &[usize],
+     stratum: &Stratum,
+     cell_box: &[f64; 6],
+@@ -2302,3 +2311,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="component_consumers_b.rs"]
+ pub(crate) mod component_consumers_b;
++
++#[cfg(all(test,feature="serde"))]
++#[path="ownership_a.rs"]
++pub(crate) mod ownership_a;
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -435,3 +435,7 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "activation_event_c.rs"]
+ pub(crate) mod activation_event_c;
++
++#[cfg(all(test,feature="serde"))]
++#[path="ownership_source_a.rs"]
++pub(crate) mod ownership_source_a;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/ownership_a.rs
+@@ -0,0 +1,86 @@
++//! Bounded observations of selected fan hypotheses; never assigns patch authority.
++use super::*;
++use serde_json::{json,Value};
++use std::{cell::RefCell,collections::BTreeMap};
++#[derive(Default)]
++struct Inventory {active:bool,fans:usize,triangles:usize,rows:BTreeMap<(usize,bool,bool),[usize;3]>,first:Option<Value>,overflow:bool}
++thread_local!{static INVENTORY:RefCell<Inventory>=RefCell::new(Inventory::default());}
++pub(crate) fn reset(){INVENTORY.with(|p|*p.borrow_mut()=Inventory{active:true,..Inventory::default()});}
++pub(crate) fn record(boundary:&[usize],s:&Stratum,box_:&[f64;6],points:&PointTable,opts:&CellMeshOptions,tris:&[usize],returned:bool){
++    if !crate::sfcc::private_arc_a::secondary_component_a::enabled() || !crate::sfcc::private_arc_a::generated_queries_active(){return;}
++    INVENTORY.with(|p|{
++        let mut p=p.borrow_mut();if !p.active{return;}p.fans+=1;p.triangles+=tris.len()/3;
++        if p.fans>4096 || p.triangles>4096 || p.rows.len()>=128 {p.overflow=true;return;}
++        let support=crate::sfcc::surface_patch::supports_local_edits(s);
++        let row=p.rows.entry((s.id,opts.quality_triangulation,support)).or_default();row[0]+=1;row[1]+=tris.len()/3;row[2]+=usize::from(returned);
++        if p.first.is_none(){
++            if boundary.len()>64||tris.len()>3*128 {p.overflow=true;return;}
++            let ids:std::collections::BTreeSet<_>=boundary.iter().chain(tris).copied().collect();
++            p.first=Some(json!({"hypothesisStratum":s.id,"carrierKind":format!("{:?}",s.kind),"sourceIdentity":s.graph_capture_identity_b(),
++                "qualityTriangulation":opts.quality_triangulation,"supportedLocalCarrier":support,
++                "diskPathEnabled":opts.quality_triangulation&&support,"boundary":boundary,"triangles":tris,"returned":returned,
++                "cellBoxBits":box_.map(f64::to_bits),"surfaceTolerance":opts.surface_tol,"chordTolerance":opts.curve_chord_tol,
++                "points":ids.into_iter().map(|id|json!({"id":id,"positionBits":q::pos(points,id).map(f64::to_bits)})).collect::<Vec<_>>(),
++                "assignedOwners":tris.chunks_exact(3).map(|t|points.patch([t[0],t[1],t[2]])).collect::<Vec<_>>(),
++                "continuousSourceOwnershipProved":false}));
++        }
++    });
++}
++pub(crate) fn take_report()->Value{INVENTORY.with(|p|{let p=std::mem::take(&mut *p.borrow_mut());json!({"scope":"fan entry/output hypotheses and option gates only; zero additional field or curve queries","fans":p.fans,"triangles":p.triangles,"complete":!p.overflow,"overflow":p.overflow,
++    "rows":p.rows.into_iter().map(|((id,quality,support),counts)|json!({"stratum":id,"qualityTriangulation":quality,"supportedLocalCarrier":support,"counts":counts})).collect::<Vec<_>>(),"first":p.first,"patchLabelsChanged":false})})}
++
++#[test]
++fn ownership_a_inventory_is_bounded_and_inactive_without_request(){reset();assert_eq!(take_report()["fans"],0);INVENTORY.with(|p|{let mut p=p.borrow_mut();p.overflow=true;});assert_eq!(take_report()["complete"],false);assert_eq!(take_report()["fans"],0);}
++
++#[test]
++fn ownership_a_first_actual_fan_source_regions_and_projection_witnesses(){
++    use crate::sfcc::{pipeline::{build_pipeline_context,PipelineTuning,SfccWorldCube},shared_twisted_proof::exposure_a::ownership_source_a};
++    let _numerics=crate::sfcc::validation::NumericalGuard::new();
++    let input:Value=serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved:Value=serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let root=crate::scene_bridge::build_csg_tree_from_json(input["sceneJson"].as_str().unwrap()).unwrap();
++    let cube=SfccWorldCube{min_x:input["cube"]["min"][0].as_f64().unwrap(),min_y:input["cube"]["min"][1].as_f64().unwrap(),min_z:input["cube"]["min"][2].as_f64().unwrap(),size:input["cube"]["max"][0].as_f64().unwrap()-input["cube"]["min"][0].as_f64().unwrap()};
++    let f=build_pipeline_context(&root,&cube,&PipelineTuning::default()).features;
++    assert_eq!(f.fingerprint().to_string(),saved["fingerprint"].as_str().unwrap());
++    assert_eq!(saved["options"]["qualityTriangulation"],false);
++    let sid=saved["fan"]["stratum"].as_u64().unwrap() as usize;
++    assert!(crate::sfcc::surface_patch::supports_local_edits(&f.strata[sid]));
++    let points:BTreeMap<usize,[f64;3]>=saved["points"].as_array().unwrap().iter().map(|p|{
++        let xyz=std::array::from_fn(|k|f64::from_bits(u64::from_str_radix(p["positionHex"][k].as_str().unwrap(),16).unwrap()));(p["id"].as_u64().unwrap() as usize,xyz)
++    }).collect();
++    let triangles:Vec<usize>=serde_json::from_value(saved["fan"]["triangles"].clone()).unwrap();
++    assert_eq!(triangles.len(),18);
++    let mut regions=Vec::new();
++    let weights=[[1.,0.,0.],[0.,1.,0.],[0.,0.,1.],[0.5,0.5,0.],[0.,0.5,0.5],[0.5,0.,0.5],[0.25,0.25,0.5]];
++    for (ti,t) in triangles.chunks_exact(3).enumerate(){let p=[points[&t[0]],points[&t[1]],points[&t[2]]];
++        for (wi,w) in weights.iter().enumerate(){
++            use crate::sdf::enclosure::Interval as I;
++            let yz_interval:[I;2]=std::array::from_fn(|k|{let mut sum=I::point(0.);for i in 0..3{sum=sum.add(I::point(p[i][k+1]).mul(w[i]).unwrap()).unwrap();}sum});
++            let yz:[f64;2]=yz_interval.map(|v|v.lo*0.5+v.hi*0.5);
++            let bound=ownership_source_a::bound(&f,sid,yz_interval.map(|v|v.lo),yz_interval.map(|v|v.hi));
++            regions.push(json!({"triangle":ti,"weights":w,"probeKind":"enclosure of exact dyadic barycentric YZ point on chosen cylinder graph","certificate":bound}));
++            if wi==6 {
++                let lo=yz.map(|x|(x-1e-6).next_down());let hi=yz.map(|x|(x+1e-6).next_up());
++                let chart=p.map(|v|[v[1],v[2]]);
++                let inside=[[lo[0],lo[1]],[lo[0],hi[1]],[hi[0],lo[1]],[hi[0],hi[1]]].iter().all(|&corner|(0..3).all(|i|{
++                    let a=chart[i];let b=chart[(i+1)%3];let sign=crate::sfcc::predicates::orient2d(a,b,chart[(i+2)%3]);
++                    sign!=0 && crate::sfcc::predicates::orient2d(a,b,corner)==sign
++                }));
++                regions.push(json!({"triangle":ti,"probeKind":"open graph rectangle strictly inside triangle chart when flagged","insideTriangleChart":inside,"certificate":if inside{ownership_source_a::bound(&f,sid,lo,hi)}else{None}}));
++            }
++        }
++    }
++    let exposed=regions.iter().filter(|r|r["certificate"]["fullSourceEqualsCylinder"]==true).count();
++    let counter=regions.iter().filter(|r|r["certificate"]["projectionOwnershipDisproved"]==true).count();
++    assert!(exposed>0,"no positive composed-source region in first actual cylinder fan");
++    assert!(regions.iter().any(|r|r["insideTriangleChart"]==true && r["certificate"]["fullSourceEqualsCylinder"]==true),"no open exposed subregion inside actual triangle chart");
++    assert!(regions.len()<=64);
++    let first=*points.values().next().unwrap();
++    assert!(ownership_source_a::bound(&f,sid,[f64::NAN,first[2]],[first[1],first[2]]).is_none());
++    assert!(ownership_source_a::bound(&f,sid,[first[1],100.],[first[1],101.]).is_none());
++    let report=json!({"scope":"first actual six-triangle fan; bounded composed-source graph regions only","parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":f.fingerprint().to_string(),"stratum":sid,"qualityTriangulation":false,"supportedLocalCarrier":true,
++        "positiveSourceRegions":exposed,"projectionCounterexamples":counter,"regionCount":regions.len(),"regions":regions,
++        "wholeFanCoverageProved":false,"approximateMeshInvalidityProved":false,"patchLabelsAssigned":false,
++        "limitation":"a positive graph witness disproves that projection's ownership, not every possible nearby curved-boundary reconstruction"});
++    if let Ok(path)=std::env::var("SFCC_OWNERSHIP_A_RECEIPT"){std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();}
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/ownership_source_a.rs
+@@ -0,0 +1,60 @@
++//! Source-bound cylinder graph restrictions; not a whole-fan ownership certificate.
++use super::*;
++use serde_json::{json,Value};
++
++pub(crate) fn bound(f:&SfccFeatureSet,cylinder_id:usize,yz_lo:[f64;2],yz_hi:[f64;2])->Option<Value>{
++    if yz_lo.iter().chain(&yz_hi).any(|x|!x.is_finite()) || (0..2).any(|k|yz_lo[k]>yz_hi[k]) {return None;}
++    let (source,_,_)=alias_face_b::select(f)?;
++    let cyl=f.strata.get(cylinder_id)?;
++    let (center,axis,radius)=cyl.certificate_cylinder()?;
++    if axis!=[0.,1.,0.] || !radius.is_finite() || radius<=0. || cyl.sign!=1. {return None;}
++    let root=cyl.exposure_root_a()?;
++    let (cap_cut,sphere,outer_r)=pair(root,Some((BlendKind::Smax,SminMode::Round))).ok()?;
++    let (groove_cut,cap,_)=pair(cap_cut,None).ok()?;
++    let (hard,groove,chamfer_r)=pair(groove_cut,Some((BlendKind::Smax,SminMode::Chamfer))).ok()?;
++    let (inner,cylinder,_)=pair(hard,None).ok()?;
++    let (other,native,inner_r)=pair(inner,Some((BlendKind::Smin,SminMode::Round))).ok()?;
++    let cylinder=leaf(cylinder,1.).ok()?;let native=leaf(native,1.).ok()?;let other=leaf(other,1.).ok()?;
++    let groove=leaf(groove,-1.).ok()?;let cap=leaf(cap,-1.).ok()?;let sphere=leaf(sphere,1.).ok()?;
++    let (p,rn,ro,rr)=f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++    let registered=cyl.correlated_cylinder_source_c(&f.strata[source[0]])?;
++    if !std::ptr::eq(cylinder,registered)||!std::ptr::eq(native,rn)||!std::ptr::eq(other,ro)||rr!=inner_r||cylinder.pos!=center
++        || [native,other,groove,sphere].iter().any(|l|l.pos[0]!=center[0]||l.pos[2]!=center[2]) {return None;}
++    let Shape::Cylinder{r,h}=cylinder.shape else{return None;};if r!=radius{return None;}
++    let y=interval(yz_lo[0],yz_hi[0])?;let z=interval(yz_lo[1],yz_hi[1])?;
++    let radial_z=z.sub(I::point(center[2]))?;
++    let radical=square(I::point(radius))?.sub(square(radial_z)?)?;if radical.lo<=0.{return None;}
++    let radial_x=sqrt(radical)?.mul(-1.)?;let x=radial_x.add(I::point(center[0]))?;
++    let theta=div(y.sub(I::point(p.pos_y))?.add(I::point(p.h))?,2.*p.h)?.mul(p.twist_rad)?;
++    let (sn,cs)=sin_cos(theta)?;
++    let u=mul(radial_x,cs)?.add(mul(radial_z,sn)?)?;
++    let v=mul(radial_z,cs)?.sub(mul(radial_x,sn)?)?;
++    let native_level=u.sub(I::point(p.v0x))?.mul(p.nx2)?.add(v.sub(I::point(p.v0z))?.mul(p.nz2)?)?;
++    let profile=upper_source_a::finite_profile_level(p,native,[u,v],native_level)?;
++    let native_cap=upper_source_a::cap_margin(y,p.pos_y,p.h,native_level)?;
++    let cylinder_cap=upper_source_a::cap_margin(y,center[1],h,I::point(0.))?;
++    let competitor=activation_a::meridian_bound(other,I::point(radius),y)?;
++    let groove_distance=activation_a::meridian_bound(groove,I::point(radius),y)?;
++    if competitor.distance.lo<=inner_r || native_level.hi>=inner_r{return None;}
++    let Shape::Extrude{h:cap_h,..}=cap.shape else{return None;};
++    let cap_margin=I::point(cap.pos[1]).sub(I::point(cap_h))?.sub(y)?.lo;
++    let Shape::Sphere{r:sphere_r}=sphere.shape else{return None;};
++    let sphere_distance=sqrt(square(I::point(radius))?.add(square(y.sub(I::point(sphere.pos[1]))?)?)?;
++    let outer_margin=I::point(sphere_r).sub(I::point(outer_r))?.sub(sphere_distance)?.lo;
++    if cap_margin<=0.||outer_margin<=0.{return None;}
++    let groove_margin=groove_distance.distance.sub(I::point(chamfer_r))?;
++    let exposed=native_level.hi<=0. && groove_margin.lo>=0.;
++    // On this cylinder graph C=0 and I=E. Monotone max ancestors preserve this positive lower witness.
++    let bevel=I::point(chamfer_r).sub(groove_distance.distance)?.mul(std::f64::consts::FRAC_1_SQRT_2)?;
++    let positive_lower=native_level.lo.max(bevel.lo).max(0.);
++    Some(json!({"scope":"entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
++        "source":[source[0],source[1],cylinder_id],"sourceFingerprint":f.fingerprint().to_string(),
++        "yzBox":[yz_lo,yz_hi],"worldImage":[[x.lo,y.lo,z.lo],[x.hi,y.hi,z.hi]],
++        "nativeLevel":[native_level.lo,native_level.hi],"otherDistance":[competitor.distance.lo,competitor.distance.hi],
++        "grooveDistance":[groove_distance.distance.lo,groove_distance.distance.hi],
++        "grooveMargin":[groove_margin.lo,groove_margin.hi],"finiteProfileMargin":profile,
++        "nativeCapMargin":native_cap,"cylinderCapMargin":cylinder_cap,"capCutMargin":cap_margin,"outerRoundMargin":outer_margin,
++        "nativeIsInnerField":true,"fullSourceEqualsCylinder":exposed,"composedSourcePositiveLower":positive_lower,
++        "projectionOwnershipDisproved":positive_lower>0.,"cylinderGraphDerivativeLower":(-radial_x.hi)/radius,
++        "wholeFanOwnership":false}))
++}

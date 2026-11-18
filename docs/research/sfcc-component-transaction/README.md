@@ -150,6 +150,13 @@ only for the supported local-edit path after its disk check. The fallback fan do
 not receive it. Simply copying graph stratum IDs onto those triangles would turn
 an unproved hypothesis into metadata; it would not establish ownership.
 
+The [round34 follow-up](../sfcc-patch-ownership/README.md) adds a crucial qualification:
+this frozen fixture has `qualityTriangulation=false`, which bypasses that path even
+for supported carriers. The first cylinder fan is supported; 823 of the 1,775
+triangles use that supported carrier. Missing labels alone do not establish that
+all fans have unsupported geometry. The follow-up keeps the option unchanged and
+checks actual composed-source regions instead.
+
 The existing receipt's conservative publication reasons predate the new checker
 and still bundle vertex links/frontier with unchecked metadata. Read the separate
 results precisely: indexed component vertex links and original frontier bindings

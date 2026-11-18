@@ -1,0 +1,13 @@
+{
+  "step": "focused-12",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round34-ownership/Clamp/kernel-tests",
+    "lower_runtime_a_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 29.113238958001602,
+  "elapsedSeconds": 7.929264709004201,
+  "exitCode": 0,
+  "timedOut": false
+}

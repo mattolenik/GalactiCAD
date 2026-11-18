@@ -1,0 +1,11 @@
+
+running 6 tests
+test sfcc::cell_mesh::reliability_tests::graph_b_actual_degree_guard_is_observational ... ok
+test sfcc::private_arc_a::graph_b::tests::graph_b_abandonment_is_explicit_and_scope_can_be_cleared ... ok
+test sfcc::private_arc_a::graph_b::tests::graph_b_byte_cap_and_hex_are_exact ... ok
+test sfcc::private_arc_a::graph_b::tests::graph_b_inactive_capture_does_not_create_diagnostic_state ... ok
+test sfcc::private_arc_a::graph_b::tests::graph_b_new_cell_without_attempt_discards_previous_failure ... ok
+test sfcc::private_arc_a::graph_b::tests::graph_b_query_indices_are_read_only ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 414 filtered out; finished in 0.00s
+

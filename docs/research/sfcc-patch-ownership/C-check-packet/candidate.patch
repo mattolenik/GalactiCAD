@@ -1,0 +1,477 @@
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -580,3 +580,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="secondary_component_validation_c.rs"]
+ pub(crate) mod secondary_component_validation_c;
++
++#[cfg(all(test,feature="serde"))]
++#[path="retained_metadata_c.rs"]
++pub(crate) mod retained_metadata_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/retained_metadata_c.rs
+@@ -0,0 +1,447 @@
++//! Exact transport of supplied pregraph metadata; no source-patch authority.
++use crate::sfcc::{
++    face_contour::{FacePin, FaceRecord},
++    point_table::{CurveInterval, PointKey, PointTable},
++};
++use std::collections::{BTreeMap, BTreeSet, HashMap};
++type FaceId = (usize, i64, i64);
++type Result<T> = std::result::Result<T, &'static str>;
++
++pub(crate) struct Inputs<'a> {
++    pub live: &'a PointTable,
++    pub private: &'a PointTable,
++    pub faces: &'a [HashMap<i64, FaceRecord>; 3],
++    pub staged: &'a [HashMap<i64, FaceRecord>; 3],
++    pub required: &'a BTreeSet<FaceId>,
++    pub needed: &'a BTreeSet<usize>,
++    pub equivalences: &'a BTreeMap<usize, usize>,
++    pub map: &'a BTreeMap<usize, usize>,
++    pub primary: [usize; 2],
++    pub pin_parameters: &'a BTreeMap<usize, [f64; 2]>,
++}
++#[derive(Debug, serde::Serialize)]
++pub(crate) struct Receipt {
++    original_points: usize,
++    canonical_points: usize,
++    merged_point_keys: usize,
++    unkeyed_points: usize,
++    faces: usize,
++    original_pins: usize,
++    primary_alias_pins: usize,
++    removed_zero_segments: usize,
++    retained_protected_edges: usize,
++    retained_curve_memberships: usize,
++    exact_payload_keys_and_pin_transport: bool,
++    protection_interval_bits_preserved: bool,
++    new_query_attempts: usize,
++    checker_dynamic_allocations: usize,
++    scope: &'static str,
++}
++impl Inputs<'_> {
++    fn canonical(&self, id: usize) -> usize {
++        self.equivalences.get(&id).copied().unwrap_or(id)
++    }
++    fn mapped(&self, id: usize) -> Result<usize> {
++        if id >= self.live.count() || !self.needed.contains(&id) {
++            return Err("metadata_original_point_scope");
++        }
++        let canonical = self.canonical(id);
++        if canonical >= self.live.count()
++            || !self.needed.contains(&canonical)
++            || self.canonical(canonical) != canonical
++        {
++            return Err("metadata_canonical_point_scope");
++        }
++        self.map
++            .get(&canonical)
++            .copied()
++            .filter(|&p| p < self.private.count())
++            .ok_or("metadata_private_point_binding")
++    }
++    fn pin(&self, pin: &FacePin) -> Result<FacePin> {
++        if !pin.t.is_finite() {
++            return Err("metadata_nonfinite_pin_parameter");
++        }
++        let mut expected = *pin;
++        expected.point_id = self.mapped(pin.point_id)?;
++        if expected.curve_id == self.primary[1] {
++            let pair = self
++                .pin_parameters
++                .get(&self.canonical(pin.point_id))
++                .ok_or("metadata_primary_pin_transport");
++            let pair = pair?;
++            if !pair.iter().all(|t| t.is_finite()) || pin.t.to_bits() != pair[1].to_bits() {
++                return Err("metadata_primary_pin_parameter");
++            }
++            expected.curve_id = self.primary[0];
++            expected.t = pair[0];
++        }
++        Ok(expected)
++    }
++}
++fn payload(points: &PointTable, id: usize) -> [u64; 6] {
++    [
++        points.x(id),
++        points.y(id),
++        points.z(id),
++        points.nx(id),
++        points.ny(id),
++        points.nz(id),
++    ]
++    .map(f64::to_bits)
++}
++fn same_pin(a: &FacePin, b: &FacePin) -> bool {
++    a.point_id == b.point_id && a.curve_id == b.curve_id && a.t.to_bits() == b.t.to_bits()
++}
++fn same_interval(a: &CurveInterval, b: &CurveInterval) -> bool {
++    a.curve_id == b.curve_id
++        && a.start.to_bits() == b.start.to_bits()
++        && a.end.to_bits() == b.end.to_bits()
++}
++
++/// Uses borrowed caller collections and scalar iteration only. JSON serialization is outside this checker.
++pub(crate) fn audit(input: Inputs<'_>) -> Result<Receipt> {
++    if input.primary[0] == input.primary[1]
++        || input.needed.len() > 4096
++        || input.map.len() > 4096
++        || input.private.count() > 4096
++        || input.required.len() > 1536
++    {
++        return Err("metadata_scope_cap");
++    }
++    let mut r = Receipt { original_points: input.needed.len(), canonical_points: input.map.len(),
++        merged_point_keys: 0, unkeyed_points: 0, faces: input.required.len(), original_pins: 0,
++        primary_alias_pins: 0, removed_zero_segments: 0, retained_protected_edges: 0,
++        retained_curve_memberships: 0, exact_payload_keys_and_pin_transport: true,
++        protection_interval_bits_preserved: true, new_query_attempts: 0, checker_dynamic_allocations: 0,
++        scope: "supplied pregraph point/face/protection/interval records under already-authorized equivalences; not emitted-edge realization, unsupplied metadata, patch ownership, or whole-program memory" };
++    for (&canonical, &local) in input.map {
++        if input.canonical(canonical) != canonical
++            || !input.needed.contains(&canonical)
++            || local >= input.private.count()
++            || input
++                .map
++                .iter()
++                .any(|(&other, &p)| other != canonical && p == local)
++        {
++            return Err("metadata_noninjective_canonical_map");
++        }
++    }
++    for &old in input.needed {
++        let local = input.mapped(old)?;
++        let canonical = input.canonical(old);
++        if payload(input.live, canonical) != payload(input.private, local)
++            || input.live.key_at(canonical) != input.private.key_at(local)
++        {
++            return Err("metadata_canonical_payload_or_key_changed");
++        }
++        r.merged_point_keys += usize::from(old != canonical);
++        r.unkeyed_points += usize::from(matches!(input.live.key_at(old), PointKey::Unkeyed));
++    }
++    for &(axis, key, len) in input.required {
++        if axis >= 3 {
++            return Err("metadata_face_axis");
++        }
++        let old = input.faces[axis]
++            .get(&key)
++            .ok_or("metadata_original_face_missing")?;
++        let new = input.staged[axis]
++            .get(&key)
++            .ok_or("metadata_staged_face_missing")?;
++        if old.axis != axis
++            || old.key != key
++            || old.len != len
++            || new.axis != axis
++            || new.key != key
++            || new.len != len
++            || old.interior_cycle != new.interior_cycle
++            || new.consumed_fwd.len() != new.segments.len()
++            || new.consumed_rev.len() != new.segments.len()
++        {
++            return Err("metadata_face_identity_or_shape");
++        }
++        let mut position = 0;
++        for segment in &old.segments {
++            let (a, b) = (input.mapped(segment.a)?, input.mapped(segment.b)?);
++            if a == b {
++                r.removed_zero_segments += 1;
++                continue;
++            }
++            if !new
++                .segments
++                .get(position)
++                .is_some_and(|s| s.a == a && s.b == b)
++            {
++                return Err("metadata_directed_segment_transport");
++            }
++            position += 1;
++        }
++        if position != new.segments.len() {
++            return Err("metadata_invented_segment");
++        }
++        r.original_pins = r
++            .original_pins
++            .checked_add(old.pins.len())
++            .ok_or("metadata_pin_cap")?;
++        if r.original_pins > 1024 || new.pins.len() > 1024 {
++            return Err("metadata_pin_cap");
++        }
++        for pin in &old.pins {
++            let expected = input.pin(pin)?;
++            r.primary_alias_pins += usize::from(pin.curve_id == input.primary[1]);
++            if !new.pins.iter().any(|p| same_pin(p, &expected)) {
++                return Err("metadata_missing_or_changed_pin");
++            }
++        }
++        for (i, pin) in new.pins.iter().enumerate() {
++            if new.pins[..i].iter().any(|p| same_pin(p, pin)) {
++                return Err("metadata_duplicate_pin");
++            }
++            let mut found = false;
++            for original in &old.pins {
++                if same_pin(pin, &input.pin(original)?) {
++                    found = true;
++                    break;
++                }
++            }
++            if !found {
++                return Err("metadata_invented_pin");
++            }
++        }
++    }
++    for (a, b) in input.live.protected_edges() {
++        if !input.needed.contains(&a) && !input.needed.contains(&b) {
++            continue;
++        }
++        r.retained_protected_edges += 1;
++        if r.retained_protected_edges > 2048 {
++            return Err("metadata_protected_edge_cap");
++        }
++        let (a, b) = (input.mapped(a)?, input.mapped(b)?);
++        if a == b || !input.private.edge_is_protected(a, b) {
++            return Err("metadata_protected_edge_lost");
++        }
++    }
++    for ((a, b), intervals) in input.live.identified_edges() {
++        if !input.needed.contains(&a) && !input.needed.contains(&b) {
++            continue;
++        }
++        let (a, b) = (input.mapped(a)?, input.mapped(b)?);
++        if a == b {
++            return Err("metadata_interval_collapsed");
++        }
++        for interval in intervals {
++            r.retained_curve_memberships += 1;
++            if r.retained_curve_memberships > 2048 {
++                return Err("metadata_interval_cap");
++            }
++            if !interval.start.is_finite()
++                || !interval.end.is_finite()
++                || interval.start == interval.end
++            {
++                return Err("metadata_invalid_original_interval");
++            }
++            let expected = if a < b {
++                *interval
++            } else {
++                interval.reversed()
++            };
++            if !input.private.identified_edges().any(|(edge, rows)| {
++                edge == (a.min(b), a.max(b)) && rows.iter().any(|row| same_interval(row, &expected))
++            }) {
++                return Err("metadata_oriented_interval_lost");
++            }
++        }
++    }
++    Ok(r)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::sfcc::face_contour::FaceSegment;
++    struct Fixture {
++        live: PointTable,
++        private: PointTable,
++        faces: [HashMap<i64, FaceRecord>; 3],
++        staged: [HashMap<i64, FaceRecord>; 3],
++        required: BTreeSet<FaceId>,
++        needed: BTreeSet<usize>,
++        equivalences: BTreeMap<usize, usize>,
++        map: BTreeMap<usize, usize>,
++        pin_parameters: BTreeMap<usize, [f64; 2]>,
++    }
++    impl Fixture {
++        fn inputs(&self) -> Inputs<'_> {
++            Inputs {
++                live: &self.live,
++                private: &self.private,
++                faces: &self.faces,
++                staged: &self.staged,
++                required: &self.required,
++                needed: &self.needed,
++                equivalences: &self.equivalences,
++                map: &self.map,
++                primary: [20, 39],
++                pin_parameters: &self.pin_parameters,
++            }
++        }
++    }
++    fn fixture() -> Fixture {
++        let mut live = PointTable::new();
++        let mut private = PointTable::new();
++        live.get_or_create(11, || [0., 0., 0., 0., 0., 1.]);
++        live.get_or_create_str("alias", || [0., 0., 0., 0., 0., 1.]);
++        live.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        private.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        private.get_or_create(11, || [0., 0., 0., 0., 0., 1.]);
++        let iv = CurveInterval {
++            curve_id: 7,
++            start: 4.,
++            end: 5.,
++        };
++        live.protect_curve_edge(0, 2, iv);
++        private.protect_curve_edge(1, 0, iv);
++        let record = |segments, pins| FaceRecord {
++            axis: 0,
++            key: 10,
++            len: 1,
++            segments,
++            pins,
++            interior_cycle: false,
++            consumed_fwd: vec![0],
++            consumed_rev: vec![0],
++        };
++        let mut faces = std::array::from_fn(|_| HashMap::new());
++        let mut staged = std::array::from_fn(|_| HashMap::new());
++        faces[0].insert(
++            10,
++            record(
++                vec![FaceSegment { a: 0, b: 1 }, FaceSegment { a: 1, b: 2 }],
++                vec![
++                    FacePin {
++                        point_id: 0,
++                        curve_id: 20,
++                        t: 2.,
++                    },
++                    FacePin {
++                        point_id: 1,
++                        curve_id: 39,
++                        t: 3.,
++                    },
++                ],
++            ),
++        );
++        staged[0].insert(
++            10,
++            record(
++                vec![FaceSegment { a: 1, b: 0 }],
++                vec![FacePin {
++                    point_id: 1,
++                    curve_id: 20,
++                    t: 2.,
++                }],
++            ),
++        );
++        Fixture {
++            live,
++            private,
++            faces,
++            staged,
++            required: BTreeSet::from([(0, 10, 1)]),
++            needed: BTreeSet::from([0, 1, 2]),
++            equivalences: BTreeMap::from([(1, 0)]),
++            map: BTreeMap::from([(0, 1), (2, 0)]),
++            pin_parameters: BTreeMap::from([(0, [2., 3.])]),
++        }
++    }
++    #[test]
++    fn metadata_c_exact_transport_preserves_reversed_membership_and_explicit_alias() {
++        let f = fixture();
++        let r = audit(f.inputs()).unwrap();
++        assert_eq!(
++            (r.original_points, r.canonical_points, r.merged_point_keys),
++            (3, 2, 1)
++        );
++        assert_eq!(
++            (r.retained_protected_edges, r.retained_curve_memberships),
++            (1, 1)
++        );
++        assert_eq!(
++            (r.new_query_attempts, r.checker_dynamic_allocations),
++            (0, 0)
++        );
++    }
++    #[test]
++    fn metadata_c_rejects_changed_normal_key_and_pin_bits() {
++        let mut f = fixture();
++        f.private.relocate(1, [0., 0., 0.], [0., 1., 0.]);
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_canonical_payload_or_key_changed"
++        );
++        let mut f = fixture();
++        let mut wrong = PointTable::new();
++        wrong.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        wrong.get_or_create(12, || [0., 0., 0., 0., 0., 1.]);
++        f.private = wrong;
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_canonical_payload_or_key_changed"
++        );
++        let mut f = fixture();
++        f.staged[0].get_mut(&10).unwrap().pins[0].t = 2_f64.next_up();
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_missing_or_changed_pin"
++        );
++    }
++    #[test]
++    fn metadata_c_rejects_lost_protection_wrong_orientation_and_invented_pin() {
++        let mut f = fixture();
++        let mut fresh = PointTable::new();
++        fresh.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        fresh.get_or_create(11, || [0., 0., 0., 0., 0., 1.]);
++        f.private = fresh;
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_protected_edge_lost"
++        );
++        f.private.protect_curve_edge(
++            0,
++            1,
++            CurveInterval {
++                curve_id: 7,
++                start: 4.,
++                end: 5.,
++            },
++        );
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_oriented_interval_lost"
++        );
++        let mut f = fixture();
++        f.staged[0].get_mut(&10).unwrap().pins.push(FacePin {
++            point_id: 0,
++            curve_id: 99,
++            t: 1.,
++        });
++        assert_eq!(audit(f.inputs()).unwrap_err(), "metadata_invented_pin");
++    }
++    #[test]
++    fn metadata_c_rejects_noninjective_map_and_directed_segment_reversal() {
++        let mut f = fixture();
++        f.map.insert(2, 1);
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_noninjective_canonical_map"
++        );
++        let mut f = fixture();
++        let s = &mut f.staged[0].get_mut(&10).unwrap().segments[0];
++        std::mem::swap(&mut s.a, &mut s.b);
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_directed_segment_transport"
++        );
++    }
++}
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -1051,6 +1051,14 @@
+             final_intervals.len().to_string(),
+         ));
+     }
++    #[cfg(all(test,feature="serde"))]
++    if secondary_validation_plan.is_some() {
++        let metadata=super::private_arc_a::retained_metadata_c::audit(super::private_arc_a::retained_metadata_c::Inputs{
++            live,private:&private,faces,staged:&staged,required:&required,needed:&needed,equivalences:&equivalences,map:&map,
++            primary:[plan.physical,plan.alias],pin_parameters:&pin_parameters,
++        }).map_err(|e|fail(features,ids,e,"supplied original metadata was not transported exactly"))?;
++        super::private_arc_a::secondary_component_a::note("retainedMetadata",serde_json::json!(metadata));
++    }
+     let receipt=PrivateReceipt{fingerprint:plan.fingerprint,charts:plan.originals.clone(),changed_faces:changed.into_iter().collect(),consumers:selected.iter().map(|c|[c.level as i64,c.ix,c.iy,c.iz]).collect(),original_typed_bindings:original_bindings,equivalences:equivalences.into_iter().collect(),intervals:final_intervals,replacement_triangles:triangles.len()/3,replacement_vertices:private.count(),charged_queries:transport.charged_queries(),checked_events:ordered_events.len(),generated_queries:generated.len(),live_access:"immutable PointTable/FaceRecord references; no commit API",publication_status:PublicationReadiness::Blocked{reasons:vec!["matching-construction-stage retained-outside contacts not checked", "complete affected vertex links/frontier and old metadata transport not checked", "continuous source exposure and endpoint continuation not established by finite domain samples"]}};
+     #[cfg(feature = "serde")]
+     if serde_json::to_vec(&receipt).map_or(true, |v| v.len() > 64 * 1024 * 1024) {

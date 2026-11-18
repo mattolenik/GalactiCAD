@@ -1,0 +1,7 @@
+error: no rules expected `.`
+   --> kernel/src/sfcc/outside_b.rs:406:163
+    |
+406 | ...":[points.nx(p),points.ny(p),points.nz(p)].map(f64::to_bits),"key":format!("{:?}",points.key_at(p))})).collect::<Vec<_>>(),
+    |                                              ^ no rules expected this token in macro call
+    |
+    = note: while trying to match end of macro

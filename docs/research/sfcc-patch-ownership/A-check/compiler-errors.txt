@@ -1,0 +1,11 @@
+error: mismatched closing delimiter: `}`
+  --> kernel/src/sfcc/ownership_source_a.rs:42:29
+   |
+ 5 | pub(crate) fn bound(f:&SfccFeatureSet,cylinder_id:usize,yz_lo:[f64;2],yz_hi:[f64;2])->Option<Value>{
+   |                                                                                                    - closing delimiter possibly meant for this
+...
+42 |     let sphere_distance=sqrt(square(I::point(radius))?.add(square(y.sub(I::point(sphere.pos[1]))?)?)?;
+   |                             ^ unclosed delimiter
+...
+60 | }
+   | ^ mismatched closing delimiter

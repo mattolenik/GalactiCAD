@@ -1,0 +1,1397 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/ownership-first-fan-a.json
+@@ -0,0 +1,170 @@
++{
++  "parentReceiptSha256": "c6d12b6a99c6cfd914e936a66f009f73f3eded377697872f1e9a2ba1b9155da3",
++  "fingerprint": "10977506807348230851",
++  "cell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "options": {
++    "chordTolHex": "3f947ae147ae147b",
++    "interiorMode": "Project",
++    "maxPolylinePoints": 16,
++    "projectMaxIters": 8,
++    "qualityTriangulation": false,
++    "surfaceTolHex": "3f847ae147ae147b"
++  },
++  "fan": {
++    "fanReturned": true,
++    "newPoints": {
++      "complete": true,
++      "points": [
++        {
++          "id": 653,
++          "key": null,
++          "normalHex": [
++            "bfebb4d459bcb267",
++            "0000000000000000",
++            "3fe002db8ccaf738"
++          ],
++          "positionHex": [
++            "c022b3a8efc5c539",
++            "c00320adfa1a17bb",
++            "40159d7531453426"
++          ]
++        }
++      ]
++    },
++    "polygon": [
++      40,
++      38,
++      41,
++      464,
++      465,
++      647
++    ],
++    "stratum": 15,
++    "triangleStart": 0,
++    "triangles": [
++      653,
++      40,
++      38,
++      653,
++      38,
++      41,
++      653,
++      41,
++      464,
++      653,
++      464,
++      465,
++      653,
++      465,
++      647,
++      653,
++      647,
++      40
++    ]
++  },
++  "points": [
++    {
++      "id": 38,
++      "key": "Num(27720370)",
++      "normalHex": [
++        "bfeba8725311684e",
++        "8000000000000000",
++        "3fe01836105e141e"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2cd8",
++        "c001fdf908cff430",
++        "4015ba497f07cc2c"
++      ]
++    },
++    {
++      "id": 40,
++      "key": "Str(\"F0:3464532:49:32.757331135496\")",
++      "normalHex": [
++        "bfead3ce8a5c94d3",
++        "bfcf224954b17dbb",
++        "3fdf38ef56b3fef2"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2e2a",
++        "c003efb1a33e9e36",
++        "4015ba477b02d6bd"
++      ]
++    },
++    {
++      "id": 41,
++      "key": "Num(27191976)",
++      "normalHex": [
++        "bfebbb035022d7f1",
++        "8000000000000000",
++        "3fdff04717553bec"
++      ],
++      "positionHex": [
++        "c022b7d570b98dd6",
++        "c001fdf908cff430",
++        "40158efcca8a1862"
++      ]
++    },
++    {
++      "id": 464,
++      "key": "Num(27189920)",
++      "normalHex": [
++        "bfebbb035022d7f1",
++        "8000000000000000",
++        "3fdff04717553bec"
++      ],
++      "positionHex": [
++        "c022b7d570b98dd6",
++        "c002f92c3c032764",
++        "40158efcca8a1862"
++      ]
++    },
++    {
++      "id": 465,
++      "key": "Str(\"F2:3398483:20:0.001004350170\")",
++      "normalHex": [
++        "bfe996229cba80ed",
++        "bfe183978fa83744",
++        "3fcfa55a6db0a745"
++      ],
++      "positionHex": [
++        "c022b7d56f596cb3",
++        "c003ef92487c422f",
++        "40158efcca8a1862"
++      ]
++    },
++    {
++      "id": 647,
++      "key": "Str(\"corner:13\")",
++      "normalHex": [
++        "bfe65f7cd6701a29",
++        "bfe5b37839d0d0c8",
++        "3fccfc84df3e36e3"
++      ],
++      "positionHex": [
++        "c022b7c9d907b15a",
++        "c003efb1a33e9e36",
++        "40158f2508500325"
++      ]
++    },
++    {
++      "id": 653,
++      "key": "Unkeyed",
++      "normalHex": [
++        "bfebb4d459bcb267",
++        "0000000000000000",
++        "3fe002db8ccaf738"
++      ],
++      "positionHex": [
++        "c022b3a8efc5c539",
++        "c00320adfa1a17bb",
++        "40159d7531453426"
++      ]
++    }
++  ]
++}
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -1599,7 +1599,16 @@
+ 
+ /// Fan a disk from an interior vertex projected onto the side's smooth carrier.
+ /// Port of `fanFromStratumVertex`.
+-fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(
++fn fan_from_stratum_vertex<T: SdfQuery + ?Sized>(boundary:&[usize],stratum:&Stratum,cell_box:&[f64;6],tree:&T,points:&mut PointTable,opts:&CellMeshOptions,out_tris:&mut Vec<usize>)->bool {
++    let start=out_tris.len();
++    let returned=fan_from_stratum_vertex_impl(boundary,stratum,cell_box,tree,points,opts,out_tris);
++    #[cfg(all(test,feature="serde"))]
++    ownership_a::record(boundary,stratum,cell_box,points,opts,&out_tris[start..],returned);
++    #[cfg(not(all(test,feature="serde")))] let _=start;
++    returned
++}
++
++fn fan_from_stratum_vertex_impl<T: SdfQuery + ?Sized>(
+     boundary: &[usize],
+     stratum: &Stratum,
+     cell_box: &[f64; 6],
+@@ -2302,3 +2311,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="component_consumers_b.rs"]
+ pub(crate) mod component_consumers_b;
++
++#[cfg(all(test,feature="serde"))]
++#[path="ownership_a.rs"]
++pub(crate) mod ownership_a;
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -435,3 +435,7 @@
+ #[cfg(all(test, feature = "serde"))]
+ #[path = "activation_event_c.rs"]
+ pub(crate) mod activation_event_c;
++
++#[cfg(all(test,feature="serde"))]
++#[path="ownership_source_a.rs"]
++pub(crate) mod ownership_source_a;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/outside_b.rs
+@@ -0,0 +1,497 @@
++//! One exact same-stage retained consumer; success does not exclude unmeshed outside geometry.
++use super::{
++    topology, CellMeshOptions, CsgNode, FaceRecord, HashMap, PointKey, PointTable,
++    PrivateCandidate, SfccFeatureSet, SfccOctree,
++};
++use crate::math::grid::{cell_aabb, stride_at_level, unpack_point};
++use crate::sfcc::{
++    cell_mesh::mesh_cells_subset,
++    face_contour::FaceSegment,
++    mesh_edit::GrowingIndex,
++    octree::SfccCell,
++    private_arc_a::{self, GeneratedQueries},
++    shared_arc_plan::cell_faces,
++    shared_twisted_proof::correlated_c::transport_a::Transport,
++    stage4_source_preflight_c::selected_pair_c,
++    triangle_quality as q,
++};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++type Result<T> = std::result::Result<T, &'static str>;
++type Face = (usize, i64, i64);
++fn id(c: &SfccCell) -> [i64; 4] {
++    [c.level as i64, c.ix, c.iy, c.iz]
++}
++struct SavedDiagnostic(Option<Value>);
++impl SavedDiagnostic {
++    fn begin() -> Self {
++        Self(private_arc_a::DIAGNOSTIC.with(|s| s.replace(Some(json!({})))))
++    }
++}
++impl Drop for SavedDiagnostic {
++    fn drop(&mut self) {
++        private_arc_a::DIAGNOSTIC.with(|s| *s.borrow_mut() = self.0.take());
++    }
++}
++
++fn same_key(candidate: &PointTable, outside: &PointTable, p: usize) -> Result<Option<usize>> {
++    let found = match outside.key_at(p) {
++        PointKey::Num(k) => candidate.lookup(*k),
++        PointKey::Str(k) => candidate.lookup_str(k),
++        PointKey::Unkeyed => None,
++    };
++    if found.is_some_and(|c| {
++        q::pos(candidate, c).map(f64::to_bits) != q::pos(outside, p).map(f64::to_bits)
++    }) {
++        return Err("outside_candidate_same_key_different_position");
++    }
++    Ok(found)
++}
++fn join(
++    candidate: &PointTable,
++    inside: &[usize],
++    outside: &PointTable,
++    tris: &[usize],
++) -> Result<Value> {
++    if candidate.count() > 4096
++        || outside.count() > 4096
++        || inside.len() % 3 != 0
++        || tris.len() % 3 != 0
++        || inside.len() + tris.len() > 3 * 4096
++    {
++        return Err("outside_join_geometry_cap");
++    }
++    let mut positions: Vec<_> = (0..candidate.count())
++        .map(|p| q::pos(candidate, p))
++        .collect();
++    let mut mapping = Vec::with_capacity(outside.count());
++    for p in 0..outside.count() {
++        if let Some(c) = same_key(candidate, outside, p)? {
++            mapping.push(c);
++        } else {
++            if positions.len() >= 4096 {
++                return Err("outside_join_vertex_cap");
++            }
++            mapping.push(positions.len());
++            positions.push(q::pos(outside, p));
++        }
++    }
++    let mut indices = [GrowingIndex::new(), GrowingIndex::new()];
++    for t in inside.chunks_exact(3) {
++        if t.iter().any(|&p| p >= candidate.count()) {
++            return Err("outside_candidate_indices");
++        }
++        let ids = [t[0], t[1], t[2]];
++        let p = ids.map(|i| positions[i]);
++        indices[0].extend([(ids, p)]);
++        indices[1].extend([(ids, p.map(q::rounded))]);
++    }
++    let mut joined = inside.to_vec();
++    let mut conflicts = [Vec::new(), Vec::new()];
++    for (i, t) in tris.chunks_exact(3).enumerate() {
++        if t.iter().any(|&p| p >= outside.count()) {
++            return Err("outside_triangle_indices");
++        }
++        let ids = [mapping[t[0]], mapping[t[1]], mapping[t[2]]];
++        let p = ids.map(|i| positions[i]);
++        for (precision, coords) in [p, p.map(q::rounded)].into_iter().enumerate() {
++            if indices[precision].conflicts(ids, coords) {
++                conflicts[precision].push(i);
++            }
++        }
++        joined.extend(ids);
++    }
++    let combined = topology(&joined, positions.len())?;
++    Ok(
++        json!({"scope":"candidate against one actual original-stage outside consumer; no unmeshed outside exclusion",
++        "outsideToJoined":mapping,"candidateTriangleCount":inside.len()/3,"outsideTriangleCount":tris.len()/3,
++        "contactingOutsideTrianglesWorkingOrExported":conflicts[0],"contactingOutsideTrianglesRoundedBroadphase":conflicts[1],
++        "partialJoinedTopology":combined,"partialJoinedLinkFailureMayNeedOtherOutsideConsumers":true,
++        "completeOutsideContactAudit":false,"publicationReady":false}),
++    )
++}
++
++pub(super) fn probe(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++    candidate: &PrivateCandidate,
++) -> Value {
++    let _saved = SavedDiagnostic::begin();
++    let before = private_arc_a::diagnostic::live_digest(faces, live);
++    let result = probe_inner(tree, features, oct, faces, live, opts, candidate);
++    let evidence = private_arc_a::DIAGNOSTIC
++        .with(|s| s.borrow_mut().take())
++        .unwrap_or(Value::Null);
++    let after = private_arc_a::diagnostic::live_digest(faces, live);
++    let mut report = match result {
++        Ok(r) => r,
++        Err(e) => json!({"refusal":e,"completeOutsideContactAudit":false,"publicationReady":false}),
++    };
++    report["queryAndGraphEvidence"] = evidence;
++    report["liveDigestBefore"] = json!(before);
++    report["liveDigestAfter"] = json!(after);
++    report["liveStatePreserved"] = json!(before == after);
++    report["queryBudgetScope"]=json!("separate observational ledger with unchanged16384 total/2048 generated reservation; not candidate ledger or publication authority");
++    if serde_json::to_vec(&report).map_or(true, |v| v.len() > 512 * 1024) {
++        // Keep the failure explicit; do not turn an unrecordable suffix into an audit pass.
++        return json!({"refusal":"outside_diagnostic_512KiB_cap","completeOutsideContactAudit":false,"publicationReady":false,"liveStatePreserved":before==after});
++    }
++    report
++}
++fn probe_inner(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++    candidate: &PrivateCandidate,
++) -> Result<Value> {
++    let selected: BTreeSet<_> = candidate.receipt.consumers.iter().copied().collect();
++    if selected.is_empty() || selected.len() > 256 {
++        return Err("outside_selected_cell_cap");
++    }
++    let mut required = BTreeMap::<Face, usize>::new();
++    let mut found = 0;
++    for cell in &oct.leaves {
++        if selected.contains(&id(cell)) {
++            found += 1;
++            for face in cell_faces(oct, faces, cell) {
++                *required.entry(face).or_default() += 1;
++            }
++        }
++    }
++    if found != selected.len() || required.len() > 1536 {
++        return Err("outside_original_component_binding");
++    }
++    let frontier: BTreeSet<_> = required
++        .iter()
++        .filter_map(|(&f, &n)| (n == 1).then_some(f))
++        .collect();
++    let mut chosen: Option<&SfccCell> = None;
++    let mut outside_count = 0;
++    let mut adjacent = 0;
++    let mut nonempty = 0;
++    let mut outside_uses = BTreeMap::<Face, usize>::new();
++    for cell in &oct.leaves {
++        if selected.contains(&id(cell)) {
++            continue;
++        }
++        outside_count += 1;
++        let touching: Vec<_> = cell_faces(oct, faces, cell)
++            .into_iter()
++            .filter(|f| frontier.contains(f))
++            .collect();
++        if touching.is_empty() {
++            continue;
++        }
++        adjacent += 1;
++        for &face in &touching {
++            let uses = outside_uses.entry(face).or_default();
++            *uses += 1;
++            if *uses > 1 {
++                return Err("outside_multiple_actual_consumers");
++            }
++        }
++        if touching
++            .iter()
++            .any(|&(a, k, _)| !faces[a][&k].segments.is_empty())
++        {
++            nonempty += 1;
++            if chosen.is_none_or(|old| id(cell) < id(old)) {
++                chosen = Some(cell);
++            }
++        }
++    }
++    let inventory = json!({"selectedCells":selected.len(),"requiredFaces":required.len(),"frontierFaces":frontier.len(),"outsideLeaves":outside_count,
++        "faceAdjacentOutsideLeaves":adjacent,"nonemptyFaceAdjacentOutsideLeaves":nonempty,"adjacentRingFitsExisting256CellCap":adjacent<=256,
++        "allOutsideLeavesExaminedForFaceIncidence":true,"unmeshedCellBoundsUsedToExcludeContacts":false,
++        "fullOutsideReconstructionAttempted":false,"plannedWitnessCells":1,"selectionRule":"lexicographically smallest original outside cell ID incident to a nonempty candidate frontier FaceRecord"});
++    private_arc_a::DIAGNOSTIC
++        .with(|s| s.borrow_mut().as_mut().unwrap()["outsideInventory"] = inventory.clone());
++    let cell = chosen.ok_or("outside_nonempty_frontier_consumer_missing")?;
++    let required = cell_faces(oct, faces, cell);
++    if required.len() > 24 {
++        return Err("outside_cell_face_cap");
++    }
++    let shared: Vec<_> = required
++        .iter()
++        .copied()
++        .filter(|f| frontier.contains(f))
++        .collect();
++    if shared.is_empty() {
++        return Err("outside_actual_frontier_binding");
++    }
++    let mut needed = BTreeSet::new();
++    let mut pins = 0;
++    for &(axis, key, len) in &required {
++        let r = faces
++            .get(axis)
++            .and_then(|m| m.get(&key))
++            .ok_or("outside_face_slot")?;
++        if r.axis != axis
++            || r.key != key
++            || r.len != len
++            || r.consumed_fwd.len() != r.segments.len()
++            || r.consumed_rev.len() != r.segments.len()
++            || r.consumed_fwd
++                .iter()
++                .chain(&r.consumed_rev)
++                .any(|&n| n != 0)
++        {
++            return Err("outside_not_original_pregraph_record");
++        }
++        pins += r.pins.len();
++        if pins > 1024 {
++            return Err("outside_pin_cap");
++        }
++        needed.extend(r.segments.iter().flat_map(|s| [s.a, s.b]));
++        needed.extend(r.pins.iter().map(|p| p.point_id));
++    }
++    if needed.len() > 4096 || needed.iter().any(|&p| p >= live.count()) {
++        return Err("outside_input_point_cap");
++    }
++    let mut points = PointTable::new();
++    points.arrangement = live.arrangement;
++    let mut map = BTreeMap::new();
++    for &id in &needed {
++        let p = q::pos(live, id);
++        let data = || [p[0], p[1], p[2], live.nx(id), live.ny(id), live.nz(id)];
++        let n = match live.key_at(id) {
++            PointKey::Num(k) => points.get_or_create(*k, data),
++            PointKey::Str(k) => points.get_or_create_str(k, data),
++            PointKey::Unkeyed => {
++                points.add(p[0], p[1], p[2], live.nx(id), live.ny(id), live.nz(id))
++            }
++        };
++        if q::pos(&points, n).map(f64::to_bits) != p.map(f64::to_bits)
++            || [points.nx(n), points.ny(n), points.nz(n)].map(f64::to_bits)
++                != [live.nx(id), live.ny(id), live.nz(id)].map(f64::to_bits)
++        {
++            return Err("outside_point_payload_collision");
++        }
++        map.insert(id, n);
++    }
++    for (a, b) in live.protected_edges() {
++        if needed.contains(&a) != needed.contains(&b) {
++            return Err("outside_external_protected_endpoint");
++        }
++        if let (Some(&a), Some(&b)) = (map.get(&a), map.get(&b)) {
++            points.protect_edge(a, b);
++        }
++    }
++    let mut intervals = 0;
++    for ((a, b), ivs) in live.identified_edges() {
++        if needed.contains(&a) != needed.contains(&b) {
++            return Err("outside_external_interval_endpoint");
++        }
++        if let (Some(&a), Some(&b)) = (map.get(&a), map.get(&b)) {
++            for &iv in ivs {
++                intervals += 1;
++                if intervals > 2048 {
++                    return Err("outside_interval_cap");
++                }
++                points.protect_curve_edge(a, b, iv);
++            }
++        }
++    }
++    let initial = points.count();
++    let mut staged: [HashMap<i64, FaceRecord>; 3] = std::array::from_fn(|_| HashMap::new());
++    let mut face_rows = Vec::new();
++    for &(axis, key, len) in &required {
++        let r = &faces[axis][&key];
++        face_rows.push(json!({"face":[axis,key,len],"segments":r.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>(),"pins":r.pins.iter().map(|p|json!([p.curve_id,p.t.to_bits(),p.point_id])).collect::<Vec<_>>(),"interiorCycle":r.interior_cycle,"consumedForward":r.consumed_fwd,"consumedReverse":r.consumed_rev}));
++        staged[axis].insert(
++            key,
++            FaceRecord {
++                axis,
++                key,
++                len,
++                segments: r
++                    .segments
++                    .iter()
++                    .map(|s| FaceSegment {
++                        a: map[&s.a],
++                        b: map[&s.b],
++                    })
++                    .collect(),
++                pins: r
++                    .pins
++                    .iter()
++                    .map(|p| {
++                        let mut p = *p;
++                        p.point_id = map[&p.point_id];
++                        p
++                    })
++                    .collect(),
++                interior_cycle: r.interior_cycle,
++                consumed_fwd: r.consumed_fwd.clone(),
++                consumed_rev: r.consumed_rev.clone(),
++            },
++        );
++    }
++    let primary = selected_pair_c(features).map_err(|_| "outside_source_pair")?;
++    let mut budget = Transport::bind(features, primary, opts.curve_chord_tol)
++        .map_err(|_| "outside_budget_source")?;
++    budget.phase("outside_generated_queries");
++    let before = budget.charged_queries();
++    let generated = GeneratedQueries::begin(&mut budget)?;
++    private_arc_a::note_active_cell(cell);
++    let local_opts = CellMeshOptions {
++        features: Some(features),
++        ..*opts
++    };
++    let mesh = mesh_cells_subset(
++        oct,
++        &mut staged,
++        tree,
++        &mut points,
++        &local_opts,
++        std::slice::from_ref(cell),
++    );
++    let failed = !mesh.failed_cells.is_empty() || mesh.feature_cell_fallbacks != 0;
++    if failed {
++        private_arc_a::graph_b::final_failure(cell);
++        private_arc_a::note_private_mesher_failure(oct, &staged, cell, &points, &mesh);
++    }
++    let queries = generated.finish()?;
++    budget.generated_validation(queries.len(), failed);
++    budget.phase("outside_generated_validation");
++    let eps = budget.allowance();
++    let mut validation_failures = Vec::new();
++    for (i, event) in queries.iter().enumerate() {
++        let Some(point) = event.point else {
++            validation_failures.push(json!({"event":i,"reason":"failed_generated_query"}));
++            continue;
++        };
++        budget
++            .reserve_external(1)
++            .map_err(|_| "outside_postvalidation_budget")?;
++        budget.external_direct_attempt();
++        let valid = features.curves.get(event.chart).is_some_and(|curve| {
++            curve
++                .point_at_checked(event.t)
++                .is_some_and(|own| own.map(f64::to_bits) == point.map(f64::to_bits))
++                && curve.adjacent_strata.iter().all(|&sid| {
++                    features.strata.get(sid).is_some_and(|s| {
++                        (s.domain_contains(point, eps)
++                            || curve.upper_source_member(
++                                &features.strata,
++                                sid,
++                                event.t,
++                                point,
++                                eps,
++                            ))
++                            && s.raw_field(point[0], point[1], point[2])
++                                .normalized_equation()
++                                .is_some_and(|v| v.value.is_finite() && v.value.abs() <= eps)
++                    })
++                })
++        });
++        if valid {
++            budget.generated_validated();
++        } else {
++            validation_failures
++                .push(json!({"event":i,"reason":"original_own_query_or_source_condition"}));
++        }
++    }
++    budget.phase("outside_complete");
++    let mut report = json!({"scope":"first actual untouched frontier consumer replayed before ordinary cell meshing; no primary or secondary quotient in outside view",
++        "inventory":inventory,"cell":id(cell),"cellBoxBits":cell_aabb(&oct.lat,cell.level,cell.ix,cell.iy,cell.iz).map(f64::to_bits),"sharedOriginalFaces":shared,"faces":face_rows,
++        "sourceFingerprint":features.fingerprint().to_string(),"initialPoints":initial,"pointBindings":map.iter().map(|(&global,&local)|json!([global,local])).collect::<Vec<_>>(),
++        "points":(0..points.count()).map(|p|json!({"id":p,"positionBits":q::pos(&points,p).map(f64::to_bits),"normalBits":([points.nx(p),points.ny(p),points.nz(p)]).map(f64::to_bits),"key":format!("{:?}",points.key_at(p))})).collect::<Vec<_>>(),
++        "triangles":mesh.tris,"failedCellCount":mesh.failed_cells.len(),"featureCellFallbacks":mesh.feature_cell_fallbacks,
++        "generatedQueries":queries.len(),"generatedPostvalidationFailures":validation_failures,"allGeneratedQueriesValidated":validation_failures.is_empty(),
++        "chargedBeforeReservation":before,"finalChargedQueries":budget.charged_queries(),"fullOutsideContactAudit":false,"publicationReady":false});
++    if points.count() > 4096 || mesh.tris.len() > 3 * 4096 {
++        return Err("outside_geometry_cap");
++    }
++    let mut consumption_valid = true;
++    for &(axis, key, _) in &required {
++        let stride = stride_at_level(&oct.lat, cell.level);
++        let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
++        let g = unpack_point(&oct.lat, key);
++        let side = if g[axis] == base[axis] {
++            0
++        } else if g[axis] == base[axis] + stride {
++            1
++        } else {
++            return Err("outside_face_plane");
++        };
++        let r = &staged[axis][&key];
++        consumption_valid &= r.consumed_fwd.iter().all(|&n| n == u32::from(side == 0))
++            && r.consumed_rev.iter().all(|&n| n == u32::from(side == 1));
++    }
++    report["originalFaceConsumptionValid"] = json!(consumption_valid);
++    report["failureAttribution"] = json!("outside internal failures are baseline retained-cell failures; a candidate/outside conflict alone does not prove which side caused it");
++    if !failed && validation_failures.is_empty() {
++        let bad: Vec<_> = mesh
++            .tris
++            .chunks_exact(3)
++            .enumerate()
++            .filter_map(|(i, t)| {
++                let p = [t[0], t[1], t[2]].map(|i| q::pos(&points, i));
++                let reference = tree.grad(q::bary(p, [1. / 3.; 3])).1;
++                (!q::valid_orientation(p, reference)).then_some(i)
++            })
++            .collect();
++        report["invalidWorkingOrExportedOrientation"] = json!(bad);
++        report["joined"] = match join(&candidate.points, &candidate.triangles, &points, &mesh.tris)
++        {
++            Ok(value) => value,
++            Err(reason) => json!({"refusal":reason,"completeOutsideContactAudit":false}),
++        };
++    }
++    Ok(report)
++}
++
++#[test]
++fn outside_b_identity_requires_original_key_and_position() {
++    let mut a = PointTable::new();
++    a.get_or_create(7, || [0., 0., 0., 0., 0., 1.]);
++    let mut b = PointTable::new();
++    let x = b.get_or_create(7, || [0., 0., 0., 0., 0., 1.]);
++    assert_eq!(same_key(&a, &b, x), Ok(Some(0)));
++    let y = b.add(0., 0., 0., 0., 0., 1.);
++    assert_eq!(same_key(&a, &b, y), Ok(None));
++    let mut wrong = PointTable::new();
++    wrong.get_or_create(7, || [1., 0., 0., 0., 0., 1.]);
++    assert_eq!(
++        same_key(&a, &wrong, 0),
++        Err("outside_candidate_same_key_different_position")
++    );
++}
++#[test]
++fn outside_b_join_checks_actual_contacts_and_partial_topology() {
++    let mut a = PointTable::new();
++    for (i, p) in [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]
++        .iter()
++        .enumerate()
++    {
++        a.get_or_create(i as i64, || [p[0], p[1], p[2], 0., 0., 1.]);
++    }
++    let mut b = PointTable::new();
++    for (i, p) in [(0, [0., 0., 0.]), (1, [1., 0., 0.]), (3, [0., -1., 0.])] {
++        b.get_or_create(i, || [p[0], p[1], p[2], 0., 0., 1.]);
++    }
++    let good = join(&a, &[0, 1, 2], &b, &[1, 0, 2]).unwrap();
++    assert_eq!(
++        good["contactingOutsideTrianglesWorkingOrExported"],
++        json!([])
++    );
++    assert_eq!(good["partialJoinedTopology"]["localTopologyValid"], true);
++    assert_eq!(good["completeOutsideContactAudit"], false);
++    let mut crossing = PointTable::new();
++    for p in [[0.25, 0.25, -1.], [0.25, 0.25, 1.], [0.5, 0.5, 0.]] {
++        crossing.add(p[0], p[1], p[2], 0., 0., 1.);
++    }
++    let bad = join(&a, &[0, 1, 2], &crossing, &[0, 1, 2]).unwrap();
++    assert_eq!(
++        bad["contactingOutsideTrianglesWorkingOrExported"],
++        json!([0])
++    );
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/ownership_a.rs
+@@ -0,0 +1,86 @@
++//! Bounded observations of selected fan hypotheses; never assigns patch authority.
++use super::*;
++use serde_json::{json,Value};
++use std::{cell::RefCell,collections::BTreeMap};
++#[derive(Default)]
++struct Inventory {active:bool,fans:usize,triangles:usize,rows:BTreeMap<(usize,bool,bool),[usize;3]>,first:Option<Value>,overflow:bool}
++thread_local!{static INVENTORY:RefCell<Inventory>=RefCell::new(Inventory::default());}
++pub(crate) fn reset(){INVENTORY.with(|p|*p.borrow_mut()=Inventory{active:true,..Inventory::default()});}
++pub(crate) fn record(boundary:&[usize],s:&Stratum,box_:&[f64;6],points:&PointTable,opts:&CellMeshOptions,tris:&[usize],returned:bool){
++    if !crate::sfcc::private_arc_a::secondary_component_a::enabled() || !crate::sfcc::private_arc_a::generated_queries_active(){return;}
++    INVENTORY.with(|p|{
++        let mut p=p.borrow_mut();if !p.active{return;}p.fans+=1;p.triangles+=tris.len()/3;
++        if p.fans>4096 || p.triangles>4096 || p.rows.len()>=128 {p.overflow=true;return;}
++        let support=crate::sfcc::surface_patch::supports_local_edits(s);
++        let row=p.rows.entry((s.id,opts.quality_triangulation,support)).or_default();row[0]+=1;row[1]+=tris.len()/3;row[2]+=usize::from(returned);
++        if p.first.is_none(){
++            if boundary.len()>64||tris.len()>3*128 {p.overflow=true;return;}
++            let ids:std::collections::BTreeSet<_>=boundary.iter().chain(tris).copied().collect();
++            p.first=Some(json!({"hypothesisStratum":s.id,"carrierKind":format!("{:?}",s.kind),"sourceIdentity":s.graph_capture_identity_b(),
++                "qualityTriangulation":opts.quality_triangulation,"supportedLocalCarrier":support,
++                "diskPathEnabled":opts.quality_triangulation&&support,"boundary":boundary,"triangles":tris,"returned":returned,
++                "cellBoxBits":box_.map(f64::to_bits),"surfaceTolerance":opts.surface_tol,"chordTolerance":opts.curve_chord_tol,
++                "points":ids.into_iter().map(|id|json!({"id":id,"positionBits":q::pos(points,id).map(f64::to_bits)})).collect::<Vec<_>>(),
++                "assignedOwners":tris.chunks_exact(3).map(|t|points.patch([t[0],t[1],t[2]])).collect::<Vec<_>>(),
++                "continuousSourceOwnershipProved":false}));
++        }
++    });
++}
++pub(crate) fn take_report()->Value{INVENTORY.with(|p|{let p=std::mem::take(&mut *p.borrow_mut());json!({"scope":"fan entry/output hypotheses and option gates only; zero additional field or curve queries","fans":p.fans,"triangles":p.triangles,"complete":!p.overflow,"overflow":p.overflow,
++    "rows":p.rows.into_iter().map(|((id,quality,support),counts)|json!({"stratum":id,"qualityTriangulation":quality,"supportedLocalCarrier":support,"counts":counts})).collect::<Vec<_>>(),"first":p.first,"patchLabelsChanged":false})})}
++
++#[test]
++fn ownership_a_inventory_is_bounded_and_inactive_without_request(){reset();assert_eq!(take_report()["fans"],0);INVENTORY.with(|p|{let mut p=p.borrow_mut();p.overflow=true;});assert_eq!(take_report()["complete"],false);assert_eq!(take_report()["fans"],0);}
++
++#[test]
++fn ownership_a_first_actual_fan_source_regions_and_projection_witnesses(){
++    use crate::sfcc::{pipeline::{build_pipeline_context,PipelineTuning,SfccWorldCube},shared_twisted_proof::exposure_a::ownership_source_a};
++    let _numerics=crate::sfcc::validation::NumericalGuard::new();
++    let input:Value=serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved:Value=serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let root=crate::scene_bridge::build_csg_tree_from_json(input["sceneJson"].as_str().unwrap()).unwrap();
++    let cube=SfccWorldCube{min_x:input["cube"]["min"][0].as_f64().unwrap(),min_y:input["cube"]["min"][1].as_f64().unwrap(),min_z:input["cube"]["min"][2].as_f64().unwrap(),size:input["cube"]["max"][0].as_f64().unwrap()-input["cube"]["min"][0].as_f64().unwrap()};
++    let f=build_pipeline_context(&root,&cube,&PipelineTuning::default()).features;
++    assert_eq!(f.fingerprint().to_string(),saved["fingerprint"].as_str().unwrap());
++    assert_eq!(saved["options"]["qualityTriangulation"],false);
++    let sid=saved["fan"]["stratum"].as_u64().unwrap() as usize;
++    assert!(crate::sfcc::surface_patch::supports_local_edits(&f.strata[sid]));
++    let points:BTreeMap<usize,[f64;3]>=saved["points"].as_array().unwrap().iter().map(|p|{
++        let xyz=std::array::from_fn(|k|f64::from_bits(u64::from_str_radix(p["positionHex"][k].as_str().unwrap(),16).unwrap()));(p["id"].as_u64().unwrap() as usize,xyz)
++    }).collect();
++    let triangles:Vec<usize>=serde_json::from_value(saved["fan"]["triangles"].clone()).unwrap();
++    assert_eq!(triangles.len(),18);
++    let mut regions=Vec::new();
++    let weights=[[1.,0.,0.],[0.,1.,0.],[0.,0.,1.],[0.5,0.5,0.],[0.,0.5,0.5],[0.5,0.,0.5],[0.25,0.25,0.5]];
++    for (ti,t) in triangles.chunks_exact(3).enumerate(){let p=[points[&t[0]],points[&t[1]],points[&t[2]]];
++        for (wi,w) in weights.iter().enumerate(){
++            use crate::sdf::enclosure::Interval as I;
++            let yz_interval:[I;2]=std::array::from_fn(|k|{let mut sum=I::point(0.);for i in 0..3{sum=sum.add(I::point(p[i][k+1]).mul(w[i]).unwrap()).unwrap();}sum});
++            let yz:[f64;2]=yz_interval.map(|v|v.lo*0.5+v.hi*0.5);
++            let bound=ownership_source_a::bound(&f,sid,yz_interval.map(|v|v.lo),yz_interval.map(|v|v.hi));
++            regions.push(json!({"triangle":ti,"weights":w,"probeKind":"enclosure of exact dyadic barycentric YZ point on chosen cylinder graph","certificate":bound}));
++            if wi==6 {
++                let lo=yz.map(|x|(x-1e-6).next_down());let hi=yz.map(|x|(x+1e-6).next_up());
++                let chart=p.map(|v|[v[1],v[2]]);
++                let inside=[[lo[0],lo[1]],[lo[0],hi[1]],[hi[0],lo[1]],[hi[0],hi[1]]].iter().all(|&corner|(0..3).all(|i|{
++                    let a=chart[i];let b=chart[(i+1)%3];let sign=crate::sfcc::predicates::orient2d(a,b,chart[(i+2)%3]);
++                    sign!=0 && crate::sfcc::predicates::orient2d(a,b,corner)==sign
++                }));
++                regions.push(json!({"triangle":ti,"probeKind":"open graph rectangle strictly inside triangle chart when flagged","insideTriangleChart":inside,"certificate":if inside{ownership_source_a::bound(&f,sid,lo,hi)}else{None}}));
++            }
++        }
++    }
++    let exposed=regions.iter().filter(|r|r["certificate"]["fullSourceEqualsCylinder"]==true).count();
++    let counter=regions.iter().filter(|r|r["certificate"]["projectionOwnershipDisproved"]==true).count();
++    assert!(exposed>0,"no positive composed-source region in first actual cylinder fan");
++    assert!(regions.iter().any(|r|r["insideTriangleChart"]==true && r["certificate"]["fullSourceEqualsCylinder"]==true),"no open exposed subregion inside actual triangle chart");
++    assert!(regions.len()<=64);
++    let first=*points.values().next().unwrap();
++    assert!(ownership_source_a::bound(&f,sid,[f64::NAN,first[2]],[first[1],first[2]]).is_none());
++    assert!(ownership_source_a::bound(&f,sid,[first[1],100.],[first[1],101.]).is_none());
++    let report=json!({"scope":"first actual six-triangle fan; bounded composed-source graph regions only","parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":f.fingerprint().to_string(),"stratum":sid,"qualityTriangulation":false,"supportedLocalCarrier":true,
++        "positiveSourceRegions":exposed,"projectionCounterexamples":counter,"regionCount":regions.len(),"regions":regions,
++        "wholeFanCoverageProved":false,"approximateMeshInvalidityProved":false,"patchLabelsAssigned":false,
++        "limitation":"a positive graph witness disproves that projection's ownership, not every possible nearby curved-boundary reconstruction"});
++    if let Ok(path)=std::env::var("SFCC_OWNERSHIP_A_RECEIPT"){std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();}
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/ownership_source_a.rs
+@@ -0,0 +1,78 @@
++//! Source-bound cylinder graph restrictions; not a whole-fan ownership certificate.
++use super::*;
++use serde_json::{json,Value};
++
++fn unclamped_height(y: I, pos_y: f64, h: f64) -> Option<I> {
++    if !pos_y.is_finite() || !h.is_finite() || h <= 0. { return None; }
++    let local = y.sub(I::point(pos_y))?;
++    (local.lo >= -h && local.hi <= h).then_some(local)
++}
++
++#[test]
++fn ownership_a_height_clamp_guard_rejects_outside_and_invalid_extents() {
++    assert!(unclamped_height(I::point(0.), 0., 1.).is_some());
++    assert!(unclamped_height(I::point(1.0_f64.next_up()), 0., 1.).is_none());
++    assert!(unclamped_height(I::point((-1.0_f64).next_down()), 0., 1.).is_none());
++    for h in [0., -1., f64::NAN, f64::INFINITY] {
++        assert!(unclamped_height(I::point(0.), 0., h).is_none());
++    }
++    assert!(unclamped_height(I::point(0.), f64::NAN, 1.).is_none());
++}
++
++pub(crate) fn bound(f:&SfccFeatureSet,cylinder_id:usize,yz_lo:[f64;2],yz_hi:[f64;2])->Option<Value>{
++    if yz_lo.iter().chain(&yz_hi).any(|x|!x.is_finite()) || (0..2).any(|k|yz_lo[k]>yz_hi[k]) {return None;}
++    let (source,_,_)=alias_face_b::select(f)?;
++    let cyl=f.strata.get(cylinder_id)?;
++    let (center,axis,radius)=cyl.certificate_cylinder()?;
++    if axis!=[0.,1.,0.] || !radius.is_finite() || radius<=0. || cyl.sign!=1. {return None;}
++    let root=cyl.exposure_root_a()?;
++    let (cap_cut,sphere,outer_r)=pair(root,Some((BlendKind::Smax,SminMode::Round))).ok()?;
++    let (groove_cut,cap,_)=pair(cap_cut,None).ok()?;
++    let (hard,groove,chamfer_r)=pair(groove_cut,Some((BlendKind::Smax,SminMode::Chamfer))).ok()?;
++    let (inner,cylinder,_)=pair(hard,None).ok()?;
++    let (other,native,inner_r)=pair(inner,Some((BlendKind::Smin,SminMode::Round))).ok()?;
++    let cylinder=leaf(cylinder,1.).ok()?;let native=leaf(native,1.).ok()?;let other=leaf(other,1.).ok()?;
++    let groove=leaf(groove,-1.).ok()?;let cap=leaf(cap,-1.).ok()?;let sphere=leaf(sphere,1.).ok()?;
++    let (p,rn,ro,rr)=f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++    let registered=cyl.correlated_cylinder_source_c(&f.strata[source[0]])?;
++    if !std::ptr::eq(cylinder,registered)||!std::ptr::eq(native,rn)||!std::ptr::eq(other,ro)||rr!=inner_r||cylinder.pos!=center
++        || [native,other,groove,sphere].iter().any(|l|l.pos[0]!=center[0]||l.pos[2]!=center[2]) {return None;}
++    let Shape::Cylinder{r,h}=cylinder.shape else{return None;};if r!=radius{return None;}
++    let y=interval(yz_lo[0],yz_hi[0])?;let z=interval(yz_lo[1],yz_hi[1])?;
++    let radial_z=z.sub(I::point(center[2]))?;
++    let radical=square(I::point(radius))?.sub(square(radial_z)?)?;if radical.lo<=0.{return None;}
++    let radial_x=sqrt(radical)?.mul(-1.)?;let x=radial_x.add(I::point(center[0]))?;
++    let local_y = unclamped_height(y, p.pos_y, p.h)?;
++    let theta = div(local_y.add(I::point(p.h))?, 2. * p.h)?.mul(p.twist_rad)?;
++    let (sn,cs)=sin_cos(theta)?;
++    let u=mul(radial_x,cs)?.add(mul(radial_z,sn)?)?;
++    let v=mul(radial_z,cs)?.sub(mul(radial_x,sn)?)?;
++    let native_level=u.sub(I::point(p.v0x))?.mul(p.nx2)?.add(v.sub(I::point(p.v0z))?.mul(p.nz2)?)?;
++    let profile=upper_source_a::finite_profile_level(p,native,[u,v],native_level)?;
++    let native_cap=upper_source_a::cap_margin(y,p.pos_y,p.h,native_level)?;
++    let cylinder_cap=upper_source_a::cap_margin(y,center[1],h,I::point(0.))?;
++    let competitor=activation_a::meridian_bound(other,I::point(radius),y)?;
++    let groove_distance=activation_a::meridian_bound(groove,I::point(radius),y)?;
++    if competitor.distance.lo<=inner_r || native_level.hi>=inner_r{return None;}
++    let Shape::Extrude{h:cap_h,..}=cap.shape else{return None;};
++    let cap_margin=I::point(cap.pos[1]).sub(I::point(cap_h))?.sub(y)?.lo;
++    let Shape::Sphere{r:sphere_r}=sphere.shape else{return None;};
++    let sphere_distance=sqrt(square(I::point(radius))?.add(square(y.sub(I::point(sphere.pos[1]))?)?)?)?;
++    let outer_margin=I::point(sphere_r).sub(I::point(outer_r))?.sub(sphere_distance)?.lo;
++    if cap_margin<=0.||outer_margin<=0.{return None;}
++    let groove_margin=groove_distance.distance.sub(I::point(chamfer_r))?;
++    let exposed=native_level.hi<=0. && groove_margin.lo>=0.;
++    // On this cylinder graph C=0 and I=E. Monotone max ancestors preserve this positive lower witness.
++    let bevel=I::point(chamfer_r).sub(groove_distance.distance)?.mul(std::f64::consts::FRAC_1_SQRT_2)?;
++    let positive_lower=native_level.lo.max(bevel.lo).max(0.);
++    Some(json!({"scope":"entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
++        "source":[source[0],source[1],cylinder_id],"sourceFingerprint":f.fingerprint().to_string(),
++        "yzBox":[yz_lo,yz_hi],"worldImage":[[x.lo,y.lo,z.lo],[x.hi,y.hi,z.hi]],
++        "nativeLevel":[native_level.lo,native_level.hi],"otherDistance":[competitor.distance.lo,competitor.distance.hi],
++        "grooveDistance":[groove_distance.distance.lo,groove_distance.distance.hi],
++        "grooveMargin":[groove_margin.lo,groove_margin.hi],"finiteProfileMargin":profile,
++        "nativeCapMargin":native_cap,"cylinderCapMargin":cylinder_cap,"capCutMargin":cap_margin,"outerRoundMargin":outer_margin,
++        "nativeIsInnerField":true,"fullSourceEqualsCylinder":exposed,"composedSourcePositiveLower":positive_lower,
++        "projectionOwnershipDisproved":positive_lower>0.,"cylinderGraphDerivativeLower":div(radial_x.mul(-1.)?, radius)?.lo,
++        "wholeFanOwnership":false}))
++}
+--- a/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/private_arc_a.rs
+@@ -580,3 +580,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="secondary_component_validation_c.rs"]
+ pub(crate) mod secondary_component_validation_c;
++
++#[cfg(all(test,feature="serde"))]
++#[path="retained_metadata_c.rs"]
++pub(crate) mod retained_metadata_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/retained_metadata_c.rs
+@@ -0,0 +1,447 @@
++//! Exact transport of supplied pregraph metadata; no source-patch authority.
++use crate::sfcc::{
++    face_contour::{FacePin, FaceRecord},
++    point_table::{CurveInterval, PointKey, PointTable},
++};
++use std::collections::{BTreeMap, BTreeSet, HashMap};
++type FaceId = (usize, i64, i64);
++type Result<T> = std::result::Result<T, &'static str>;
++
++pub(crate) struct Inputs<'a> {
++    pub live: &'a PointTable,
++    pub private: &'a PointTable,
++    pub faces: &'a [HashMap<i64, FaceRecord>; 3],
++    pub staged: &'a [HashMap<i64, FaceRecord>; 3],
++    pub required: &'a BTreeSet<FaceId>,
++    pub needed: &'a BTreeSet<usize>,
++    pub equivalences: &'a BTreeMap<usize, usize>,
++    pub map: &'a BTreeMap<usize, usize>,
++    pub primary: [usize; 2],
++    pub pin_parameters: &'a BTreeMap<usize, [f64; 2]>,
++}
++#[derive(Debug, serde::Serialize)]
++pub(crate) struct Receipt {
++    original_points: usize,
++    canonical_points: usize,
++    merged_point_keys: usize,
++    unkeyed_points: usize,
++    faces: usize,
++    original_pins: usize,
++    primary_alias_pins: usize,
++    removed_zero_segments: usize,
++    retained_protected_edges: usize,
++    retained_curve_memberships: usize,
++    exact_payload_keys_and_pin_transport: bool,
++    protection_interval_bits_preserved: bool,
++    new_query_attempts: usize,
++    checker_dynamic_allocations: usize,
++    scope: &'static str,
++}
++impl Inputs<'_> {
++    fn canonical(&self, id: usize) -> usize {
++        self.equivalences.get(&id).copied().unwrap_or(id)
++    }
++    fn mapped(&self, id: usize) -> Result<usize> {
++        if id >= self.live.count() || !self.needed.contains(&id) {
++            return Err("metadata_original_point_scope");
++        }
++        let canonical = self.canonical(id);
++        if canonical >= self.live.count()
++            || !self.needed.contains(&canonical)
++            || self.canonical(canonical) != canonical
++        {
++            return Err("metadata_canonical_point_scope");
++        }
++        self.map
++            .get(&canonical)
++            .copied()
++            .filter(|&p| p < self.private.count())
++            .ok_or("metadata_private_point_binding")
++    }
++    fn pin(&self, pin: &FacePin) -> Result<FacePin> {
++        if !pin.t.is_finite() {
++            return Err("metadata_nonfinite_pin_parameter");
++        }
++        let mut expected = *pin;
++        expected.point_id = self.mapped(pin.point_id)?;
++        if expected.curve_id == self.primary[1] {
++            let pair = self
++                .pin_parameters
++                .get(&self.canonical(pin.point_id))
++                .ok_or("metadata_primary_pin_transport");
++            let pair = pair?;
++            if !pair.iter().all(|t| t.is_finite()) || pin.t.to_bits() != pair[1].to_bits() {
++                return Err("metadata_primary_pin_parameter");
++            }
++            expected.curve_id = self.primary[0];
++            expected.t = pair[0];
++        }
++        Ok(expected)
++    }
++}
++fn payload(points: &PointTable, id: usize) -> [u64; 6] {
++    [
++        points.x(id),
++        points.y(id),
++        points.z(id),
++        points.nx(id),
++        points.ny(id),
++        points.nz(id),
++    ]
++    .map(f64::to_bits)
++}
++fn same_pin(a: &FacePin, b: &FacePin) -> bool {
++    a.point_id == b.point_id && a.curve_id == b.curve_id && a.t.to_bits() == b.t.to_bits()
++}
++fn same_interval(a: &CurveInterval, b: &CurveInterval) -> bool {
++    a.curve_id == b.curve_id
++        && a.start.to_bits() == b.start.to_bits()
++        && a.end.to_bits() == b.end.to_bits()
++}
++
++/// Uses borrowed caller collections and scalar iteration only. JSON serialization is outside this checker.
++pub(crate) fn audit(input: Inputs<'_>) -> Result<Receipt> {
++    if input.primary[0] == input.primary[1]
++        || input.needed.len() > 4096
++        || input.map.len() > 4096
++        || input.private.count() > 4096
++        || input.required.len() > 1536
++    {
++        return Err("metadata_scope_cap");
++    }
++    let mut r = Receipt { original_points: input.needed.len(), canonical_points: input.map.len(),
++        merged_point_keys: 0, unkeyed_points: 0, faces: input.required.len(), original_pins: 0,
++        primary_alias_pins: 0, removed_zero_segments: 0, retained_protected_edges: 0,
++        retained_curve_memberships: 0, exact_payload_keys_and_pin_transport: true,
++        protection_interval_bits_preserved: true, new_query_attempts: 0, checker_dynamic_allocations: 0,
++        scope: "supplied pregraph point/face/protection/interval records under already-authorized equivalences; not emitted-edge realization, unsupplied metadata, patch ownership, or whole-program memory" };
++    for (&canonical, &local) in input.map {
++        if input.canonical(canonical) != canonical
++            || !input.needed.contains(&canonical)
++            || local >= input.private.count()
++            || input
++                .map
++                .iter()
++                .any(|(&other, &p)| other != canonical && p == local)
++        {
++            return Err("metadata_noninjective_canonical_map");
++        }
++    }
++    for &old in input.needed {
++        let local = input.mapped(old)?;
++        let canonical = input.canonical(old);
++        if payload(input.live, canonical) != payload(input.private, local)
++            || input.live.key_at(canonical) != input.private.key_at(local)
++        {
++            return Err("metadata_canonical_payload_or_key_changed");
++        }
++        r.merged_point_keys += usize::from(old != canonical);
++        r.unkeyed_points += usize::from(matches!(input.live.key_at(old), PointKey::Unkeyed));
++    }
++    for &(axis, key, len) in input.required {
++        if axis >= 3 {
++            return Err("metadata_face_axis");
++        }
++        let old = input.faces[axis]
++            .get(&key)
++            .ok_or("metadata_original_face_missing")?;
++        let new = input.staged[axis]
++            .get(&key)
++            .ok_or("metadata_staged_face_missing")?;
++        if old.axis != axis
++            || old.key != key
++            || old.len != len
++            || new.axis != axis
++            || new.key != key
++            || new.len != len
++            || old.interior_cycle != new.interior_cycle
++            || new.consumed_fwd.len() != new.segments.len()
++            || new.consumed_rev.len() != new.segments.len()
++        {
++            return Err("metadata_face_identity_or_shape");
++        }
++        let mut position = 0;
++        for segment in &old.segments {
++            let (a, b) = (input.mapped(segment.a)?, input.mapped(segment.b)?);
++            if a == b {
++                r.removed_zero_segments += 1;
++                continue;
++            }
++            if !new
++                .segments
++                .get(position)
++                .is_some_and(|s| s.a == a && s.b == b)
++            {
++                return Err("metadata_directed_segment_transport");
++            }
++            position += 1;
++        }
++        if position != new.segments.len() {
++            return Err("metadata_invented_segment");
++        }
++        r.original_pins = r
++            .original_pins
++            .checked_add(old.pins.len())
++            .ok_or("metadata_pin_cap")?;
++        if r.original_pins > 1024 || new.pins.len() > 1024 {
++            return Err("metadata_pin_cap");
++        }
++        for pin in &old.pins {
++            let expected = input.pin(pin)?;
++            r.primary_alias_pins += usize::from(pin.curve_id == input.primary[1]);
++            if !new.pins.iter().any(|p| same_pin(p, &expected)) {
++                return Err("metadata_missing_or_changed_pin");
++            }
++        }
++        for (i, pin) in new.pins.iter().enumerate() {
++            if new.pins[..i].iter().any(|p| same_pin(p, pin)) {
++                return Err("metadata_duplicate_pin");
++            }
++            let mut found = false;
++            for original in &old.pins {
++                if same_pin(pin, &input.pin(original)?) {
++                    found = true;
++                    break;
++                }
++            }
++            if !found {
++                return Err("metadata_invented_pin");
++            }
++        }
++    }
++    for (a, b) in input.live.protected_edges() {
++        if !input.needed.contains(&a) && !input.needed.contains(&b) {
++            continue;
++        }
++        r.retained_protected_edges += 1;
++        if r.retained_protected_edges > 2048 {
++            return Err("metadata_protected_edge_cap");
++        }
++        let (a, b) = (input.mapped(a)?, input.mapped(b)?);
++        if a == b || !input.private.edge_is_protected(a, b) {
++            return Err("metadata_protected_edge_lost");
++        }
++    }
++    for ((a, b), intervals) in input.live.identified_edges() {
++        if !input.needed.contains(&a) && !input.needed.contains(&b) {
++            continue;
++        }
++        let (a, b) = (input.mapped(a)?, input.mapped(b)?);
++        if a == b {
++            return Err("metadata_interval_collapsed");
++        }
++        for interval in intervals {
++            r.retained_curve_memberships += 1;
++            if r.retained_curve_memberships > 2048 {
++                return Err("metadata_interval_cap");
++            }
++            if !interval.start.is_finite()
++                || !interval.end.is_finite()
++                || interval.start == interval.end
++            {
++                return Err("metadata_invalid_original_interval");
++            }
++            let expected = if a < b {
++                *interval
++            } else {
++                interval.reversed()
++            };
++            if !input.private.identified_edges().any(|(edge, rows)| {
++                edge == (a.min(b), a.max(b)) && rows.iter().any(|row| same_interval(row, &expected))
++            }) {
++                return Err("metadata_oriented_interval_lost");
++            }
++        }
++    }
++    Ok(r)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::sfcc::face_contour::FaceSegment;
++    struct Fixture {
++        live: PointTable,
++        private: PointTable,
++        faces: [HashMap<i64, FaceRecord>; 3],
++        staged: [HashMap<i64, FaceRecord>; 3],
++        required: BTreeSet<FaceId>,
++        needed: BTreeSet<usize>,
++        equivalences: BTreeMap<usize, usize>,
++        map: BTreeMap<usize, usize>,
++        pin_parameters: BTreeMap<usize, [f64; 2]>,
++    }
++    impl Fixture {
++        fn inputs(&self) -> Inputs<'_> {
++            Inputs {
++                live: &self.live,
++                private: &self.private,
++                faces: &self.faces,
++                staged: &self.staged,
++                required: &self.required,
++                needed: &self.needed,
++                equivalences: &self.equivalences,
++                map: &self.map,
++                primary: [20, 39],
++                pin_parameters: &self.pin_parameters,
++            }
++        }
++    }
++    fn fixture() -> Fixture {
++        let mut live = PointTable::new();
++        let mut private = PointTable::new();
++        live.get_or_create(11, || [0., 0., 0., 0., 0., 1.]);
++        live.get_or_create_str("alias", || [0., 0., 0., 0., 0., 1.]);
++        live.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        private.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        private.get_or_create(11, || [0., 0., 0., 0., 0., 1.]);
++        let iv = CurveInterval {
++            curve_id: 7,
++            start: 4.,
++            end: 5.,
++        };
++        live.protect_curve_edge(0, 2, iv);
++        private.protect_curve_edge(1, 0, iv);
++        let record = |segments, pins| FaceRecord {
++            axis: 0,
++            key: 10,
++            len: 1,
++            segments,
++            pins,
++            interior_cycle: false,
++            consumed_fwd: vec![0],
++            consumed_rev: vec![0],
++        };
++        let mut faces = std::array::from_fn(|_| HashMap::new());
++        let mut staged = std::array::from_fn(|_| HashMap::new());
++        faces[0].insert(
++            10,
++            record(
++                vec![FaceSegment { a: 0, b: 1 }, FaceSegment { a: 1, b: 2 }],
++                vec![
++                    FacePin {
++                        point_id: 0,
++                        curve_id: 20,
++                        t: 2.,
++                    },
++                    FacePin {
++                        point_id: 1,
++                        curve_id: 39,
++                        t: 3.,
++                    },
++                ],
++            ),
++        );
++        staged[0].insert(
++            10,
++            record(
++                vec![FaceSegment { a: 1, b: 0 }],
++                vec![FacePin {
++                    point_id: 1,
++                    curve_id: 20,
++                    t: 2.,
++                }],
++            ),
++        );
++        Fixture {
++            live,
++            private,
++            faces,
++            staged,
++            required: BTreeSet::from([(0, 10, 1)]),
++            needed: BTreeSet::from([0, 1, 2]),
++            equivalences: BTreeMap::from([(1, 0)]),
++            map: BTreeMap::from([(0, 1), (2, 0)]),
++            pin_parameters: BTreeMap::from([(0, [2., 3.])]),
++        }
++    }
++    #[test]
++    fn metadata_c_exact_transport_preserves_reversed_membership_and_explicit_alias() {
++        let f = fixture();
++        let r = audit(f.inputs()).unwrap();
++        assert_eq!(
++            (r.original_points, r.canonical_points, r.merged_point_keys),
++            (3, 2, 1)
++        );
++        assert_eq!(
++            (r.retained_protected_edges, r.retained_curve_memberships),
++            (1, 1)
++        );
++        assert_eq!(
++            (r.new_query_attempts, r.checker_dynamic_allocations),
++            (0, 0)
++        );
++    }
++    #[test]
++    fn metadata_c_rejects_changed_normal_key_and_pin_bits() {
++        let mut f = fixture();
++        f.private.relocate(1, [0., 0., 0.], [0., 1., 0.]);
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_canonical_payload_or_key_changed"
++        );
++        let mut f = fixture();
++        let mut wrong = PointTable::new();
++        wrong.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        wrong.get_or_create(12, || [0., 0., 0., 0., 0., 1.]);
++        f.private = wrong;
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_canonical_payload_or_key_changed"
++        );
++        let mut f = fixture();
++        f.staged[0].get_mut(&10).unwrap().pins[0].t = 2_f64.next_up();
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_missing_or_changed_pin"
++        );
++    }
++    #[test]
++    fn metadata_c_rejects_lost_protection_wrong_orientation_and_invented_pin() {
++        let mut f = fixture();
++        let mut fresh = PointTable::new();
++        fresh.get_or_create(22, || [1., 0., 0., 0., 0., 1.]);
++        fresh.get_or_create(11, || [0., 0., 0., 0., 0., 1.]);
++        f.private = fresh;
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_protected_edge_lost"
++        );
++        f.private.protect_curve_edge(
++            0,
++            1,
++            CurveInterval {
++                curve_id: 7,
++                start: 4.,
++                end: 5.,
++            },
++        );
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_oriented_interval_lost"
++        );
++        let mut f = fixture();
++        f.staged[0].get_mut(&10).unwrap().pins.push(FacePin {
++            point_id: 0,
++            curve_id: 99,
++            t: 1.,
++        });
++        assert_eq!(audit(f.inputs()).unwrap_err(), "metadata_invented_pin");
++    }
++    #[test]
++    fn metadata_c_rejects_noninjective_map_and_directed_segment_reversal() {
++        let mut f = fixture();
++        f.map.insert(2, 1);
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_noninjective_canonical_map"
++        );
++        let mut f = fixture();
++        let s = &mut f.staged[0].get_mut(&10).unwrap().segments[0];
++        std::mem::swap(&mut s.a, &mut s.b);
++        assert_eq!(
++            audit(f.inputs()).unwrap_err(),
++            "metadata_directed_segment_transport"
++        );
++    }
++}
+--- a/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
++++ b/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs
+@@ -685,6 +685,8 @@
+         ..*opts
+     };
+     let mut triangles = Vec::new();
++    #[cfg(all(test,feature="serde"))]
++    if secondary_plan.is_some() {super::cell_mesh::ownership_a::reset();}
+     transport.phase("generated_queries");
+     let generated_scope = super::private_arc_a::GeneratedQueries::begin(&mut transport)
+         .map_err(|e| fail(features, ids, "generated_query_budget", e))?;
+@@ -765,6 +767,10 @@
+         .finish()
+         .map_err(|e| fail(features, ids, "generated_query_budget", e))?;
+     super::private_arc_a::note_queries(&generated);
++    #[cfg(all(test,feature="serde"))]
++    if secondary_validation_plan.is_some() {
++        super::private_arc_a::secondary_component_a::note("fanOwnershipA",super::cell_mesh::ownership_a::take_report());
++    }
+     transport.generated_validation(generated.len(), graph_failed);
+     transport.phase("generated_validation");
+     for event in &generated {
+@@ -1051,6 +1057,14 @@
+             final_intervals.len().to_string(),
+         ));
+     }
++    #[cfg(all(test,feature="serde"))]
++    if secondary_validation_plan.is_some() {
++        let metadata=super::private_arc_a::retained_metadata_c::audit(super::private_arc_a::retained_metadata_c::Inputs{
++            live,private:&private,faces,staged:&staged,required:&required,needed:&needed,equivalences:&equivalences,map:&map,
++            primary:[plan.physical,plan.alias],pin_parameters:&pin_parameters,
++        }).map_err(|e|fail(features,ids,e,"supplied original metadata was not transported exactly"))?;
++        super::private_arc_a::secondary_component_a::note("retainedMetadata",serde_json::json!(metadata));
++    }
+     let receipt=PrivateReceipt{fingerprint:plan.fingerprint,charts:plan.originals.clone(),changed_faces:changed.into_iter().collect(),consumers:selected.iter().map(|c|[c.level as i64,c.ix,c.iy,c.iz]).collect(),original_typed_bindings:original_bindings,equivalences:equivalences.into_iter().collect(),intervals:final_intervals,replacement_triangles:triangles.len()/3,replacement_vertices:private.count(),charged_queries:transport.charged_queries(),checked_events:ordered_events.len(),generated_queries:generated.len(),live_access:"immutable PointTable/FaceRecord references; no commit API",publication_status:PublicationReadiness::Blocked{reasons:vec!["matching-construction-stage retained-outside contacts not checked", "complete affected vertex links/frontier and old metadata transport not checked", "continuous source exposure and endpoint continuation not established by finite domain samples"]}};
+     #[cfg(feature = "serde")]
+     if serde_json::to_vec(&receipt).map_or(true, |v| v.len() > 64 * 1024 * 1024) {
+--- a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -291,6 +291,9 @@
+                             Ok(v) => v,
+                             Err(e) => json!({"status":"refused","reason":e}),
+                         };
++                    if std::env::var("SFCC_OUTSIDE_B").as_deref()==Ok("1") {
++                        report["outsideB"] = outside_b::probe(tree,f,oct,faces,live,opts,&candidate);
++                    }
+                     json!({"kind":"private_candidate_publication_blocked","receipt":candidate.receipt,"plan":candidate.plan})
+                 }
+             }
+@@ -412,3 +415,6 @@
+     assert!(REQUEST.with(|s| s.borrow().is_none()));
+     assert_eq!(DIAGNOSTIC.with(|s| s.borrow_mut().take()), Some(unrelated));
+ }
++
++#[path="outside_b.rs"]
++mod outside_b;

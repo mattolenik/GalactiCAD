@@ -1715,6 +1715,47 @@ fan and matching-stage outside compatibility, retaining all existing limits. The
 complete reconstruction is a substantial new result but does not authorize
 publication or establish production/native-WASM/GPU or full-model acceptance.
 
+## Round 34: source-region proof, exact supplied metadata and one outside join
+
+The [ownership/outside milestone](sfcc-patch-ownership/README.md) preserves the
+complete component's points, triangles, interval memberships and generated query
+records exactly. It records all 414 fan calls and their 1,775 triangles. The frozen
+fixture has quality triangulation disabled: the first cylinder carrier and 823
+triangles are supported by the older local-edit gate but never enter it. Missing
+labels are therefore not evidence that every fan is geometrically unsupported.
+
+For the first actual six-triangle cylinder fan, a source-bound interval argument
+establishes full composed-field exposure on 35 small graph regions, including six
+open rectangles strictly inside the triangle charts. One lifted edge midpoint has
+a positive field lower bound of about 1.404e-10. This refutes that exact lift's
+universal ownership, not the approximate mesh; it is a field value, not a proved
+displacement. Twelve other probes are inconclusive or uncertified, and the full fan
+area/boundary transport remain unproved. Review corrected outward derivative-bound
+rounding and added an explicit clamp-inactive height guard before twist evaluation.
+
+The allocation-free, query-free supplied-metadata audit passes for 851 original
+points, 647 canonical points, 1,031 faces and 414 pins. It checks normal/key/position
+bits and directed segment/pin transport. Actual pregraph protected-edge and interval
+counts are zero, so those preservation exits are vacuous in this fixture; controls
+cover nonempty cases. Unsupplied metadata and emitted-edge realization stay outside
+this check's claim.
+
+The same-stage outside inventory has 88,835 leaves, 375 face-adjacent cells and 277
+with nonempty shared frontier faces. The deterministic first neighbor [7,20,62,71]
+produces one triangle, with valid orientation/consumption, no detected contact with
+the candidate and valid partial joined topology. It makes zero generated curve
+queries. Its separate ledger retains 64 setup charges and the full 2,048 reservation;
+this does not alter the candidate's 8,413 charges. The ring exceeds the existing
+256-cell cap; no full-outside acceptance or unproved cell-box exclusion is claimed.
+
+The selected source passes 50 distinct tests in 38.826 seconds, a non-test library
+check and a complete diagnostic in 38.112 seconds, all within existing bounds.
+Seven executed source patches are restorable and failed compiler attempts preserved.
+Next prove a tolerance-aware root graph for the full composed field over the first
+fan, including boundary transport/error, and design complete bounded outside
+coverage. Full surface ownership, outside compatibility, replacement-stage metadata,
+allocator accounting and production/native-WASM/GPU/full-model acceptance remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

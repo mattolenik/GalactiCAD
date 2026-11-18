@@ -1,0 +1,519 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/outside_b.rs
+@@ -0,0 +1,497 @@
++//! One exact same-stage retained consumer; success does not exclude unmeshed outside geometry.
++use super::{
++    topology, CellMeshOptions, CsgNode, FaceRecord, HashMap, PointKey, PointTable,
++    PrivateCandidate, SfccFeatureSet, SfccOctree,
++};
++use crate::math::grid::{cell_aabb, stride_at_level, unpack_point};
++use crate::sfcc::{
++    cell_mesh::mesh_cells_subset,
++    face_contour::FaceSegment,
++    mesh_edit::GrowingIndex,
++    octree::SfccCell,
++    private_arc_a::{self, GeneratedQueries},
++    shared_arc_plan::cell_faces,
++    shared_twisted_proof::correlated_c::transport_a::Transport,
++    stage4_source_preflight_c::selected_pair_c,
++    triangle_quality as q,
++};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++type Result<T> = std::result::Result<T, &'static str>;
++type Face = (usize, i64, i64);
++fn id(c: &SfccCell) -> [i64; 4] {
++    [c.level as i64, c.ix, c.iy, c.iz]
++}
++struct SavedDiagnostic(Option<Value>);
++impl SavedDiagnostic {
++    fn begin() -> Self {
++        Self(private_arc_a::DIAGNOSTIC.with(|s| s.replace(Some(json!({})))))
++    }
++}
++impl Drop for SavedDiagnostic {
++    fn drop(&mut self) {
++        private_arc_a::DIAGNOSTIC.with(|s| *s.borrow_mut() = self.0.take());
++    }
++}
++
++fn same_key(candidate: &PointTable, outside: &PointTable, p: usize) -> Result<Option<usize>> {
++    let found = match outside.key_at(p) {
++        PointKey::Num(k) => candidate.lookup(*k),
++        PointKey::Str(k) => candidate.lookup_str(k),
++        PointKey::Unkeyed => None,
++    };
++    if found.is_some_and(|c| {
++        q::pos(candidate, c).map(f64::to_bits) != q::pos(outside, p).map(f64::to_bits)
++    }) {
++        return Err("outside_candidate_same_key_different_position");
++    }
++    Ok(found)
++}
++fn join(
++    candidate: &PointTable,
++    inside: &[usize],
++    outside: &PointTable,
++    tris: &[usize],
++) -> Result<Value> {
++    if candidate.count() > 4096
++        || outside.count() > 4096
++        || inside.len() % 3 != 0
++        || tris.len() % 3 != 0
++        || inside.len() + tris.len() > 3 * 4096
++    {
++        return Err("outside_join_geometry_cap");
++    }
++    let mut positions: Vec<_> = (0..candidate.count())
++        .map(|p| q::pos(candidate, p))
++        .collect();
++    let mut mapping = Vec::with_capacity(outside.count());
++    for p in 0..outside.count() {
++        if let Some(c) = same_key(candidate, outside, p)? {
++            mapping.push(c);
++        } else {
++            if positions.len() >= 4096 {
++                return Err("outside_join_vertex_cap");
++            }
++            mapping.push(positions.len());
++            positions.push(q::pos(outside, p));
++        }
++    }
++    let mut indices = [GrowingIndex::new(), GrowingIndex::new()];
++    for t in inside.chunks_exact(3) {
++        if t.iter().any(|&p| p >= candidate.count()) {
++            return Err("outside_candidate_indices");
++        }
++        let ids = [t[0], t[1], t[2]];
++        let p = ids.map(|i| positions[i]);
++        indices[0].extend([(ids, p)]);
++        indices[1].extend([(ids, p.map(q::rounded))]);
++    }
++    let mut joined = inside.to_vec();
++    let mut conflicts = [Vec::new(), Vec::new()];
++    for (i, t) in tris.chunks_exact(3).enumerate() {
++        if t.iter().any(|&p| p >= outside.count()) {
++            return Err("outside_triangle_indices");
++        }
++        let ids = [mapping[t[0]], mapping[t[1]], mapping[t[2]]];
++        let p = ids.map(|i| positions[i]);
++        for (precision, coords) in [p, p.map(q::rounded)].into_iter().enumerate() {
++            if indices[precision].conflicts(ids, coords) {
++                conflicts[precision].push(i);
++            }
++        }
++        joined.extend(ids);
++    }
++    let combined = topology(&joined, positions.len())?;
++    Ok(
++        json!({"scope":"candidate against one actual original-stage outside consumer; no unmeshed outside exclusion",
++        "outsideToJoined":mapping,"candidateTriangleCount":inside.len()/3,"outsideTriangleCount":tris.len()/3,
++        "contactingOutsideTrianglesWorkingOrExported":conflicts[0],"contactingOutsideTrianglesRoundedBroadphase":conflicts[1],
++        "partialJoinedTopology":combined,"partialJoinedLinkFailureMayNeedOtherOutsideConsumers":true,
++        "completeOutsideContactAudit":false,"publicationReady":false}),
++    )
++}
++
++pub(super) fn probe(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++    candidate: &PrivateCandidate,
++) -> Value {
++    let _saved = SavedDiagnostic::begin();
++    let before = private_arc_a::diagnostic::live_digest(faces, live);
++    let result = probe_inner(tree, features, oct, faces, live, opts, candidate);
++    let evidence = private_arc_a::DIAGNOSTIC
++        .with(|s| s.borrow_mut().take())
++        .unwrap_or(Value::Null);
++    let after = private_arc_a::diagnostic::live_digest(faces, live);
++    let mut report = match result {
++        Ok(r) => r,
++        Err(e) => json!({"refusal":e,"completeOutsideContactAudit":false,"publicationReady":false}),
++    };
++    report["queryAndGraphEvidence"] = evidence;
++    report["liveDigestBefore"] = json!(before);
++    report["liveDigestAfter"] = json!(after);
++    report["liveStatePreserved"] = json!(before == after);
++    report["queryBudgetScope"]=json!("separate observational ledger with unchanged16384 total/2048 generated reservation; not candidate ledger or publication authority");
++    if serde_json::to_vec(&report).map_or(true, |v| v.len() > 512 * 1024) {
++        // Keep the failure explicit; do not turn an unrecordable suffix into an audit pass.
++        return json!({"refusal":"outside_diagnostic_512KiB_cap","completeOutsideContactAudit":false,"publicationReady":false,"liveStatePreserved":before==after});
++    }
++    report
++}
++fn probe_inner(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++    candidate: &PrivateCandidate,
++) -> Result<Value> {
++    let selected: BTreeSet<_> = candidate.receipt.consumers.iter().copied().collect();
++    if selected.is_empty() || selected.len() > 256 {
++        return Err("outside_selected_cell_cap");
++    }
++    let mut required = BTreeMap::<Face, usize>::new();
++    let mut found = 0;
++    for cell in &oct.leaves {
++        if selected.contains(&id(cell)) {
++            found += 1;
++            for face in cell_faces(oct, faces, cell) {
++                *required.entry(face).or_default() += 1;
++            }
++        }
++    }
++    if found != selected.len() || required.len() > 1536 {
++        return Err("outside_original_component_binding");
++    }
++    let frontier: BTreeSet<_> = required
++        .iter()
++        .filter_map(|(&f, &n)| (n == 1).then_some(f))
++        .collect();
++    let mut chosen: Option<&SfccCell> = None;
++    let mut outside_count = 0;
++    let mut adjacent = 0;
++    let mut nonempty = 0;
++    let mut outside_uses = BTreeMap::<Face, usize>::new();
++    for cell in &oct.leaves {
++        if selected.contains(&id(cell)) {
++            continue;
++        }
++        outside_count += 1;
++        let touching: Vec<_> = cell_faces(oct, faces, cell)
++            .into_iter()
++            .filter(|f| frontier.contains(f))
++            .collect();
++        if touching.is_empty() {
++            continue;
++        }
++        adjacent += 1;
++        for &face in &touching {
++            let uses = outside_uses.entry(face).or_default();
++            *uses += 1;
++            if *uses > 1 {
++                return Err("outside_multiple_actual_consumers");
++            }
++        }
++        if touching
++            .iter()
++            .any(|&(a, k, _)| !faces[a][&k].segments.is_empty())
++        {
++            nonempty += 1;
++            if chosen.is_none_or(|old| id(cell) < id(old)) {
++                chosen = Some(cell);
++            }
++        }
++    }
++    let inventory = json!({"selectedCells":selected.len(),"requiredFaces":required.len(),"frontierFaces":frontier.len(),"outsideLeaves":outside_count,
++        "faceAdjacentOutsideLeaves":adjacent,"nonemptyFaceAdjacentOutsideLeaves":nonempty,"adjacentRingFitsExisting256CellCap":adjacent<=256,
++        "allOutsideLeavesExaminedForFaceIncidence":true,"unmeshedCellBoundsUsedToExcludeContacts":false,
++        "fullOutsideReconstructionAttempted":false,"plannedWitnessCells":1,"selectionRule":"lexicographically smallest original outside cell ID incident to a nonempty candidate frontier FaceRecord"});
++    private_arc_a::DIAGNOSTIC
++        .with(|s| s.borrow_mut().as_mut().unwrap()["outsideInventory"] = inventory.clone());
++    let cell = chosen.ok_or("outside_nonempty_frontier_consumer_missing")?;
++    let required = cell_faces(oct, faces, cell);
++    if required.len() > 24 {
++        return Err("outside_cell_face_cap");
++    }
++    let shared: Vec<_> = required
++        .iter()
++        .copied()
++        .filter(|f| frontier.contains(f))
++        .collect();
++    if shared.is_empty() {
++        return Err("outside_actual_frontier_binding");
++    }
++    let mut needed = BTreeSet::new();
++    let mut pins = 0;
++    for &(axis, key, len) in &required {
++        let r = faces
++            .get(axis)
++            .and_then(|m| m.get(&key))
++            .ok_or("outside_face_slot")?;
++        if r.axis != axis
++            || r.key != key
++            || r.len != len
++            || r.consumed_fwd.len() != r.segments.len()
++            || r.consumed_rev.len() != r.segments.len()
++            || r.consumed_fwd
++                .iter()
++                .chain(&r.consumed_rev)
++                .any(|&n| n != 0)
++        {
++            return Err("outside_not_original_pregraph_record");
++        }
++        pins += r.pins.len();
++        if pins > 1024 {
++            return Err("outside_pin_cap");
++        }
++        needed.extend(r.segments.iter().flat_map(|s| [s.a, s.b]));
++        needed.extend(r.pins.iter().map(|p| p.point_id));
++    }
++    if needed.len() > 4096 || needed.iter().any(|&p| p >= live.count()) {
++        return Err("outside_input_point_cap");
++    }
++    let mut points = PointTable::new();
++    points.arrangement = live.arrangement;
++    let mut map = BTreeMap::new();
++    for &id in &needed {
++        let p = q::pos(live, id);
++        let data = || [p[0], p[1], p[2], live.nx(id), live.ny(id), live.nz(id)];
++        let n = match live.key_at(id) {
++            PointKey::Num(k) => points.get_or_create(*k, data),
++            PointKey::Str(k) => points.get_or_create_str(k, data),
++            PointKey::Unkeyed => {
++                points.add(p[0], p[1], p[2], live.nx(id), live.ny(id), live.nz(id))
++            }
++        };
++        if q::pos(&points, n).map(f64::to_bits) != p.map(f64::to_bits)
++            || [points.nx(n), points.ny(n), points.nz(n)].map(f64::to_bits)
++                != [live.nx(id), live.ny(id), live.nz(id)].map(f64::to_bits)
++        {
++            return Err("outside_point_payload_collision");
++        }
++        map.insert(id, n);
++    }
++    for (a, b) in live.protected_edges() {
++        if needed.contains(&a) != needed.contains(&b) {
++            return Err("outside_external_protected_endpoint");
++        }
++        if let (Some(&a), Some(&b)) = (map.get(&a), map.get(&b)) {
++            points.protect_edge(a, b);
++        }
++    }
++    let mut intervals = 0;
++    for ((a, b), ivs) in live.identified_edges() {
++        if needed.contains(&a) != needed.contains(&b) {
++            return Err("outside_external_interval_endpoint");
++        }
++        if let (Some(&a), Some(&b)) = (map.get(&a), map.get(&b)) {
++            for &iv in ivs {
++                intervals += 1;
++                if intervals > 2048 {
++                    return Err("outside_interval_cap");
++                }
++                points.protect_curve_edge(a, b, iv);
++            }
++        }
++    }
++    let initial = points.count();
++    let mut staged: [HashMap<i64, FaceRecord>; 3] = std::array::from_fn(|_| HashMap::new());
++    let mut face_rows = Vec::new();
++    for &(axis, key, len) in &required {
++        let r = &faces[axis][&key];
++        face_rows.push(json!({"face":[axis,key,len],"segments":r.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>(),"pins":r.pins.iter().map(|p|json!([p.curve_id,p.t.to_bits(),p.point_id])).collect::<Vec<_>>(),"interiorCycle":r.interior_cycle,"consumedForward":r.consumed_fwd,"consumedReverse":r.consumed_rev}));
++        staged[axis].insert(
++            key,
++            FaceRecord {
++                axis,
++                key,
++                len,
++                segments: r
++                    .segments
++                    .iter()
++                    .map(|s| FaceSegment {
++                        a: map[&s.a],
++                        b: map[&s.b],
++                    })
++                    .collect(),
++                pins: r
++                    .pins
++                    .iter()
++                    .map(|p| {
++                        let mut p = *p;
++                        p.point_id = map[&p.point_id];
++                        p
++                    })
++                    .collect(),
++                interior_cycle: r.interior_cycle,
++                consumed_fwd: r.consumed_fwd.clone(),
++                consumed_rev: r.consumed_rev.clone(),
++            },
++        );
++    }
++    let primary = selected_pair_c(features).map_err(|_| "outside_source_pair")?;
++    let mut budget = Transport::bind(features, primary, opts.curve_chord_tol)
++        .map_err(|_| "outside_budget_source")?;
++    budget.phase("outside_generated_queries");
++    let before = budget.charged_queries();
++    let generated = GeneratedQueries::begin(&mut budget)?;
++    private_arc_a::note_active_cell(cell);
++    let local_opts = CellMeshOptions {
++        features: Some(features),
++        ..*opts
++    };
++    let mesh = mesh_cells_subset(
++        oct,
++        &mut staged,
++        tree,
++        &mut points,
++        &local_opts,
++        std::slice::from_ref(cell),
++    );
++    let failed = !mesh.failed_cells.is_empty() || mesh.feature_cell_fallbacks != 0;
++    if failed {
++        private_arc_a::graph_b::final_failure(cell);
++        private_arc_a::note_private_mesher_failure(oct, &staged, cell, &points, &mesh);
++    }
++    let queries = generated.finish()?;
++    budget.generated_validation(queries.len(), failed);
++    budget.phase("outside_generated_validation");
++    let eps = budget.allowance();
++    let mut validation_failures = Vec::new();
++    for (i, event) in queries.iter().enumerate() {
++        let Some(point) = event.point else {
++            validation_failures.push(json!({"event":i,"reason":"failed_generated_query"}));
++            continue;
++        };
++        budget
++            .reserve_external(1)
++            .map_err(|_| "outside_postvalidation_budget")?;
++        budget.external_direct_attempt();
++        let valid = features.curves.get(event.chart).is_some_and(|curve| {
++            curve
++                .point_at_checked(event.t)
++                .is_some_and(|own| own.map(f64::to_bits) == point.map(f64::to_bits))
++                && curve.adjacent_strata.iter().all(|&sid| {
++                    features.strata.get(sid).is_some_and(|s| {
++                        (s.domain_contains(point, eps)
++                            || curve.upper_source_member(
++                                &features.strata,
++                                sid,
++                                event.t,
++                                point,
++                                eps,
++                            ))
++                            && s.raw_field(point[0], point[1], point[2])
++                                .normalized_equation()
++                                .is_some_and(|v| v.value.is_finite() && v.value.abs() <= eps)
++                    })
++                })
++        });
++        if valid {
++            budget.generated_validated();
++        } else {
++            validation_failures
++                .push(json!({"event":i,"reason":"original_own_query_or_source_condition"}));
++        }
++    }
++    budget.phase("outside_complete");
++    let mut report = json!({"scope":"first actual untouched frontier consumer replayed before ordinary cell meshing; no primary or secondary quotient in outside view",
++        "inventory":inventory,"cell":id(cell),"cellBoxBits":cell_aabb(&oct.lat,cell.level,cell.ix,cell.iy,cell.iz).map(f64::to_bits),"sharedOriginalFaces":shared,"faces":face_rows,
++        "sourceFingerprint":features.fingerprint().to_string(),"initialPoints":initial,"pointBindings":map.iter().map(|(&global,&local)|json!([global,local])).collect::<Vec<_>>(),
++        "points":(0..points.count()).map(|p|json!({"id":p,"positionBits":q::pos(&points,p).map(f64::to_bits),"normalBits":([points.nx(p),points.ny(p),points.nz(p)]).map(f64::to_bits),"key":format!("{:?}",points.key_at(p))})).collect::<Vec<_>>(),
++        "triangles":mesh.tris,"failedCellCount":mesh.failed_cells.len(),"featureCellFallbacks":mesh.feature_cell_fallbacks,
++        "generatedQueries":queries.len(),"generatedPostvalidationFailures":validation_failures,"allGeneratedQueriesValidated":validation_failures.is_empty(),
++        "chargedBeforeReservation":before,"finalChargedQueries":budget.charged_queries(),"fullOutsideContactAudit":false,"publicationReady":false});
++    if points.count() > 4096 || mesh.tris.len() > 3 * 4096 {
++        return Err("outside_geometry_cap");
++    }
++    let mut consumption_valid = true;
++    for &(axis, key, _) in &required {
++        let stride = stride_at_level(&oct.lat, cell.level);
++        let base = [cell.ix * stride, cell.iy * stride, cell.iz * stride];
++        let g = unpack_point(&oct.lat, key);
++        let side = if g[axis] == base[axis] {
++            0
++        } else if g[axis] == base[axis] + stride {
++            1
++        } else {
++            return Err("outside_face_plane");
++        };
++        let r = &staged[axis][&key];
++        consumption_valid &= r.consumed_fwd.iter().all(|&n| n == u32::from(side == 0))
++            && r.consumed_rev.iter().all(|&n| n == u32::from(side == 1));
++    }
++    report["originalFaceConsumptionValid"] = json!(consumption_valid);
++    report["failureAttribution"] = json!("outside internal failures are baseline retained-cell failures; a candidate/outside conflict alone does not prove which side caused it");
++    if !failed && validation_failures.is_empty() {
++        let bad: Vec<_> = mesh
++            .tris
++            .chunks_exact(3)
++            .enumerate()
++            .filter_map(|(i, t)| {
++                let p = [t[0], t[1], t[2]].map(|i| q::pos(&points, i));
++                let reference = tree.grad(q::bary(p, [1. / 3.; 3])).1;
++                (!q::valid_orientation(p, reference)).then_some(i)
++            })
++            .collect();
++        report["invalidWorkingOrExportedOrientation"] = json!(bad);
++        report["joined"] = match join(&candidate.points, &candidate.triangles, &points, &mesh.tris)
++        {
++            Ok(value) => value,
++            Err(reason) => json!({"refusal":reason,"completeOutsideContactAudit":false}),
++        };
++    }
++    Ok(report)
++}
++
++#[test]
++fn outside_b_identity_requires_original_key_and_position() {
++    let mut a = PointTable::new();
++    a.get_or_create(7, || [0., 0., 0., 0., 0., 1.]);
++    let mut b = PointTable::new();
++    let x = b.get_or_create(7, || [0., 0., 0., 0., 0., 1.]);
++    assert_eq!(same_key(&a, &b, x), Ok(Some(0)));
++    let y = b.add(0., 0., 0., 0., 0., 1.);
++    assert_eq!(same_key(&a, &b, y), Ok(None));
++    let mut wrong = PointTable::new();
++    wrong.get_or_create(7, || [1., 0., 0., 0., 0., 1.]);
++    assert_eq!(
++        same_key(&a, &wrong, 0),
++        Err("outside_candidate_same_key_different_position")
++    );
++}
++#[test]
++fn outside_b_join_checks_actual_contacts_and_partial_topology() {
++    let mut a = PointTable::new();
++    for (i, p) in [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]
++        .iter()
++        .enumerate()
++    {
++        a.get_or_create(i as i64, || [p[0], p[1], p[2], 0., 0., 1.]);
++    }
++    let mut b = PointTable::new();
++    for (i, p) in [(0, [0., 0., 0.]), (1, [1., 0., 0.]), (3, [0., -1., 0.])] {
++        b.get_or_create(i, || [p[0], p[1], p[2], 0., 0., 1.]);
++    }
++    let good = join(&a, &[0, 1, 2], &b, &[1, 0, 2]).unwrap();
++    assert_eq!(
++        good["contactingOutsideTrianglesWorkingOrExported"],
++        json!([])
++    );
++    assert_eq!(good["partialJoinedTopology"]["localTopologyValid"], true);
++    assert_eq!(good["completeOutsideContactAudit"], false);
++    let mut crossing = PointTable::new();
++    for p in [[0.25, 0.25, -1.], [0.25, 0.25, 1.], [0.5, 0.5, 0.]] {
++        crossing.add(p[0], p[1], p[2], 0., 0., 1.);
++    }
++    let bad = join(&a, &[0, 1, 2], &crossing, &[0, 1, 2]).unwrap();
++    assert_eq!(
++        bad["contactingOutsideTrianglesWorkingOrExported"],
++        json!([0])
++    );
++}
+--- a/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs
+@@ -291,6 +291,9 @@
+                             Ok(v) => v,
+                             Err(e) => json!({"status":"refused","reason":e}),
+                         };
++                    if std::env::var("SFCC_OUTSIDE_B").as_deref()==Ok("1") {
++                        report["outsideB"] = outside_b::probe(tree,f,oct,faces,live,opts,&candidate);
++                    }
+                     json!({"kind":"private_candidate_publication_blocked","receipt":candidate.receipt,"plan":candidate.plan})
+                 }
+             }
+@@ -412,3 +415,6 @@
+     assert!(REQUEST.with(|s| s.borrow().is_none()));
+     assert_eq!(DIAGNOSTIC.with(|s| s.borrow_mut().take()), Some(unrelated));
+ }
++
++#[path="outside_b.rs"]
++mod outside_b;

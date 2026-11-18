@@ -1,0 +1,8 @@
+{
+  "filter": "ownership_a_",
+  "tests": [
+    "sfcc::cell_mesh::ownership_a::ownership_a_first_actual_fan_source_regions_and_projection_witnesses",
+    "sfcc::cell_mesh::ownership_a::ownership_a_inventory_is_bounded_and_inactive_without_request"
+  ],
+  "exitCode": 0
+}

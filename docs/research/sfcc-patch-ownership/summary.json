@@ -1,0 +1,214 @@
+{
+  "selected": "Clamp",
+  "sourceManifestSha256": "f013d746168b124c7fb39a61ab63cff9ae6ec4ad18d18a196308f16e9a478273",
+  "componentReceiptSha256": "cd25d6db584fbe2717416f14e703073da6642aa2eaf1b690b7159bded678bac5",
+  "parentPreservation": {
+    "candidatePointsIdentical": true,
+    "candidateTrianglesIdentical": true,
+    "intervalsIdenticalAfterSorting": true,
+    "candidateGeneratedQueriesIdentical": true,
+    "candidateLedgerUnchanged": true,
+    "firstFanBoundaryMatchesFixture": true,
+    "firstFanTrianglesMatchFixture": true,
+    "firstFanPointsMatchFixture": true
+  },
+  "cells": 205,
+  "faces": 1031,
+  "triangles": 1775,
+  "candidateGeneratedQueries": 1929,
+  "candidateCharges": 8413,
+  "fanCount": 414,
+  "fanTriangleCount": 1775,
+  "fanInventoryComplete": true,
+  "fanHypotheses": [
+    {
+      "counts": [
+        203,
+        878,
+        203
+      ],
+      "qualityTriangulation": false,
+      "stratum": 10,
+      "supportedLocalCarrier": false
+    },
+    {
+      "counts": [
+        198,
+        823,
+        198
+      ],
+      "qualityTriangulation": false,
+      "stratum": 15,
+      "supportedLocalCarrier": true
+    },
+    {
+      "counts": [
+        1,
+        6,
+        1
+      ],
+      "qualityTriangulation": false,
+      "stratum": 30,
+      "supportedLocalCarrier": false
+    },
+    {
+      "counts": [
+        5,
+        30,
+        5
+      ],
+      "qualityTriangulation": false,
+      "stratum": 31,
+      "supportedLocalCarrier": false
+    },
+    {
+      "counts": [
+        3,
+        20,
+        3
+      ],
+      "qualityTriangulation": false,
+      "stratum": 38,
+      "supportedLocalCarrier": false
+    },
+    {
+      "counts": [
+        4,
+        18,
+        4
+      ],
+      "qualityTriangulation": false,
+      "stratum": 39,
+      "supportedLocalCarrier": false
+    }
+  ],
+  "sourceRegions": {
+    "total": 48,
+    "exposed": 35,
+    "strictlyInteriorOpenExposed": 6,
+    "projectionCounterexamples": 1,
+    "noCertificate": 5,
+    "inconclusiveCertificates": 7
+  },
+  "counterexampleRows": [
+    {
+      "certificate": {
+        "capCutMargin": 7.492008133716828,
+        "composedSourcePositiveLower": 1.4041567908407152e-10,
+        "cylinderCapMargin": 7.507991866283166,
+        "cylinderGraphDerivativeLower": 0.8665746345667478,
+        "finiteProfileMargin": 0.6136287033390758,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.7000248799747533,
+          0.7000248799747583
+        ],
+        "grooveMargin": [
+          2.487997475331127e-05,
+          2.487997475830728e-05
+        ],
+        "nativeCapMargin": 6.507991866423581,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          1.4041567908407152e-10,
+          1.405791039132965e-10
+        ],
+        "otherDistance": [
+          1.8371498128050758,
+          1.8371498128050825
+        ],
+        "outerRoundMargin": 3.076552701519185,
+        "projectionOwnershipDisproved": true,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359006053320895,
+            -2.492008133716832,
+            5.3897129509745705
+          ],
+          [
+            -9.359006053320877,
+            -2.49200813371683,
+            5.389712950974575
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.492008133716832,
+            5.3897129509745705
+          ],
+          [
+            -2.49200813371683,
+            5.389712950974575
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        0.0,
+        0.5,
+        0.5
+      ]
+    }
+  ],
+  "metadata": {
+    "canonical_points": 647,
+    "checker_dynamic_allocations": 0,
+    "exact_payload_keys_and_pin_transport": true,
+    "faces": 1031,
+    "merged_point_keys": 204,
+    "new_query_attempts": 0,
+    "original_pins": 414,
+    "original_points": 851,
+    "primary_alias_pins": 198,
+    "protection_interval_bits_preserved": true,
+    "removed_zero_segments": 204,
+    "retained_curve_memberships": 0,
+    "retained_protected_edges": 0,
+    "scope": "supplied pregraph point/face/protection/interval records under already-authorized equivalences; not emitted-edge realization, unsupplied metadata, patch ownership, or whole-program memory",
+    "unkeyed_points": 0
+  },
+  "outsideInventory": {
+    "adjacentRingFitsExisting256CellCap": false,
+    "allOutsideLeavesExaminedForFaceIncidence": true,
+    "faceAdjacentOutsideLeaves": 375,
+    "frontierFaces": 827,
+    "fullOutsideReconstructionAttempted": false,
+    "nonemptyFaceAdjacentOutsideLeaves": 277,
+    "outsideLeaves": 88835,
+    "plannedWitnessCells": 1,
+    "requiredFaces": 1031,
+    "selectedCells": 205,
+    "selectionRule": "lexicographically smallest original outside cell ID incident to a nonempty candidate frontier FaceRecord",
+    "unmeshedCellBoundsUsedToExcludeContacts": false
+  },
+  "outsideCell": [
+    7,
+    20,
+    62,
+    71
+  ],
+  "outsideTriangles": 1,
+  "outsideGeneratedQueries": 0,
+  "outsideCharges": 2112,
+  "outsideFaceConsumptionValid": true,
+  "outsideOrientationFailures": [],
+  "outsideContactsWorkingOrExported": [],
+  "outsideContactsRoundedBroadphase": [],
+  "partialJoinedTopologyValid": true,
+  "liveStatePreserved": true,
+  "wholeFanOwnershipProved": false,
+  "fullOutsideAudit": false,
+  "publicationReady": false,
+  "focusedTestsPassed": 50,
+  "focusedCampaignSeconds": 38.8260057499283,
+  "componentSeconds": 38.11227029201109
+}

@@ -1,0 +1,64 @@
+{
+  "parentManifest": "docs/research/sfcc-component-transaction/Reviewed/manifest.json",
+  "parentManifestSha256": "8197a37bc3104faebf0a0119dda9f6c568922f0a8075bb036d0bc6fbfc23c2a9",
+  "parentInputCount": 202,
+  "selected": "Clamp",
+  "restorations": [
+    {
+      "packet": "A-check",
+      "patchSha256": "0a7831b9f2b9b15a61f508b6ee827c54a38dca8d2d1a2d044bfc52685e8d9223",
+      "manifestSha256": "9ec0410177e6dac7455c906a79e6205d4964e91ce704c8730a9dde0814349fbd",
+      "verifiedInputCount": 205,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-ownership-restore-t0m7fp73",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "B-check",
+      "patchSha256": "cdd5b4890d93ba34dd8fa21bdf2ba2c71b8d33af9b3b94469f04fe09647c2121",
+      "manifestSha256": "7a18284dd9007102a889784f90e4dba98d9e5b19fb7edb441ae2f308fbcfd249",
+      "verifiedInputCount": 203,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-ownership-restore-qmhl4bpw",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "B-fixed",
+      "patchSha256": "e38b4f5dee5c5ef8b6c2e8eaeded9628a18682bf8ddc1c03f3a1cee336fffbf0",
+      "manifestSha256": "b3b3c8382334822f18500546f8a6ab7ec3d6642cb9e9b16334091beb6ae60280",
+      "verifiedInputCount": 203,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-ownership-restore-iw93bapr",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-check",
+      "patchSha256": "13943bb8fdbefbd790796f5db8bf8002dd000fcbcb9fb24724f9c05fc923fa44",
+      "manifestSha256": "51ae10b4357e22aea145bdb220e233171621f969a5c16e0a31461a71ac590f1a",
+      "verifiedInputCount": 203,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-ownership-restore-eapxh1dx",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Clamp",
+      "patchSha256": "ede5735c07839843aefc45bbc6b4b3a7f5ff6ea2049f72bf9d1c78ef42627c5a",
+      "manifestSha256": "f013d746168b124c7fb39a61ab63cff9ae6ec4ad18d18a196308f16e9a478273",
+      "verifiedInputCount": 207,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-ownership-restore-f6g3zrbm",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Combined",
+      "patchSha256": "f0f611ddcacbe63833ff7480d2610aba37b4843493724e514e8b2df9b6b6fe04",
+      "manifestSha256": "2e285c27abd7a336eb957144f2d3292d7fb311b08aa2fbaa733381872c85ac2e",
+      "verifiedInputCount": 207,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-ownership-restore-kxg8wlc9",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Reviewed",
+      "patchSha256": "260a49797d33a04855bd4af4e975165c7d1142e2f5cafbac156128b2a005db3a",
+      "manifestSha256": "42f50c4048f36f45087dce62e1cfbe32dbf160e65ba751ed9b7de9d6b8a81cba",
+      "verifiedInputCount": 207,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-ownership-restore-9d_2tzhb",
+      "result": "all input hashes match"
+    }
+  ]
+}

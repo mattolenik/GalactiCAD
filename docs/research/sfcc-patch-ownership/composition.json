@@ -1,0 +1,56 @@
+{
+  "inputs": [
+    {
+      "source": "/tmp/sfcc-ownership-a-fixed/gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "19d2316f7dc0fc1fd4032a7676ce52ae0f9684b0b5d20f7f0c9b709a13cb63ad"
+    },
+    {
+      "source": "/tmp/sfcc-ownership-a-fixed/gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "sha256": "680e9b4b66965f275523f8a8c2ecdce36c32409469389787b065aaffb3b399f3"
+    },
+    {
+      "source": "/tmp/sfcc-ownership-a-fixed/gcad-wasm/kernel/src/sfcc/ownership_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/ownership_a.rs",
+      "sha256": "578916f58e0983b06d8ecb4574c99d5c99db79f698207d520155dabb75f10bb8"
+    },
+    {
+      "source": "/tmp/sfcc-ownership-a-fixed/gcad-wasm/kernel/src/sfcc/ownership_source_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/ownership_source_a.rs",
+      "sha256": "fcc9934378ba03429345ca012aef2a9036846f9a60fa98a1dcfb58c7cfc3fa64"
+    },
+    {
+      "source": "/tmp/sfcc-ownership-a-fixed/gcad-wasm/kernel/fixtures/ownership-first-fan-a.json",
+      "target": "gcad-wasm/kernel/fixtures/ownership-first-fan-a.json",
+      "sha256": "484a6ad803282dc15df3d7c6729a5a33c525fe33d4ead0f46a1f702cb228d318"
+    },
+    {
+      "source": "/tmp/sfcc-outside-b-fixed/gcad-wasm/kernel/src/sfcc/stage4_component_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/stage4_component_b.rs",
+      "sha256": "3d0f5baf049805bd1438bbf520546af2d5ae197603a114b24c7393f9ce2d6bd7"
+    },
+    {
+      "source": "/tmp/sfcc-outside-b-fixed/gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "sha256": "7c10d794098c9646a15fba2cca08f1ec51ed39a2f4473f4b9afc45bdad4a8b87"
+    },
+    {
+      "source": "/tmp/sfcc-ownership-c/gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/private_arc_a.rs",
+      "sha256": "0f907d57ec55a704477741f32a7b4e68ef63331f41b8a84b09ca10ceeee087a1"
+    },
+    {
+      "source": "/tmp/sfcc-ownership-c/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+      "sha256": "64e805970286b9996e1393b6c2617c7dbd48f51d558b289a0685d44ed1262167"
+    },
+    {
+      "source": "/tmp/sfcc-ownership-c/gcad-wasm/kernel/src/sfcc/retained_metadata_c.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/retained_metadata_c.rs",
+      "sha256": "266fc2d1345a8a104e879b173f2748fa6e9ba6122eafe024e4c630260924e5df"
+    }
+  ],
+  "rootHookFile": "/tmp/sfcc-ownership-combined/gcad-wasm/kernel/src/sfcc/shared_arc_plan.rs",
+  "rootHookSha256": "21b10e8620b5ace514fe347f59c1ecaa8e1c94d3cfb9606d0e079cb7e9a82a83"
+}

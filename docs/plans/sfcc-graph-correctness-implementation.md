@@ -1,17 +1,21 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [complete affected-component transaction](../research/sfcc-component-transaction/README.md)
-now reconstructs all 205 cells / 1,031 required faces into 1,775 triangles. All
-seven secondary consumers complete; all 1,929 generated queries postvalidate at
-8,413 ledger charges. Indexed topology, f64/f32 winding/self-contact and original
-frontier bindings pass. The reviewed source passes 43 focused tests and a non-test
-library check. A refused-proof-prefix guard found during review is fixed, with
-identical reconstructed geometry on the fresh run.
-**Stage 4 publication and production acceptance remain open.** No triangle has
-certified source-patch ownership; matching-stage outside geometry/contact, complete
-metadata transport and checker allocation accounting remain unchecked. Next derive
-positive ownership for the first unsupported fan, then close outside compatibility
-and resource obligations before production/native-WASM/GPU preservation.
+Status: the [ownership/outside milestone](../research/sfcc-patch-ownership/README.md)
+preserves the complete 205-cell / 1,031-face, 1,775-triangle reconstruction and its
+1,929 validated generated queries exactly. Supplied pregraph metadata transport now
+passes for 851 original points, 1,031 faces and 414 pins. The first actual untouched
+outside consumer passes its local compatibility checks, but 375 face-adjacent
+outside cells remain a larger bounded-audit obligation.
+
+The frozen fixture disables quality triangulation, so absent owner labels do not
+by themselves establish unsupported carriers. The first cylinder fan has certified
+small exposed interior regions and one tiny positive-field counterexample to its
+chosen exact graph lift. No full-fan coverage or displacement bound follows.
+The selected source passes 50 focused tests and a non-test library check.
+**Stage 4 publication and production acceptance remain open.** Next certify a
+full composed-field root graph with qualified boundary transport and approximation
+error, and establish complete outside compatibility without increasing limits.
+Remaining replacement-stage metadata and checker allocation accounting also stay open.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and

@@ -1,21 +1,21 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [paired-boundary milestone](../research/sfcc-paired-boundary/README.md)
-reconstructs the actual retained neighbor [7,26,58,86] and certifies the selected
-6+5 triangles across face [0,3464532,2]. Their projected union is an embedded disk
-in both precisions. One common source slab proves identical roots along the whole
-shared contour trace, with exported error at most 0.0010241185705941118 mm under
-the unchanged 0.01 mm tolerance. The proof uses 55 pieces / 99 of 128 checks.
-The selected source passes 57 tests and a library check; fresh runtime evidence
-preserves the original component and binds the actual pair exactly.
+Status: the [captured-face/endpoint milestone](../research/sfcc-face-endpoint/README.md)
+certifies the four fans around both recorded contour segments: 21 triangles, one
+source graph, 65 accepted pieces and 109 of 128 checks. A bounded interior-vertex
+transport establishes an ideal feature/face endpoint correspondence while fixing
+the outer neighborhood boundary and leaving the mesh untouched. Its final f32
+pointwise bound is 0.0010243948722129135 mm under the unchanged 0.01 mm tolerance.
+The original parameter association passes directly within its existing allowance.
+All 65 selected tests and the library check pass; fresh runtime geometry, metadata
+and query evidence remain identical.
 
-**Stage 4 publication and production acceptance remain open.** The shared edge is
-one face-contour segment. Numerical curve-49 endpoint provenance is retained, but
-ideal feature/parameter transport is not proved. Next check that endpoint directly
-and certify the face's second contour segment and incident chamfer patch before
-claiming complete face compatibility. Other fans, the complete outside ring,
-replacement-stage metadata, checker allocation accounting and production parity
-remain open.
+**Stage 4 publication and production acceptance remain open.** The theorem covers
+the captured neighborhood and one ideal feature endpoint. It does not establish
+whole curve-49 transport or exclude extra true face intersections. Next certify
+the consumed feature spans and source-level face completeness, then extend the
+compatible ownership to more cells. Broader outside coverage, replacement-stage
+metadata, checker allocation accounting and production parity remain open.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and

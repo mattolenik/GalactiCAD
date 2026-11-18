@@ -1,0 +1,18 @@
+{
+  "checks": {
+    "allFourFanInputsMatchFreshCapture": true,
+    "all17PointBitsMatch": true,
+    "bothSegmentsMatchOriginalRecord": true,
+    "candidatePointsUnchanged": true,
+    "candidateTrianglesUnchanged": true,
+    "candidateGeneratedQueriesUnchanged": true
+  },
+  "fixtureSha256": "f517cd0ed38c10b272e97ab4b8bd6506b49af0629b02cbbf1e2baaa14cadc32f",
+  "captureReceiptSha256": "c963318f7062f4b26ad47becfb69775ba7bf407b7f59b8158da901850c8068e4",
+  "fanTriangleCounts": [
+    6,
+    5,
+    4,
+    6
+  ]
+}

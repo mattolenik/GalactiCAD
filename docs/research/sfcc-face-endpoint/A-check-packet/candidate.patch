@@ -1,0 +1,515 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -451,3 +451,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="paired_source_c.rs"]
+ pub(crate) mod paired_source_c;
++
++#[cfg(all(test,feature="serde"))]
++#[path="feature49_a.rs"]
++pub(crate) mod feature49_a;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/feature49_a.rs
+@@ -0,0 +1,502 @@
++//! Source-bound feature endpoint images; no mesh mutation or raw-parameter continuity claim.
++use super::*;
++use serde_json::{json, Value};
++
++type Image = [I; 3];
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn bounds(p: Image) -> [[f64; 3]; 2] {
++    [p.map(|v| v.lo), p.map(|v| v.hi)]
++}
++fn midpoint_image(p: Image) -> [f64; 3] {
++    p.map(|v| v.lo * 0.5 + v.hi * 0.5)
++}
++fn abs_lower(v: I) -> f64 {
++    if v.lo > 0. {
++        v.lo
++    } else if v.hi < 0. {
++        -v.hi
++    } else {
++        0.
++    }
++}
++fn distance(a: Image, b: Image) -> Option<[f64; 2]> {
++    let mut lo = I::point(0.);
++    let mut hi = I::point(0.);
++    for k in 0..3 {
++        let d = a[k].sub(b[k])?;
++        lo = lo.add(square(I::point(abs_lower(d)))?)?;
++        hi = hi.add(square(d)?)?;
++    }
++    Some([sqrt(lo)?.lo, sqrt(hi)?.hi])
++}
++fn contains(tube: ([f64; 3], [f64; 3]), image: Image) -> bool {
++    (0..3).all(|k| image[k].lo >= tube.0[k] && image[k].hi <= tube.1[k])
++}
++struct Source<'a> {
++    f: &'a SfccFeatureSet,
++    source: [usize; 3],
++    chart: usize,
++    cylinder_id: usize,
++    compound_id: usize,
++    center: [f64; 3],
++    radius: f64,
++    half: f64,
++    p: TwistedSideParams,
++    native: &'a Leaf,
++    other: &'a Leaf,
++    groove: &'a Leaf,
++    cap: &'a Leaf,
++    sphere: &'a Leaf,
++    inner_radius: f64,
++    chamfer_radius: f64,
++    outer_radius: f64,
++    weight: f64,
++    offset: f64,
++}
++impl<'a> Source<'a> {
++    fn bind(f: &'a SfccFeatureSet, chart: usize) -> Option<Self> {
++        let curve = f.curves.get(chart)?;
++        if curve.id != chart
++            || curve.closed
++            || !curve.t_min.is_finite()
++            || !curve.t_max.is_finite()
++            || curve.t_min >= curve.t_max
++        {
++            return None;
++        }
++        let (source, _, _) = alias_face_b::select(f)?;
++        let cylinder_id = curve.adjacent_strata.iter().copied().find(|&id| {
++            f.strata
++                .get(id)
++                .is_some_and(|s| s.certificate_cylinder().is_some())
++        })?;
++        let compound_id = *curve
++            .adjacent_strata
++            .iter()
++            .find(|&&id| id != cylinder_id)?;
++        let cyl = f.strata.get(cylinder_id)?;
++        let (center, axis, radius) = cyl.certificate_cylinder()?;
++        if axis != [0., 1., 0.] || cyl.sign != 1. || !radius.is_finite() || radius < 1e-6 {
++            return None;
++        }
++        let root = cyl.exposure_root_a()?;
++        let (cap_cut, sphere, outer_radius) =
++            pair(root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++        let (cut, cap, _) = pair(cap_cut, None).ok()?;
++        let (hard, groove_node, chamfer_radius) =
++            pair(cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++        let (inner, cylinder, _) = pair(hard, None).ok()?;
++        let (other, native, inner_radius) =
++            pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++        let cylinder = leaf(cylinder, 1.).ok()?;
++        let native = leaf(native, 1.).ok()?;
++        let other = leaf(other, 1.).ok()?;
++        let groove = leaf(groove_node, -1.).ok()?;
++        let cap = leaf(cap, -1.).ok()?;
++        let sphere = leaf(sphere, 1.).ok()?;
++        let (p, rn, ro, rr) = f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++        let registered = cyl.correlated_cylinder_source_c(&f.strata[source[0]])?;
++        let (weight, offset) =
++            f.strata
++                .get(compound_id)?
++                .connection_compound(hard, groove_node, cut)?;
++        if !std::ptr::eq(cylinder, registered)
++            || !std::ptr::eq(native, rn)
++            || !std::ptr::eq(other, ro)
++            || rr != inner_radius
++            || cylinder.pos != center
++            || [native, other, groove, sphere]
++                .iter()
++                .any(|l| l.pos[0] != center[0] || l.pos[2] != center[2])
++        {
++            return None;
++        }
++        let Shape::Cylinder { r, h } = cylinder.shape else {
++            return None;
++        };
++        if r != radius || !h.is_finite() || h < 1e-6 {
++            return None;
++        }
++        let (sa, sb, _) = curve.traced_carriers()?;
++        if !((sa.connection_same_source(&f.strata[compound_id]) && sb.connection_same_source(cyl))
++            || (sb.connection_same_source(&f.strata[compound_id])
++                && sa.connection_same_source(cyl)))
++        {
++            return None;
++        }
++        Some(Self {
++            f,
++            source,
++            chart,
++            cylinder_id,
++            compound_id,
++            center,
++            radius,
++            half: h,
++            p,
++            native,
++            other,
++            groove,
++            cap,
++            sphere,
++            inner_radius,
++            chamfer_radius,
++            outer_radius,
++            weight,
++            offset,
++        })
++    }
++    fn source_margins(&self, rho: I, image: Image) -> Option<Value> {
++        let y = image[1];
++        let x = image[0].sub(I::point(self.center[0]))?;
++        let z = image[2].sub(I::point(self.center[2]))?;
++        let ly = y.sub(I::point(self.p.pos_y))?;
++        if !self.p.h.is_finite() || self.p.h <= 0. || ly.lo < -self.p.h || ly.hi > self.p.h {
++            return None;
++        }
++        let theta = div(ly.add(I::point(self.p.h))?, 2. * self.p.h)?.mul(self.p.twist_rad)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let u = mul(x, cs)?.add(mul(z, sn)?)?;
++        let v = mul(z, cs)?.sub(mul(x, sn)?)?;
++        let e = u
++            .sub(I::point(self.p.v0x))?
++            .mul(self.p.nx2)?
++            .add(v.sub(I::point(self.p.v0z))?.mul(self.p.nz2)?)?;
++        let profile = upper_source_a::finite_profile_level(self.p, self.native, [u, v], e)?;
++        let native_cap = upper_source_a::cap_margin(y, self.p.pos_y, self.p.h, e)?;
++        let c = rho.sub(I::point(self.radius))?;
++        let cylinder_cap = upper_source_a::cap_margin(y, self.center[1], self.half, c)?;
++        let other = activation_a::meridian_bound(self.other, rho, y)?;
++        let groove = activation_a::meridian_bound(self.groove, rho, y)?;
++        if other.distance.lo <= self.inner_radius
++            || e.hi >= self.inner_radius
++            || e.hi >= c.lo
++            || groove.distance.lo <= 0.
++        {
++            return None;
++        }
++        let Shape::Extrude { h: ch, .. } = self.cap.shape else {
++            return None;
++        };
++        let cap = I::point(self.cap.pos[1]).sub(I::point(ch))?.sub(y)?.lo;
++        let Shape::Sphere { r: sr } = self.sphere.shape else {
++            return None;
++        };
++        let sphere = I::point(sr)
++            .sub(I::point(self.outer_radius))?
++            .sub(sqrt(
++                square(rho)?.add(square(y.sub(I::point(self.sphere.pos[1]))?)?)?,
++            )?)?
++            .lo;
++        if cap <= 0. || sphere <= 0. {
++            return None;
++        }
++        Some(
++            json!({"nativeLevel":[e.lo,e.hi],"cylinderLevel":[c.lo,c.hi],"nativeStrictlyBelowCylinder":true,"otherDistance":[other.distance.lo,other.distance.hi],
++            "grooveDistance":[groove.distance.lo,groove.distance.hi],"grooveEdge":groove.edge,"nativeFiniteProfileMargin":profile,"nativeCapMargin":native_cap,
++            "cylinderCapMargin":cylinder_cap,"capCutMargin":cap,"outerRoundMargin":sphere}),
++        )
++    }
++    fn feature(
++        &self,
++        branch: activation_a::MeridianBound,
++        level: I,
++        fixed_axis: usize,
++        fixed: f64,
++    ) -> Option<(Image, Value)> {
++        if !fixed.is_finite() || !matches!(fixed_axis, 0 | 2) {
++            return None;
++        }
++        let rho = I::point(self.radius);
++        let y = quotient(
++            level.sub(mul(branch.nr, rho)?)?.sub(branch.offset)?,
++            branch.ny,
++        )?;
++        let rfixed = I::point(fixed).sub(I::point(self.center[fixed_axis]))?;
++        let radical = square(rho)?.sub(square(rfixed)?)?;
++        if radical.lo <= 0. {
++            return None;
++        }
++        let free = sqrt(radical)?;
++        let image = if fixed_axis == 0 {
++            if rfixed.hi >= 0. {
++                return None;
++            }
++            [I::point(fixed), y, free.add(I::point(self.center[2]))?]
++        } else {
++            if rfixed.lo <= 0. {
++                return None;
++            }
++            [
++                free.mul(-1.)?.add(I::point(self.center[0]))?,
++                y,
++                I::point(fixed),
++            ]
++        };
++        let check = activation_a::meridian_bound(self.groove, rho, y)?;
++        if check.edge != branch.edge || abs_lower(branch.ny) <= 0. {
++            return None;
++        }
++        let margins = self.source_margins(rho, image)?;
++        let free_component = if fixed_axis == 0 {
++            image[2].sub(I::point(self.center[2]))?
++        } else {
++            image[0].sub(I::point(self.center[0]))?
++        };
++        let determinant = mul(quotient(free_component, rho)?, branch.ny)?;
++        if abs_lower(determinant) <= 0. {
++            return None;
++        }
++        Some((
++            image,
++            json!({"margins":margins,"fixedAxis":fixed_axis,"fixedCoordinateBits":fixed.to_bits(),"image":bounds(image),
++            "radius":self.radius,"grooveLevelBounds":[level.lo,level.hi],"finiteBranch":branch.edge,"constraintJacobianAbsLower":abs_lower(determinant),
++            "correlation":"rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero"}),
++        ))
++    }
++    fn surface_lift(
++        &self,
++        branch: activation_a::MeridianBound,
++        point: [f64; 3],
++    ) -> Option<(Image, Value)> {
++        let y = I::point(point[1]);
++        let z = I::point(point[2]);
++        let denominator = I::point(1.).sub(branch.nr)?;
++        if denominator.lo <= 0. {
++            return None;
++        }
++        let qrho = quotient(
++            I::point(self.radius)
++                .add(mul(branch.ny, y)?)?
++                .add(branch.offset)?
++                .sub(I::point(self.chamfer_radius))?,
++            denominator,
++        )?;
++        let rho = interval(self.radius.min(qrho.lo), self.radius.min(qrho.hi))?;
++        let radical = square(rho)?.sub(square(z.sub(I::point(self.center[2]))?)?)?;
++        if radical.lo <= 0. {
++            return None;
++        }
++        let image = [
++            sqrt(radical)?.mul(-1.)?.add(I::point(self.center[0]))?,
++            y,
++            z,
++        ];
++        let check = activation_a::meridian_bound(self.groove, rho, y)?;
++        if check.edge != branch.edge {
++            return None;
++        }
++        let margins = self.source_margins(rho, image)?;
++        Some((
++            image,
++            json!({"image":bounds(image),"rhoBounds":[rho.lo,rho.hi],"chamferZeroRadiusBounds":[qrho.lo,qrho.hi],"margins":margins,
++            "zeroArgument":"native below cylinder, groove negative: max(C,w*(C-d+r))=0 uniquely at rho=min(R,rho_Q(Y)) on admitted negative-X branch",
++            "fullPhysicalSourceZeroProved":true,"sameYZAsOriginalPoint":true}),
++        ))
++    }
++}
++
++pub(crate) fn endpoint_geometry(
++    f: &SfccFeatureSet,
++    chart: usize,
++    point: [f64; 3],
++    face_x: f64,
++) -> Option<Value> {
++    if point.iter().any(|v| !v.is_finite()) {
++        return None;
++    }
++    let source = Source::bind(f, chart)?;
++    let branch =
++        activation_a::meridian_bound(source.groove, I::point(source.radius), I::point(point[1]))?;
++    let physical = I::point(source.chamfer_radius);
++    let generated = div(I::point(source.offset), source.weight)?;
++    let (face, face_report) = source.feature(branch, physical, 0, face_x)?;
++    let (generated_face, generated_report) = source.feature(branch, generated, 0, face_x)?;
++    let (fixed_z, fixed_z_report) = source.feature(branch, physical, 2, point[2])?;
++    let (surface, surface_report) = source.surface_lift(branch, point)?;
++    let original = point.map(I::point);
++    let feature_height_gap = I::point(point[1]).sub(face[1])?;
++    let (candidate, radius_label) = (
++        midpoint_image(face),
++        "physical feature and original X-face root",
++    );
++    Some(
++        json!({"scope":"source-bound endpoint images and pointwise comparison only; no raw parameter continuity or mesh mutation",
++        "sourceFingerprint":source.f.fingerprint().to_string(),"chart":source.chart,"source":source.source,"strata":[source.compound_id,source.cylinder_id],
++        "weightBits":source.weight.to_bits(),"offsetBits":source.offset.to_bits(),"physicalChamferRadius":source.chamfer_radius,"generatedRadiusBounds":[generated.lo,generated.hi],
++        "physicalFaceFeature":face_report,"generatedFaceCarrierFeature":generated_report,"physicalFixedZFeature":fixed_z_report,"commonXSurfaceLift":surface_report,
++        "physicalFeatureZeroAndExposureProved":true,"generatedCarrierNotClaimedExactPhysicalFeature":true,
++        "originalToPhysicalFaceFeatureDistance":distance(original,face)?,"originalToPhysicalFixedZFeatureDistance":distance(original,fixed_z)?,
++        "originalToCommonXSurfaceLiftDistance":distance(original,surface)?,"surfaceLiftToFixedZFeatureDistance":distance(surface,fixed_z)?,
++        "physicalGeneratedFaceSeparationUpper":distance(face,generated_face)?[1],"originalYMinusIdealFeatureY":[feature_height_gap.lo,feature_height_gap.hi],
++        "surfaceLiftOffIdealFeatureProved":abs_lower(feature_height_gap)>0.,"surfaceLiftExactIdealFeatureMembershipProved":false,
++        "candidate":candidate,"candidateKind":radius_label,"candidatePhysicalImageDistanceUpper":distance(candidate.map(I::point),face)?[1],
++        "candidateGeneratedImageDistanceUpper":distance(candidate.map(I::point),generated_face)?[1],
++        "exactCurveParameterMapProved":false,"neighboringPatchTransportProved":false,"publicationAuthorized":false}),
++    )
++}
++
++#[cfg(test)]
++fn fixture() -> (SfccFeatureSet, Value, Value, crate::math::grid::SfccLattice) {
++    use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++    let input: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/paired-fans-c.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(input["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let cube = SfccWorldCube {
++        min_x: input["cube"]["min"][0].as_f64().unwrap(),
++        min_y: input["cube"]["min"][1].as_f64().unwrap(),
++        min_z: input["cube"]["min"][2].as_f64().unwrap(),
++        size: input["cube"]["max"][0].as_f64().unwrap() - input["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&root, &cube, &PipelineTuning::default());
++    assert_eq!(
++        context.features.fingerprint().to_string(),
++        saved["sourceFingerprint"].as_str().unwrap()
++    );
++    (context.features, saved, input, context.lat)
++}
++#[test]
++fn feature49_a_actual_endpoint_source_and_query_obligations() {
++    use crate::sfcc::shared_twisted_proof::correlated_c::transport_a::Transport;
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, saved, input, lat) = fixture();
++    let pins = saved["originalTarget"]["originalPins"].as_array().unwrap();
++    assert_eq!(pins.len(), 1);
++    let pin = &pins[0];
++    let chart = pin["chart"].as_u64().unwrap() as usize;
++    let id = pin["candidatePoint"].as_u64().unwrap() as usize;
++    let t = f64::from_bits(pin["parameterBits"].as_u64().unwrap());
++    let curve = &f.curves[chart];
++    assert_eq!(
++        curve.adjacent_strata,
++        serde_json::from_value::<[usize; 2]>(pin["strata"].clone()).unwrap()
++    );
++    assert_eq!(
++        [curve.t_min.to_bits(), curve.t_max.to_bits()],
++        serde_json::from_value::<[u64; 2]>(pin["rangeBits"].clone()).unwrap()
++    );
++    let row = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .find(|r| r["id"].as_u64() == Some(id as u64))
++        .unwrap();
++    let point: [f64; 3] =
++        std::array::from_fn(|k| f64::from_bits(row["positionBits"][k].as_u64().unwrap()));
++    let face: [i64; 3] = serde_json::from_value(saved["face"].clone()).unwrap();
++    assert_eq!(face[0], 0);
++    assert_eq!(face[2], 2);
++    let grid = crate::math::grid::unpack_point(&lat, face[1]);
++    let plane = crate::math::grid::point_to_world(&lat, grid[0], grid[1], grid[2])[0];
++    assert!(t.is_finite() && t >= curve.t_min && t <= curve.t_max);
++    let primary = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++    let tolerance = input["tuning"]["curveChordTolMm"]
++        .as_f64()
++        .expect("original chord tolerance");
++    let mut budget = Transport::bind(&f, primary, tolerance).unwrap();
++    let before = budget.charged_queries();
++    budget.phase("feature49_endpoint_own_query");
++    budget.reserve_external(1).unwrap();
++    budget.external_direct_attempt();
++    let own = curve
++        .point_at_checked(t)
++        .expect("original numerical own query");
++    assert_eq!(own.map(f64::to_bits), point.map(f64::to_bits));
++    let (_, _, refine) = curve.traced_carriers().unwrap();
++    let result = endpoint_geometry(&f, chart, point, plane);
++    if result.is_none() {
++        if let Ok(path) = std::env::var("SFCC_FEATURE49_A_RECEIPT") {
++            std::fs::write(path,serde_json::to_vec_pretty(&json!({"refusal":"source endpoint geometry","sourceBindSucceeded":Source::bind(&f,chart).is_some(),"chart":chart,"parameterBits":t.to_bits(),"pointBits":point.map(f64::to_bits),"facePlaneBits":plane.to_bits()})).unwrap()).unwrap();
++        }
++    }
++    let mut proof = result.expect("source endpoint geometry");
++    let candidate: [f64; 3] = serde_json::from_value(proof["candidate"].clone()).unwrap();
++    let physical: [[f64; 3]; 2] =
++        serde_json::from_value(proof["physicalFaceFeature"]["image"].clone()).unwrap();
++    let generated: [[f64; 3]; 2] =
++        serde_json::from_value(proof["generatedFaceCarrierFeature"]["image"].clone()).unwrap();
++    let make = |p: [[f64; 3]; 2]| -> Image {
++        std::array::from_fn(|k| interval(p[0][k], p[1][k]).unwrap())
++    };
++    let mut lo = t.floor().max(curve.t_min);
++    let hi = (lo + 1.).min(curve.t_max);
++    if lo == hi {
++        lo = (hi - 1.).max(curve.t_min);
++    }
++    let tube = curve.projection_tube(lo, hi).unwrap();
++    let residuals = |p: [f64; 3]| -> Vec<Value> {
++        curve.adjacent_strata.iter().map(|&sid|{
++        let s=&f.strata[sid];let v=s.raw_field(p[0],p[1],p[2]).normalized_equation().unwrap();
++        json!({"stratum":sid,"normalizedResidual":v.value,"strictResidualPass":v.value.is_finite()&&v.value.abs()<=refine.curve_eps,
++            "strictDomainPass":s.domain_contains(p,refine.curve_eps)||curve.upper_source_member(&f.strata,sid,t,p,refine.curve_eps)})
++    }).collect()
++    };
++    let candidate_checks = residuals(candidate);
++    let own_checks = residuals(own);
++    let allowance = budget.allowance().min(8. * refine.curve_eps);
++    let own_physical = distance(own.map(I::point), make(physical)).unwrap()[1];
++    let own_generated = distance(own.map(I::point), make(generated)).unwrap()[1];
++    let direct = distance(candidate.map(I::point), own.map(I::point)).unwrap()[1];
++    let mut upper_grid = grid;
++    upper_grid[1] += face[2];
++    upper_grid[2] += face[2];
++    let low_face = crate::math::grid::point_to_world(&lat, grid[0], grid[1], grid[2]);
++    let high_face =
++        crate::math::grid::point_to_world(&lat, upper_grid[0], upper_grid[1], upper_grid[2]);
++    let face_contains =
++        |image: Image| (1..3).all(|k| image[k].lo > low_face[k] && image[k].hi < high_face[k]);
++    let admitted = own_physical <= allowance
++        && own_generated <= allowance
++        && direct <= allowance
++        && face_contains(make(physical))
++        && face_contains(make(generated))
++        && contains(tube, make(physical))
++        && contains(tube, make(generated))
++        && contains(tube, candidate.map(I::point))
++        && candidate_checks
++            .iter()
++            .all(|r| r["strictResidualPass"] == true && r["strictDomainPass"] == true);
++    proof["numericalAssociation"] = json!({"originalParameterBits":t.to_bits(),"originalPointBits":point.map(f64::to_bits),"ownQueryBits":own.map(f64::to_bits),
++        "ownStrictCarrierChecks":own_checks,"candidateStrictCarrierChecks":candidate_checks,"strictCarrierResidualLimit":refine.curve_eps,
++        "primaryAssociationAllowance":budget.allowance(),"curve49FaceAllowance":8.*refine.curve_eps,"retainedAssociationAllowance":allowance,
++        "ownToPhysicalFeatureUpper":own_physical,"ownToGeneratedFeatureUpper":own_generated,"candidateToOwnUpper":direct,
++        "originalFace":face,"originalFaceRectangle":[low_face,high_face],"physicalFeatureImageStrictlyInFace":face_contains(make(physical)),"generatedFeatureImageStrictlyInFace":face_contains(make(generated)),
++        "originalTube":[tube.0,tube.1],"physicalFeatureImageInTube":contains(tube,make(physical)),"generatedFeatureImageInTube":contains(tube,make(generated)),
++        "candidateAdmittedAsOriginalParameterAssociation":admitted,"parameterContinuityOrExactIdealParameterizationProved":false,
++        "chargedBefore":before,"chargedAfter":budget.charged_queries(),"newOwnQueryAttempts":1,"limitsChanged":false,"mutationPerformed":false});
++    if let Ok(path) = std::env::var("SFCC_FEATURE49_A_RECEIPT") {
++        std::fs::write(path, serde_json::to_vec_pretty(&proof).unwrap()).unwrap();
++    }
++    assert!(proof["physicalFeatureZeroAndExposureProved"] == true);
++    assert_eq!(budget.charged_queries(), before + 1);
++}
++#[test]
++fn feature49_a_source_guards_reject_wrong_chart_axis_branch_and_nonfinite_point() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, saved, _, _) = fixture();
++    let pin = &saved["originalTarget"]["originalPins"][0];
++    let chart = pin["chart"].as_u64().unwrap() as usize;
++    let id = pin["candidatePoint"].as_u64().unwrap();
++    let row = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .find(|r| r["id"].as_u64() == Some(id))
++        .unwrap();
++    let point: [f64; 3] =
++        std::array::from_fn(|k| f64::from_bits(row["positionBits"][k].as_u64().unwrap()));
++    assert!(endpoint_geometry(&f, usize::MAX, point, point[0]).is_none());
++    assert!(endpoint_geometry(&f, chart, [f64::NAN, point[1], point[2]], point[0]).is_none());
++    assert!(endpoint_geometry(&f, chart, point, 100.).is_none());
++    let mut foreign = f.clone();
++    foreign.strata[15].sign = -1.;
++    assert!(endpoint_geometry(&foreign, chart, point, point[0]).is_none());
++}

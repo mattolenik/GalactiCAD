@@ -1,0 +1,7 @@
+
+running 2 tests
+test sfcc::shared_twisted_proof::exposure_a::feature49_a::feature49_a_actual_endpoint_source_and_query_obligations ... ok
+test sfcc::shared_twisted_proof::exposure_a::feature49_a::feature49_a_source_guards_reject_wrong_chart_axis_branch_and_nonfinite_point ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 443 filtered out; finished in 2.60s
+

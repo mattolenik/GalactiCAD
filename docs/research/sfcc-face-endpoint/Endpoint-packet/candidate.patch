@@ -1,0 +1,2038 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/face-fans-c.json
+@@ -0,0 +1,479 @@
++{
++  "parentReceiptSha256": "64b62c86aca4d3354d0e2cc9770aebbdf0feb5d41397ee966f50b8045c257a68",
++  "sourceFingerprint": "10977506807348230851",
++  "face": [
++    0,
++    3464532,
++    2
++  ],
++  "insideCell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "outsideCell": [
++    7,
++    26,
++    58,
++    86
++  ],
++  "sharedSegments": [
++    [
++      40,
++      38
++    ],
++    [
++      39,
++      40
++    ]
++  ],
++  "commonEndpoint": 40,
++  "segmentPairs": [
++    [
++      0,
++      1
++    ],
++    [
++      2,
++      3
++    ]
++  ],
++  "surfaceTolerance": 0.01,
++  "cylinderSource": 15,
++  "patches": [
++    {
++      "side": "inside",
++      "hypothesisStratum": 15,
++      "boundary": [
++        40,
++        38,
++        41,
++        464,
++        465,
++        647
++      ],
++      "triangles": [
++        653,
++        40,
++        38,
++        653,
++        38,
++        41,
++        653,
++        41,
++        464,
++        653,
++        464,
++        465,
++        653,
++        465,
++        647,
++        653,
++        647,
++        40
++      ]
++    },
++    {
++      "side": "outside",
++      "hypothesisStratum": 15,
++      "boundary": [
++        1116,
++        1114,
++        38,
++        40,
++        1117
++      ],
++      "triangles": [
++        1119,
++        1116,
++        1114,
++        1119,
++        1114,
++        38,
++        1119,
++        38,
++        40,
++        1119,
++        40,
++        1117,
++        1119,
++        1117,
++        1116
++      ]
++    },
++    {
++      "side": "inside",
++      "hypothesisStratum": 39,
++      "boundary": [
++        39,
++        40,
++        647,
++        460
++      ],
++      "triangles": [
++        654,
++        39,
++        40,
++        654,
++        40,
++        647,
++        654,
++        647,
++        460,
++        654,
++        460,
++        39
++      ]
++    },
++    {
++      "side": "outside",
++      "hypothesisStratum": 31,
++      "boundary": [
++        40,
++        39,
++        478,
++        1115,
++        1116,
++        1117
++      ],
++      "triangles": [
++        1118,
++        40,
++        39,
++        1118,
++        39,
++        478,
++        1118,
++        478,
++        1115,
++        1118,
++        1115,
++        1116,
++        1118,
++        1116,
++        1117,
++        1118,
++        1117,
++        40
++      ]
++    }
++  ],
++  "points": [
++    {
++      "id": 38,
++      "positionBits": [
++        13844816554298846424,
++        13835618776295404592,
++        4617801817764908076
++      ]
++    },
++    {
++      "id": 39,
++      "positionBits": [
++        13844816554298846424,
++        13836171170937199256,
++        4617799094638878133
++      ]
++    },
++    {
++      "id": 40,
++      "positionBits": [
++        13844816554298846762,
++        13836166026439335478,
++        4617801809107539645
++      ]
++    },
++    {
++      "id": 41,
++      "positionBits": [
++        13844830331837451734,
++        13835618776295404592,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 460,
++      "positionBits": [
++        13844827650848918399,
++        13836171170937199257,
++        4617760755969393917
++      ]
++    },
++    {
++      "id": 464,
++      "positionBits": [
++        13844830331837451734,
++        13835894973616301924,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 465,
++      "positionBits": [
++        13844830331814374579,
++        13836165891772662319,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 478,
++      "positionBits": [
++        13844789161382673385,
++        13836171170937199256,
++        4617892307979710970
++      ]
++    },
++    {
++      "id": 647,
++      "positionBits": [
++        13844830282047795546,
++        13836166026439335478,
++        4617754382154335013
++      ]
++    },
++    {
++      "id": 653,
++      "positionBits": [
++        13844825742648919353,
++        13835938411809740731,
++        4617770119601665062
++      ]
++    },
++    {
++      "id": 654,
++      "positionBits": [
++        13844822768012469158,
++        13836168617584839349,
++        4617779019314262603
++      ]
++    },
++    {
++      "id": 1114,
++      "positionBits": [
++        13844748356977640844,
++        13835618776295404592,
++        4618030406640159634
++      ]
++    },
++    {
++      "id": 1115,
++      "positionBits": [
++        13844747549898595909,
++        13836171170937199256,
++        4618030406640159634
++      ]
++    },
++    {
++      "id": 1116,
++      "positionBits": [
++        13844748356756957604,
++        13836166026439335478,
++        4618030406640159853
++      ]
++    },
++    {
++      "id": 1117,
++      "positionBits": [
++        13844773025837132680,
++        13836166026439335478,
++        4617949022357655430
++      ]
++    },
++    {
++      "id": 1118,
++      "positionBits": [
++        13844782035343704292,
++        13836169018175885646,
++        4617917375411644382
++      ]
++    },
++    {
++      "id": 1119,
++      "positionBits": [
++        13844780823415619052,
++        13835947126381763123,
++        4617922995774708407
++      ]
++    }
++  ],
++  "originalTarget": {
++    "candidateEdge": [
++      40,
++      38
++    ],
++    "candidateMembershipsAtSharedPoints": [
++      {
++        "chart": 49,
++        "edge": [
++          40,
++          647
++        ],
++        "rangeBits": [
++          4629807001818732852,
++          4629841154425225216
++        ]
++      }
++    ],
++    "consumers": [
++      [
++        [
++          7,
++          25,
++          58,
++          86
++        ],
++        1,
++        true
++      ],
++      [
++        [
++          7,
++          26,
++          58,
++          86
++        ],
++        0,
++        false
++      ]
++    ],
++    "face": [
++      0,
++      3464532,
++      2
++    ],
++    "globalEdgeInCandidateOrder": [
++      4074,
++      4072
++    ],
++    "insideCell": [
++      7,
++      25,
++      58,
++      86
++    ],
++    "originalPins": [
++      {
++        "candidatePoint": 40,
++        "chart": 49,
++        "cornerEnds": [
++          -1,
++          13
++        ],
++        "originalPoint": 4074,
++        "parameterBits": 4629807001818732852,
++        "rangeBits": [
++          0,
++          4629841154425225216
++        ],
++        "strata": [
++          31,
++          15
++        ],
++        "stratumSources": [
++          {
++            "compoundPresent": true,
++            "compoundTermsIncluded": false,
++            "domain": [
++              {
++                "branch": null,
++                "partners": [],
++                "path": [
++                  0,
++                  0
++                ],
++                "rootAddressProcessLocal": "7541130010"
++              }
++            ],
++            "field": null,
++            "id": 31,
++            "leafIndex": 18446744073709551615,
++            "localIndex": 0,
++            "ownerNodeId": -1,
++            "signHex": "3ff0000000000000"
++          },
++          {
++            "compoundPresent": false,
++            "compoundTermsIncluded": false,
++            "domain": [
++              {
++                "branch": null,
++                "partners": [],
++                "path": [
++                  0,
++                  0,
++                  0,
++                  1
++                ],
++                "rootAddressProcessLocal": "7541130010"
++              }
++            ],
++            "field": null,
++            "id": 15,
++            "leafIndex": 2,
++            "localIndex": 0,
++            "ownerNodeId": -1,
++            "signHex": "3ff0000000000000"
++          }
++        ]
++      }
++    ],
++    "originalSegments": [
++      [
++        4072,
++        4074
++      ],
++      [
++        4074,
++        4073
++      ]
++    ],
++    "outsideCell": [
++      7,
++      26,
++      58,
++      86
++    ],
++    "publicationAuthorized": false,
++    "scope": "actual source-bound first fan and unique original opposite face consumer; no geometry authority",
++    "sourceFingerprint": "10977506807348230851"
++  },
++  "outsideToJoined": [
++    38,
++    39,
++    40,
++    1114,
++    1115,
++    1116,
++    478,
++    1117,
++    1118,
++    1119
++  ],
++  "outsideCurveMemberships": [
++    {
++      "chart": 49,
++      "edge": [
++        5,
++        7
++      ],
++      "rangeBits": [
++        4629663183038855226,
++        4629700416936869888
++      ]
++    },
++    {
++      "chart": 49,
++      "edge": [
++        2,
++        7
++      ],
++      "rangeBits": [
++        4629807001818732852,
++        4629700416936869888
++      ]
++    }
++  ],
++  "outsideCurveMembershipIdSpace": "outside-local PointTable; map through outsideToJoined",
++  "captureScope": "derived from archived actual first-cell patch_output and outside pairedFans; root must compare with fresh second-segment capture before acceptance"
++}
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -451,3 +451,11 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="paired_source_c.rs"]
+ pub(crate) mod paired_source_c;
++
++#[cfg(all(test,feature="serde"))]
++#[path="feature49_a.rs"]
++pub(crate) mod feature49_a;
++
++#[cfg(all(test, feature="serde"))]
++#[path="face_join_c.rs"]
++pub(crate) mod face_join_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/face_join_c.rs
+@@ -0,0 +1,787 @@
++//! Whole captured face neighborhood: projected union and one source slab, not ideal feature transport.
++use super::fullfan_source_a;
++use crate::sdf::enclosure::Interval as I;
++use crate::sfcc::{mesh_edit::GrowingIndex, predicates::orient2d, triangle_quality as q};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++type Point = [f64; 3];
++type Result<T> = std::result::Result<T, &'static str>;
++fn edge(a: usize, b: usize) -> [usize; 2] {
++    [a.min(b), a.max(b)]
++}
++fn yz(p: Point) -> [f64; 2] {
++    [p[1], p[2]]
++}
++
++pub(crate) struct Domain {
++    report: Value,
++    triangles: Vec<usize>,
++    export_bounds: Vec<f64>,
++}
++impl Domain {
++    pub(crate) fn report(&self) -> &Value {
++        &self.report
++    }
++}
++
++/// All patches must be distinct emitted triangle families in one provenance-bound ID space.
++pub(crate) fn audit(
++    points: &BTreeMap<usize, Point>,
++    patches: &[Vec<usize>],
++    segments: [[usize; 2]; 2],
++    endpoint: usize,
++) -> Result<Domain> {
++    let count = patches
++        .iter()
++        .try_fold(0usize, |n, p| n.checked_add(p.len()))
++        .ok_or("face_triangle_cap")?;
++    if patches.len() < 2
++        || patches.len() > 4
++        || points.len() > 128
++        || count == 0
++        || count % 3 != 0
++        || count > 3 * 128
++        || patches
++            .iter()
++            .any(|p| p.is_empty() || p.len() % 3 != 0 || !p.contains(&endpoint))
++        || segments
++            .iter()
++            .any(|s| s[0] == s[1] || !s.contains(&endpoint))
++        || edge(segments[0][0], segments[0][1]) == edge(segments[1][0], segments[1][1])
++    {
++        return Err("face_domain_inventory");
++    }
++    let triangles: Vec<_> = patches.iter().flatten().copied().collect();
++    let used: BTreeSet<_> = triangles.iter().copied().collect();
++    if used.len() > 128
++        || used.iter().any(|id| {
++            *id >= 4096
++                || points
++                    .get(id)
++                    .is_none_or(|p| p.iter().any(|v| !v.is_finite()))
++        })
++    {
++        return Err("face_point_inventory");
++    }
++    let n = count / 3;
++    let pair_checks = n
++        .checked_mul(n.saturating_sub(1))
++        .ok_or("face_contact_cap")?
++        / 2;
++    if pair_checks > 4096 {
++        return Err("face_contact_cap");
++    }
++    let topology = crate::sfcc::private_arc_a::stage4_component_b::topology(
++        &triangles,
++        used.last().copied().ok_or("face_empty")? + 1,
++    )?;
++    if topology["localTopologyValid"] != true {
++        return Err("face_indexed_topology");
++    }
++    let mut edges: BTreeMap<[usize; 2], Vec<(usize, [usize; 2])>> = BTreeMap::new();
++    for (i, t) in triangles.chunks_exact(3).enumerate() {
++        for k in 0..3 {
++            let d = [t[k], t[(k + 1) % 3]];
++            edges.entry(edge(d[0], d[1])).or_default().push((i, d));
++        }
++    }
++    for s in segments {
++        let uses = edges
++            .get(&edge(s[0], s[1]))
++            .ok_or("face_missing_shared_segment")?;
++        if uses.len() != 2 || uses[0].1 != [uses[1].1[1], uses[1].1[0]] {
++            return Err("face_shared_segment_incidence");
++        }
++    }
++    let mut seen = BTreeSet::new();
++    let mut todo = vec![0usize];
++    while let Some(i) = todo.pop() {
++        if seen.insert(i) {
++            let t = &triangles[3 * i..3 * i + 3];
++            for k in 0..3 {
++                for &(j, _) in &edges[&edge(t[k], t[(k + 1) % 3])] {
++                    if j != i {
++                        todo.push(j);
++                    }
++                }
++            }
++        }
++    }
++    if seen.len() != n {
++        return Err("face_disconnected_triangles");
++    }
++    let boundary: Vec<[usize; 2]> = serde_json::from_value(topology["boundaryEdges"].clone())
++        .map_err(|_| "face_boundary_encoding")?;
++    if boundary.is_empty() || boundary.iter().any(|e| e.contains(&endpoint)) {
++        return Err("face_endpoint_not_interior");
++    }
++    let mut next = BTreeMap::new();
++    let mut incoming = BTreeSet::new();
++    for e in &boundary {
++        if next.insert(e[0], e[1]).is_some() || !incoming.insert(e[1]) {
++            return Err("face_boundary_degree");
++        }
++    }
++    let start = *next.keys().next().ok_or("face_boundary_empty")?;
++    let mut cycle = Vec::new();
++    let mut current = start;
++    loop {
++        if cycle.contains(&current) {
++            return Err("face_boundary_repeated_vertex");
++        }
++        cycle.push(current);
++        current = *next.get(&current).ok_or("face_boundary_gap")?;
++        if current == start {
++            break;
++        }
++        if cycle.len() >= next.len() {
++            return Err("face_boundary_not_closed");
++        }
++    }
++    if cycle.len() != next.len() {
++        return Err("face_multiple_boundary_cycles");
++    }
++    let mut winding = 0i8;
++    for rounded in [false, true] {
++        let mut projected = Vec::new();
++        for id in &used {
++            let p = points[id];
++            let p = if rounded { q::rounded(p) } else { p };
++            if p.iter().any(|v| !v.is_finite()) || projected.contains(&yz(p)) {
++                return Err("face_projected_vertex_collision");
++            }
++            projected.push(yz(p));
++        }
++        let mut index = GrowingIndex::new();
++        let mut this_winding = 0;
++        for t in triangles.chunks_exact(3) {
++            let ids = [t[0], t[1], t[2]];
++            let p = ids.map(|id| {
++                let p = points[&id];
++                let p = if rounded { q::rounded(p) } else { p };
++                [0., p[1], p[2]]
++            });
++            let sign = orient2d(yz(p[0]), yz(p[1]), yz(p[2]));
++            if sign == 0 || (this_winding != 0 && sign != this_winding) {
++                return Err("face_projected_fold");
++            }
++            this_winding = sign;
++            if index.conflicts(ids, p) {
++                return Err("face_projected_contact_working_or_exported");
++            }
++            index.extend([(ids, p)]);
++        }
++        if rounded && this_winding != winding {
++            return Err("face_export_orientation_reversal");
++        }
++        winding = this_winding;
++    }
++    let mut export_bounds = Vec::with_capacity(n);
++    for t in triangles.chunks_exact(3) {
++        let mut bound = 0.0_f64;
++        for id in t {
++            let p = points[id];
++            let rounded = q::rounded(p);
++            let mut norm = I::point(0.);
++            for k in 0..3 {
++                norm = norm
++                    .add(
++                        crate::sfcc::loft_seam::square(
++                            I::point(p[k])
++                                .sub(I::point(rounded[k]))
++                                .ok_or("face_rounding_bound")?,
++                        )
++                        .ok_or("face_rounding_bound")?,
++                    )
++                    .ok_or("face_rounding_bound")?;
++            }
++            bound = bound.max(norm.hi.sqrt().next_up());
++        }
++        if !bound.is_finite() {
++            return Err("face_rounding_bound");
++        }
++        export_bounds.push(bound);
++    }
++    let report = json!({"scope":"complete supplied triangle union around both captured contour segments; source and ideal feature constraints are separate",
++        "triangles":triangles,"patchTriangleCounts":patches.iter().map(|p|p.len()/3).collect::<Vec<_>>(),
++        "pointBits":used.iter().map(|id|json!([id,points[id].map(f64::to_bits)])).collect::<Vec<_>>(),
++        "sharedSegments":segments,"commonEndpoint":endpoint,"endpointIsInterior":true,
++        "connectedIndexedDisk":true,"workingAndExportedProjectedUnionEmbedded":true,"projectedWinding":winding,
++        "trianglePairsCheckedPerPrecision":pair_checks,"outerBoundary":cycle,"topology":topology,
++        "sourceGraphProvedHere":false,"idealFeatureEndpointProved":false,"publicationReady":false});
++    Ok(Domain {
++        report,
++        triangles,
++        export_bounds,
++    })
++}
++
++pub(crate) fn combine_error(domain: &Domain, source: &Value, tolerance: f64) -> Result<Value> {
++    let bounds: Vec<f64> = serde_json::from_value(source["perTriangleSourceBounds"].clone())
++        .map_err(|_| "face_source_bounds")?;
++    if bounds.len() != domain.export_bounds.len()
++        || source["triangleCount"].as_u64() != Some(bounds.len() as u64)
++        || source["fullClosedTriangleDomainsCovered"] != true
++        || source["sharedEdgeRootsAgreeByCommonSlabUniqueness"] != true
++        || source["tolerance"].as_f64().map(f64::to_bits) != Some(tolerance.to_bits())
++        || !tolerance.is_finite()
++        || tolerance <= 0.
++        || domain.report["projectedWinding"] != -1
++    {
++        return Err("face_source_scope");
++    }
++    let mut upper = 0.0_f64;
++    for (&a, &b) in bounds.iter().zip(&domain.export_bounds) {
++        if !a.is_finite() || a < 0. || !b.is_finite() || b < 0. {
++            return Err("face_error_bound");
++        }
++        upper = upper.max(I::point(a).add(I::point(b)).ok_or("face_error_bound")?.hi);
++    }
++    if upper > tolerance {
++        return Err("face_error_tolerance");
++    }
++    Ok(
++        json!({"conditionalSourceToExportUpper":upper,"tolerance":tolerance,
++        "sourceAndGeometryTriangleOrderMustBeBound":true,"commonEndpointSurfaceRootUnique":true,
++        "bothContourSourceTracesCompatible":true,"idealFeatureEndpointProved":false,"publicationReady":false}),
++    )
++}
++
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    crate::sfcc::loft_seam::mul(
++        a,
++        crate::sfcc::loft_seam::interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?,
++    )
++}
++fn graph_jacobian_upper(p: [Point; 3]) -> Option<f64> {
++    use crate::sfcc::loft_seam::{mul, square};
++    let mut a = [I::point(0.); 3];
++    let mut b = a;
++    for k in 0..3 {
++        a[k] = I::point(p[1][k]).sub(I::point(p[0][k]))?;
++        b[k] = I::point(p[2][k]).sub(I::point(p[0][k]))?;
++    }
++    let determinant = mul(a[1], b[2])?.sub(mul(a[2], b[1])?)?;
++    let x_y = quotient(mul(a[0], b[2])?.sub(mul(a[2], b[0])?)?, determinant)?;
++    let x_z = quotient(mul(a[1], b[0])?.sub(mul(a[0], b[1])?)?, determinant)?;
++    let squared = I::point(1.).add(square(x_y)?)?.add(square(x_z)?)?;
++    let result = squared.hi.sqrt().next_up();
++    result.is_finite().then_some(result)
++}
++
++/// The target is an enclosure of an independently proved exact source point, never its midpoint.
++/// Caller must bind source and target certificates to the same input/source instance.
++pub(crate) fn endpoint_transport(
++    domain: &Domain,
++    points: &BTreeMap<usize, Point>,
++    source: &Value,
++    endpoint: usize,
++    target: [I; 3],
++    tolerance: f64,
++) -> Result<Value> {
++    use crate::sfcc::loft_seam::{mul, square};
++    let base = combine_error(domain, source, tolerance)?;
++    if domain.triangles.len() > 3 * 128
++        || points.len() > 128
++        || domain.report["commonEndpoint"].as_u64() != Some(endpoint as u64)
++        || domain.report["endpointIsInterior"] != true
++        || target
++            .iter()
++            .any(|v| !v.lo.is_finite() || !v.hi.is_finite() || v.lo > v.hi)
++    {
++        return Err("endpoint_transport_scope");
++    }
++    let used: BTreeSet<_> = domain.triangles.iter().copied().collect();
++    if used.iter().any(|id| {
++        points
++            .get(id)
++            .is_none_or(|p| p.iter().any(|x| !x.is_finite()))
++    }) {
++        return Err("endpoint_transport_points");
++    }
++    let bits = json!(used
++        .iter()
++        .map(|id| json!([id, points[id].map(f64::to_bits)]))
++        .collect::<Vec<_>>());
++    if bits != domain.report["pointBits"] {
++        return Err("endpoint_transport_point_binding");
++    }
++    let slab: [f64; 2] = serde_json::from_value(source["commonWorldXSlab"].clone())
++        .map_err(|_| "endpoint_transport_slab")?;
++    if slab.iter().any(|x| !x.is_finite())
++        || slab[0] >= slab[1]
++        || target[0].lo <= slab[0]
++        || target[0].hi >= slab[1]
++    {
++        return Err("endpoint_transport_slab");
++    }
++    let original = *points.get(&endpoint).ok_or("endpoint_transport_point")?;
++    let mut motion2 = I::point(0.);
++    for k in 1..3 {
++        motion2 = motion2
++            .add(
++                square(
++                    target[k]
++                        .sub(I::point(original[k]))
++                        .ok_or("endpoint_transport_arithmetic")?,
++                )
++                .ok_or("endpoint_transport_arithmetic")?,
++            )
++            .ok_or("endpoint_transport_arithmetic")?;
++    }
++    let beta = motion2.hi.sqrt().next_up();
++    let mut minimum_margin = f64::INFINITY;
++    let mut jacobian = 0.0_f64;
++    let mut star_rows = Vec::new();
++    for (index, t) in domain.triangles.chunks_exact(3).enumerate() {
++        let Some(k) = t.iter().position(|&id| id == endpoint) else {
++            continue;
++        };
++        let a = points[&t[(k + 1) % 3]];
++        let b = points[&t[(k + 2) % 3]];
++        let sign = orient2d(yz(a), yz(b), yz(original));
++        if sign == 0 {
++            return Err("endpoint_transport_degenerate_star");
++        }
++        let dy = I::point(b[1])
++            .sub(I::point(a[1]))
++            .ok_or("endpoint_transport_arithmetic")?;
++        let dz = I::point(b[2])
++            .sub(I::point(a[2]))
++            .ok_or("endpoint_transport_arithmetic")?;
++        let ty = target[1]
++            .sub(I::point(a[1]))
++            .ok_or("endpoint_transport_arithmetic")?;
++        let tz = target[2]
++            .sub(I::point(a[2]))
++            .ok_or("endpoint_transport_arithmetic")?;
++        let margin = mul(dy, tz)
++            .and_then(|v| v.sub(mul(dz, ty)?))
++            .and_then(|v| v.mul(sign as f64))
++            .ok_or("endpoint_transport_arithmetic")?;
++        if margin.lo <= 0. {
++            return Err("endpoint_transport_outside_star_kernel");
++        }
++        let local = graph_jacobian_upper([points[&t[0]], points[&t[1]], points[&t[2]]])
++            .ok_or("endpoint_transport_jacobian")?;
++        minimum_margin = minimum_margin.min(margin.lo);
++        jacobian = jacobian.max(local);
++        star_rows.push(json!({"triangle":index,"oppositeEdge":[t[(k+1)%3],t[(k+2)%3]],"signedKernelMarginLower":margin.lo,"meshGraphJacobianUpper":local}));
++    }
++    if star_rows.len() < 3 || star_rows.len() > 128 {
++        return Err("endpoint_transport_star_inventory");
++    }
++    let source_bounds: Vec<f64> = serde_json::from_value(source["perTriangleSourceBounds"].clone())
++        .map_err(|_| "endpoint_transport_source_bounds")?;
++    let delta = source_bounds.iter().copied().fold(0., f64::max);
++    let eta = domain.export_bounds.iter().copied().fold(0., f64::max);
++    let extra = I::point(jacobian)
++        .mul(beta)
++        .ok_or("endpoint_transport_arithmetic")?
++        .hi;
++    let total = I::point(delta)
++        .add(I::point(extra))
++        .and_then(|v| v.add(I::point(eta)))
++        .ok_or("endpoint_transport_arithmetic")?
++        .hi;
++    if !beta.is_finite() || !extra.is_finite() || !total.is_finite() || total > tolerance {
++        return Err("endpoint_transport_error_limit");
++    }
++    Ok(
++        json!({"scope":"piecewise-affine projected interior-vertex transport conditional on the bound source graph and exact feature-root certificate",
++        "endpoint":endpoint,"targetImage":[target.map(|v|v.lo),target.map(|v|v.hi)],"exactFeatureRootCertificateRequired":true,
++        "starTriangles":star_rows,"strictStarKernelMarginLower":minimum_margin,"projectedVertexMotionUpper":beta,
++        "meshGraphJacobianUpper":jacobian,"additionalWorkingErrorUpper":extra,"uniformSourceBound":delta,"uniformExportRoundingBound":eta,
++        "sourceToExportAfterTransportUpper":total,"tolerance":tolerance,"originalComposedBound":base,
++        "starBoundaryAndOuterBoundaryFixed":true,"projectedDomainMapsOntoItself":true,"commonSourceSlabContainsTarget":true,
++        "theorem":"kernel convexity preserves every intermediate star triangulation; T fixes its boundary; |Phi(Tu)-M(u)| <= delta + L_mesh*beta, followed by export rounding",
++        "noAdditionalSourceCertificateCall":true,"sourceFeatureCurveParameterizationProved":false,"meshMutationPerformed":false,"publicationReady":false}),
++    )
++}
++
++#[test]
++fn face_c_endpoint_transport_rejects_unbound_boundary_and_outside_targets() {
++    let p = BTreeMap::from([
++        (0, [0., 0., 0.]),
++        (1, [0., -1., -1.]),
++        (2, [0., 1., -1.]),
++        (3, [0., 1., 1.]),
++        (4, [0., -1., 1.]),
++    ]);
++    let t = vec![vec![0, 2, 1], vec![0, 3, 2], vec![0, 4, 3], vec![0, 1, 4]];
++    let d = audit(&p, &t, [[1, 0], [0, 3]], 0).unwrap();
++    let source = json!({"perTriangleSourceBounds":[0.001,0.001,0.001,0.001],"triangleCount":4,
++        "fullClosedTriangleDomainsCovered":true,"sharedEdgeRootsAgreeByCommonSlabUniqueness":true,"tolerance":0.01,"commonWorldXSlab":[-1.,1.]});
++    let good = [I::point(0.), I::point(1e-6), I::point(1e-6)];
++    assert!(endpoint_transport(&d, &p, &source, 0, good, 0.01).is_ok());
++    assert_eq!(
++        endpoint_transport(&d, &p, &source, 1, good, 0.01),
++        Err("endpoint_transport_scope")
++    );
++    assert_eq!(
++        endpoint_transport(
++            &d,
++            &p,
++            &source,
++            0,
++            [I::point(0.), I::point(2.), I::point(0.)],
++            0.01
++        ),
++        Err("endpoint_transport_outside_star_kernel")
++    );
++    assert_eq!(
++        endpoint_transport(
++            &d,
++            &p,
++            &source,
++            0,
++            [I::point(2.), I::point(0.), I::point(0.)],
++            0.01
++        ),
++        Err("endpoint_transport_slab")
++    );
++    assert_eq!(
++        endpoint_transport(
++            &d,
++            &p,
++            &source,
++            0,
++            [I::point(0.), I::point(0.1), I::point(0.1)],
++            0.01
++        ),
++        Err("endpoint_transport_error_limit")
++    );
++    let mut bad = source.clone();
++    bad["perTriangleSourceBounds"] = json!([0.001]);
++    assert!(endpoint_transport(&d, &p, &bad, 0, good, 0.01).is_err());
++    let mut changed = p.clone();
++    changed.insert(1, [0., -1.1, -1.]);
++    assert_eq!(
++        endpoint_transport(&d, &changed, &source, 0, good, 0.01),
++        Err("endpoint_transport_point_binding")
++    );
++}
++
++#[test]
++fn face_c_union_requires_all_sectors_and_conforming_projection() {
++    let mut p = BTreeMap::from([
++        (0, [0., 0., 0.]),
++        (1, [0., -1., -1.]),
++        (2, [0., 1., -1.]),
++        (3, [0., 1., 1.]),
++        (4, [0., -1., 1.]),
++    ]);
++    let t = vec![vec![0, 1, 2], vec![0, 2, 3], vec![0, 3, 4], vec![0, 4, 1]];
++    let r = audit(&p, &t, [[1, 0], [0, 3]], 0).unwrap();
++    assert_eq!(r.report()["endpointIsInterior"], true);
++    assert!(audit(&p, &t[..3], [[1, 0], [0, 3]], 0).is_err());
++    let mut duplicated = t.clone();
++    duplicated[3] = duplicated[0].clone();
++    assert!(audit(&p, &duplicated, [[1, 0], [0, 3]], 0).is_err());
++    p.insert(3, [0., -2., 0.]);
++    assert!(audit(&p, &t, [[1, 0], [0, 3]], 0).is_err());
++}
++#[test]
++fn face_c_rejects_renamed_endpoint_and_export_collapse() {
++    let mut p = BTreeMap::from([
++        (0, [0., 0., 0.]),
++        (1, [0., -1., -1.]),
++        (2, [0., 1., -1.]),
++        (3, [0., 1., 1.]),
++        (4, [0., -1., 1.]),
++        (5, [0., 0., 0.]),
++    ]);
++    let mut t = vec![vec![0, 1, 2], vec![0, 2, 3], vec![0, 3, 4], vec![0, 4, 1]];
++    t[3][0] = 5;
++    assert!(audit(&p, &t, [[1, 0], [0, 3]], 0).is_err());
++    t[3][0] = 0;
++    p.insert(2, [0., -1. + 1e-10, -1.]);
++    assert!(audit(&p, &t, [[1, 0], [0, 3]], 0).is_err());
++}
++
++#[test]
++fn face_c_actual_second_pair_and_whole_face_source_attempt() {
++    use crate::sfcc::{
++        cell_mesh::paired_geometry_b,
++        pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++        validation::NumericalGuard,
++    };
++    let _guard = NumericalGuard::new();
++    let original: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/face-fans-c.json")).unwrap();
++    let tree =
++        crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap()
++            - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
++    let f = &context.features;
++    assert_eq!(
++        f.fingerprint().to_string(),
++        saved["sourceFingerprint"].as_str().unwrap()
++    );
++    let points: BTreeMap<usize, Point> = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|p| {
++            (
++                p["id"].as_u64().unwrap() as usize,
++                std::array::from_fn(|k| f64::from_bits(p["positionBits"][k].as_u64().unwrap())),
++            )
++        })
++        .collect();
++    assert_eq!(points.len(), saved["points"].as_array().unwrap().len());
++    let patches = saved["patches"].as_array().unwrap();
++    assert_eq!(patches.len(), 4);
++    let ids: Vec<Vec<usize>> = patches
++        .iter()
++        .map(|p| serde_json::from_value(p["triangles"].clone()).unwrap())
++        .collect();
++    let boundaries: Vec<Vec<usize>> = patches
++        .iter()
++        .map(|p| serde_json::from_value(p["boundary"].clone()).unwrap())
++        .collect();
++    let segments: [[usize; 2]; 2] =
++        serde_json::from_value(saved["sharedSegments"].clone()).unwrap();
++    let endpoint = saved["commonEndpoint"].as_u64().unwrap() as usize;
++    let tolerance = saved["surfaceTolerance"].as_f64().unwrap();
++    assert_eq!(
++        tolerance.to_bits(),
++        original["tuning"]["surfaceTolMm"]
++            .as_f64()
++            .unwrap()
++            .to_bits()
++    );
++    let second = paired_geometry_b::audit(
++        [&boundaries[2], &boundaries[3]],
++        [&ids[2], &ids[3]],
++        segments[1],
++        &points,
++    );
++    let geometry = audit(&points, &ids, segments, endpoint);
++    let flat: Vec<_> = ids.iter().flatten().copied().collect();
++    let triangles: Vec<_> = flat
++        .chunks_exact(3)
++        .map(|t| [points[&t[0]], points[&t[1]], points[&t[2]]])
++        .collect();
++    // One call retains the original GLOBAL work cap across every supplied patch.
++    let source = fullfan_source_a::certify(
++        f,
++        saved["cylinderSource"].as_u64().unwrap() as usize,
++        &triangles,
++        tolerance,
++    );
++    let exact = geometry.as_ref().is_ok_and(|g| {
++        g.triangles == flat
++            && g.report["pointBits"]
++                == json!(points
++                    .iter()
++                    .map(|(&id, p)| json!([id, p.map(f64::to_bits)]))
++                    .collect::<Vec<_>>())
++    });
++    let combined: std::result::Result<Value, String> = match (&geometry, &source) {
++        (Ok(g), Ok(s)) if exact => combine_error(g, s, tolerance).map_err(str::to_owned),
++        (Err(e), _) => Err(format!("face_geometry: {e}")),
++        (_, Err(e)) => Err(format!("face_source: {e}")),
++        _ => Err("face_exact_input_binding".into()),
++    };
++    let second_report = second
++        .as_ref()
++        .map(|g| g.report().clone())
++        .map_err(|e| e.to_string());
++    let geometry_report = geometry
++        .as_ref()
++        .map(|g| g.report().clone())
++        .map_err(|e| e.to_string());
++    let endpoint_result = match (&geometry, &source) {
++        (Ok(g), Ok(s)) if exact => bind_feature_endpoint_transport(
++            f,
++            &context.lat,
++            &original,
++            &saved,
++            &points,
++            g,
++            s,
++            tolerance,
++        ),
++        _ => Err("endpoint_requires_complete_source_and_domain".into()),
++    };
++    let report = json!({"parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":saved["sourceFingerprint"],"face":saved["face"],"insideCell":saved["insideCell"],"outsideCell":saved["outsideCell"],
++        "secondPairGeometry":second_report,"wholeFaceGeometry":geometry_report,"wholeFaceSource":source,"combined":combined,
++        "exactSourceGeometryInputBinding":exact,"oneSourceCallGlobal128Cap":true,"wholeFaceSourceGraphAndUnionProved":combined.is_ok(),
++        "endpointTransport":endpoint_result,"idealFeatureEndpointProved":endpoint_result.is_ok(),"sourceFeatureParameterTransportProved":false,"publicationReady":false});
++    if let Ok(path) = std::env::var("SFCC_FACE_C_RECEIPT") {
++        std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    }
++    assert!(second.is_ok(), "{second_report:?}");
++    assert!(geometry.is_ok(), "{geometry_report:?}");
++    assert!(source.is_ok(), "{source:?}");
++    assert!(combined.is_ok(), "{combined:?}");
++    assert!(endpoint_result.is_ok(), "{endpoint_result:?}");
++}
++
++fn bind_feature_endpoint_transport(
++    f: &crate::sfcc::feature_set::SfccFeatureSet,
++    lat: &crate::math::grid::SfccLattice,
++    original: &Value,
++    saved: &Value,
++    points: &BTreeMap<usize, Point>,
++    domain: &Domain,
++    source: &Value,
++    tolerance: f64,
++) -> std::result::Result<Value, String> {
++    use crate::sfcc::shared_twisted_proof::correlated_c::transport_a::Transport;
++    if saved["sourceFingerprint"] != saved["originalTarget"]["sourceFingerprint"]
++        || saved["face"] != saved["originalTarget"]["face"]
++    {
++        return Err("endpoint_original_target_binding".into());
++    }
++    let endpoint = saved["commonEndpoint"].as_u64().ok_or("endpoint_id")? as usize;
++    let point = *points.get(&endpoint).ok_or("endpoint_point")?;
++    let pins = saved["originalTarget"]["originalPins"]
++        .as_array()
++        .ok_or("endpoint_pins")?;
++    if pins.len() > 1024 {
++        return Err("endpoint_pin_cap".into());
++    }
++    let mut found = pins
++        .iter()
++        .filter(|p| p["candidatePoint"].as_u64() == Some(endpoint as u64));
++    let pin = found.next().ok_or("endpoint_pin_missing")?;
++    if found.next().is_some() {
++        return Err("endpoint_pin_ambiguous".into());
++    }
++    let chart = pin["chart"].as_u64().ok_or("endpoint_chart")? as usize;
++    let t = f64::from_bits(pin["parameterBits"].as_u64().ok_or("endpoint_parameter")?);
++    let curve = f.curves.get(chart).ok_or("endpoint_curve")?;
++    let strata: [usize; 2] =
++        serde_json::from_value(pin["strata"].clone()).map_err(|_| "endpoint_strata")?;
++    let ranges: [u64; 2] =
++        serde_json::from_value(pin["rangeBits"].clone()).map_err(|_| "endpoint_ranges")?;
++    if strata != curve.adjacent_strata
++        || ranges != [curve.t_min.to_bits(), curve.t_max.to_bits()]
++        || !t.is_finite()
++        || t < curve.t_min
++        || t > curve.t_max
++    {
++        return Err("endpoint_original_curve_binding".into());
++    }
++    let face: [i64; 3] =
++        serde_json::from_value(saved["face"].clone()).map_err(|_| "endpoint_face")?;
++    if face[0] != 0 || face[2] <= 0 {
++        return Err("endpoint_face_axis_or_extent".into());
++    }
++    let grid = crate::math::grid::unpack_point(lat, face[1]);
++    let low = crate::math::grid::point_to_world(lat, grid[0], grid[1], grid[2]);
++    let mut far = grid;
++    far[1] = far[1].checked_add(face[2]).ok_or("endpoint_face_extent")?;
++    far[2] = far[2].checked_add(face[2]).ok_or("endpoint_face_extent")?;
++    let high = crate::math::grid::point_to_world(lat, far[0], far[1], far[2]);
++    let feature = super::feature49_a::endpoint_geometry(f, chart, point, low[0])
++        .ok_or("endpoint_source_feature")?;
++    if feature["physicalFeatureZeroAndExposureProved"] != true
++        || feature["sourceFingerprint"] != source["sourceFingerprint"]
++        || feature["chart"].as_u64() != Some(chart as u64)
++        || feature["physicalFaceFeature"]["fixedAxis"] != 0
++        || feature["physicalFaceFeature"]["fixedCoordinateBits"].as_u64() != Some(low[0].to_bits())
++    {
++        return Err("endpoint_source_feature_binding".into());
++    }
++    let image: [[f64; 3]; 2] =
++        serde_json::from_value(feature["physicalFaceFeature"]["image"].clone())
++            .map_err(|_| "endpoint_feature_image")?;
++    let mut target = [I::point(0.); 3];
++    for k in 0..3 {
++        target[k] = crate::sfcc::loft_seam::interval(image[0][k], image[1][k])
++            .ok_or("endpoint_feature_image")?;
++    }
++    if image[0][0].to_bits() != low[0].to_bits()
++        || image[1][0].to_bits() != low[0].to_bits()
++        || !(1..3).all(|k| target[k].lo > low[k] && target[k].hi < high[k])
++    {
++        return Err("endpoint_feature_face_rectangle".into());
++    }
++    let primary = crate::sfcc::stage4_source_preflight_c::selected_pair_c(f)
++        .map_err(|_| "endpoint_primary_source")?;
++    let chord = original["tuning"]["curveChordTolMm"]
++        .as_f64()
++        .ok_or("endpoint_original_chord_tolerance")?;
++    let mut budget =
++        Transport::bind(f, primary, chord).map_err(|_| "endpoint_query_budget_bind")?;
++    let before = budget.charged_queries();
++    budget.phase("face_endpoint_transport_own_query");
++    budget
++        .reserve_external(1)
++        .map_err(|_| "endpoint_own_query_budget")?;
++    budget.external_direct_attempt();
++    let own = curve.point_at_checked(t).ok_or_else(|| {
++        format!(
++            "endpoint_original_own_query_failed: chart {chart}, t {:x}, charged {before}->{}",
++            t.to_bits(),
++            budget.charged_queries()
++        )
++    })?;
++    if own.map(f64::to_bits) != point.map(f64::to_bits) {
++        return Err("endpoint_original_own_query_identity".into());
++    }
++    let (_, _, refine) = curve
++        .traced_carriers()
++        .ok_or("endpoint_original_carriers")?;
++    let allowance = budget.allowance().min(8. * refine.curve_eps);
++    let distance = feature["originalToPhysicalFaceFeatureDistance"][1]
++        .as_f64()
++        .ok_or("endpoint_feature_distance")?;
++    if !allowance.is_finite() || allowance <= 0. || !distance.is_finite() || distance > allowance {
++        return Err("endpoint_original_association_allowance".into());
++    }
++    let mut lo = t.floor().max(curve.t_min);
++    let hi = (lo + 1.).min(curve.t_max);
++    if lo == hi {
++        lo = (hi - 1.).max(curve.t_min);
++    }
++    let tube = curve
++        .projection_tube(lo, hi)
++        .ok_or("endpoint_original_tube")?;
++    if !(0..3).all(|k| {
++        own[k] >= tube.0[k]
++            && own[k] <= tube.1[k]
++            && target[k].lo >= tube.0[k]
++            && target[k].hi <= tube.1[k]
++    }) {
++        return Err("endpoint_original_tube_membership".into());
++    }
++    if !curve.adjacent_strata.iter().all(|&sid| {
++        f.strata.get(sid).is_some_and(|s| {
++            (s.domain_contains(own, budget.allowance())
++                || curve.upper_source_member(&f.strata, sid, t, own, budget.allowance()))
++                && s.raw_field(own[0], own[1], own[2])
++                    .normalized_equation()
++                    .is_some_and(|v| v.value.is_finite() && v.value.abs() <= budget.allowance())
++        })
++    }) {
++        return Err("endpoint_original_source_contract".into());
++    }
++    let transport = endpoint_transport(domain, points, source, endpoint, target, tolerance)
++        .map_err(str::to_owned)?;
++    Ok(
++        json!({"featureGeometry":feature,"transport":transport,"chart":chart,"originalParameterBits":t.to_bits(),
++        "originalPointBits":point.map(f64::to_bits),"ownQueryBits":own.map(f64::to_bits),"originalFace":face,
++        "originalFaceRectangle":[low,high],"originalTube":[tube.0,tube.1],"retainedAssociationAllowance":allowance,
++        "ownToPhysicalFeatureImageUpper":distance,"originalOwnContractPass":true,"sameSourceAndPointInputsBound":true,
++        "targetIsExactCorrelatedPhysicalFeatureRoot":true,"fixedFaceFeatureEndpointTransportProved":true,
++        "originalParameterAssociationRetained":true,"exactIdealParameterizationProved":false,"entireFeatureCurveTransportProved":false,
++        "budgetScope":"separate proof-observation ledger; not component construction cost","chargedBefore":before,"chargedAfter":budget.charged_queries(),
++        "newOwnQueryAttempts":1,"additionalSourceCertificateCalls":0,"meshMutationPerformed":false,"publicationReady":false}),
++    )
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/feature49_a.rs
+@@ -0,0 +1,533 @@
++//! Source-bound feature endpoint images; no mesh mutation or raw-parameter continuity claim.
++use super::*;
++use serde_json::{json, Value};
++
++type Image = [I; 3];
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn bounds(p: Image) -> [[f64; 3]; 2] {
++    [p.map(|v| v.lo), p.map(|v| v.hi)]
++}
++fn midpoint_image(p: Image) -> [f64; 3] {
++    p.map(|v| v.lo * 0.5 + v.hi * 0.5)
++}
++fn abs_lower(v: I) -> f64 {
++    if v.lo > 0. {
++        v.lo
++    } else if v.hi < 0. {
++        -v.hi
++    } else {
++        0.
++    }
++}
++fn distance(a: Image, b: Image) -> Option<[f64; 2]> {
++    let mut lo = I::point(0.);
++    let mut hi = I::point(0.);
++    for k in 0..3 {
++        let d = a[k].sub(b[k])?;
++        lo = lo.add(square(I::point(abs_lower(d)))?)?;
++        hi = hi.add(square(d)?)?;
++    }
++    Some([sqrt(lo)?.lo, sqrt(hi)?.hi])
++}
++fn contains(tube: ([f64; 3], [f64; 3]), image: Image) -> bool {
++    (0..3).all(|k| image[k].lo >= tube.0[k] && image[k].hi <= tube.1[k])
++}
++fn same_meridian(a: activation_a::MeridianBound, b: activation_a::MeridianBound) -> bool {
++    a.edge == b.edge
++        && [a.nr.lo, a.nr.hi, a.ny.lo, a.ny.hi, a.offset.lo, a.offset.hi].map(f64::to_bits)
++            == [b.nr.lo, b.nr.hi, b.ny.lo, b.ny.hi, b.offset.lo, b.offset.hi].map(f64::to_bits)
++}
++struct Source<'a> {
++    f: &'a SfccFeatureSet,
++    source: [usize; 3],
++    chart: usize,
++    cylinder_id: usize,
++    compound_id: usize,
++    center: [f64; 3],
++    radius: f64,
++    half: f64,
++    p: TwistedSideParams,
++    native: &'a Leaf,
++    other: &'a Leaf,
++    groove: &'a Leaf,
++    cap: &'a Leaf,
++    sphere: &'a Leaf,
++    inner_radius: f64,
++    chamfer_radius: f64,
++    outer_radius: f64,
++    weight: f64,
++    offset: f64,
++}
++impl<'a> Source<'a> {
++    fn bind(f: &'a SfccFeatureSet, chart: usize) -> Option<Self> {
++        let curve = f.curves.get(chart)?;
++        if curve.id != chart
++            || curve.closed
++            || !curve.t_min.is_finite()
++            || !curve.t_max.is_finite()
++            || curve.t_min >= curve.t_max
++        {
++            return None;
++        }
++        let (source, _, _) = alias_face_b::select(f)?;
++        let cylinder_id = curve.adjacent_strata.iter().copied().find(|&id| {
++            f.strata
++                .get(id)
++                .is_some_and(|s| s.certificate_cylinder().is_some())
++        })?;
++        let compound_id = *curve
++            .adjacent_strata
++            .iter()
++            .find(|&&id| id != cylinder_id)?;
++        let cyl = f.strata.get(cylinder_id)?;
++        let (center, axis, radius) = cyl.certificate_cylinder()?;
++        if axis != [0., 1., 0.] || cyl.sign != 1. || !radius.is_finite() || radius < 1e-6 {
++            return None;
++        }
++        let root = cyl.exposure_root_a()?;
++        let (cap_cut, sphere, outer_radius) =
++            pair(root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++        let (cut, cap, _) = pair(cap_cut, None).ok()?;
++        let (hard, groove_node, chamfer_radius) =
++            pair(cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++        let (inner, cylinder, _) = pair(hard, None).ok()?;
++        let (other, native, inner_radius) =
++            pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++        let cylinder = leaf(cylinder, 1.).ok()?;
++        let native = leaf(native, 1.).ok()?;
++        let other = leaf(other, 1.).ok()?;
++        let groove = leaf(groove_node, -1.).ok()?;
++        let cap = leaf(cap, -1.).ok()?;
++        let sphere = leaf(sphere, 1.).ok()?;
++        let (p, rn, ro, rr) = f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++        let registered = cyl.correlated_cylinder_source_c(&f.strata[source[0]])?;
++        let (weight, offset) =
++            f.strata
++                .get(compound_id)?
++                .connection_compound(hard, groove_node, cut)?;
++        if !std::ptr::eq(cylinder, registered)
++            || !std::ptr::eq(native, rn)
++            || !std::ptr::eq(other, ro)
++            || rr != inner_radius
++            || cylinder.pos != center
++            || [native, other, groove, sphere]
++                .iter()
++                .any(|l| l.pos[0] != center[0] || l.pos[2] != center[2])
++        {
++            return None;
++        }
++        let Shape::Cylinder { r, h } = cylinder.shape else {
++            return None;
++        };
++        if r != radius || !h.is_finite() || h < 1e-6 {
++            return None;
++        }
++        let (sa, sb, _) = curve.traced_carriers()?;
++        if !((sa.connection_same_source(&f.strata[compound_id]) && sb.connection_same_source(cyl))
++            || (sb.connection_same_source(&f.strata[compound_id])
++                && sa.connection_same_source(cyl)))
++        {
++            return None;
++        }
++        Some(Self {
++            f,
++            source,
++            chart,
++            cylinder_id,
++            compound_id,
++            center,
++            radius,
++            half: h,
++            p,
++            native,
++            other,
++            groove,
++            cap,
++            sphere,
++            inner_radius,
++            chamfer_radius,
++            outer_radius,
++            weight,
++            offset,
++        })
++    }
++    fn source_margins(&self, rho: I, image: Image) -> Option<Value> {
++        let y = image[1];
++        let x = image[0].sub(I::point(self.center[0]))?;
++        let z = image[2].sub(I::point(self.center[2]))?;
++        let ly = y.sub(I::point(self.p.pos_y))?;
++        if !self.p.h.is_finite() || self.p.h <= 0. || ly.lo < -self.p.h || ly.hi > self.p.h {
++            return None;
++        }
++        let theta = div(ly.add(I::point(self.p.h))?, 2. * self.p.h)?.mul(self.p.twist_rad)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let u = mul(x, cs)?.add(mul(z, sn)?)?;
++        let v = mul(z, cs)?.sub(mul(x, sn)?)?;
++        let e = u
++            .sub(I::point(self.p.v0x))?
++            .mul(self.p.nx2)?
++            .add(v.sub(I::point(self.p.v0z))?.mul(self.p.nz2)?)?;
++        let profile = upper_source_a::finite_profile_level(self.p, self.native, [u, v], e)?;
++        let native_cap = upper_source_a::cap_margin(y, self.p.pos_y, self.p.h, e)?;
++        let c = rho.sub(I::point(self.radius))?;
++        let cylinder_cap = upper_source_a::cap_margin(y, self.center[1], self.half, c)?;
++        let other = activation_a::meridian_bound(self.other, rho, y)?;
++        let groove = activation_a::meridian_bound(self.groove, rho, y)?;
++        if other.distance.lo <= self.inner_radius
++            || e.hi >= self.inner_radius
++            || e.hi >= c.lo
++            || groove.distance.lo <= 0.
++        {
++            return None;
++        }
++        let Shape::Extrude { h: ch, .. } = self.cap.shape else {
++            return None;
++        };
++        let cap = I::point(self.cap.pos[1]).sub(I::point(ch))?.sub(y)?.lo;
++        let Shape::Sphere { r: sr } = self.sphere.shape else {
++            return None;
++        };
++        let sphere = I::point(sr)
++            .sub(I::point(self.outer_radius))?
++            .sub(sqrt(
++                square(rho)?.add(square(y.sub(I::point(self.sphere.pos[1]))?)?)?,
++            )?)?
++            .lo;
++        if cap <= 0. || sphere <= 0. {
++            return None;
++        }
++        Some(
++            json!({"nativeLevel":[e.lo,e.hi],"cylinderLevel":[c.lo,c.hi],"nativeStrictlyBelowCylinder":true,"otherDistance":[other.distance.lo,other.distance.hi],
++            "grooveDistance":[groove.distance.lo,groove.distance.hi],"grooveEdge":groove.edge,"nativeFiniteProfileMargin":profile,"nativeCapMargin":native_cap,
++            "cylinderCapMargin":cylinder_cap,"capCutMargin":cap,"outerRoundMargin":sphere}),
++        )
++    }
++    fn feature(
++        &self,
++        branch: activation_a::MeridianBound,
++        level: I,
++        fixed_axis: usize,
++        fixed: f64,
++    ) -> Option<(Image, Value)> {
++        if !fixed.is_finite() || !matches!(fixed_axis, 0 | 2) || level.lo <= 0. {
++            return None;
++        }
++        let rho = I::point(self.radius);
++        let y = quotient(
++            level.sub(mul(branch.nr, rho)?)?.sub(branch.offset)?,
++            branch.ny,
++        )?;
++        let rfixed = I::point(fixed).sub(I::point(self.center[fixed_axis]))?;
++        let radical = square(rho)?.sub(square(rfixed)?)?;
++        if radical.lo <= 0. {
++            return None;
++        }
++        let free = sqrt(radical)?;
++        let image = if fixed_axis == 0 {
++            if rfixed.hi >= 0. {
++                return None;
++            }
++            [I::point(fixed), y, free.add(I::point(self.center[2]))?]
++        } else {
++            if rfixed.lo <= 0. {
++                return None;
++            }
++            [
++                free.mul(-1.)?.add(I::point(self.center[0]))?,
++                y,
++                I::point(fixed),
++            ]
++        };
++        let check = activation_a::meridian_bound(self.groove, rho, y)?;
++        if !same_meridian(check, branch) || abs_lower(branch.ny) <= 0. {
++            return None;
++        }
++        let margins = self.source_margins(rho, image)?;
++        let free_component = if fixed_axis == 0 {
++            image[2].sub(I::point(self.center[2]))?
++        } else {
++            image[0].sub(I::point(self.center[0]))?
++        };
++        let determinant = mul(quotient(free_component, rho)?, branch.ny)?;
++        if abs_lower(determinant) <= 0. {
++            return None;
++        }
++        Some((
++            image,
++            json!({"margins":margins,"fixedAxis":fixed_axis,"fixedCoordinateBits":fixed.to_bits(),"image":bounds(image),
++            "radius":self.radius,"grooveLevelBounds":[level.lo,level.hi],"finiteBranch":branch.edge,"constraintJacobianAbsLower":abs_lower(determinant),"jacobianConstraints":"(cylinder distance, positive groove distance), not scaled compiled compound",
++            "correlation":"rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero"}),
++        ))
++    }
++    fn surface_lift(
++        &self,
++        branch: activation_a::MeridianBound,
++        point: [f64; 3],
++    ) -> Option<(Image, Value)> {
++        let y = I::point(point[1]);
++        let z = I::point(point[2]);
++        let denominator = I::point(1.).sub(branch.nr)?;
++        if denominator.lo <= 0. {
++            return None;
++        }
++        let qrho = quotient(
++            I::point(self.radius)
++                .add(mul(branch.ny, y)?)?
++                .add(branch.offset)?
++                .sub(I::point(self.chamfer_radius))?,
++            denominator,
++        )?;
++        let rho = interval(self.radius.min(qrho.lo), self.radius.min(qrho.hi))?;
++        let radical = square(rho)?.sub(square(z.sub(I::point(self.center[2]))?)?)?;
++        if radical.lo <= 0. {
++            return None;
++        }
++        let image = [
++            sqrt(radical)?.mul(-1.)?.add(I::point(self.center[0]))?,
++            y,
++            z,
++        ];
++        let check = activation_a::meridian_bound(self.groove, rho, y)?;
++        if !same_meridian(check, branch) {
++            return None;
++        }
++        let margins = self.source_margins(rho, image)?;
++        Some((
++            image,
++            json!({"image":bounds(image),"rhoBounds":[rho.lo,rho.hi],"chamferZeroRadiusBounds":[qrho.lo,qrho.hi],"margins":margins,
++            "zeroArgument":"native below cylinder, groove negative: max(C,w*(C-d+r))=0 uniquely at rho=min(R,rho_Q(Y)) on admitted negative-X branch",
++            "fullPhysicalSourceZeroProved":true,"sameYZAsOriginalPoint":true}),
++        ))
++    }
++}
++
++pub(crate) fn endpoint_geometry(
++    f: &SfccFeatureSet,
++    chart: usize,
++    point: [f64; 3],
++    face_x: f64,
++) -> Option<Value> {
++    if point.iter().any(|v| !v.is_finite()) {
++        return None;
++    }
++    let source = Source::bind(f, chart)?;
++    let branch =
++        activation_a::meridian_bound(source.groove, I::point(source.radius), I::point(point[1]))?;
++    let physical = I::point(source.chamfer_radius);
++    let generated = div(I::point(source.offset), source.weight)?;
++    let (face, face_report) = source.feature(branch, physical, 0, face_x)?;
++    let (generated_face, generated_report) = source.feature(branch, generated, 0, face_x)?;
++    let (fixed_z, fixed_z_report) = source.feature(branch, physical, 2, point[2])?;
++    let (surface, surface_report) = source.surface_lift(branch, point)?;
++    let original = point.map(I::point);
++    let feature_height_gap = I::point(point[1]).sub(face[1])?;
++    let (candidate, radius_label) = (
++        midpoint_image(face),
++        "physical feature and original X-face root",
++    );
++    Some(
++        json!({"scope":"source-bound endpoint images and pointwise comparison only; no raw parameter continuity or mesh mutation",
++        "sourceFingerprint":source.f.fingerprint().to_string(),"chart":source.chart,"source":source.source,"strata":[source.compound_id,source.cylinder_id],
++        "weightBits":source.weight.to_bits(),"offsetBits":source.offset.to_bits(),"physicalChamferRadius":source.chamfer_radius,"generatedRadiusBounds":[generated.lo,generated.hi],
++        "physicalFaceFeature":face_report,"generatedFaceCarrierFeature":generated_report,"physicalFixedZFeature":fixed_z_report,"commonXSurfaceLift":surface_report,
++        "physicalFeatureZeroAndExposureProved":true,"generatedCarrierNotClaimedExactPhysicalFeature":true,
++        "originalToPhysicalFaceFeatureDistance":distance(original,face)?,"originalToPhysicalFixedZFeatureDistance":distance(original,fixed_z)?,
++        "originalToCommonXSurfaceLiftDistance":distance(original,surface)?,"surfaceLiftToFixedZFeatureDistance":distance(surface,fixed_z)?,
++        "physicalGeneratedFaceSeparationUpper":distance(face,generated_face)?[1],"originalYMinusIdealFeatureY":[feature_height_gap.lo,feature_height_gap.hi],
++        "surfaceLiftOffIdealFeatureProved":abs_lower(feature_height_gap)>0.,"surfaceLiftExactIdealFeatureMembershipProved":false,
++        "candidate":candidate,"candidateKind":radius_label,"candidatePhysicalImageDistanceUpper":distance(candidate.map(I::point),face)?[1],
++        "candidateGeneratedImageDistanceUpper":distance(candidate.map(I::point),generated_face)?[1],
++        "exactCurveParameterMapProved":false,"neighboringPatchTransportProved":false,"publicationAuthorized":false}),
++    )
++}
++
++#[cfg(test)]
++fn fixture() -> (SfccFeatureSet, Value, Value, crate::math::grid::SfccLattice) {
++    use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++    let input: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/paired-fans-c.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(input["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let cube = SfccWorldCube {
++        min_x: input["cube"]["min"][0].as_f64().unwrap(),
++        min_y: input["cube"]["min"][1].as_f64().unwrap(),
++        min_z: input["cube"]["min"][2].as_f64().unwrap(),
++        size: input["cube"]["max"][0].as_f64().unwrap() - input["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&root, &cube, &PipelineTuning::default());
++    assert_eq!(
++        context.features.fingerprint().to_string(),
++        saved["sourceFingerprint"].as_str().unwrap()
++    );
++    (context.features, saved, input, context.lat)
++}
++#[test]
++fn feature49_a_actual_endpoint_source_and_query_obligations() {
++    use crate::sfcc::shared_twisted_proof::correlated_c::transport_a::Transport;
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, saved, input, lat) = fixture();
++    let pins = saved["originalTarget"]["originalPins"].as_array().unwrap();
++    assert_eq!(pins.len(), 1);
++    let pin = &pins[0];
++    let chart = pin["chart"].as_u64().unwrap() as usize;
++    let id = pin["candidatePoint"].as_u64().unwrap() as usize;
++    let t = f64::from_bits(pin["parameterBits"].as_u64().unwrap());
++    let curve = &f.curves[chart];
++    assert_eq!(
++        curve.adjacent_strata,
++        serde_json::from_value::<[usize; 2]>(pin["strata"].clone()).unwrap()
++    );
++    assert_eq!(
++        [curve.t_min.to_bits(), curve.t_max.to_bits()],
++        serde_json::from_value::<[u64; 2]>(pin["rangeBits"].clone()).unwrap()
++    );
++    let row = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .find(|r| r["id"].as_u64() == Some(id as u64))
++        .unwrap();
++    let point: [f64; 3] =
++        std::array::from_fn(|k| f64::from_bits(row["positionBits"][k].as_u64().unwrap()));
++    let face: [i64; 3] = serde_json::from_value(saved["face"].clone()).unwrap();
++    assert_eq!(face[0], 0);
++    assert_eq!(face[2], 2);
++    let grid = crate::math::grid::unpack_point(&lat, face[1]);
++    let plane = crate::math::grid::point_to_world(&lat, grid[0], grid[1], grid[2])[0];
++    assert!(t.is_finite() && t >= curve.t_min && t <= curve.t_max);
++    let primary = crate::sfcc::stage4_source_preflight_c::selected_pair_c(&f).unwrap();
++    let tolerance = input["tuning"]["curveChordTolMm"]
++        .as_f64()
++        .expect("original chord tolerance");
++    let mut budget = Transport::bind(&f, primary, tolerance).unwrap();
++    let before = budget.charged_queries();
++    budget.phase("feature49_endpoint_own_query");
++    budget.reserve_external(1).unwrap();
++    budget.external_direct_attempt();
++    let own = curve
++        .point_at_checked(t)
++        .expect("original numerical own query");
++    assert_eq!(own.map(f64::to_bits), point.map(f64::to_bits));
++    let (_, _, refine) = curve.traced_carriers().unwrap();
++    let result = endpoint_geometry(&f, chart, point, plane);
++    if result.is_none() {
++        if let Ok(path) = std::env::var("SFCC_FEATURE49_A_RECEIPT") {
++            std::fs::write(path,serde_json::to_vec_pretty(&json!({"refusal":"source endpoint geometry","sourceBindSucceeded":Source::bind(&f,chart).is_some(),"chart":chart,"parameterBits":t.to_bits(),"pointBits":point.map(f64::to_bits),"facePlaneBits":plane.to_bits()})).unwrap()).unwrap();
++        }
++    }
++    let mut proof = result.expect("source endpoint geometry");
++    let candidate: [f64; 3] = serde_json::from_value(proof["candidate"].clone()).unwrap();
++    let physical: [[f64; 3]; 2] =
++        serde_json::from_value(proof["physicalFaceFeature"]["image"].clone()).unwrap();
++    let generated: [[f64; 3]; 2] =
++        serde_json::from_value(proof["generatedFaceCarrierFeature"]["image"].clone()).unwrap();
++    let make = |p: [[f64; 3]; 2]| -> Image {
++        std::array::from_fn(|k| interval(p[0][k], p[1][k]).unwrap())
++    };
++    let mut lo = t.floor().max(curve.t_min);
++    let hi = (lo + 1.).min(curve.t_max);
++    if lo == hi {
++        lo = (hi - 1.).max(curve.t_min);
++    }
++    let tube = curve.projection_tube(lo, hi).unwrap();
++    let residuals = |p: [f64; 3]| -> Vec<Value> {
++        curve.adjacent_strata.iter().map(|&sid|{
++        let s=&f.strata[sid];let v=s.raw_field(p[0],p[1],p[2]).normalized_equation().unwrap();
++        json!({"stratum":sid,"normalizedResidual":v.value,"strictResidualPass":v.value.is_finite()&&v.value.abs()<=refine.curve_eps,
++            "strictDomainPass":s.domain_contains(p,refine.curve_eps)||curve.upper_source_member(&f.strata,sid,t,p,refine.curve_eps)})
++    }).collect()
++    };
++    let candidate_checks = residuals(candidate);
++    let own_checks = residuals(own);
++    let allowance = budget.allowance().min(8. * refine.curve_eps);
++    let own_physical = distance(own.map(I::point), make(physical)).unwrap()[1];
++    let own_generated = distance(own.map(I::point), make(generated)).unwrap()[1];
++    let direct = distance(candidate.map(I::point), own.map(I::point)).unwrap()[1];
++    let mut upper_grid = grid;
++    upper_grid[1] += face[2];
++    upper_grid[2] += face[2];
++    let low_face = crate::math::grid::point_to_world(&lat, grid[0], grid[1], grid[2]);
++    let high_face =
++        crate::math::grid::point_to_world(&lat, upper_grid[0], upper_grid[1], upper_grid[2]);
++    let face_contains =
++        |image: Image| (1..3).all(|k| image[k].lo > low_face[k] && image[k].hi < high_face[k]);
++    let candidate_physical = distance(candidate.map(I::point), make(physical)).unwrap()[1];
++    let candidate_generated = distance(candidate.map(I::point), make(generated)).unwrap()[1];
++    let original_contract_pass = curve.adjacent_strata.iter().all(|&sid| {
++        let s = &f.strata[sid];
++        (s.domain_contains(own, budget.allowance())
++            || curve.upper_source_member(&f.strata, sid, t, own, budget.allowance()))
++            && s.raw_field(own[0], own[1], own[2])
++                .normalized_equation()
++                .is_some_and(|v| v.value.is_finite() && v.value.abs() <= budget.allowance())
++    });
++    let admitted = original_contract_pass
++        && candidate_physical <= allowance
++        && candidate_generated <= allowance
++        && contains(tube, own.map(I::point))
++        && own_physical <= allowance
++        && own_generated <= allowance
++        && direct <= allowance
++        && face_contains(make(physical))
++        && face_contains(make(generated))
++        && contains(tube, make(physical))
++        && contains(tube, make(generated))
++        && contains(tube, candidate.map(I::point))
++        && candidate_checks
++            .iter()
++            .all(|r| r["strictResidualPass"] == true && r["strictDomainPass"] == true);
++    proof["numericalAssociation"] = json!({"originalParameterBits":t.to_bits(),"originalPointBits":point.map(f64::to_bits),"ownQueryBits":own.map(f64::to_bits),
++        "ownStrictCarrierChecks":own_checks,"candidateStrictCarrierChecks":candidate_checks,"strictCarrierResidualLimit":refine.curve_eps,
++        "primaryAssociationAllowance":budget.allowance(),"curve49FaceAllowance":8.*refine.curve_eps,"retainedAssociationAllowance":allowance,
++        "originalOwnContractPass":original_contract_pass,"candidateToPhysicalImageUpper":candidate_physical,"candidateToGeneratedImageUpper":candidate_generated,"ownInOriginalTube":contains(tube,own.map(I::point)),
++        "ownToPhysicalFeatureUpper":own_physical,"ownToGeneratedFeatureUpper":own_generated,"candidateToOwnUpper":direct,
++        "originalFace":face,"originalFaceRectangle":[low_face,high_face],"physicalFeatureImageStrictlyInFace":face_contains(make(physical)),"generatedFeatureImageStrictlyInFace":face_contains(make(generated)),
++        "originalTube":[tube.0,tube.1],"physicalFeatureImageInTube":contains(tube,make(physical)),"generatedFeatureImageInTube":contains(tube,make(generated)),
++        "candidateAdmittedAsOriginalParameterAssociation":admitted,"parameterContinuityOrExactIdealParameterizationProved":false,
++        "chargedBefore":before,"chargedAfter":budget.charged_queries(),"newOwnQueryAttempts":1,"limitsChanged":false,"mutationPerformed":false});
++    if let Ok(path) = std::env::var("SFCC_FEATURE49_A_RECEIPT") {
++        std::fs::write(path, serde_json::to_vec_pretty(&proof).unwrap()).unwrap();
++    }
++    assert!(proof["physicalFeatureZeroAndExposureProved"] == true);
++    assert_eq!(budget.charged_queries(), before + 1);
++}
++#[test]
++fn feature49_a_source_guards_reject_wrong_chart_axis_branch_and_nonfinite_point() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, saved, _, _) = fixture();
++    let pin = &saved["originalTarget"]["originalPins"][0];
++    let chart = pin["chart"].as_u64().unwrap() as usize;
++    let id = pin["candidatePoint"].as_u64().unwrap();
++    let row = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .find(|r| r["id"].as_u64() == Some(id))
++        .unwrap();
++    let point: [f64; 3] =
++        std::array::from_fn(|k| f64::from_bits(row["positionBits"][k].as_u64().unwrap()));
++    assert!(endpoint_geometry(&f, usize::MAX, point, point[0]).is_none());
++    assert!(endpoint_geometry(&f, chart, [f64::NAN, point[1], point[2]], point[0]).is_none());
++    assert!(endpoint_geometry(&f, chart, point, 100.).is_none());
++    let source = Source::bind(&f, chart).unwrap();
++    let branch =
++        activation_a::meridian_bound(source.groove, I::point(source.radius), I::point(point[1]))
++            .unwrap();
++    assert!(source.feature(branch, I::point(0.), 0, point[0]).is_none());
++    assert!(source
++        .feature(branch, I::point(-0.1), 0, point[0])
++        .is_none());
++    let mut wrong_branch = branch;
++    wrong_branch.offset = wrong_branch.offset.add(I::point(1.)).unwrap();
++    assert!(!same_meridian(branch, wrong_branch));
++    let mut foreign = f.clone();
++    foreign.strata[15].sign = -1.;
++    assert!(endpoint_geometry(&foreign, chart, point, point[0]).is_none());
++}
+--- a/gcad-wasm/kernel/src/sfcc/outside_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/outside_b.rs
+@@ -278,6 +278,146 @@
+         "points":points,"idSpace":"candidate plus exactly keyed outside points","sourceOwnershipProved":false}))
+ }
+ 
++fn captured_bits(row:&Value)->Result<[u64;3]> {
++    let values=row["positionHex"].as_array().ok_or("second_capture_point_bits")?;
++    if values.len()!=3 {return Err("second_capture_point_bits");}
++    let mut bits=[0;3];
++    for k in 0..3 {bits[k]=values[k].as_str().and_then(|v|u64::from_str_radix(v,16).ok()).ok_or("second_capture_point_bits")?;}
++    if bits.iter().any(|&v|!f64::from_bits(v).is_finite()) {return Err("second_capture_point_bits");}
++    Ok(bits)
++}
++fn inside_fans_from_orientation(capture:&Value,features:&SfccFeatureSet,candidate:&PrivateCandidate)->Result<Value> {
++    let graph=&capture["preGraph"];
++    if capture["complete"]!=true || graph["complete"]!=true {return Err("second_orientation_capture_incomplete");}
++    let events=capture["events"].as_array().ok_or("second_orientation_events")?;
++    if events.len()>128 {return Err("second_orientation_event_cap");}
++    let mut graph_events=events.iter().filter(|e|e["stage"]=="graph");
++    let initial=graph_events.next().ok_or("second_orientation_graph")?;
++    if graph_events.next().is_some() || initial["data"]["points"]["complete"]!=true {return Err("second_orientation_graph");}
++    let mut success=events.iter().filter(|e|e["stage"]=="success");
++    let final_event=success.next().ok_or("second_orientation_success")?;
++    if success.next().is_some() || final_event["data"]["retainedUnresolved"]!=false {return Err("second_orientation_success");}
++    let graph_triangles:Vec<usize>=serde_json::from_value(final_event["data"]["triangles"].clone()).map_err(|_|"second_orientation_triangles")?;
++    if graph_triangles.is_empty() || graph_triangles.len()>3*4096 || graph_triangles.len()%3!=0
++        || graph_triangles.chunks_exact(3).any(|t|!candidate.triangles.chunks_exact(3).any(|c|c==t)) {return Err("second_orientation_not_emitted");}
++    let mut captured=BTreeMap::new();
++    let mut append=|rows:&Value|->Result<()> {
++        let rows=rows.as_array().ok_or("second_orientation_points")?;
++        if rows.len()>1024 {return Err("second_orientation_point_cap");}
++        for row in rows {
++            let id=row["id"].as_u64().ok_or("second_orientation_point")? as usize;let bits=captured_bits(row)?;
++            if id>=candidate.points.count() || q::pos(&candidate.points,id).map(f64::to_bits)!=bits
++                || captured.insert(id,bits).is_some_and(|old|old!=bits) || captured.len()>1024 {return Err("second_orientation_point_binding");}
++        }
++        Ok(())
++    };
++    append(&initial["data"]["points"]["points"])?;
++    for event in events.iter().filter(|e|e["stage"]=="patch_output") {
++        if event["data"]["newPoints"]["complete"]!=true {return Err("second_orientation_new_points");}
++        append(&event["data"]["newPoints"]["points"])?;
++    }
++    drop(append);
++    let mut box_bits=[0u64;6];
++    for k in 0..6 {box_bits[k]=graph["pre"]["cellBoxHex"][k].as_str().and_then(|v|u64::from_str_radix(v,16).ok()).ok_or("second_orientation_cell_box")?;}
++    let mut fans=Vec::new();let mut emitted=Vec::new();
++    for event in events.iter().filter(|e|e["stage"]=="patch_output") {
++        if fans.len()>=128 {return Err("second_orientation_fan_cap");}
++        let data=&event["data"];let sid=data["stratum"].as_u64().ok_or("second_orientation_stratum")? as usize;
++        let stratum=features.strata.get(sid).ok_or("second_orientation_stratum")?;
++        let identity=stratum.graph_capture_identity_b().ok_or("second_orientation_stratum")?;
++        let strata=graph["pre"]["strata"].as_array().ok_or("second_orientation_strata")?;
++        if strata.len()>128 || strata.iter().filter(|s|s["id"].as_u64()==Some(sid as u64) && **s==identity).count()!=1 {return Err("second_orientation_source_binding");}
++        let boundary:Vec<usize>=serde_json::from_value(data["polygon"].clone()).map_err(|_|"second_orientation_boundary")?;
++        let triangles:Vec<usize>=serde_json::from_value(data["triangles"].clone()).map_err(|_|"second_orientation_triangles")?;
++        if boundary.len()>64 || triangles.len()>3*128 || data["fanReturned"]!=true
++            || data["triangleStart"].as_u64()!=Some((emitted.len()/3) as u64) {return Err("second_orientation_patch_output");}
++        emitted.extend_from_slice(&triangles);
++        let ids:BTreeSet<_>=boundary.iter().chain(&triangles).copied().collect();
++        if ids.len()>128 {return Err("second_orientation_patch_points");}
++        let mut points=Vec::new();for id in ids {points.push(json!({"id":id,"positionBits":captured.get(&id).ok_or("second_orientation_patch_point_missing")?}));}
++        let mut tolerance=[0.;2];for (k,key) in ["surfaceTolHex","chordTolHex"].iter().enumerate() {
++            tolerance[k]=f64::from_bits(graph["pre"]["options"][*key].as_str().and_then(|v|u64::from_str_radix(v,16).ok()).ok_or("second_orientation_option")?);
++            if !tolerance[k].is_finite() || tolerance[k]<=0. {return Err("second_orientation_option");}
++        }
++        let fan=json!({"hypothesisStratum":sid,"carrierKind":format!("{:?}",stratum.kind),"sourceIdentity":identity,
++            "boundary":boundary,"triangles":triangles,"returned":true,"points":points,"cellBoxBits":box_bits,
++            "surfaceTolerance":tolerance[0],"chordTolerance":tolerance[1],"qualityTriangulation":graph["pre"]["options"]["qualityTriangulation"],
++            "continuousSourceOwnershipProved":false});
++        require_final_fan(&fan,&candidate.triangles,&candidate.points)?;
++        fans.push(fan);
++    }
++    if fans.is_empty() || emitted!=graph_triangles {return Err("second_orientation_patch_coverage");}
++    Ok(json!({"scope":"existing bounded orientation capture bound to final emitted candidate geometry; no new capture channel or queries",
++        "cell":graph["context"]["cell"],"cellBoxBits":box_bits,"complete":true,"pairedFans":fans}))
++}
++
++fn other_contour_segment(segments:&[FaceSegment],first:[usize;2],side:usize)->Result<[usize;2]> {
++    if segments.len()!=2 || first[0]==first[1] || side>1 {return Err("second_segment_inventory");}
++    let mut original=None;let mut other=None;
++    for segment in segments {
++        if segment.a==segment.b {return Err("second_segment_inventory");}
++        let oriented=if side==1 {[segment.b,segment.a]} else {[segment.a,segment.b]};
++        if oriented==first {
++            if original.replace(oriented).is_some() {return Err("second_segment_inventory");}
++        } else {
++            if other.replace(oriented).is_some() {return Err("second_segment_inventory");}
++        }
++    }
++    let edge=other.ok_or("second_segment_inventory")?;
++    if original.is_none() || !edge.contains(&first[0]) || edge.contains(&first[1]) {return Err("second_segment_shared_pin");}
++    Ok(edge)
++}
++fn require_fan_source(fan:&Value,features:&SfccFeatureSet)->Result<()> {
++    let sid=fan["hypothesisStratum"].as_u64().ok_or("second_fan_source")? as usize;
++    let source=features.strata.get(sid).and_then(|s|s.graph_capture_identity_b()).ok_or("second_fan_source")?;
++    if fan["sourceIdentity"]!=source {return Err("second_fan_source");}
++    Ok(())
++}
++fn bind_second_segment(
++    target:&PairedTarget,inside_capture:&Value,outside_capture:&Value,
++    features:&SfccFeatureSet,oct:&SfccOctree,faces:&[HashMap<i64,FaceRecord>;3],live:&PointTable,
++    candidate:&PrivateCandidate,points:&PointTable,outside_triangles:&[usize],map:&BTreeMap<usize,usize>,mapping:&[usize],
++)->Result<Value> {
++    if inside_capture["complete"]!=true || inside_capture["cell"]!=target.receipt["insideCell"]
++        || inside_capture["cellBoxBits"]!=target.candidate_fan["cellBoxBits"] {return Err("second_inside_capture_binding");}
++    let inside_id:[i64;4]=serde_json::from_value(target.receipt["insideCell"].clone()).map_err(|_|"second_inside_cell")?;
++    let inside=oct.leaves.iter().find(|c|id(c)==inside_id).ok_or("second_inside_cell")?;
++    let side=cell_side(oct,inside,target.face)?;
++    let record=faces[target.face.0].get(&target.face.1).ok_or("second_face_missing")?;
++    if (record.axis,record.key,record.len)!=target.face {return Err("second_face_identity");}
++    let global=other_contour_segment(&record.segments,target.global_edge,side)?;
++    let candidate_edge=[same_key(&candidate.points,live,global[0])?.ok_or("second_candidate_point")?,
++        same_key(&candidate.points,live,global[1])?.ok_or("second_candidate_point")?];
++    let outside_edge=[*map.get(&global[1]).ok_or("second_outside_point")?,*map.get(&global[0]).ok_or("second_outside_point")?];
++    if outside_edge.iter().any(|&p|p>=mapping.len()) || [mapping[outside_edge[0]],mapping[outside_edge[1]]]!=[candidate_edge[1],candidate_edge[0]] {
++        return Err("second_joined_point_binding");
++    }
++    let inside_fan=select_paired_fan(inside_capture,candidate_edge)?;
++    let outside_fan=select_paired_fan(outside_capture,outside_edge)?;
++    require_final_fan(&inside_fan,&candidate.triangles,&candidate.points)?;
++    require_final_fan(&outside_fan,outside_triangles,points)?;
++    require_fan_source(&inside_fan,features)?;
++    require_fan_source(&outside_fan,features)?;
++    if inside_fan["cellBoxBits"]!=inside_capture["cellBoxBits"] {return Err("second_inside_fan_box");}
++    let outside=oct.leaves.iter().find(|c|id(c)==target.outside).ok_or("second_outside_cell")?;
++    if cell_side(oct,outside,target.face)?==side || outside_fan["cellBoxBits"]!=json!(cell_aabb(&oct.lat,outside.level,outside.ix,outside.iy,outside.iz).map(f64::to_bits)) {
++        return Err("second_outside_fan_box");
++    }
++    let outside_joined=joined_fan(&outside_fan,mapping)?;
++    let memberships:Vec<_>=candidate.points.identified_edges().filter(|((a,b),_)|candidate_edge.contains(a)||candidate_edge.contains(b))
++        .flat_map(|((a,b),is)|is.iter().map(move |iv|json!({"edge":[a,b],"chart":iv.curve_id,"rangeBits":[iv.start.to_bits(),iv.end.to_bits()]}))).collect();
++    if memberships.len()>2048 {return Err("second_membership_cap");}
++    Ok(json!({"scope":"second actual face-contour segment and both emitted incident fan hypotheses; no source or union theorem",
++        "complete":true,"face":target.face,"consumers":target.receipt["consumers"],"insideCell":inside_id,"outsideCell":target.outside,
++        "originalSegments":target.receipt["originalSegments"],"originalPins":target.receipt["originalPins"],
++        "globalEdgeInCandidateOrder":global,"sharedEdgeCandidateOrder":candidate_edge,
++        "sharedEdgeOutsideLocalOrder":outside_edge,"sharedEdgeOutsideOrderJoined":[mapping[outside_edge[0]],mapping[outside_edge[1]]],
++        "sharedFeaturePointCandidate":target.candidate_edge[0],"candidateMembershipsAtSharedPoints":memberships,
++        "insideFan":inside_fan,"outsideLocalFan":outside_fan,"outsideJoinedFan":outside_joined,
++        "sourceFingerprint":features.fingerprint().to_string(),"inputGeometryChanged":false,
++        "sourceOwnershipProved":false,"wholeFaceCompatibilityProved":false,"publicationAuthorized":false}))
++}
++
+ pub(super) fn probe(
+     tree: &CsgNode,
+     features: &SfccFeatureSet,
+@@ -290,9 +430,13 @@
+     let paired = if std::env::var("SFCC_PAIRED_A").as_deref()==Ok("1") {
+         Some(private_arc_a::DIAGNOSTIC.with(|s|s.borrow().as_ref().map(|v|v["secondaryTransactionA"]["fanOwnershipA"]["first"].clone()).unwrap_or(Value::Null)))
+     } else {None};
++    let second_capture=if std::env::var("SFCC_SECOND_B").as_deref()==Ok("1") {
++        let raw=private_arc_a::DIAGNOSTIC.with(|s|s.borrow().as_ref().map(|v|v["orientationCaptureA"].clone()).unwrap_or(Value::Null));
++        Some(match inside_fans_from_orientation(&raw,features,candidate) {Ok(v)=>v,Err(reason)=>json!({"complete":false,"refusal":reason})})
++    } else {None};
+     let _saved = SavedDiagnostic::begin();
+     let before = private_arc_a::diagnostic::live_digest(faces, live);
+-    let result = probe_inner(tree, features, oct, faces, live, opts, candidate, paired.as_ref());
++    let result = probe_inner(tree, features, oct, faces, live, opts, candidate, paired.as_ref(), second_capture.as_ref());
+     let evidence = private_arc_a::DIAGNOSTIC
+         .with(|s| s.borrow_mut().take())
+         .unwrap_or(Value::Null);
+@@ -321,6 +465,7 @@
+     opts: &CellMeshOptions,
+     candidate: &PrivateCandidate,
+     paired_fan: Option<&Value>,
++    second_capture: Option<&Value>,
+ ) -> Result<Value> {
+     let target=paired_fan.map(|fan|paired_target(features,oct,faces,live,candidate,fan)).transpose()?;
+     if let Some(t)=&target {private_arc_a::DIAGNOSTIC.with(|s|s.borrow_mut().as_mut().unwrap()["pairedTargetA"]=t.receipt.clone());}
+@@ -660,6 +805,19 @@
+             Err(reason)=>json!({"refusal":reason}),
+         }};
+     }
++    if let Some(inside_capture)=second_capture {
++        report["insideTargetFanCaptureB"]=inside_capture.clone();
++        report["secondSegmentB"]=if failed || !validation_failures.is_empty() || !consumption_valid
++            || report["invalidWorkingOrExportedOrientation"]!=json!([]) || report["pairedFanBindingA"]["complete"]!=true {
++            json!({"refusal":"second_original_cell_not_validated","publicationAuthorized":false})
++        } else {
++            let result=target.as_ref().ok_or("second_requires_first_binding").and_then(|t|{
++                let mapping:Vec<usize>=serde_json::from_value(report["joined"]["outsideToJoined"].clone()).map_err(|_|"second_join_unavailable")?;
++                bind_second_segment(t,inside_capture,fan_capture.as_ref().unwrap_or(&Value::Null),features,oct,faces,live,candidate,&points,&mesh.tris,&map,&mapping)
++            });
++            match result {Ok(v)=>v,Err(reason)=>json!({"refusal":reason,"publicationAuthorized":false})}
++        };
++    }
+     Ok(report)
+ }
+ 
+@@ -743,3 +901,23 @@
+     fan["points"][1]["positionBits"][0]=json!(2.0_f64.to_bits());
+     assert_eq!(require_final_fan(&fan,&[0,1,2],&points),Err("paired_fan_point_payload"));
+ }
++
++#[test]
++fn second_b_other_segment_requires_exact_two_segment_shared_pin_inventory() {
++    let segments=[FaceSegment{a:10,b:11},FaceSegment{a:11,b:12}];
++    assert_eq!(other_contour_segment(&segments,[11,10],1).unwrap(),[12,11]);
++    assert_eq!(other_contour_segment(&segments,[11,12],0).unwrap(),[10,11]);
++    assert!(other_contour_segment(&segments,[10,11],1).is_err());
++    assert!(other_contour_segment(&segments[..1],[11,10],1).is_err());
++    assert!(other_contour_segment(&[segments[0],FaceSegment{a:20,b:21}],[11,10],1).is_err());
++    assert!(other_contour_segment(&[segments[0],segments[0]],[11,10],1).is_err());
++}
++
++#[test]
++fn second_b_orientation_point_payload_rejects_missing_and_nonfinite_bits() {
++    let row=json!({"positionHex":["0000000000000000","3ff0000000000000","bff0000000000000"]});
++    assert_eq!(captured_bits(&row).unwrap(),[0.,1.,-1.].map(f64::to_bits));
++    assert!(captured_bits(&json!({"positionHex":[]})).is_err());
++    assert!(captured_bits(&json!({"positionHex":["not_hex","0","0"]})).is_err());
++    assert!(captured_bits(&json!({"positionHex":[format!("{:016x}",f64::NAN.to_bits()),"0","0"]})).is_err());
++}

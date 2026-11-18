@@ -1,0 +1,31 @@
+{
+  "source": "/tmp/sfcc-face-capture",
+  "inputs": [
+    {
+      "source": "/tmp/sfcc-feature49-a-final/gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "sha256": "69ca5d6d28384b784a92fefbb7c32c2466d74609211397f755bdefe132c07463"
+    },
+    {
+      "source": "/tmp/sfcc-feature49-a-final/gcad-wasm/kernel/src/sfcc/feature49_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/feature49_a.rs",
+      "sha256": "6094f401e070c4f638bc328427a8f8215e842e168022ccfb53735a38861496a8"
+    },
+    {
+      "source": "/tmp/sfcc-second-b/gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "sha256": "8b6d70080588081e1cc3e461f98d9cb94673e2617fdbf2a692d2151040319b99"
+    },
+    {
+      "source": "/tmp/sfcc-face-c/gcad-wasm/kernel/src/sfcc/face_join_c.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/face_join_c.rs",
+      "sha256": "ceb0c33b7111a81fce18d0362b7681d3629a7256e67ac463183f9deed890b12c"
+    },
+    {
+      "source": "/tmp/sfcc-face-c/gcad-wasm/kernel/fixtures/face-fans-c.json",
+      "target": "gcad-wasm/kernel/fixtures/face-fans-c.json",
+      "sha256": "f517cd0ed38c10b272e97ab4b8bd6506b49af0629b02cbbf1e2baaa14cadc32f"
+    }
+  ],
+  "rootChange": "combined exposure module declarations; SFCC_SECOND_B opt-in"
+}

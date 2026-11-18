@@ -1,0 +1,10 @@
+{
+  "filter": "face_c_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_actual_second_pair_and_whole_face_source_attempt",
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_endpoint_transport_rejects_unbound_boundary_and_outside_targets",
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_rejects_renamed_endpoint_and_export_collapse",
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_union_requires_all_sectors_and_conforming_projection"
+  ],
+  "exitCode": 0
+}

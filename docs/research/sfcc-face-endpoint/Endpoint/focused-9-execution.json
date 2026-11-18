@@ -1,0 +1,13 @@
+{
+  "step": "focused-9",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round37-face/Endpoint/kernel-tests",
+    "ownership_a_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 51.77322820801055,
+  "elapsedSeconds": 1.195114707981702,
+  "exitCode": 0,
+  "timedOut": false
+}

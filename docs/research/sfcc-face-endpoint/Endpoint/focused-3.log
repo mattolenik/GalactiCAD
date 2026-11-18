@@ -1,0 +1,13 @@
+
+running 4 tests
+test sfcc::cell_mesh::ownership_a::paired_a_fan_scope_restores_previous_inventory_after_unwind ... 
+thread 'sfcc::cell_mesh::ownership_a::paired_a_fan_scope_restores_previous_inventory_after_unwind' (28463281) panicked at kernel/src/sfcc/ownership_a.rs:109:76:
+paired observer scope
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::private_arc_a::stage4_component_b::outside_b::paired_a_fan_binding_rejects_changed_captured_point ... ok
+test sfcc::private_arc_a::stage4_component_b::outside_b::paired_a_fan_binding_requires_actual_emitted_triangles ... ok
+test sfcc::private_arc_a::stage4_component_b::outside_b::paired_a_selected_fan_requires_exact_directed_shared_edge ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 442 filtered out; finished in 0.00s
+

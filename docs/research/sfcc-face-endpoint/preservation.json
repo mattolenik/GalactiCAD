@@ -1,0 +1,32 @@
+{
+  "parentManifest": "docs/research/sfcc-paired-boundary/Proof-fixed/manifest.json",
+  "parentManifestSha256": "3680e906355f68f978a4a670033dd550290ade8c10b2e7e9858da0b8685be6e7",
+  "parentInputCount": 215,
+  "selected": "Endpoint",
+  "restorations": [
+    {
+      "packet": "A-check",
+      "patchSha256": "9e9d3e6411c74ecc4b64314a843d418a4388891029f33ffd40d7adbac6870717",
+      "manifestSha256": "65fe1ab14b3ba2303285b82cf4a152b8e693bc3037a7ff1ed3df25facc2af15e",
+      "verifiedInputCount": 216,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-face-restore-28tlgo_9",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Capture",
+      "patchSha256": "2a722f7a112a71e58f80d3af8b279bad022d38353ef6ff88be4a98119ff47f9b",
+      "manifestSha256": "5b8e1eba35437c1e42262843531d919b699da7bc84b8cc67e0b65edf87d05724",
+      "verifiedInputCount": 218,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-face-restore-amhlzlmk",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Endpoint",
+      "patchSha256": "a546d6bc11c0fdc41de0db0c28ca45f420933fe7d2f4b01bf910763c5616be3b",
+      "manifestSha256": "0cb51b4d445ec1a42d9ad5104e73c1091625e0dd24e21ad74b543b04d6e4d65e",
+      "verifiedInputCount": 218,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-face-restore-krizj2ab",
+      "result": "all input hashes match"
+    }
+  ]
+}

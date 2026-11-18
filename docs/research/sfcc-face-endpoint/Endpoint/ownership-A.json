@@ -1,0 +1,2924 @@
+{
+  "approximateMeshInvalidityProved": false,
+  "limitation": "a positive graph witness disproves that projection's ownership, not every possible nearby curved-boundary reconstruction",
+  "parentReceiptSha256": "c6d12b6a99c6cfd914e936a66f009f73f3eded377697872f1e9a2ba1b9155da3",
+  "patchLabelsAssigned": false,
+  "positiveSourceRegions": 35,
+  "projectionCounterexamples": 1,
+  "qualityTriangulation": false,
+  "regionCount": 48,
+  "regions": [
+    {
+      "certificate": {
+        "capCutMargin": 7.390956834718019,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.609043165281973,
+        "cylinderGraphDerivativeLower": 0.8658239128759068,
+        "finiteProfileMargin": 0.3302428248591383,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7841046430499321,
+          0.7841046430499382
+        ],
+        "grooveMargin": [
+          0.08410464304993213,
+          0.08410464304993827
+        ],
+        "nativeCapMargin": 6.393677523989192,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.215365641292781,
+          -0.21536564129261296
+        ],
+        "otherDistance": [
+          1.8823413275602734,
+          1.882341327560281
+        ],
+        "outerRoundMargin": 3.030309567207691,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350898259059814,
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -9.350898259059795,
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 0,
+      "weights": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.4920380357250655,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.507961964274927,
+        "cylinderGraphDerivativeLower": 0.8643126361634763,
+        "finiteProfileMargin": 0.5697707242551854,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.6999999999999972,
+          0.7000000000000026
+        ],
+        "grooveMargin": [
+          -2.7755575615628917e-15,
+          2.664535259100376e-15
+        ],
+        "nativeCapMargin": 6.475182836444501,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.032779127830425935,
+          -0.03277912783025714
+        ],
+        "otherDistance": [
+          1.8371364402204586,
+          1.8371364402204657
+        ],
+        "outerRoundMargin": 3.0765662867362713,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.334576470565564,
+            -2.4920380357250704,
+            5.431913301513925
+          ],
+          [
+            -9.334576470565546,
+            -2.4920380357250678,
+            5.43191330151393
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4920380357250704,
+            5.431913301513925
+          ],
+          [
+            -2.4920380357250678,
+            5.43191330151393
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 0,
+      "weights": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": null,
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 0,
+      "weights": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.441497435221543,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.5585025647784505,
+        "cylinderGraphDerivativeLower": 0.8650695859384783,
+        "finiteProfileMargin": 0.4498089994067135,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7420523215249647,
+          0.7420523215249704
+        ],
+        "grooveMargin": [
+          0.042052321524964735,
+          0.04205232152497041
+        ],
+        "nativeCapMargin": 6.4350362204790486,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.123466344299402,
+          -0.12346634429923227
+        ],
+        "otherDistance": [
+          1.8597388838903661,
+          1.8597388838903735
+        ],
+        "outerRoundMargin": 3.053521054945642,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.342751528135585,
+            -2.4414974352215477,
+            5.417840333889542
+          ],
+          [
+            -9.342751528135567,
+            -2.4414974352215446,
+            5.417840333889548
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4414974352215477,
+            5.417840333889542
+          ],
+          [
+            -2.4414974352215446,
+            5.417840333889548
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 0,
+      "weights": [
+        0.5,
+        0.5,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.370524093720767,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.629475906279228,
+        "cylinderGraphDerivativeLower": 0.864312429010688,
+        "finiteProfileMargin": 0.24710885980713285,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8011057112108272,
+          0.8011057112108319
+        ],
+        "grooveMargin": [
+          0.10110571121082722,
+          0.10110571121083191
+        ],
+        "nativeCapMargin": 6.349315480582385,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.2801604256968428,
+          -0.28016042569667904
+        ],
+        "otherDistance": [
+          1.8914791271275755,
+          1.8914791271275821
+        ],
+        "outerRoundMargin": 3.0208785629102723,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.33457423331545,
+            -2.37052409372077,
+            5.431917146157831
+          ],
+          [
+            -9.334574233315433,
+            -2.370524093720768,
+            5.4319171461578355
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.37052409372077,
+            5.431917146157831
+          ],
+          [
+            -2.370524093720768,
+            5.4319171461578355
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 0,
+      "weights": [
+        0.0,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.319983493217243,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.68001650678275,
+        "cylinderGraphDerivativeLower": 0.8650693795031724,
+        "finiteProfileMargin": 0.12829020058090604,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8431580327357943,
+          0.8431580327357996
+        ],
+        "grooveMargin": [
+          0.14315803273579428,
+          0.14315803273579966
+        ],
+        "nativeCapMargin": 6.30595796379226,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.37405854299049074,
+          -0.3740585429903092
+        ],
+        "otherDistance": [
+          1.9140815707974825,
+          1.9140815707974894
+        ],
+        "outerRoundMargin": 2.9974352074113226,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.342749298634283,
+            -2.3199834932172476,
+            5.417844178533448
+          ],
+          [
+            -9.342749298634264,
+            -2.319983493217245,
+            5.4178441785334535
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3199834932172476,
+            5.417844178533448
+          ],
+          [
+            -2.319983493217245,
+            5.4178441785334535
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 0,
+      "weights": [
+        0.5,
+        0.0,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.345253793469005,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.654746206530989,
+        "cylinderGraphDerivativeLower": 0.8646912325418085,
+        "finiteProfileMargin": 0.18764508109636416,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8221318719733107,
+          0.822131871973316
+        ],
+        "grooveMargin": [
+          0.12213187197331075,
+          0.12213187197331611
+        ],
+        "nativeCapMargin": 6.327784373135222,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.3269618333957675,
+          -0.32696183339559487
+        ],
+        "otherDistance": [
+          1.9027803489625288,
+          1.9027803489625361
+        ],
+        "outerRoundMargin": 3.0091774411946726,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.338665311451551,
+            -2.3452537934690088,
+            5.42488066234564
+          ],
+          [
+            -9.338665311451534,
+            -2.345253793469006,
+            5.424880662345644
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3452537934690088,
+            5.42488066234564
+          ],
+          [
+            -2.345253793469006,
+            5.424880662345644
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 0,
+      "weights": [
+        0.25,
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.3452527934690055,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.65474520653099,
+        "cylinderGraphDerivativeLower": 0.8646911787542693,
+        "finiteProfileMargin": 0.18763320843664202,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.822131039923017,
+          0.8221327040236098
+        ],
+        "grooveMargin": [
+          0.12213103992301698,
+          0.12213270402360989
+        ],
+        "nativeCapMargin": 6.3277785101435775,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.32696669638741244,
+          -0.32695697040431854
+        ],
+        "otherDistance": [
+          1.9027799017489337,
+          1.9027807961761312
+        ],
+        "outerRoundMargin": 3.009176977341921,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.33866589235683,
+            -2.345254793469008,
+            5.42487966234564
+          ],
+          [
+            -9.33866473054611,
+            -2.345252793469007,
+            5.424881662345642
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.345254793469008,
+            5.42487966234564
+          ],
+          [
+            -2.345252793469007,
+            5.424881662345642
+          ]
+        ]
+      },
+      "insideTriangleChart": true,
+      "probeKind": "open graph rectangle strictly inside triangle chart when flagged",
+      "triangle": 0
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.390956834718019,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.609043165281973,
+        "cylinderGraphDerivativeLower": 0.8658239128759068,
+        "finiteProfileMargin": 0.3302428248591383,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7841046430499321,
+          0.7841046430499382
+        ],
+        "grooveMargin": [
+          0.08410464304993213,
+          0.08410464304993827
+        ],
+        "nativeCapMargin": 6.393677523989192,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.215365641292781,
+          -0.21536564129261296
+        ],
+        "otherDistance": [
+          1.8823413275602734,
+          1.882341327560281
+        ],
+        "outerRoundMargin": 3.030309567207691,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350898259059814,
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -9.350898259059795,
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 1,
+      "weights": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": null,
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 1,
+      "weights": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": null,
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 1,
+      "weights": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.319983493217243,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.68001650678275,
+        "cylinderGraphDerivativeLower": 0.8650693795031724,
+        "finiteProfileMargin": 0.12829020058090604,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8431580327357943,
+          0.8431580327358
+        ],
+        "grooveMargin": [
+          0.14315803273579428,
+          0.1431580327358001
+        ],
+        "nativeCapMargin": 6.30595796379226,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.37405854299049074,
+          -0.3740585429903092
+        ],
+        "otherDistance": [
+          1.9140815707974825,
+          1.9140815707974899
+        ],
+        "outerRoundMargin": 2.9974352074113226,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.342749298634283,
+            -2.3199834932172476,
+            5.417844178533448
+          ],
+          [
+            -9.342749298634264,
+            -2.3199834932172445,
+            5.4178441785334535
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3199834932172476,
+            5.417844178533448
+          ],
+          [
+            -2.3199834932172445,
+            5.4178441785334535
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 1,
+      "weights": [
+        0.5,
+        0.5,
+        0.0
+      ]
+    },
+    {
+      "certificate": null,
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 1,
+      "weights": [
+        0.0,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.319983493217243,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.68001650678275,
+        "cylinderGraphDerivativeLower": 0.8662016493497168,
+        "finiteProfileMargin": 0.1500061125370105,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8431580327357943,
+          0.8431580327357996
+        ],
+        "grooveMargin": [
+          0.14315803273579428,
+          0.14315803273579966
+        ],
+        "nativeCapMargin": 6.3232333271571175,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.35678317962563283,
+          -0.3567831796254531
+        ],
+        "otherDistance": [
+          1.9140815707974825,
+          1.9140815707974894
+        ],
+        "outerRoundMargin": 2.9974352074113226,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.354977812976962,
+            -2.3199834932172476,
+            5.3967017815244285
+          ],
+          [
+            -9.354977812976943,
+            -2.319983493217245,
+            5.396701781524434
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3199834932172476,
+            5.3967017815244285
+          ],
+          [
+            -2.319983493217245,
+            5.396701781524434
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 1,
+      "weights": [
+        0.5,
+        0.0,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.2844968224668545,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.715503177533139,
+        "cylinderGraphDerivativeLower": 0.8658253671467177,
+        "finiteProfileMargin": 0.049451155069686,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8726847275787256,
+          0.8726847275787307
+        ],
+        "grooveMargin": [
+          0.17268472757872563,
+          0.1726847275787308
+        ],
+        "nativeCapMargin": 6.278295328222523,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.43720784931061657,
+          -0.43720784931044837
+        ],
+        "otherDistance": [
+          1.9299516924160873,
+          1.929951692416094
+        ],
+        "outerRoundMargin": 2.980876603766061,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350913965184573,
+            -2.2844968224668585,
+            5.403740187658573
+          ],
+          [
+            -9.350913965184553,
+            -2.2844968224668563,
+            5.4037401876585776
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.2844968224668585,
+            5.403740187658573
+          ],
+          [
+            -2.2844968224668563,
+            5.4037401876585776
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 1,
+      "weights": [
+        0.25,
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.284495822466854,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.71550217753314,
+        "cylinderGraphDerivativeLower": 0.8658253136389669,
+        "finiteProfileMargin": 0.049439268060259105,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.872683895528432,
+          0.8726855596290248
+        ],
+        "grooveMargin": [
+          0.17268389552843197,
+          0.1726855596290249
+        ],
+        "nativeCapMargin": 6.278289457003135,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.4372127205300053,
+          -0.43720297809143177
+        ],
+        "otherDistance": [
+          1.929951245202492,
+          1.9299521396296895
+        ],
+        "outerRoundMargin": 2.980876136015357,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350914543068138,
+            -2.2844978224668577,
+            5.403739187658575
+          ],
+          [
+            -9.350913387300844,
+            -2.2844958224668566,
+            5.403741187658577
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.2844978224668577,
+            5.403739187658575
+          ],
+          [
+            -2.2844958224668566,
+            5.403741187658577
+          ]
+        ]
+      },
+      "insideTriangleChart": true,
+      "probeKind": "open graph rectangle strictly inside triangle chart when flagged",
+      "triangle": 1
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.390956834718019,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.609043165281973,
+        "cylinderGraphDerivativeLower": 0.8658239128759068,
+        "finiteProfileMargin": 0.3302428248591383,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7841046430499321,
+          0.7841046430499382
+        ],
+        "grooveMargin": [
+          0.08410464304993213,
+          0.08410464304993827
+        ],
+        "nativeCapMargin": 6.393677523989192,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.215365641292781,
+          -0.21536564129261296
+        ],
+        "otherDistance": [
+          1.8823413275602734,
+          1.882341327560281
+        ],
+        "outerRoundMargin": 3.030309567207691,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350898259059814,
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -9.350898259059795,
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 2,
+      "weights": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": null,
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 2,
+      "weights": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.371666401716467,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.628333598283527,
+        "cylinderGraphDerivativeLower": 0.8665787272688263,
+        "finiteProfileMargin": 0.2937472592786315,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8001552535067803,
+          0.800155253506785
+        ],
+        "grooveMargin": [
+          0.10015525350678033,
+          0.10015525350678502
+        ],
+        "nativeCapMargin": 6.38461431631051,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.24371928197301793,
+          -0.24371928197286233
+        ],
+        "otherDistance": [
+          1.8909682714616498,
+          1.8909682714616565
+        ],
+        "outerRoundMargin": 3.021406522361976,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359050254503344,
+            -2.37166640171647,
+            5.389636196783698
+          ],
+          [
+            -9.359050254503327,
+            -2.3716664017164684,
+            5.389636196783702
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.37166640171647,
+            5.389636196783698
+          ],
+          [
+            -2.3716664017164684,
+            5.389636196783702
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 2,
+      "weights": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.319983493217243,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.68001650678275,
+        "cylinderGraphDerivativeLower": 0.8662016493497168,
+        "finiteProfileMargin": 0.15000611253700905,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8431580327357943,
+          0.8431580327358
+        ],
+        "grooveMargin": [
+          0.14315803273579428,
+          0.1431580327358001
+        ],
+        "nativeCapMargin": 6.3232333271571175,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.35678317962563283,
+          -0.3567831796254522
+        ],
+        "otherDistance": [
+          1.9140815707974825,
+          1.9140815707974899
+        ],
+        "outerRoundMargin": 2.9974352074113226,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.354977812976962,
+            -2.3199834932172476,
+            5.396701781524428
+          ],
+          [
+            -9.354977812976943,
+            -2.3199834932172445,
+            5.396701781524435
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3199834932172476,
+            5.396701781524428
+          ],
+          [
+            -2.3199834932172445,
+            5.396701781524435
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 2,
+      "weights": [
+        0.5,
+        0.5,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.3103382767164655,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.689661723283527,
+        "cylinderGraphDerivativeLower": 0.8665787272688263,
+        "finiteProfileMargin": 0.13185405555062593,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8511833379642182,
+          0.8511833379642235
+        ],
+        "grooveMargin": [
+          0.1511833379642182,
+          0.1511833379642236
+        ],
+        "nativeCapMargin": 6.318441797345635,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.3712199259378927,
+          -0.3712199259377121
+        ],
+        "otherDistance": [
+          1.9183950427481706,
+          1.9183950427481777
+        ],
+        "outerRoundMargin": 2.9929425935077254,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359050254503344,
+            -2.3103382767164704,
+            5.389636196783697
+          ],
+          [
+            -9.359050254503327,
+            -2.3103382767164677,
+            5.3896361967837025
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3103382767164704,
+            5.389636196783697
+          ],
+          [
+            -2.3103382767164677,
+            5.3896361967837025
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 2,
+      "weights": [
+        0.0,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.381311618217244,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.61868838178275,
+        "cylinderGraphDerivativeLower": 0.8662016493497168,
+        "finiteProfileMargin": 0.3119916067812139,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.792129948278356,
+          0.7921299482783614
+        ],
+        "grooveMargin": [
+          0.09212994827835606,
+          0.09212994827836142
+        ],
+        "nativeCapMargin": 6.389161033909088,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.22952734787366244,
+          -0.22952734787349263
+        ],
+        "otherDistance": [
+          1.8866547995109615,
+          1.8866547995109686
+        ],
+        "outerRoundMargin": 3.025861051738374,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.354977812976962,
+            -2.381311618217248,
+            5.3967017815244285
+          ],
+          [
+            -9.354977812976943,
+            -2.381311618217245,
+            5.396701781524434
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.381311618217248,
+            5.3967017815244285
+          ],
+          [
+            -2.381311618217245,
+            5.396701781524434
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 2,
+      "weights": [
+        0.5,
+        0.0,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.345824947466855,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.654175052533139,
+        "cylinderGraphDerivativeLower": 0.8663902705748323,
+        "finiteProfileMargin": 0.22179620183804552,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8216566431212875,
+          0.8216566431212925
+        ],
+        "grooveMargin": [
+          0.12165664312128753,
+          0.12165664312129255
+        ],
+        "nativeCapMargin": 6.354138676123074,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.3000363764100655,
+          -0.30003637640989284
+        ],
+        "otherDistance": [
+          1.902524921129566,
+          1.9025249211295732
+        ],
+        "outerRoundMargin": 3.0094423620291937,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.35701492220821,
+            -2.3458249474668587,
+            5.393168989154063
+          ],
+          [
+            -9.35701492220819,
+            -2.3458249474668564,
+            5.393168989154068
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3458249474668587,
+            5.393168989154063
+          ],
+          [
+            -2.3458249474668564,
+            5.393168989154068
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 2,
+      "weights": [
+        0.25,
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.345823947466855,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.65417405253314,
+        "cylinderGraphDerivativeLower": 0.866390217206577,
+        "finiteProfileMargin": 0.22178434598503052,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.8216558110709938,
+          0.8216574751715866
+        ],
+        "grooveMargin": [
+          0.12165581107099387,
+          0.12165747517158666
+        ],
+        "nativeCapMargin": 6.354132821307636,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.300041231225504,
+          -0.30003152159482555
+        ],
+        "otherDistance": [
+          1.9025244739159712,
+          1.9025253683431684
+        ],
+        "outerRoundMargin": 3.0094418982132125,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.357015498585222,
+            -2.345825947466858,
+            5.3931679891540645
+          ],
+          [
+            -9.357014345831034,
+            -2.3458239474668567,
+            5.3931699891540665
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.345825947466858,
+            5.3931679891540645
+          ],
+          [
+            -2.3458239474668567,
+            5.3931699891540665
+          ]
+        ]
+      },
+      "insideTriangleChart": true,
+      "probeKind": "open graph rectangle strictly inside triangle chart when flagged",
+      "triangle": 2
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.390956834718019,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.609043165281973,
+        "cylinderGraphDerivativeLower": 0.8658239128759068,
+        "finiteProfileMargin": 0.3302428248591383,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7841046430499321,
+          0.7841046430499382
+        ],
+        "grooveMargin": [
+          0.08410464304993213,
+          0.08410464304993827
+        ],
+        "nativeCapMargin": 6.393677523989192,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.215365641292781,
+          -0.21536564129261296
+        ],
+        "otherDistance": [
+          1.8823413275602734,
+          1.882341327560281
+        ],
+        "outerRoundMargin": 3.030309567207691,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350898259059814,
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -9.350898259059795,
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 3,
+      "weights": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.371666401716467,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.628333598283527,
+        "cylinderGraphDerivativeLower": 0.8665787272688263,
+        "finiteProfileMargin": 0.29374725927862305,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.80015525350678,
+          0.8001552535067853
+        ],
+        "grooveMargin": [
+          0.10015525350677999,
+          0.10015525350678535
+        ],
+        "nativeCapMargin": 6.384614316310507,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.2437192819730206,
+          -0.2437192819728579
+        ],
+        "otherDistance": [
+          1.8909682714616496,
+          1.890968271461657
+        ],
+        "outerRoundMargin": 3.0214065223619744,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359050254503344,
+            -2.3716664017164706,
+            5.389636196783697
+          ],
+          [
+            -9.359050254503327,
+            -2.371666401716468,
+            5.3896361967837025
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.3716664017164706,
+            5.389636196783697
+          ],
+          [
+            -2.371666401716468,
+            5.3896361967837025
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 3,
+      "weights": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.491978231708591,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.508021768291404,
+        "cylinderGraphDerivativeLower": 0.8665787272688263,
+        "finiteProfileMargin": 0.6136287034315131,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.7000497599495092,
+          0.700049759949514
+        ],
+        "grooveMargin": [
+          0.000049759949509287076,
+          0.00004975994951406105
+        ],
+        "nativeCapMargin": 6.5080217682913215,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -8.260059303211168e-14,
+          7.815970093361106e-14
+        ],
+        "otherDistance": [
+          1.8371631853896926,
+          1.8371631853896992
+        ],
+        "outerRoundMargin": 3.076539116243571,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359050254503344,
+            -2.4919782317085937,
+            5.389636196783698
+          ],
+          [
+            -9.359050254503327,
+            -2.491978231708592,
+            5.389636196783702
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4919782317085937,
+            5.389636196783698
+          ],
+          [
+            -2.491978231708592,
+            5.389636196783702
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 3,
+      "weights": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.381311618217243,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.61868838178275,
+        "cylinderGraphDerivativeLower": 0.8662016493497168,
+        "finiteProfileMargin": 0.3119916067812139,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.792129948278356,
+          0.7921299482783618
+        ],
+        "grooveMargin": [
+          0.09212994827835606,
+          0.09212994827836186
+        ],
+        "nativeCapMargin": 6.389161033909088,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.22952734787366244,
+          -0.22952734787349263
+        ],
+        "otherDistance": [
+          1.8866547995109615,
+          1.886654799510969
+        ],
+        "outerRoundMargin": 3.025861051738374,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.354977812976962,
+            -2.381311618217248,
+            5.396701781524428
+          ],
+          [
+            -9.354977812976943,
+            -2.3813116182172447,
+            5.396701781524435
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.381311618217248,
+            5.396701781524428
+          ],
+          [
+            -2.3813116182172447,
+            5.396701781524435
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 3,
+      "weights": [
+        0.5,
+        0.5,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.431822316712528,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.568177683287466,
+        "cylinderGraphDerivativeLower": 0.8665787272688263,
+        "finiteProfileMargin": 0.4533244230968021,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7501025067281446,
+          0.7501025067281496
+        ],
+        "grooveMargin": [
+          0.05010250672814464,
+          0.05010250672814965
+        ],
+        "nativeCapMargin": 6.447390409886546,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.1207872734009197,
+          -0.12078727340076596
+        ],
+        "otherDistance": [
+          1.864065728425671,
+          1.864065728425678
+        ],
+        "outerRoundMargin": 3.0490904573912334,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359050254503344,
+            -2.431822316712532,
+            5.389636196783697
+          ],
+          [
+            -9.359050254503327,
+            -2.43182231671253,
+            5.3896361967837025
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.431822316712532,
+            5.389636196783697
+          ],
+          [
+            -2.43182231671253,
+            5.3896361967837025
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 3,
+      "weights": [
+        0.0,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.441467533213305,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.558532466786689,
+        "cylinderGraphDerivativeLower": 0.8662016493497168,
+        "finiteProfileMargin": 0.4716542827295922,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7420772014997208,
+          0.7420772014997261
+        ],
+        "grooveMargin": [
+          0.04207720149972082,
+          0.042077201499726165
+        ],
+        "nativeCapMargin": 6.451693093412431,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.10683937337425768,
+          -0.10683937337409329
+        ],
+        "otherDistance": [
+          1.859752256474983,
+          1.8597522564749902
+        ],
+        "outerRoundMargin": 3.0535073710835383,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.354977812976962,
+            -2.4414675332133093,
+            5.3967017815244285
+          ],
+          [
+            -9.354977812976943,
+            -2.4414675332133067,
+            5.396701781524434
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4414675332133093,
+            5.3967017815244285
+          ],
+          [
+            -2.4414675332133067,
+            5.396701781524434
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 3,
+      "weights": [
+        0.5,
+        0.0,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.436644924962917,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.563355075037077,
+        "cylinderGraphDerivativeLower": 0.8663902705748323,
+        "finiteProfileMargin": 0.4624885623187357,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7460898541139327,
+          0.7460898541139376
+        ],
+        "grooveMargin": [
+          0.04608985411393273,
+          0.04608985411393763
+        ],
+        "nativeCapMargin": 6.449545576971927,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.11380949806515077,
+          -0.11380949806499525
+        ],
+        "otherDistance": [
+          1.8619089924503271,
+          1.861908992450334
+        ],
+        "outerRoundMargin": 3.0512996707079387,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.35701492220821,
+            -2.4366449249629207,
+            5.393168989154063
+          ],
+          [
+            -9.35701492220819,
+            -2.4366449249629185,
+            5.393168989154068
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4366449249629207,
+            5.393168989154063
+          ],
+          [
+            -2.4366449249629185,
+            5.393168989154068
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 3,
+      "weights": [
+        0.25,
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.436643924962918,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.563354075037077,
+        "cylinderGraphDerivativeLower": 0.866390217206577,
+        "finiteProfileMargin": 0.4624767455381211,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7460890220636386,
+          0.7460906861642314
+        ],
+        "grooveMargin": [
+          0.04608902206363862,
+          0.046090686164231405
+        ],
+        "nativeCapMargin": 6.449539742903114,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.11381433213396357,
+          -0.11380466399655283
+        ],
+        "otherDistance": [
+          1.8619085452367317,
+          1.8619094396639293
+        ],
+        "outerRoundMargin": 3.051299212769615,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.357015498585222,
+            -2.4366459249629204,
+            5.3931679891540645
+          ],
+          [
+            -9.357014345831034,
+            -2.4366439249629193,
+            5.3931699891540665
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4366459249629204,
+            5.3931679891540645
+          ],
+          [
+            -2.4366439249629193,
+            5.3931699891540665
+          ]
+        ]
+      },
+      "insideTriangleChart": true,
+      "probeKind": "open graph rectangle strictly inside triangle chart when flagged",
+      "triangle": 3
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.390956834718019,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.609043165281973,
+        "cylinderGraphDerivativeLower": 0.8658239128759068,
+        "finiteProfileMargin": 0.3302428248591383,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7841046430499321,
+          0.7841046430499382
+        ],
+        "grooveMargin": [
+          0.08410464304993213,
+          0.08410464304993827
+        ],
+        "nativeCapMargin": 6.393677523989192,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.215365641292781,
+          -0.21536564129261296
+        ],
+        "otherDistance": [
+          1.8823413275602734,
+          1.882341327560281
+        ],
+        "outerRoundMargin": 3.030309567207691,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350898259059814,
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -9.350898259059795,
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.49197823170859,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.508021768291403,
+        "cylinderGraphDerivativeLower": 0.8665787272688263,
+        "finiteProfileMargin": 0.6136287034315117,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.700049759949509,
+          0.7000497599495142
+        ],
+        "grooveMargin": [
+          0.00004975994950906503,
+          0.00004975994951428309
+        ],
+        "nativeCapMargin": 6.5080217682913215,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -8.260059303211168e-14,
+          7.993605777301131e-14
+        ],
+        "otherDistance": [
+          1.8371631853896926,
+          1.8371631853896995
+        ],
+        "outerRoundMargin": 3.076539116243571,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359050254503344,
+            -2.491978231708594,
+            5.389636196783697
+          ],
+          [
+            -9.359050254503327,
+            -2.4919782317085915,
+            5.3896361967837025
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.491978231708594,
+            5.389636196783697
+          ],
+          [
+            -2.4919782317085915,
+            5.3896361967837025
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.492038035725066,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.507961964274928,
+        "cylinderGraphDerivativeLower": 0.8665705417870553,
+        "finiteProfileMargin": 0.6136287034314758,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.6999999999999976,
+          0.7000000000000022
+        ],
+        "grooveMargin": [
+          -2.331468351712829e-15,
+          2.2204460492503135e-15
+        ],
+        "nativeCapMargin": 6.507961964274821,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -1.0746958878371519e-13,
+          5.329070518200753e-14
+        ],
+        "otherDistance": [
+          1.837136440220459,
+          1.8371364402204657
+        ],
+        "outerRoundMargin": 3.0765662867362713,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.358961851300215,
+            -2.49203803572507,
+            5.389789705165444
+          ],
+          [
+            -9.358961851300199,
+            -2.492038035725068,
+            5.389789705165447
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.49203803572507,
+            5.389789705165444
+          ],
+          [
+            -2.492038035725068,
+            5.389789705165447
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.441467533213305,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.558532466786689,
+        "cylinderGraphDerivativeLower": 0.8662016493497168,
+        "finiteProfileMargin": 0.47165428272959053,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7420772014997208,
+          0.7420772014997261
+        ],
+        "grooveMargin": [
+          0.04207720149972082,
+          0.042077201499726165
+        ],
+        "nativeCapMargin": 6.45169309341243,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.10683937337425857,
+          -0.10683937337409329
+        ],
+        "otherDistance": [
+          1.859752256474983,
+          1.8597522564749902
+        ],
+        "outerRoundMargin": 3.0535073710835383,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.354977812976962,
+            -2.4414675332133093,
+            5.396701781524428
+          ],
+          [
+            -9.354977812976943,
+            -2.4414675332133067,
+            5.396701781524435
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4414675332133093,
+            5.396701781524428
+          ],
+          [
+            -2.4414675332133067,
+            5.396701781524435
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        0.5,
+        0.5,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.492008133716828,
+        "composedSourcePositiveLower": 1.4041567908407152e-10,
+        "cylinderCapMargin": 7.507991866283166,
+        "cylinderGraphDerivativeLower": 0.8665746345667478,
+        "finiteProfileMargin": 0.6136287033390758,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.7000248799747533,
+          0.7000248799747583
+        ],
+        "grooveMargin": [
+          0.00002487997475331127,
+          0.00002487997475830728
+        ],
+        "nativeCapMargin": 6.507991866423581,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          1.4041567908407152e-10,
+          1.405791039132965e-10
+        ],
+        "otherDistance": [
+          1.8371498128050758,
+          1.8371498128050825
+        ],
+        "outerRoundMargin": 3.076552701519185,
+        "projectionOwnershipDisproved": true,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.359006053320895,
+            -2.492008133716832,
+            5.3897129509745705
+          ],
+          [
+            -9.359006053320877,
+            -2.49200813371683,
+            5.389712950974575
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.492008133716832,
+            5.3897129509745705
+          ],
+          [
+            -2.49200813371683,
+            5.389712950974575
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        0.0,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.441497435221543,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.5585025647784505,
+        "cylinderGraphDerivativeLower": 0.8661975494983112,
+        "finiteProfileMargin": 0.4716542482882221,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.742052321524965,
+          0.7420523215249704
+        ],
+        "grooveMargin": [
+          0.04205232152496507,
+          0.04205232152497041
+        ],
+        "nativeCapMargin": 6.451663165229688,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.10683939954876291,
+          -0.10683939954859319
+        ],
+        "otherDistance": [
+          1.8597388838903663,
+          1.8597388838903735
+        ],
+        "outerRoundMargin": 3.053521054945642,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.35493353458178,
+            -2.4414974352215473,
+            5.396778535715302
+          ],
+          [
+            -9.354933534581763,
+            -2.4414974352215446,
+            5.396778535715307
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4414974352215473,
+            5.396778535715302
+          ],
+          [
+            -2.4414974352215446,
+            5.396778535715307
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        0.5,
+        0.0,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.466752784469185,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.533247215530809,
+        "cylinderGraphDerivativeLower": 0.866386174299257,
+        "finiteProfileMargin": 0.5425729983400626,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7210386007498591,
+          0.7210386007498641
+        ],
+        "grooveMargin": [
+          0.02103860074985919,
+          0.021038600749864193
+        ],
+        "nativeCapMargin": 6.480039803751205,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.053207411779603773,
+          -0.05320741177944297
+        ],
+        "otherDistance": [
+          1.848444348347721,
+          1.8484443483477278
+        ],
+        "outerRoundMargin": 3.0650576948969515,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.356970682431996,
+            -2.4667527844691897,
+            5.393245743344935
+          ],
+          [
+            -9.356970682431978,
+            -2.4667527844691874,
+            5.393245743344941
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4667527844691897,
+            5.393245743344935
+          ],
+          [
+            -2.4667527844691874,
+            5.393245743344941
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 4,
+      "weights": [
+        0.25,
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.466751784469186,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.533246215530808,
+        "cylinderGraphDerivativeLower": 0.86638612092999,
+        "finiteProfileMargin": 0.5425611947674485,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.721037768699565,
+          0.7210394328001578
+        ],
+        "grooveMargin": [
+          0.02103776869956508,
+          0.021039432800157857
+        ],
+        "nativeCapMargin": 6.480033976649184,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.053212238881624095,
+          -0.0532025846777868
+        ],
+        "otherDistance": [
+          1.8484439011341258,
+          1.848444795561323
+        ],
+        "outerRoundMargin": 3.065057238920527,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.356971258819938,
+            -2.4667537844691894,
+            5.393244743344937
+          ],
+          [
+            -9.356970106043894,
+            -2.466751784469188,
+            5.393246743344939
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4667537844691894,
+            5.393244743344937
+          ],
+          [
+            -2.466751784469188,
+            5.393246743344939
+          ]
+        ]
+      },
+      "insideTriangleChart": true,
+      "probeKind": "open graph rectangle strictly inside triangle chart when flagged",
+      "triangle": 4
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.390956834718019,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.609043165281973,
+        "cylinderGraphDerivativeLower": 0.8658239128759068,
+        "finiteProfileMargin": 0.3302428248591383,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7841046430499321,
+          0.7841046430499382
+        ],
+        "grooveMargin": [
+          0.08410464304993213,
+          0.08410464304993827
+        ],
+        "nativeCapMargin": 6.393677523989192,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.215365641292781,
+          -0.21536564129261296
+        ],
+        "otherDistance": [
+          1.8823413275602734,
+          1.882341327560281
+        ],
+        "outerRoundMargin": 3.030309567207691,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.350898259059814,
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -9.350898259059795,
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.390956834718025,
+            5.403767366265159
+          ],
+          [
+            -2.3909568347180215,
+            5.403767366265166
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 5,
+      "weights": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.4920380357250655,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.507961964274927,
+        "cylinderGraphDerivativeLower": 0.8665705417870552,
+        "finiteProfileMargin": 0.6136287034314659,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.6999999999999972,
+          0.7000000000000026
+        ],
+        "grooveMargin": [
+          -2.7755575615628917e-15,
+          2.664535259100376e-15
+        ],
+        "nativeCapMargin": 6.507961964274814,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -1.136868377216161e-13,
+          5.5067062021407783e-14
+        ],
+        "otherDistance": [
+          1.8371364402204586,
+          1.8371364402204657
+        ],
+        "outerRoundMargin": 3.0765662867362713,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.358961851300215,
+            -2.4920380357250704,
+            5.389789705165443
+          ],
+          [
+            -9.358961851300197,
+            -2.4920380357250678,
+            5.389789705165448
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4920380357250704,
+            5.389789705165443
+          ],
+          [
+            -2.4920380357250678,
+            5.389789705165448
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 5,
+      "weights": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.492038035725066,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.507961964274928,
+        "cylinderGraphDerivativeLower": 0.8643126361634763,
+        "finiteProfileMargin": 0.5697707242551956,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.6999999999999976,
+          0.7000000000000022
+        ],
+        "grooveMargin": [
+          -2.331468351712829e-15,
+          2.2204460492503135e-15
+        ],
+        "nativeCapMargin": 6.475182836444506,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.03277912783042238,
+          -0.032779127830263356
+        ],
+        "otherDistance": [
+          1.837136440220459,
+          1.8371364402204657
+        ],
+        "outerRoundMargin": 3.0765662867362713,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.334576470565562,
+            -2.49203803572507,
+            5.431913301513926
+          ],
+          [
+            -9.334576470565546,
+            -2.492038035725068,
+            5.431913301513929
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.49203803572507,
+            5.431913301513926
+          ],
+          [
+            -2.492038035725068,
+            5.431913301513929
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 5,
+      "weights": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.441497435221543,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.5585025647784505,
+        "cylinderGraphDerivativeLower": 0.8661975494983112,
+        "finiteProfileMargin": 0.4716542482882221,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7420523215249647,
+          0.7420523215249704
+        ],
+        "grooveMargin": [
+          0.042052321524964735,
+          0.04205232152497041
+        ],
+        "nativeCapMargin": 6.451663165229688,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.10683939954876291,
+          -0.10683939954859319
+        ],
+        "otherDistance": [
+          1.8597388838903661,
+          1.8597388838903735
+        ],
+        "outerRoundMargin": 3.053521054945642,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.35493353458178,
+            -2.4414974352215477,
+            5.396778535715301
+          ],
+          [
+            -9.354933534581763,
+            -2.4414974352215446,
+            5.396778535715307
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4414974352215477,
+            5.396778535715301
+          ],
+          [
+            -2.4414974352215446,
+            5.396778535715307
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 5,
+      "weights": [
+        0.5,
+        0.5,
+        0.0
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.4920380357250655,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.507961964274927,
+        "cylinderGraphDerivativeLower": 0.8654445225500318,
+        "finiteProfileMargin": 0.5917075862343426,
+        "fullSourceEqualsCylinder": false,
+        "grooveDistance": [
+          0.6999999999999972,
+          0.7000000000000026
+        ],
+        "grooveMargin": [
+          -2.7755575615628917e-15,
+          2.664535259100376e-15
+        ],
+        "nativeCapMargin": 6.491603359478887,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.016358604796040243,
+          -0.016358604795871468
+        ],
+        "otherDistance": [
+          1.8371364402204586,
+          1.8371364402204657
+        ],
+        "outerRoundMargin": 3.0765662867362713,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.346800843540363,
+            -2.4920380357250704,
+            5.410851503339685
+          ],
+          [
+            -9.346800843540345,
+            -2.4920380357250678,
+            5.410851503339688
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4920380357250704,
+            5.410851503339685
+          ],
+          [
+            -2.4920380357250678,
+            5.410851503339688
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 5,
+      "weights": [
+        0.0,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.441497435221543,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.5585025647784505,
+        "cylinderGraphDerivativeLower": 0.8650695859384783,
+        "finiteProfileMargin": 0.4498089994067135,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.742052321524965,
+          0.7420523215249704
+        ],
+        "grooveMargin": [
+          0.04205232152496507,
+          0.04205232152497041
+        ],
+        "nativeCapMargin": 6.4350362204790486,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.123466344299402,
+          -0.12346634429923227
+        ],
+        "otherDistance": [
+          1.8597388838903663,
+          1.8597388838903735
+        ],
+        "outerRoundMargin": 3.053521054945642,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.342751528135585,
+            -2.4414974352215473,
+            5.417840333889543
+          ],
+          [
+            -9.342751528135567,
+            -2.4414974352215446,
+            5.417840333889548
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4414974352215473,
+            5.417840333889543
+          ],
+          [
+            -2.4414974352215446,
+            5.417840333889548
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 5,
+      "weights": [
+        0.5,
+        0.0,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.466767735473305,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.5332322645266885,
+        "cylinderGraphDerivativeLower": 0.8652571350488386,
+        "finiteProfileMargin": 0.5206892163880172,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.7210261607624813,
+          0.7210261607624862
+        ],
+        "grooveMargin": [
+          0.021026160762481313,
+          0.021026160762486205
+        ],
+        "nativeCapMargin": 6.463531662648769,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.06970060187792008,
+          -0.06970060187775924
+        ],
+        "otherDistance": [
+          1.8484376620554126,
+          1.8484376620554193
+        ],
+        "outerRoundMargin": 3.065064512194579,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.344777058527477,
+            -2.466767735473309,
+            5.414345918614614
+          ],
+          [
+            -9.344777058527459,
+            -2.4667677354733066,
+            5.414345918614618
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.466767735473309,
+            5.414345918614614
+          ],
+          [
+            -2.4667677354733066,
+            5.414345918614618
+          ]
+        ]
+      },
+      "probeKind": "enclosure of exact dyadic barycentric YZ point on chosen cylinder graph",
+      "triangle": 5,
+      "weights": [
+        0.25,
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "certificate": {
+        "capCutMargin": 7.466766735473306,
+        "composedSourcePositiveLower": 0.0,
+        "cylinderCapMargin": 7.533231264526689,
+        "cylinderGraphDerivativeLower": 0.8652570814008612,
+        "finiteProfileMargin": 0.520677401837944,
+        "fullSourceEqualsCylinder": true,
+        "grooveDistance": [
+          0.721025328712187,
+          0.7210269928127799
+        ],
+        "grooveMargin": [
+          0.021025328712187093,
+          0.02102699281277998
+        ],
+        "nativeCapMargin": 6.4635258301706315,
+        "nativeIsInnerField": true,
+        "nativeLevel": [
+          -0.06970543435605774,
+          -0.06969576939999463
+        ],
+        "otherDistance": [
+          1.8484372148418171,
+          1.8484381092690148
+        ],
+        "outerRoundMargin": 3.06506405621913,
+        "projectionOwnershipDisproved": false,
+        "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "wholeFanOwnership": false,
+        "worldImage": [
+          [
+            -9.344777637925487,
+            -2.4667687354733085,
+            5.414344918614615
+          ],
+          [
+            -9.344776479129303,
+            -2.4667667354733074,
+            5.414346918614617
+          ]
+        ],
+        "yzBox": [
+          [
+            -2.4667687354733085,
+            5.414344918614615
+          ],
+          [
+            -2.4667667354733074,
+            5.414346918614617
+          ]
+        ]
+      },
+      "insideTriangleChart": true,
+      "probeKind": "open graph rectangle strictly inside triangle chart when flagged",
+      "triangle": 5
+    }
+  ],
+  "scope": "first actual six-triangle fan; bounded composed-source graph regions only",
+  "sourceFingerprint": "10977506807348230851",
+  "stratum": 15,
+  "supportedLocalCarrier": true,
+  "wholeFanCoverageProved": false
+}

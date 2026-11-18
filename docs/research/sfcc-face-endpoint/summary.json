@@ -1,0 +1,91 @@
+{
+  "selected": "Endpoint",
+  "sourceManifestSha256": "0cb51b4d445ec1a42d9ad5104e73c1091625e0dd24e21ad74b543b04d6e4d65e",
+  "componentReceiptSha256": "7ff26c9d0a897daa48913e7e31e4e33544e8bfa3b688ac4fa5a1dd988f554757",
+  "preservation": {
+    "candidatePointsIdentical": true,
+    "candidateTrianglesIdentical": true,
+    "candidateTopologyIdentical": true,
+    "intervalsIdenticalAfterSorting": true,
+    "candidateGeneratedQueriesIdentical": true,
+    "candidateQueryCostsIdentical": true,
+    "retainedMetadataIdentical": true,
+    "outsideGeometryIdentical": true,
+    "outsideQueriesIdentical": true,
+    "fourFanTriangleOrderMatchesProof": true,
+    "all17PointBitsMatchProof": true,
+    "bothSegmentsMatchFreshBinding": true,
+    "endpointParameterMatchesFreshPin": true,
+    "endpointPointMatchesFreshFan": true,
+    "endpointFaceMatchesFreshRecord": true,
+    "physicalTargetMatchesIndependentA": true
+  },
+  "face": [
+    0,
+    3464532,
+    2
+  ],
+  "insideCell": [
+    7,
+    25,
+    58,
+    86
+  ],
+  "outsideCell": [
+    7,
+    26,
+    58,
+    86
+  ],
+  "fanTriangleCounts": [
+    6,
+    5,
+    4,
+    6
+  ],
+  "totalNeighborhoodTriangles": 21,
+  "usedVertices": 17,
+  "sourceAcceptedPieces": 65,
+  "sourceAttempts": 109,
+  "globalSourceCap": 128,
+  "sourceGraphErrorUpper": 0.0010238742352245227,
+  "originalComposedExportBound": 0.0010243074924721758,
+  "endpointCompatibleExportBound": 0.0010243948722129135,
+  "surfaceTolerance": 0.01,
+  "commonWorldXSlab": [
+    -9.3690502954966,
+    -9.202000032231238
+  ],
+  "sharedEndpoint": 40,
+  "idealFeatureFaceRootTransportExists": true,
+  "ownQueryToIdealRootUpper": 1.199762047962197e-12,
+  "originalAssociationAllowance": 3.796655370190979e-07,
+  "projectedEndpointMotionUpper": 1.0387196304615446e-12,
+  "starKernelMarginLower": 4.346957258717958e-05,
+  "starTriangleCount": 8,
+  "meshGraphJacobianUpper": 1.3168547775662525,
+  "additionalWorkingErrorUpper": 1.3678429079251375e-12,
+  "outerBoundaryFixed": true,
+  "domainMapsOntoItself": true,
+  "endpointOwnQueries": 1,
+  "endpointCharges": [
+    64,
+    65
+  ],
+  "additionalSourceCertificateCalls": 0,
+  "entireFeatureCurveTransportProved": false,
+  "allTrueFaceIntersectionsCovered": false,
+  "globalOwnershipProved": false,
+  "meshMutationPerformed": false,
+  "publicationReady": false,
+  "candidateTriangles": 1775,
+  "candidateGeneratedQueries": 1929,
+  "candidateCharges": 8413,
+  "outsideTriangles": 11,
+  "outsideGeneratedQueries": 9,
+  "outsideCharges": 2121,
+  "liveStatePreserved": true,
+  "focusedTestsPassed": 65,
+  "focusedCampaignSeconds": 28.617836833931506,
+  "componentSeconds": 32.36772204103181
+}

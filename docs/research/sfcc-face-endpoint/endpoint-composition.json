@@ -1,0 +1,7 @@
+{
+  "source": "/tmp/sfcc-face-endpoint",
+  "base": "Capture",
+  "changedFile": "gcad-wasm/kernel/src/sfcc/face_join_c.rs",
+  "sha256": "e6ada46ec92260d1a48b65611cec5de15774347b63a1e14cb2bb34998289c738",
+  "scope": "one existing whole-face certificate plus endpoint-compatible source correspondence; no mesh-coordinate edits"
+}

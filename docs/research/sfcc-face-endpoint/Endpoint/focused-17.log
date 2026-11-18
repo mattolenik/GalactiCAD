@@ -1,0 +1,12 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_missing_rays_metadata_and_bad_queries_refuse ... ok
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_prepared_transaction_rolls_back_and_scopes_cleanup ... 
+thread 'sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_prepared_transaction_rolls_back_and_scopes_cleanup' (28466115) panicked at kernel/src/sfcc/lower_closure_a_tests.rs:217:57:
+test scope unwind
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::shared_twisted_proof::exposure_a::lower_source_a::closure::tests::lower_runtime_a_source_transaction_preserves_joins_and_admits_complete_event ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 443 filtered out; finished in 6.69s
+

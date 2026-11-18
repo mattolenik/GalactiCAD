@@ -1,0 +1,9 @@
+{
+  "filter": "paired_b_",
+  "tests": [
+    "sfcc::cell_mesh::paired_geometry_b::tests::paired_b_exact_cross_patch_contact_rejects_crossing_containment_and_t_junction",
+    "sfcc::cell_mesh::paired_geometry_b::tests::paired_b_refuses_renamed_shared_vertex_and_wrong_shared_edge",
+    "sfcc::cell_mesh::paired_geometry_b::tests::paired_b_two_disks_share_one_edge_and_tile_union"
+  ],
+  "exitCode": 0
+}

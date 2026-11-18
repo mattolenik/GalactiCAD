@@ -1837,6 +1837,46 @@ outside coverage, replacement metadata, allocation accounting and production/par
 acceptance remain open. This is a local continuous represented-source result, not
 bitwise CPU/WGSL field parity or a published mesh repair.
 
+## Round 37: both captured traces and an ideal feature-endpoint correspondence
+
+The [captured-face/endpoint milestone](sfcc-face-endpoint/README.md) binds the
+second original segment to a four-triangle candidate fan with hypothesis 39 and a
+six-triangle outside fan with hypothesis 31. Existing bounded orientation evidence
+already contained the candidate fan, so no new main observer was needed. Together
+with the previous 6+5 pair, all 21 triangles form an embedded projected disk in both
+precisions, with point 40 interior. One source call covers 65 pieces in 109 checks
+under the unchanged 128 cap; its base export bound is 0.0010243074924721758 mm.
+
+A direct feature 49 discriminator constructs physical/generated ideal feature roots
+and checks the original parameter independently. The original point/own query is
+within 1.20e-12 mm of the physical feature-and-X-face root, far below the existing
+3.796655e-7 mm allowance. No appreciable endpoint defect is inferred from the older
+midpoint witness. Exact membership of the unmodified common-X lift remains
+unresolved; physical and generated ideal roots are not assumed identical.
+
+A strictly admitted interior-star homeomorphism maps point 40 to the projected
+coordinates of that exact ideal root, fixes the star/outer boundary and maps the
+same domain onto itself. Composing with the existing unique source graph gives
+an endpoint-compatible correspondence without moving any mesh vertex. Interval
+mesh-Jacobian bounds add at most 1.3678429079251375e-12 mm of working error; global
+source/export bounds give 0.0010243948722129135 mm under tolerance 0.01. The same
+source/point/face/parameter, direct own-query association and original tube are
+checked, with one separate charged query and no additional source-certificate call.
+
+The selected source passes 65 tests in 28.618 seconds, a non-test library check and
+a 32.368-second fresh diagnostic. Parent geometry, topology, intervals, generated
+records/costs and retained metadata are unchanged. All four fresh fans and 17 point
+bits match the proof fixture; source point, parameter and face bindings agree.
+The main candidate remains 1775 triangles/1929 generated events/8413 charges, and
+the outside cell 11 triangles/9 generated events/2121 separate charges.
+
+This is an existence theorem for a compatible correspondence on the captured
+neighborhood, not a mesh edit, complete feature-curve parameterization or proof
+that the two recorded segments exhaust the actual source/face intersection. Next
+certify the consumed curve 49 spans and source-level face completeness before
+expanding to other cells. Global ownership, outside coverage, allocator accounting
+and production/native-WASM/GPU/full-model acceptance remain open.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

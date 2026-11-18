@@ -1,0 +1,9 @@
+{
+  "filter": "fullfan_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_a_actual_closed_source_graph",
+    "sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_a_cylinder_primitive_clamp_guard",
+    "sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_a_refuses_invalid_source_domain_and_tighter_budget"
+  ],
+  "exitCode": 0
+}

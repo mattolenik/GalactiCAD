@@ -1,0 +1,53 @@
+{
+  "allQueryBitsMatch": true,
+  "finalPoints": 634,
+  "graphAndNewPointsMatch": true,
+  "guardRetained": true,
+  "initialPoints": 628,
+  "preInputsMatchExceptProcessLocalAddresses": true,
+  "queryAttempts": 50,
+  "rejection": {
+    "code": "non_simple_patch_boundary",
+    "operands": {
+      "candidateStrata": [
+        10,
+        15,
+        30,
+        31,
+        38,
+        39
+      ],
+      "first": [
+        453,
+        455
+      ],
+      "polygon": [
+        453,
+        455,
+        633,
+        632,
+        628,
+        629,
+        630,
+        631,
+        454,
+        456,
+        628,
+        632,
+        633,
+        455,
+        454,
+        631,
+        630,
+        629,
+        628,
+        461
+      ],
+      "repeatedPoint": 628
+    }
+  },
+  "scope": "actual first-cell graph-entry replay with complete captured position/normal/key inputs and fresh immutable source; not full face-consumer/component replay",
+  "sourceFingerprint": "10977506807348230851",
+  "sourceReceiptSha256": "67a8ed8c9f9d1ec4b49106c685b5ff0b0ae70003792e69826b896a54b125c8f1",
+  "trianglesReturned": 0
+}

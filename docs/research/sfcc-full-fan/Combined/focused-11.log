@@ -1,0 +1,13 @@
+
+running 4 tests
+test sfcc::cell_mesh::alias_graph_c_tests::alias_c_actual_first_cell_replays_guard_points_and_all_queries ... ok
+test sfcc::cell_mesh::alias_graph_c_tests::alias_c_local_sharing_refuses_missing_scope_wrong_mapping_source_and_query_point ... 
+thread 'sfcc::cell_mesh::alias_graph_c_tests::alias_c_local_sharing_refuses_missing_scope_wrong_mapping_source_and_query_point' (27515192) panicked at kernel/src/sfcc/alias_graph_c_tests.rs:1027:67:
+scoped local replay
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::cell_mesh::alias_graph_c_tests::alias_c_local_typed_port_and_qualified_arc_repair_actual_graph ... ok
+test sfcc::cell_mesh::alias_graph_c_tests::alias_c_real_shared_arc_requires_bound_endpoint_identity ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 423 filtered out; finished in 4.29s
+

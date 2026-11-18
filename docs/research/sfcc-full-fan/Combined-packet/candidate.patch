@@ -1,0 +1,1044 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/fullfan-boundary-b.json
+@@ -0,0 +1,49 @@
++{
++  "parentReceiptSha256": "cd25d6db584fbe2717416f14e703073da6642aa2eaf1b690b7159bded678bac5",
++  "cell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "cellBoxHex": [
++    "c02328e73507c672",
++    "c003f45f6f365a98",
++    "40158efcca8a1862",
++    "c022ab4d9b6e2cd8",
++    "c001fdf908cff432",
++    "40168a2ffdbd4b95"
++  ],
++  "boundary": [
++    40,
++    38,
++    41,
++    464,
++    465,
++    647
++  ],
++  "boundaryIntervals": [
++    [
++      465,
++      647,
++      20,
++      4562274570535920534,
++      0
++    ],
++    [
++      465,
++      647,
++      39,
++      4555569617026713521,
++      0
++    ],
++    [
++      40,
++      647,
++      49,
++      4629807001818732852,
++      4629841154425225216
++    ]
++  ],
++  "scope": "actual stored boundary/cell/interval evidence; exact source-face correspondence not implied"
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/fullfan-boundary-c.json
+@@ -0,0 +1,73 @@
++{
++  "parentReceiptSha256": "cd25d6db584fbe2717416f14e703073da6642aa2eaf1b690b7159bded678bac5",
++  "sourceFingerprint": "10977506807348230851",
++  "cell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "cellBoxHex": [
++    "c02328e73507c672",
++    "c003f45f6f365a98",
++    "40158efcca8a1862",
++    "c022ab4d9b6e2cd8",
++    "c001fdf908cff432",
++    "40168a2ffdbd4b95"
++  ],
++  "boundaryLoop": [
++    40,
++    38,
++    41,
++    464,
++    465,
++    458,
++    459,
++    460,
++    39
++  ],
++  "pin": {
++    "chart": 49,
++    "id": 40,
++    "parameterHex": "404060f03a059934"
++  },
++  "points": [
++    {
++      "id": 38,
++      "key": "Num(27720370)",
++      "normalHex": [
++        "bfeba8725311684e",
++        "8000000000000000",
++        "3fe01836105e141e"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2cd8",
++        "c001fdf908cff430",
++        "4015ba497f07cc2c"
++      ]
++    },
++    {
++      "id": 40,
++      "key": "Str(\"F0:3464532:49:32.757331135496\")",
++      "normalHex": [
++        "bfead3ce8a5c94d3",
++        "bfcf224954b17dbb",
++        "3fdf38ef56b3fef2"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2e2a",
++        "c003efb1a33e9e36",
++        "4015ba477b02d6bd"
++      ]
++    }
++  ],
++  "face": [
++    0,
++    3464532,
++    1
++  ],
++  "edge": [
++    40,
++    38
++  ]
++}
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -2315,3 +2315,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="ownership_a.rs"]
+ pub(crate) mod ownership_a;
++
++#[cfg(all(test,feature="serde"))]
++#[path="fullfan_geometry_b.rs"]
++pub(crate) mod fullfan_geometry_b;
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -439,3 +439,11 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="ownership_source_a.rs"]
+ pub(crate) mod ownership_source_a;
++
++#[cfg(all(test, feature="serde"))]
++#[path="fullfan_source_a.rs"]
++pub(crate) mod fullfan_source_a;
++
++#[cfg(all(test, feature="serde"))]
++#[path="fullfan_boundary_c.rs"]
++pub(crate) mod fullfan_boundary_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/fullfan_boundary_c.rs
+@@ -0,0 +1,106 @@
++//! Actual boundary-plane discriminator; a source graph is not an exact cell-interface certificate.
++use crate::math::grid::{cell_aabb, point_to_world, unpack_point};
++use crate::sdf::enclosure::Interval as I;
++use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++use crate::sfcc::validation::NumericalGuard;
++use serde_json::{json, Value};
++
++fn excludes_plane(lo: f64, hi: f64, plane: f64) -> bool {
++    [lo, hi, plane].iter().all(|x| x.is_finite())
++        && lo <= hi
++        && (plane < lo || plane > hi)
++}
++fn number(v: &Value) -> f64 {
++    f64::from_bits(u64::from_str_radix(v.as_str().unwrap(), 16).unwrap())
++}
++fn abs_bounds(x: I) -> [f64; 2] {
++    [if x.lo > 0. { x.lo } else if x.hi < 0. { -x.hi } else { 0. },
++     x.lo.abs().max(x.hi.abs())]
++}
++
++#[test]
++fn fullfan_c_actual_x_face_lift_does_not_preserve_boundary_plane() {
++    let _guard = NumericalGuard::new();
++    let original: Value = serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let fan: Value = serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let boundary: Value = serde_json::from_str(include_str!("../../fixtures/fullfan-boundary-c.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap() - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&root, &cube, &PipelineTuning::default());
++    let features = &context.features;
++    assert_eq!(features.fingerprint().to_string(), boundary["sourceFingerprint"].as_str().unwrap());
++    assert_eq!(boundary["sourceFingerprint"], fan["fingerprint"]);
++    let cell = &boundary["cell"];
++    let box_ = cell_aabb(&context.lat, cell[0].as_u64().unwrap() as u32,
++        cell[1].as_i64().unwrap(), cell[2].as_i64().unwrap(), cell[3].as_i64().unwrap());
++    for (k, x) in box_.iter().enumerate() {
++        assert_eq!(x.to_bits(), number(&boundary["cellBoxHex"][k]).to_bits());
++    }
++    let axis = boundary["face"][0].as_u64().unwrap() as usize;
++    let key = boundary["face"][1].as_i64().unwrap();
++    assert_eq!(axis, 0);
++    let grid = unpack_point(&context.lat, key);
++    let plane = point_to_world(&context.lat, grid[0], grid[1], grid[2])[axis];
++    assert_eq!(plane.to_bits(), box_[3].to_bits(), "actual adaptive-face plane is the original cell's positive X plane");
++    let edge: [usize; 2] = serde_json::from_value(boundary["edge"].clone()).unwrap();
++    let cycle: Vec<usize> = serde_json::from_value(boundary["boundaryLoop"].clone()).unwrap();
++    assert!(cycle.iter().enumerate().any(|(i, &v)| v == edge[0] && cycle[(i + 1) % cycle.len()] == edge[1]));
++    let polygon: Vec<usize> = serde_json::from_value(fan["fan"]["polygon"].clone()).unwrap();
++    assert!(polygon.iter().enumerate().any(|(i, &v)| v == edge[0] && polygon[(i + 1) % polygon.len()] == edge[1]));
++    let rows = boundary["points"].as_array().unwrap();
++    let vertices: [[f64; 3]; 2] = edge.map(|id| {
++        let row = rows.iter().find(|r| r["id"].as_u64() == Some(id as u64)).unwrap();
++        let current = fan["points"].as_array().unwrap().iter().find(|r| r["id"] == row["id"]).unwrap();
++        assert_eq!(row["positionHex"], current["positionHex"]);
++        std::array::from_fn(|k| number(&row["positionHex"][k]))
++    });
++    let pin = &boundary["pin"];
++    assert_eq!(pin["id"].as_u64(), Some(edge[0] as u64));
++    let expected = format!("Str(\"F{}:{}:{}:{:.12}\")", axis, key,
++        pin["chart"].as_u64().unwrap(), number(&pin["parameterHex"]));
++    assert_eq!(rows.iter().find(|r| r["id"] == pin["id"]).unwrap()["key"].as_str().unwrap(), expected);
++    assert_eq!(vertices[1][0].to_bits(), plane.to_bits());
++
++    let midpoint: [I; 3] = std::array::from_fn(|k| I::point(vertices[0][k])
++        .add(I::point(vertices[1][k])).unwrap().mul(0.5).unwrap());
++    let sid = fan["fan"]["stratum"].as_u64().unwrap() as usize;
++    let source = super::ownership_source_a::bound(features, sid,
++        [midpoint[1].lo, midpoint[2].lo], [midpoint[1].hi, midpoint[2].hi]).unwrap();
++    assert_eq!(source["fullSourceEqualsCylinder"], true);
++    let x_lo = source["worldImage"][0][0].as_f64().unwrap();
++    let x_hi = source["worldImage"][1][0].as_f64().unwrap();
++    assert!(excludes_plane(x_lo, x_hi, plane), "source-qualified X lift does not remain on this exact face plane");
++    let x = crate::sfcc::loft_seam::interval(x_lo, x_hi).unwrap();
++    let plane_gap = abs_bounds(x.sub(I::point(plane)).unwrap());
++    let mesh_gap = abs_bounds(x.sub(midpoint[0]).unwrap());
++    let surface_tolerance = number(&fan["options"]["surfaceTolHex"]);
++    assert!(plane_gap[0] > 0. && mesh_gap[0] > 0.);
++    assert!(mesh_gap[1] <= surface_tolerance, "this exact-interface counterexample is not a surface-tolerance violation");
++    let report = json!({"scope":"source-qualified lift of exact dyadic midpoint of an actual captured X-face boundary edge",
++        "parentReceiptSha256":boundary["parentReceiptSha256"],"sourceFingerprint":features.fingerprint().to_string(),
++        "cell":boundary["cell"],"face":boundary["face"],"originalCellBoxBits":box_.map(f64::to_bits),
++        "edge":edge,"originalVertexBits":vertices.map(|p|p.map(f64::to_bits)),
++        "planeBits":plane.to_bits(),"dyadicMidpointBounds":midpoint.map(|v|[v.lo,v.hi]),
++        "source":source,"liftToFacePlaneDistanceBounds":plane_gap,"sameYZLiftToMeshMidpointDistanceBounds":mesh_gap,
++        "surfaceTolerance":surface_tolerance,"exactFaceIncidencePreserved":false,"surfaceToleranceViolationProved":false,
++        "fullFanGraphRefuted":false,"faceCompatibleAlternativeTransportExcluded":false,"publicationAuthorized":false,
++        "limitation":"a common source lift shared by neighbouring consumers could still be valid; cell-trimmed coverage and conforming interface transport require separate proof"});
++    if let Ok(path) = std::env::var("SFCC_FULLFAN_C_RECEIPT") {
++        std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    }
++}
++
++#[test]
++fn fullfan_c_plane_exclusion_requires_strict_finite_separation() {
++    assert!(!excludes_plane(0., 1., 0.));
++    assert!(!excludes_plane(0., 1., 1.));
++    assert!(!excludes_plane(0., 1., 0.5));
++    assert!(excludes_plane(0., 1., 1.0_f64.next_up()));
++    assert!(!excludes_plane(1., 0., 2.));
++    assert!(!excludes_plane(0., 1., f64::NAN));
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/fullfan_geometry_b.rs
+@@ -0,0 +1,137 @@
++//! Exact fan-domain embedding and conditional graph-lift transport; no source equation is evaluated.
++use crate::sfcc::{predicates::orient2d, triangle_quality as q};
++use crate::sdf::enclosure::Interval as I;
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++type Point = [f64; 3];
++type Result<T> = std::result::Result<T, &'static str>;
++
++fn yz(p: Point) -> [f64; 2] { [p[1], p[2]] }
++fn on_segment(a: [f64;2], b: [f64;2], p: [f64;2]) -> bool {
++    orient2d(a,b,p)==0 && (0..2).all(|k|p[k]>=a[k].min(b[k]) && p[k]<=a[k].max(b[k]))
++}
++fn segments_meet(a:[f64;2],b:[f64;2],c:[f64;2],d:[f64;2])->bool {
++    let s=[orient2d(a,b,c),orient2d(a,b,d),orient2d(c,d,a),orient2d(c,d,b)];
++    (s[0]*s[1]<0 && s[2]*s[3]<0)
++        || on_segment(a,b,c) || on_segment(a,b,d) || on_segment(c,d,a) || on_segment(c,d,b)
++}
++fn domain(boundary:&[usize], triangles:&[usize], points:&BTreeMap<usize,Point>, rounded:bool)->Result<Value> {
++    if boundary.len()<3 || boundary.len()>64 || triangles.len()!=3*boundary.len() || points.len()>128 {
++        return Err("fan_domain_inventory");
++    }
++    let ids:BTreeSet<_>=boundary.iter().copied().collect();
++    let apex=triangles[0];
++    if ids.len()!=boundary.len() || ids.contains(&apex) {return Err("fan_domain_repeated_boundary_or_apex");}
++    let get=|id:usize|->Result<Point>{
++        let p=*points.get(&id).ok_or("fan_domain_missing_point")?;
++        let p=if rounded {q::rounded(p)} else {p};
++        if p.iter().any(|v|!v.is_finite()) {return Err("fan_domain_nonfinite");}
++        Ok(p)
++    };
++    let center=yz(get(apex)?);
++    let polygon:Vec<_>=boundary.iter().map(|&id|get(id).map(yz)).collect::<Result<_>>()?;
++    if polygon.iter().enumerate().any(|(i,p)|polygon[..i].contains(p)) {return Err("fan_domain_projected_vertex_collision");}
++    let winding=orient2d(polygon[0],polygon[1],center);
++    if winding==0 {return Err("fan_domain_apex_not_strict_kernel");}
++    for i in 0..boundary.len() {
++        let j=(i+1)%boundary.len();
++        if triangles[3*i..3*i+3]!=[apex,boundary[i],boundary[j]] {return Err("fan_domain_triangle_inventory");}
++        if orient2d(polygon[i],polygon[j],center)!=winding {return Err("fan_domain_apex_not_strict_kernel");}
++        for k in i+1..boundary.len() {
++            let l=(k+1)%boundary.len();
++            if j==k || l==i {continue;}
++            if segments_meet(polygon[i],polygon[j],polygon[k],polygon[l]) {return Err("fan_domain_boundary_self_contact");}
++        }
++    }
++    Ok(json!({"precision":if rounded {"f32 represented coordinates"} else {"f64 represented coordinates"},
++        "projection":"YZ","apex":apex,"boundary":boundary,"triangleCount":boundary.len(),"winding":winding,
++        "simpleBoundary":true,"strictKernelApex":true,"exactCyclicFan":true,"projectedDiskEmbedded":true,
++        "sharedEdgeAffineXAgrees":true,"scope":"entire closed projected polygon tiled once by the indexed fan; no source exposure claim"}))
++}
++fn distance_upper(a:Point,b:Point)->Option<f64>{
++    let mut s=I::point(0.);
++    for k in 0..3 {s=s.add(crate::sfcc::loft_seam::square(I::point(a[k]).sub(I::point(b[k]))?)?)?;}
++    let d=s.hi.sqrt().next_up();d.is_finite().then_some(d)
++}
++pub(crate) struct FanDomain { report: Value, export_bounds: Vec<f64> }
++impl FanDomain {
++    pub(crate) fn report(&self) -> &Value { &self.report }
++}
++
++pub(crate) fn audit(boundary:&[usize],triangles:&[usize],points:&BTreeMap<usize,Point>)->Result<FanDomain>{
++    let working=domain(boundary,triangles,points,false)?;
++    let exported=domain(boundary,triangles,points,true)?;
++    if working["winding"] != exported["winding"] {return Err("fan_domain_export_orientation_reversal");}
++    let mut per_triangle=Vec::with_capacity(boundary.len());
++    for t in triangles.chunks_exact(3) {
++        let mut upper=0.0_f64;
++        for id in t {let p=*points.get(id).ok_or("fan_domain_missing_point")?;
++            upper=upper.max(distance_upper(p,q::rounded(p)).ok_or("fan_domain_rounding_bound")?);
++        }
++        per_triangle.push(upper);
++    }
++    let upper=per_triangle.iter().copied().fold(0.,f64::max);
++    let report=json!({"working":working,"exported":exported,"triangles":triangles,
++        "pointBits":points.iter().map(|(&id,p)|json!([id,p.map(f64::to_bits)])).collect::<Vec<_>>(),
++        "exportProjectedOrientationPreserved":true,"uniformMeshToExportBound":upper,"triangleMeshToExportBounds":per_triangle,
++        "roundingProof":"same barycentric coordinates give convex combinations of vertex displacements; triangle norm bounded by largest vertex norm",
++        "conditionalLiftTheorem":"a continuous unique source root in X over this entire YZ disk gives a homeomorphic lifted disk; shared edges agree by common root uniqueness",
++        "sourceRootExistenceProvedHere":false,"intendedTrimBoundaryCorrespondenceProved":false,
++        "sourceFacePlaneIncidencePreservedByXLift":false,"publicationAuthorized":false});
++    Ok(FanDomain{report,export_bounds:per_triangle})
++}
++
++/// Conditional composition only; the caller must independently bind each source bound to this exact triangle.
++pub(crate) fn combine_error(geometry:&FanDomain, source_bounds:&[f64], tolerance:f64)->Result<Value>{
++    let rounded=&geometry.export_bounds;
++    if source_bounds.is_empty() || source_bounds.len()!=rounded.len() || !tolerance.is_finite() || tolerance<=0. {
++        return Err("fan_transport_scope");
++    }
++    let mut total=0.0_f64;
++    for (&source,rounded) in source_bounds.iter().zip(rounded) {
++        let rounded=*rounded;
++        if !source.is_finite() || source<0. || !rounded.is_finite() || rounded<0. {return Err("fan_transport_bound");}
++        let sum=I::point(source).add(I::point(rounded)).ok_or("fan_transport_bound")?.hi;
++        total=total.max(sum);
++    }
++    if total>tolerance {return Err("fan_transport_tolerance");}
++    Ok(json!({"conditionalSourceToExportUpper":total,"tolerance":tolerance,
++        "wholeTriangleAndBoundaryErrorConditionalOnSourceBounds":true,
++        "proof":"source-to-working graph bound plus barycentric working-to-export bound; no equality of f64 and f32 projected domains assumed",
++        "exactSourceFaceOrFeatureBoundaryIncidence":false,"publicationAuthorized":false}))
++}
++
++#[test]
++fn fullfan_b_actual_projected_disk_and_export_rounding(){
++    let saved:Value=serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let points:BTreeMap<usize,Point>=saved["points"].as_array().unwrap().iter().map(|r|(r["id"].as_u64().unwrap() as usize,
++        std::array::from_fn(|k|f64::from_bits(u64::from_str_radix(r["positionHex"][k].as_str().unwrap(),16).unwrap())))).collect();
++    let boundary:Vec<usize>=serde_json::from_value(saved["fan"]["polygon"].clone()).unwrap();
++    let triangles:Vec<usize>=serde_json::from_value(saved["fan"]["triangles"].clone()).unwrap();
++    let domain=audit(&boundary,&triangles,&points).unwrap();
++    let report=domain.report();
++    assert_eq!(report["working"]["triangleCount"],6);assert_eq!(report["exported"]["projectedDiskEmbedded"],true);
++    let receipt=json!({"parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":saved["fingerprint"],"geometry":report,
++        "boundaryEvidence":serde_json::from_str::<Value>(include_str!("../../fixtures/fullfan-boundary-b.json")).unwrap(),
++        "sourceRootCertificateNeeded":true,"exactCellTrimCoverageProved":false});
++    if let Ok(path)=std::env::var("SFCC_FULLFAN_B_RECEIPT"){std::fs::write(path,serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();}
++}
++#[test]
++fn fullfan_b_refuses_wrong_inventory_fold_and_export_collapse(){
++    let mut points=BTreeMap::from([(0,[0.,0.,0.]),(1,[0.,-1.,-1.]),(2,[0.,1.,-1.]),(3,[0.,1.,1.]),(4,[0.,-1.,1.])]);
++    let boundary=[1,2,3,4];let triangles=[0,1,2,0,2,3,0,3,4,0,4,1];
++    assert!(audit(&boundary,&triangles,&points).is_ok());
++    let mut wrong=triangles;wrong.swap(1,2);assert!(audit(&boundary,&wrong,&points).is_err());
++    points.insert(0,[0.,3.,0.]);assert!(audit(&boundary,&triangles,&points).is_err());
++    points.insert(0,[0.,0.,0.]);points.insert(2,[0.,-1.+1e-10,-1.]);
++    assert!(domain(&boundary,&triangles,&points,false).is_ok());
++    assert_eq!(domain(&boundary,&triangles,&points,true),Err("fan_domain_projected_vertex_collision"));
++}
++#[test]
++fn fullfan_b_error_composition_retains_original_limit(){
++    let geometry=FanDomain{report:Value::Null,export_bounds:vec![1e-7,2e-7]};
++    assert!(combine_error(&geometry,&[0.001,0.002],0.01).is_ok());
++    assert!(combine_error(&geometry,&[0.01,0.01],0.01).is_err());
++    assert!(combine_error(&geometry,&[f64::NAN,0.],0.01).is_err());
++    assert!(combine_error(&geometry,&[0.],0.01).is_err());
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/fullfan_source_a.rs
+@@ -0,0 +1,640 @@
++//! Closed-domain source root graphs; source branch and numerical mesh ownership remain distinct.
++use super::*;
++use serde_json::{json, Value};
++type R<T> = std::result::Result<T, &'static str>;
++type P = [I; 3];
++type Triangle = [P; 3];
++const MAX_PIECES: usize = 128;
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn absmax(x: I) -> f64 {
++    x.lo.abs().max(x.hi.abs())
++}
++fn hull(points: &Triangle) -> Option<P> {
++    let mut out = [I::point(0.); 3];
++    for k in 0..3 {
++        out[k] = interval(
++            points.iter().map(|p| p[k].lo).fold(f64::INFINITY, f64::min),
++            points
++                .iter()
++                .map(|p| p[k].hi)
++                .fold(f64::NEG_INFINITY, f64::max),
++        )?;
++    }
++    Some(out)
++}
++fn diameter2(points: &Triangle) -> Option<f64> {
++    let mut upper: f64 = 0.;
++    for i in 0..3 {
++        for j in i + 1..3 {
++            let mut sum = I::point(0.);
++            for k in 0..3 {
++                sum = sum.add(square(points[i][k].sub(points[j][k])?)?)?;
++            }
++            upper = upper.max(sum.hi);
++        }
++    }
++    Some(upper)
++}
++fn midpoint(a: P, b: P) -> Option<P> {
++    Some([
++        a[0].add(b[0])?.mul(0.5)?,
++        a[1].add(b[1])?.mul(0.5)?,
++        a[2].add(b[2])?.mul(0.5)?,
++    ])
++}
++fn split(t: Triangle) -> Option<[Triangle; 2]> {
++    let mut selected = (0, 1, 2);
++    let mut longest = f64::NEG_INFINITY;
++    for (a, b, c) in [(0, 1, 2), (1, 2, 0), (2, 0, 1)] {
++        let d = square(t[a][1].sub(t[b][1])?)?
++            .add(square(t[a][2].sub(t[b][2])?)?)?
++            .hi;
++        if d > longest {
++            longest = d;
++            selected = (a, b, c);
++        }
++    }
++    let (a, b, c) = selected;
++    let m = midpoint(t[a], t[b])?;
++    Some([[t[a], m, t[c]], [m, t[b], t[c]]])
++}
++
++struct Source<'a> {
++    f: &'a SfccFeatureSet,
++    cylinder_id: usize,
++    source: [usize; 3],
++    native: &'a Leaf,
++    other: &'a Leaf,
++    groove: &'a Leaf,
++    cap: &'a Leaf,
++    sphere: &'a Leaf,
++    p: TwistedSideParams,
++    center: [f64; 3],
++    radius: f64,
++    half: f64,
++    inner_r: f64,
++    chamfer_r: f64,
++    outer_r: f64,
++}
++impl<'a> Source<'a> {
++    fn bind(f: &'a SfccFeatureSet, cylinder_id: usize) -> Option<Self> {
++        let (source, _, _) = alias_face_b::select(f)?;
++        let cyl = f.strata.get(cylinder_id)?;
++        let (center, axis, radius) = cyl.certificate_cylinder()?;
++        if axis != [0., 1., 0.] || radius <= 0. || !radius.is_finite() || cyl.sign != 1. {
++            return None;
++        }
++        let root = cyl.exposure_root_a()?;
++        let (cap_cut, sphere, outer_r) =
++            pair(root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++        let (groove_cut, cap, _) = pair(cap_cut, None).ok()?;
++        let (hard, groove, chamfer_r) =
++            pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++        let (inner, cylinder, _) = pair(hard, None).ok()?;
++        let (other, native, inner_r) =
++            pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++        let cylinder = leaf(cylinder, 1.).ok()?;
++        let native = leaf(native, 1.).ok()?;
++        let other = leaf(other, 1.).ok()?;
++        let groove = leaf(groove, -1.).ok()?;
++        let cap = leaf(cap, -1.).ok()?;
++        let sphere = leaf(sphere, 1.).ok()?;
++        let (p, rn, ro, rr) = f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++        let registered = cyl.correlated_cylinder_source_c(&f.strata[source[0]])?;
++        if !std::ptr::eq(cylinder, registered)
++            || !std::ptr::eq(native, rn)
++            || !std::ptr::eq(other, ro)
++            || rr != inner_r
++            || cylinder.pos != center
++            || [native, other, groove, sphere]
++                .iter()
++                .any(|l| l.pos[0] != center[0] || l.pos[2] != center[2])
++        {
++            return None;
++        }
++        let Shape::Cylinder { r, h } = cylinder.shape else {
++            return None;
++        };
++        if r != radius {
++            return None;
++        }
++        Some(Self {
++            f,
++            cylinder_id,
++            source,
++            native,
++            other,
++            groove,
++            cap,
++            sphere,
++            p,
++            center,
++            radius,
++            half: h,
++            inner_r,
++            chamfer_r,
++            outer_r,
++        })
++    }
++    fn raw(&self, xyz: P) -> Option<(I, I, [I; 2], I, I, I)> {
++        let x = xyz[0].sub(I::point(self.center[0]))?;
++        let y = xyz[1];
++        let z = xyz[2].sub(I::point(self.center[2]))?;
++        let local_y = y.sub(I::point(self.p.pos_y))?;
++        if !self.p.h.is_finite()
++            || self.p.h <= 0.
++            || local_y.lo < -self.p.h
++            || local_y.hi > self.p.h
++        {
++            return None;
++        }
++        let k = div(I::point(self.p.twist_rad), 2. * self.p.h)?;
++        let theta = mul(local_y.add(I::point(self.p.h))?, k)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let u = mul(x, cs)?.add(mul(z, sn)?)?;
++        let v = mul(z, cs)?.sub(mul(x, sn)?)?;
++        let a = cs.mul(self.p.nx2)?.sub(sn.mul(self.p.nz2)?)?;
++        let b = sn.mul(self.p.nx2)?.add(cs.mul(self.p.nz2)?)?;
++        let e = u
++            .sub(I::point(self.p.v0x))?
++            .mul(self.p.nx2)?
++            .add(v.sub(I::point(self.p.v0z))?.mul(self.p.nz2)?)?;
++        let rho = sqrt(square(x)?.add(square(z)?)?)?;
++        Some((e, rho, [u, v], a, b, k))
++    }
++    fn inside_native_upper(&self, q: [I; 2], y: I) -> Option<f64> {
++        let Shape::Extrude { verts, h, .. } = &self.native.shape else {
++            return None;
++        };
++        let n = verts.len() / 2;
++        if n < 3 || n > 64 || verts.len() != 2 * n || verts.iter().any(|v| !v.is_finite()) {
++            return None;
++        }
++        let v = |i: usize| [verts[2 * (i % n)], verts[2 * (i % n) + 1]];
++        let orientation = crate::sfcc::predicates::orient2d(v(0), v(1), v(2));
++        if orientation == 0 {
++            return None;
++        }
++        let mut margin = f64::INFINITY;
++        for i in 0..n {
++            for j in 0..n {
++                if j != i
++                    && j != (i + 1) % n
++                    && crate::sfcc::predicates::orient2d(v(i), v(i + 1), v(j)) != orientation
++                {
++                    return None;
++                }
++            }
++            let a = v(i);
++            let b = v(i + 1);
++            let dx = I::point(b[0]).sub(I::point(a[0]))?;
++            let dz = I::point(b[1]).sub(I::point(a[1]))?;
++            let distance = quotient(
++                mul(dx, q[1].sub(I::point(a[1]))?)?
++                    .sub(mul(dz, q[0].sub(I::point(a[0]))?)?)?
++                    .mul(orientation as f64)?,
++                sqrt(square(dx)?.add(square(dz)?)?)?,
++            )?;
++            if distance.lo <= 0. {
++                return None;
++            }
++            margin = margin.min(distance.lo);
++        }
++        let axial = y.sub(I::point(self.native.pos[1]))?;
++        let cap = I::point(absmax(axial)).sub(I::point(*h))?;
++        let upper = (-margin).max(cap.hi);
++        (upper < 0.).then_some(upper)
++    }
++    fn admit(&self, xyz: P) -> R<Region> {
++        let (e, rho, q, a, b, k) = self.raw(xyz).ok_or("raw_or_clamp")?;
++        if rho.lo <= 0. {
++            return Err("axis");
++        }
++        let c = rho.sub(I::point(self.radius)).ok_or("arithmetic")?;
++        upper_source_a::cap_margin(xyz[1], self.center[1], self.half, c).ok_or("cylinder_cap")?;
++        let other =
++            activation_a::meridian_bound(self.other, rho, xyz[1]).ok_or("other_finite_meridian")?;
++        let groove = activation_a::meridian_bound(self.groove, rho, xyz[1])
++            .ok_or("groove_finite_meridian")?;
++        if other.distance.lo <= self.inner_r || groove.distance.lo <= 0. {
++            return Err("inner_or_groove_activity");
++        }
++        let inactive_native = self.inside_native_upper(q, xyz[1]).is_some_and(|n| {
++            n < 0.
++                && I::point(n)
++                    .sub(groove.distance)
++                    .and_then(|a| a.add(I::point(self.chamfer_r)))
++                    .is_some_and(|v| v.hi < 0.)
++        });
++        if !inactive_native {
++            upper_source_a::finite_profile_level(self.p, self.native, q, e)
++                .ok_or("native_finite_side")?;
++            upper_source_a::cap_margin(xyz[1], self.p.pos_y, self.p.h, e).ok_or("native_cap")?;
++            if e.hi >= self.inner_r {
++                return Err("inner_round_activity");
++            }
++        }
++        let Shape::Extrude { h: cap_h, .. } = self.cap.shape else {
++            return Err("cap_source");
++        };
++        let cap_margin = I::point(self.cap.pos[1])
++            .sub(I::point(cap_h))
++            .and_then(|v| v.sub(xyz[1]))
++            .ok_or("arithmetic")?
++            .lo;
++        let Shape::Sphere { r: sphere_r } = self.sphere.shape else {
++            return Err("sphere_source");
++        };
++        let axial = xyz[1]
++            .sub(I::point(self.sphere.pos[1]))
++            .ok_or("arithmetic")?;
++        let sphere2 = square(rho)
++            .and_then(|v| v.add(square(axial)?))
++            .ok_or("arithmetic")?;
++        let sphere_distance = sqrt(sphere2).ok_or("arithmetic")?;
++        let outer_margin = I::point(sphere_r)
++            .sub(I::point(self.outer_r))
++            .and_then(|v| v.sub(sphere_distance))
++            .ok_or("arithmetic")?
++            .lo;
++        if cap_margin <= 0. || outer_margin <= 0. {
++            return Err("ancestor_activity");
++        }
++        let cx = quotient(
++            xyz[0].sub(I::point(self.center[0])).ok_or("arithmetic")?,
++            rho,
++        )
++        .ok_or("arithmetic")?;
++        let w = std::f64::consts::FRAC_1_SQRT_2;
++        let qe_dx = a
++            .sub(mul(groove.nr, cx).ok_or("arithmetic")?)
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?;
++        let qc_dx = mul(I::point(1.).sub(groove.nr).ok_or("arithmetic")?, cx)
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?;
++        let derivative = if inactive_native {
++            cx.hi.max(qc_dx.hi)
++        } else {
++            cx.hi.max(qc_dx.hi).max(a.hi).max(qe_dx.hi)
++        };
++        if derivative >= 0. {
++            return Err("root_direction_not_monotone");
++        }
++        let m_rho = quotient(I::point(1.), rho).ok_or("arithmetic")?.hi;
++        let eyy = square(k)
++            .and_then(|kk| {
++                mul(
++                    kk,
++                    mul(a, xyz[0].sub(I::point(self.center[0]))?)?
++                        .add(mul(b, xyz[2].sub(I::point(self.center[2]))?)?)?,
++                )
++            })
++            .ok_or("arithmetic")?;
++        let ax = mul(k, b).ok_or("arithmetic")?;
++        let bz = mul(k, a).ok_or("arithmetic")?;
++        let m_e = sqrt(
++            square(ax)
++                .and_then(|v| v.add(square(bz)?))
++                .and_then(|v| v.mul(2.))
++                .and_then(|v| v.add(square(eyy)?))
++                .ok_or("arithmetic")?,
++        )
++        .ok_or("arithmetic")?
++        .hi;
++        let m_qe = I::point(m_e)
++            .add(I::point(m_rho).mul(absmax(groove.nr)).ok_or("arithmetic")?)
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?
++            .hi;
++        let m_qc = I::point(m_rho)
++            .mul(absmax(I::point(1.).sub(groove.nr).ok_or("arithmetic")?))
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?
++            .hi;
++        Ok(Region {
++            groove,
++            active_native: !inactive_native,
++            mu: -derivative,
++            m: [m_e, m_rho, m_qe, m_qc],
++            cap_margin,
++            outer_margin,
++        })
++    }
++    fn terms(&self, xyz: P, r: &Region) -> Option<[I; 4]> {
++        let (e, rho, _, _, _, _) = self.raw(xyz)?;
++        let c = rho.sub(I::point(self.radius))?;
++        let d = mul(r.groove.nr, rho)?
++            .add(mul(r.groove.ny, xyz[1])?)?
++            .add(r.groove.offset)?;
++        let w = std::f64::consts::FRAC_1_SQRT_2;
++        Some([
++            e,
++            c,
++            e.sub(d)?.add(I::point(self.chamfer_r))?.mul(w)?,
++            c.sub(d)?.add(I::point(self.chamfer_r))?.mul(w)?,
++        ])
++    }
++    fn bound_terms(&self, t: Triangle, r: &Region) -> Option<([f64; 4], [f64; 4])> {
++        let values = [
++            self.terms(t[0], r)?,
++            self.terms(t[1], r)?,
++            self.terms(t[2], r)?,
++        ];
++        let d2 = diameter2(&t)?;
++        let mut lo = [0.; 4];
++        let mut hi = [0.; 4];
++        for k in 0..4 {
++            let error = div(I::point(r.m[k]).mul(d2)?, 6.)?.hi;
++            lo[k] = I::point(values.iter().map(|v| v[k].lo).fold(f64::INFINITY, f64::min))
++                .sub(I::point(error))?
++                .lo;
++            hi[k] = I::point(
++                values
++                    .iter()
++                    .map(|v| v[k].hi)
++                    .fold(f64::NEG_INFINITY, f64::max),
++            )
++            .add(I::point(error))?
++            .hi;
++        }
++        Some((lo, hi))
++    }
++    fn piece(&self, t: Triangle, slab: I, tolerance: f64) -> R<Value> {
++        let mut b = hull(&t).ok_or("arithmetic")?;
++        b[0] = slab;
++        let r = self.admit(b)?;
++        let mut left = t;
++        let mut right = t;
++        for p in &mut left {
++            p[0] = I::point(slab.lo);
++        }
++        for p in &mut right {
++            p[0] = I::point(slab.hi);
++        }
++        let (lo, _) = self.bound_terms(left, &r).ok_or("arithmetic")?;
++        let (_, hi) = self.bound_terms(right, &r).ok_or("arithmetic")?;
++        let indices: &[usize] = if r.active_native {
++            &[0, 1, 2, 3]
++        } else {
++            &[1, 3]
++        };
++        let left_lower = indices
++            .iter()
++            .map(|&i| lo[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        let right_upper = indices
++            .iter()
++            .map(|&i| hi[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        if left_lower <= 0. || right_upper >= 0. {
++            return Err("strict_brackets");
++        }
++        let (lo, hi) = self.bound_terms(t, &r).ok_or("arithmetic")?;
++        let lower = indices
++            .iter()
++            .map(|&i| lo[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        let upper = indices
++            .iter()
++            .map(|&i| hi[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        let residual = (-lower).max(upper).max(0.);
++        let error = div(I::point(residual), r.mu).ok_or("arithmetic")?.hi;
++        if error > tolerance {
++            return Err("approximation_bound");
++        }
++        Ok(
++            json!({"slab": [slab.lo,slab.hi],"domainImage":t.map(|p|p.map(|v|[v.lo,v.hi])),"nativeSideActiveCandidate":r.active_native,
++            "reducedFunctionDecreasingRateLower":r.mu,"leftSignLower":left_lower,"rightSignUpper":right_upper,
++            "meshResidualBounds":[lower,upper],"sameYZRootDisplacementUpper":error,"capMargin":r.cap_margin,"outerRoundMargin":r.outer_margin}),
++        )
++    }
++}
++struct Region {
++    groove: activation_a::MeridianBound,
++    active_native: bool,
++    mu: f64,
++    m: [f64; 4],
++    cap_margin: f64,
++    outer_margin: f64,
++}
++
++pub(crate) fn certify(
++    f: &SfccFeatureSet,
++    cylinder_id: usize,
++    triangles: &[[[f64; 3]; 3]],
++    tolerance: f64,
++) -> std::result::Result<Value, String> {
++    if triangles.is_empty()
++        || triangles.len() > 128
++        || !tolerance.is_finite()
++        || tolerance <= 0.
++        || triangles.iter().flatten().flatten().any(|x| !x.is_finite())
++        || triangles.iter().any(|t| {
++            crate::sfcc::predicates::orient2d(
++                [t[0][1], t[0][2]],
++                [t[1][1], t[1][2]],
++                [t[2][1], t[2][2]],
++            ) == 0
++        })
++    {
++        return Err("invalid_domain".into());
++    }
++    let source = Source::bind(f, cylinder_id).ok_or("source_binding")?;
++    let minx = triangles
++        .iter()
++        .flatten()
++        .map(|p| p[0])
++        .fold(f64::INFINITY, f64::min);
++    let maxx = triangles
++        .iter()
++        .flatten()
++        .map(|p| p[0])
++        .fold(f64::NEG_INFINITY, f64::max);
++    let slab = interval(
++        I::point(minx).sub(I::point(tolerance)).ok_or("slab")?.lo,
++        I::point(maxx).add(I::point(tolerance)).ok_or("slab")?.hi,
++    )
++    .ok_or("slab")?;
++    let mut stack: Vec<_> = triangles
++        .iter()
++        .enumerate()
++        .rev()
++        .map(|(i, t)| (i, 0, t.map(|p| p.map(I::point))))
++        .collect();
++    let mut attempts = 0;
++    let mut accepted = Vec::new();
++    let mut bounds = vec![0.0_f64; triangles.len()];
++    let mut failures = Vec::new();
++    while let Some((index, depth, t)) = stack.pop() {
++        if attempts == MAX_PIECES {
++            return Err(format!(
++                "piece_cap: accepted {}, pending {}, last {:?}",
++                accepted.len(),
++                stack.len(),
++                failures.last()
++            ));
++        }
++        attempts += 1;
++        match source.piece(t, slab, tolerance) {
++            Ok(mut row) => {
++                let bound = row["sameYZRootDisplacementUpper"]
++                    .as_f64()
++                    .ok_or("bound_encoding")?;
++                bounds[index] = bounds[index].max(bound);
++                row["triangle"] = json!(index);
++                row["depth"] = json!(depth);
++                accepted.push(row);
++            }
++            Err(reason) => {
++                failures.push(json!({"triangle":index,"depth":depth,"reason":reason}));
++                if depth >= 12 {
++                    return Err(format!(
++                        "unproved_piece: {reason}, triangle {index}, depth {depth}"
++                    ));
++                }
++                let [a, b] = split(t).ok_or("split_arithmetic")?;
++                stack.push((index, depth + 1, b));
++                stack.push((index, depth + 1, a));
++            }
++        }
++    }
++    Ok(
++        json!({"scope":"unique full-source root graph over every supplied closed projected triangle, and same-YZ mesh-to-root displacement; supplied-domain topology and cell-face boundary transport are separate obligations",
++        "sourceFingerprint":source.f.fingerprint().to_string(),"source":source.source,"cylinder":source.cylinder_id,"commonWorldXSlab":[slab.lo,slab.hi],
++        "triangleCount":triangles.len(),"attempts":attempts,"acceptedPieces":accepted.len(),"pieceCap":MAX_PIECES,"perTriangleSourceBounds":bounds,
++        "uniformSourceBound":bounds.iter().copied().fold(0.,f64::max),"tolerance":tolerance,"refinedFailures":failures,"pieces":accepted,
++        "fullClosedTriangleDomainsCovered":true,"sharedEdgeRootsAgreeByCommonSlabUniqueness":true,"fullFieldGloballyMonotoneClaimed":false,
++        "cellFaceBoundaryTransportProved":false,"patchLabelsAssigned":false,"publicationReady":false}),
++    )
++}
++
++#[cfg(test)]
++fn fixture() -> (SfccFeatureSet, usize, Vec<[[f64; 3]; 3]>, f64, Value) {
++    use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++    let input: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(input["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let cube = SfccWorldCube {
++        min_x: input["cube"]["min"][0].as_f64().unwrap(),
++        min_y: input["cube"]["min"][1].as_f64().unwrap(),
++        min_z: input["cube"]["min"][2].as_f64().unwrap(),
++        size: input["cube"]["max"][0].as_f64().unwrap() - input["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = build_pipeline_context(&root, &cube, &PipelineTuning::default()).features;
++    assert_eq!(
++        f.fingerprint().to_string(),
++        saved["fingerprint"].as_str().unwrap()
++    );
++    let points: std::collections::BTreeMap<usize, [f64; 3]> = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|p| {
++            (
++                p["id"].as_u64().unwrap() as usize,
++                std::array::from_fn(|k| {
++                    f64::from_bits(
++                        u64::from_str_radix(p["positionHex"][k].as_str().unwrap(), 16).unwrap(),
++                    )
++                }),
++            )
++        })
++        .collect();
++    let ids: Vec<usize> = serde_json::from_value(saved["fan"]["triangles"].clone()).unwrap();
++    let triangles: Vec<_> = ids
++        .chunks_exact(3)
++        .map(|t| [points[&t[0]], points[&t[1]], points[&t[2]]])
++        .collect();
++    let tolerance = f64::from_bits(
++        u64::from_str_radix(saved["options"]["surfaceTolHex"].as_str().unwrap(), 16).unwrap(),
++    );
++    let sid = saved["fan"]["stratum"].as_u64().unwrap() as usize;
++    (
++        f,
++        sid,
++        triangles,
++        tolerance,
++        saved["parentReceiptSha256"].clone(),
++    )
++}
++
++#[test]
++fn fullfan_a_actual_closed_source_graph() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, sid, triangles, tolerance, parent) = fixture();
++    let result = certify(&f, sid, &triangles, tolerance);
++    if let Ok(path) = std::env::var("SFCC_FULLFAN_A_RECEIPT") {
++        std::fs::write(
++            path,
++            serde_json::to_vec_pretty(&json!({"result":result,"parentReceiptSha256":parent}))
++                .unwrap(),
++        )
++        .unwrap();
++    }
++    let report = result.expect("actual full-fan source graph");
++    assert_eq!(
++        report["tolerance"].as_f64().unwrap().to_bits(),
++        tolerance.to_bits()
++    );
++    assert!(report["uniformSourceBound"].as_f64().unwrap() <= tolerance);
++}
++
++#[test]
++fn fullfan_a_refuses_invalid_source_domain_and_tighter_budget() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, sid, triangles, tolerance, _) = fixture();
++    assert_eq!(
++        certify(&f, usize::MAX, &triangles, tolerance).unwrap_err(),
++        "source_binding"
++    );
++    let mut foreign = f.clone();
++    foreign.strata[sid].sign = -1.;
++    assert_eq!(
++        certify(&foreign, sid, &triangles, tolerance).unwrap_err(),
++        "source_binding"
++    );
++    for tol in [0., -tolerance, f64::NAN, f64::INFINITY] {
++        assert_eq!(
++            certify(&f, sid, &triangles, tol).unwrap_err(),
++            "invalid_domain"
++        );
++    }
++    assert_eq!(
++        certify(&f, sid, &[], tolerance).unwrap_err(),
++        "invalid_domain"
++    );
++    let mut bad = triangles.clone();
++    bad[0][0][0] = f64::NAN;
++    assert_eq!(
++        certify(&f, sid, &bad, tolerance).unwrap_err(),
++        "invalid_domain"
++    );
++    let mut degenerate = triangles.clone();
++    degenerate[0][1] = degenerate[0][0];
++    assert_eq!(
++        certify(&f, sid, &degenerate, tolerance).unwrap_err(),
++        "invalid_domain"
++    );
++    assert!(
++        certify(&f, sid, &triangles, 1e-14).is_err(),
++        "unproved tighter tolerance cannot borrow original tolerance"
++    );
++    let repeated = triangles.repeat(21);
++    assert_eq!(repeated.len(), 126);
++    assert!(
++        certify(&f, sid, &repeated, tolerance)
++            .unwrap_err()
++            .starts_with("piece_cap:"),
++        "128 attempts apply globally, not per input triangle"
++    );
++}

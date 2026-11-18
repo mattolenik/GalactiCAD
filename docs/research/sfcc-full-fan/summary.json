@@ -1,0 +1,65 @@
+{
+  "selected": "Reviewed",
+  "sourceManifestSha256": "210be73002f70e29393735ce5ce990c9d253afec07986154b36ba4d0dde9f561",
+  "componentReceiptSha256": "55856ec0b17f14c1dbcddaf1637154422d4bb800f5b033bfebd9ace29480fb45",
+  "preservation": {
+    "candidatePointsIdentical": true,
+    "candidateTrianglesIdentical": true,
+    "candidateTopologyIdentical": true,
+    "intervalsIdenticalAfterSorting": true,
+    "candidateGeneratedQueriesIdentical": true,
+    "candidateQueryCostsIdentical": true,
+    "retainedMetadataIdentical": true,
+    "candidateLedgerUnchanged": true,
+    "proofFanTrianglesMatchActual": true,
+    "proofPointsMatchActual": true,
+    "boundaryRecordMatchesActual": true,
+    "boundaryPointsMatchProof": true,
+    "boundarySourceRootInCommonSlab": true
+  },
+  "certifiedFanTriangles": 6,
+  "acceptedPieces": 15,
+  "pieceAttempts": 24,
+  "globalPieceCap": 128,
+  "minimumReducedDecreaseRate": 0.8610098527465292,
+  "minimumLeftSignLower": 0.00834290774814789,
+  "maximumRightSignUpper": -0.008314016729317255,
+  "sourceGraphErrorUpper": 0.0005052995078438982,
+  "exportRoundingUpper": 5.206356205475152e-07,
+  "sourceToExportUpper": 0.0005058201434644458,
+  "surfaceTolerance": 0.01,
+  "commonWorldXSlab": [
+    -9.3690502954966,
+    -9.324576470564953
+  ],
+  "wholeClosedFanDomainCovered": true,
+  "workingAndExportedProjectedDisksEmbedded": true,
+  "exportProjectedOrientationPreserved": true,
+  "boundaryFace": [
+    0,
+    3464532,
+    2
+  ],
+  "oppositeConsumer": [
+    7,
+    26,
+    58,
+    86
+  ],
+  "boundaryLiftPlaneGap": [
+    2.2372495038780467e-06,
+    2.237249521641616e-06
+  ],
+  "exactFaceIncidencePreserved": false,
+  "conformingNeighborTransportProved": false,
+  "intendedCellTrimCoverageProved": false,
+  "otherSourceSheetsExcluded": false,
+  "publicationReady": false,
+  "componentTriangles": 1775,
+  "componentGeneratedQueries": 1929,
+  "componentCharges": 8413,
+  "liveStatePreserved": true,
+  "focusedTestsPassed": 48,
+  "focusedCampaignSeconds": 28.698028332961258,
+  "componentSeconds": 36.85553662502207
+}

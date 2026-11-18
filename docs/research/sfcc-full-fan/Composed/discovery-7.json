@@ -1,0 +1,7 @@
+{
+  "filter": "cell_mesh::component_consumers_b::",
+  "tests": [
+    "sfcc::cell_mesh::component_consumers_b::component_b_request_controls_preserve_refusal_and_cleanup"
+  ],
+  "exitCode": 0
+}

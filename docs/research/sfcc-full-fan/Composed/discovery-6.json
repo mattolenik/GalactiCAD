@@ -1,0 +1,9 @@
+{
+  "filter": "component_a_",
+  "tests": [
+    "sfcc::private_arc_a::secondary_component_a::component_a_face_proof_rejects_refused_prefix_and_incomplete_inventory",
+    "sfcc::private_arc_a::secondary_component_a::component_a_paired_inventory_rejects_unsupported_axis_and_ambiguous_pins",
+    "sfcc::private_arc_a::secondary_component_a::component_a_scope_restores_and_conflicting_merge_is_atomic"
+  ],
+  "exitCode": 0
+}

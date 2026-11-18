@@ -1,0 +1,6 @@
+{
+  "selectedSource": "/tmp/sfcc-fullfan-reviewed",
+  "sourceProof": "explicit finite raw cylinder radius/half-height >= primitive floor1e-6; no change to actual witness",
+  "boundaryFixture": "actual face [0,3464532,2], both consumers, original segment binding and rectangle extents; reject wronglength",
+  "sourceProofSha256": "ccb80c5ecf1e24002749fd03630858230b6158d289f409066fcb4043f3b55371"
+}

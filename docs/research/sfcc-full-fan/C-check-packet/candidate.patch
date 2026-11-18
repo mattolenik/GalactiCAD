@@ -1,0 +1,195 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/fullfan-boundary-c.json
+@@ -0,0 +1,73 @@
++{
++  "parentReceiptSha256": "cd25d6db584fbe2717416f14e703073da6642aa2eaf1b690b7159bded678bac5",
++  "sourceFingerprint": "10977506807348230851",
++  "cell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "cellBoxHex": [
++    "c02328e73507c672",
++    "c003f45f6f365a98",
++    "40158efcca8a1862",
++    "c022ab4d9b6e2cd8",
++    "c001fdf908cff432",
++    "40168a2ffdbd4b95"
++  ],
++  "boundaryLoop": [
++    40,
++    38,
++    41,
++    464,
++    465,
++    458,
++    459,
++    460,
++    39
++  ],
++  "pin": {
++    "chart": 49,
++    "id": 40,
++    "parameterHex": "404060f03a059934"
++  },
++  "points": [
++    {
++      "id": 38,
++      "key": "Num(27720370)",
++      "normalHex": [
++        "bfeba8725311684e",
++        "8000000000000000",
++        "3fe01836105e141e"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2cd8",
++        "c001fdf908cff430",
++        "4015ba497f07cc2c"
++      ]
++    },
++    {
++      "id": 40,
++      "key": "Str(\"F0:3464532:49:32.757331135496\")",
++      "normalHex": [
++        "bfead3ce8a5c94d3",
++        "bfcf224954b17dbb",
++        "3fdf38ef56b3fef2"
++      ],
++      "positionHex": [
++        "c022ab4d9b6e2e2a",
++        "c003efb1a33e9e36",
++        "4015ba477b02d6bd"
++      ]
++    }
++  ],
++  "face": [
++    0,
++    3464532,
++    1
++  ],
++  "edge": [
++    40,
++    38
++  ]
++}
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -439,3 +439,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="ownership_source_a.rs"]
+ pub(crate) mod ownership_source_a;
++
++#[cfg(all(test, feature="serde"))]
++#[path="fullfan_boundary_c.rs"]
++pub(crate) mod fullfan_boundary_c;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/fullfan_boundary_c.rs
+@@ -0,0 +1,106 @@
++//! Actual boundary-plane discriminator; a source graph is not an exact cell-interface certificate.
++use crate::math::grid::{cell_aabb, point_to_world, unpack_point};
++use crate::sdf::enclosure::Interval as I;
++use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++use crate::sfcc::validation::NumericalGuard;
++use serde_json::{json, Value};
++
++fn excludes_plane(lo: f64, hi: f64, plane: f64) -> bool {
++    [lo, hi, plane].iter().all(|x| x.is_finite())
++        && lo <= hi
++        && (plane < lo || plane > hi)
++}
++fn number(v: &Value) -> f64 {
++    f64::from_bits(u64::from_str_radix(v.as_str().unwrap(), 16).unwrap())
++}
++fn abs_bounds(x: I) -> [f64; 2] {
++    [if x.lo > 0. { x.lo } else if x.hi < 0. { -x.hi } else { 0. },
++     x.lo.abs().max(x.hi.abs())]
++}
++
++#[test]
++fn fullfan_c_actual_x_face_lift_does_not_preserve_boundary_plane() {
++    let _guard = NumericalGuard::new();
++    let original: Value = serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let fan: Value = serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let boundary: Value = serde_json::from_str(include_str!("../../fixtures/fullfan-boundary-c.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap() - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&root, &cube, &PipelineTuning::default());
++    let features = &context.features;
++    assert_eq!(features.fingerprint().to_string(), boundary["sourceFingerprint"].as_str().unwrap());
++    assert_eq!(boundary["sourceFingerprint"], fan["fingerprint"]);
++    let cell = &boundary["cell"];
++    let box_ = cell_aabb(&context.lat, cell[0].as_u64().unwrap() as u32,
++        cell[1].as_i64().unwrap(), cell[2].as_i64().unwrap(), cell[3].as_i64().unwrap());
++    for (k, x) in box_.iter().enumerate() {
++        assert_eq!(x.to_bits(), number(&boundary["cellBoxHex"][k]).to_bits());
++    }
++    let axis = boundary["face"][0].as_u64().unwrap() as usize;
++    let key = boundary["face"][1].as_i64().unwrap();
++    assert_eq!(axis, 0);
++    let grid = unpack_point(&context.lat, key);
++    let plane = point_to_world(&context.lat, grid[0], grid[1], grid[2])[axis];
++    assert_eq!(plane.to_bits(), box_[3].to_bits(), "actual adaptive-face plane is the original cell's positive X plane");
++    let edge: [usize; 2] = serde_json::from_value(boundary["edge"].clone()).unwrap();
++    let cycle: Vec<usize> = serde_json::from_value(boundary["boundaryLoop"].clone()).unwrap();
++    assert!(cycle.iter().enumerate().any(|(i, &v)| v == edge[0] && cycle[(i + 1) % cycle.len()] == edge[1]));
++    let polygon: Vec<usize> = serde_json::from_value(fan["fan"]["polygon"].clone()).unwrap();
++    assert!(polygon.iter().enumerate().any(|(i, &v)| v == edge[0] && polygon[(i + 1) % polygon.len()] == edge[1]));
++    let rows = boundary["points"].as_array().unwrap();
++    let vertices: [[f64; 3]; 2] = edge.map(|id| {
++        let row = rows.iter().find(|r| r["id"].as_u64() == Some(id as u64)).unwrap();
++        let current = fan["points"].as_array().unwrap().iter().find(|r| r["id"] == row["id"]).unwrap();
++        assert_eq!(row["positionHex"], current["positionHex"]);
++        std::array::from_fn(|k| number(&row["positionHex"][k]))
++    });
++    let pin = &boundary["pin"];
++    assert_eq!(pin["id"].as_u64(), Some(edge[0] as u64));
++    let expected = format!("Str(\"F{}:{}:{}:{:.12}\")", axis, key,
++        pin["chart"].as_u64().unwrap(), number(&pin["parameterHex"]));
++    assert_eq!(rows.iter().find(|r| r["id"] == pin["id"]).unwrap()["key"].as_str().unwrap(), expected);
++    assert_eq!(vertices[1][0].to_bits(), plane.to_bits());
++
++    let midpoint: [I; 3] = std::array::from_fn(|k| I::point(vertices[0][k])
++        .add(I::point(vertices[1][k])).unwrap().mul(0.5).unwrap());
++    let sid = fan["fan"]["stratum"].as_u64().unwrap() as usize;
++    let source = super::ownership_source_a::bound(features, sid,
++        [midpoint[1].lo, midpoint[2].lo], [midpoint[1].hi, midpoint[2].hi]).unwrap();
++    assert_eq!(source["fullSourceEqualsCylinder"], true);
++    let x_lo = source["worldImage"][0][0].as_f64().unwrap();
++    let x_hi = source["worldImage"][1][0].as_f64().unwrap();
++    assert!(excludes_plane(x_lo, x_hi, plane), "source-qualified X lift does not remain on this exact face plane");
++    let x = crate::sfcc::loft_seam::interval(x_lo, x_hi).unwrap();
++    let plane_gap = abs_bounds(x.sub(I::point(plane)).unwrap());
++    let mesh_gap = abs_bounds(x.sub(midpoint[0]).unwrap());
++    let surface_tolerance = number(&fan["options"]["surfaceTolHex"]);
++    assert!(plane_gap[0] > 0. && mesh_gap[0] > 0.);
++    assert!(mesh_gap[1] <= surface_tolerance, "this exact-interface counterexample is not a surface-tolerance violation");
++    let report = json!({"scope":"source-qualified lift of exact dyadic midpoint of an actual captured X-face boundary edge",
++        "parentReceiptSha256":boundary["parentReceiptSha256"],"sourceFingerprint":features.fingerprint().to_string(),
++        "cell":boundary["cell"],"face":boundary["face"],"originalCellBoxBits":box_.map(f64::to_bits),
++        "edge":edge,"originalVertexBits":vertices.map(|p|p.map(f64::to_bits)),
++        "planeBits":plane.to_bits(),"dyadicMidpointBounds":midpoint.map(|v|[v.lo,v.hi]),
++        "source":source,"liftToFacePlaneDistanceBounds":plane_gap,"sameYZLiftToMeshMidpointDistanceBounds":mesh_gap,
++        "surfaceTolerance":surface_tolerance,"exactFaceIncidencePreserved":false,"surfaceToleranceViolationProved":false,
++        "fullFanGraphRefuted":false,"faceCompatibleAlternativeTransportExcluded":false,"publicationAuthorized":false,
++        "limitation":"a common source lift shared by neighbouring consumers could still be valid; cell-trimmed coverage and conforming interface transport require separate proof"});
++    if let Ok(path) = std::env::var("SFCC_FULLFAN_C_RECEIPT") {
++        std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    }
++}
++
++#[test]
++fn fullfan_c_plane_exclusion_requires_strict_finite_separation() {
++    assert!(!excludes_plane(0., 1., 0.));
++    assert!(!excludes_plane(0., 1., 1.));
++    assert!(!excludes_plane(0., 1., 0.5));
++    assert!(excludes_plane(0., 1., 1.0_f64.next_up()));
++    assert!(!excludes_plane(1., 0., 2.));
++    assert!(!excludes_plane(0., 1., f64::NAN));
++}

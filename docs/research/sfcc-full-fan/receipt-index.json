@@ -1,0 +1,1448 @@
+[
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/binary.json",
+    "sha256": "3c63137b9d65bb024f2ba47b031e3a78a744318c19abbacc5e0ab5937b2134a3",
+    "bytes": 220,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/build-execution.json",
+    "sha256": "9a87f07a7b0af01eb279037e5e2e452a1fbb963db5c41f213852a44c9c299534",
+    "bytes": 460,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/build.log",
+    "sha256": "cc93b452db55319102866bea7de50dedd64225cd58f43c595acb7ebae46fa18a",
+    "bytes": 42553,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/clean-kernel-execution.json",
+    "sha256": "c54dfa325c72381c45b6e068d39da3710fb8ae0cec656a56bac32888ab47b709",
+    "bytes": 333,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/clean-kernel.log",
+    "sha256": "fa470a170667753411e3bfcd45e301d64a907cfa32c4dd64470fe44795526d41",
+    "bytes": 36,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/discovery-0.json",
+    "sha256": "af99b7147eea652b28b6d7871036554bcea29bd2a57de3f36f9faf6c869a656a",
+    "bytes": 165,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/focused-0-execution.json",
+    "sha256": "043d8390eedbab18966bf226fccbe9812c0b6a11fd4982a95695d94f03427c03",
+    "bytes": 351,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/focused-0.log",
+    "sha256": "5f6ffb5093eb774deffbdbba415158a2235f432eb1744aa39230967673407037",
+    "bytes": 221,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/fullfan-A.json",
+    "sha256": "3b0f1f52adeea21cf8e6f307fd33b4b9afdc3d46c07c9466228b06e12e2a52c3",
+    "bytes": 27818,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/host-disk.txt",
+    "sha256": "3ac50d78473e93800c934c58dd5136813d99ffc8702b666aae95c36b8084797e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/host-load.txt",
+    "sha256": "7ccd65f222545498c372c708ce206e6ef0e081579f215d1426c33027732e0e2f",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/kernel-tests",
+    "sha256": "96958204adec350c5433e09b488eb7484c5b175ec5792425a955cf31617e82c5",
+    "bytes": 9475120,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/A-check/manifest.json",
+    "sha256": "f31828bd422b3d2feec03471f8d5fe28424100df20e90a1bbb668e7e003c169f",
+    "bytes": 33353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/binary.json",
+    "sha256": "7763ae07e8863dbce580ba8fcfb1f5597ba14c6358afccd3428b1850930b778c",
+    "bytes": 220,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/build-execution.json",
+    "sha256": "c5b7dac58f541b38a961630cac0624ecc4f2ca91e84471d863ab9479c0ad5955",
+    "bytes": 459,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/build.log",
+    "sha256": "ad59655d6f2ea92752b998a2fd1ce629dc90917714f1a475aa587a6e229fb4d0",
+    "bytes": 42553,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/clean-kernel-execution.json",
+    "sha256": "d31d247d0faab19c5dae1f4fbb1723c3b6a294f1d7325f23f3716025f7de571c",
+    "bytes": 333,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/clean-kernel.log",
+    "sha256": "140478e69f47e32b304b87fdd6488d16b2c131fb224176c095fe825a4eec8823",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/discovery-0.json",
+    "sha256": "a2f75c9b8a3e7b2250f9b9ea5983ed056ce887a2fab9bbe24896776d3ff524a4",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/focused-0-execution.json",
+    "sha256": "e5f2fcce3f9bc8f1695ae28c9775204513399174f9af734acffde59c1391e278",
+    "bytes": 352,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/focused-0.log",
+    "sha256": "b0b6f5bb0caecee04b17aa0eb932387d4369359807137a7f4674e02ee7ff29a0",
+    "bytes": 424,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/fullfan-B.json",
+    "sha256": "82ef4cd15fb48cce8505c64c72db8636ddb4462c772cd9573233a05c945e1f56",
+    "bytes": 4240,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/host-disk.txt",
+    "sha256": "3ac50d78473e93800c934c58dd5136813d99ffc8702b666aae95c36b8084797e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/host-load.txt",
+    "sha256": "75708fbf4bd6161e687769782184df07d634def0b5cfa60aa029da3066333f51",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/kernel-tests",
+    "sha256": "e5601b496b5ffd8cd6f7b1cf4bc98ca6d96f74fcbcf43683965bc53676c557a5",
+    "bytes": 9500112,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/B-check/manifest.json",
+    "sha256": "f575116583819cbc10e2c50402ea40bd4b8da67b26fd8f8724bdf7901891d5e7",
+    "bytes": 33518,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/binary.json",
+    "sha256": "f75109b1164242fb4b27d1f177bdcac90dfccec8b2b8d691b3f8a9394002bb0d",
+    "bytes": 220,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/build-execution.json",
+    "sha256": "783fc618e44e01d95ce37ee555984660089aba5ad2083459d98d377863e513ac",
+    "bytes": 460,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/build.log",
+    "sha256": "6f3250526a316ed5eb395f45d8ca0e95226d55a5fe372e1463ae78914e01cb88",
+    "bytes": 42553,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/clean-kernel-execution.json",
+    "sha256": "48cac2c71a5be746d53c241405bc48d75895708f33fc8b7f429943d4604589c1",
+    "bytes": 333,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/clean-kernel.log",
+    "sha256": "fa470a170667753411e3bfcd45e301d64a907cfa32c4dd64470fe44795526d41",
+    "bytes": 36,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/discovery-0.json",
+    "sha256": "3b49269b38c205f27afd1c5efb011619670675d927c0436f5a99992ab1e09830",
+    "bytes": 319,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/focused-0-execution.json",
+    "sha256": "0f861b813e4e5d44307b078e4d824a0c6ea3d794d8ab958273c102962230a0b3",
+    "bytes": 350,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/focused-0.log",
+    "sha256": "bc2252486cc622d5188e4712bd1c71148e95aa366c8b0043163fd7d5f2863202",
+    "bytes": 381,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/fullfan-C.json",
+    "sha256": "e29fc2127c8d2b22fd71b89c1c3b531a5edd35a70c84dd10e15b11fb0cc7efee",
+    "bytes": 3035,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/host-disk.txt",
+    "sha256": "3ac50d78473e93800c934c58dd5136813d99ffc8702b666aae95c36b8084797e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/host-load.txt",
+    "sha256": "f4d80603a63439728d837fef680b4b664e0116a507868d2768fba4ea08441cc6",
+    "bytes": 47,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/kernel-tests",
+    "sha256": "b30807be9a5882e56acdce0f01ae20e705ab41565d1b48ed6f698f51b3b0dc6a",
+    "bytes": 9454976,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/C-check/manifest.json",
+    "sha256": "84325a25be16503b7d485512d8fd92cc2a35a4014ec9ddeb75c90815307e50c2",
+    "bytes": 33518,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/activation-C-association.json",
+    "sha256": "b8e1b683b07a1d718ff7d39b46873b016e7f0958394ddfeabe7dbf9b47e69a47",
+    "bytes": 12511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/activation-C-frontier-local.json",
+    "sha256": "67b4dbc91a0b1f206afb9dc73c05d4f8ab15de6e666bad99a50368ff3fa4e4c2",
+    "bytes": 73779,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/alias-C-local.json",
+    "sha256": "48c704e70e43428731807630d0c3f390e181bee9badac1213a0f80ba4f409d46",
+    "bytes": 1037475,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/alias-C.json",
+    "sha256": "33e28919e7d21ae4b94394f45a9eeed182d91ac656c8a23942f4831e337c9d7b",
+    "bytes": 1106,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/binary.json",
+    "sha256": "c3e57629caf98f7e3d7b6075af7e680eab9476bd2d75d9bfe65dd43ca82b0b55",
+    "bytes": 221,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/build-execution.json",
+    "sha256": "3f99db41d4f3e81e70a4c70d4ac9f02eb456ebe4e4117b92d70841ea6e1f7523",
+    "bytes": 461,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/build.log",
+    "sha256": "4286b9dbd1882b619a34ecfceca3f05730883369ec7bbc987d205f33678f8f66",
+    "bytes": 42606,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/clean-kernel-execution.json",
+    "sha256": "f9ee2323900f2a2cfec5797b3e07bd364ef76255aca8adf227947dcf640eefa3",
+    "bytes": 334,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/clean-kernel.log",
+    "sha256": "fa470a170667753411e3bfcd45e301d64a907cfa32c4dd64470fe44795526d41",
+    "bytes": 36,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-0.json",
+    "sha256": "4806c6e56a1c71170a0bd5681bb1d409d23a3cb8692b3bb7d13dd8833c36e079",
+    "bytes": 289,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-1.json",
+    "sha256": "a2f75c9b8a3e7b2250f9b9ea5983ed056ce887a2fab9bbe24896776d3ff524a4",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-10.json",
+    "sha256": "cfcb2984aa46a4bc7644fe6160ba6e19b97a3a5bb591eb64fad9ccc444bae495",
+    "bytes": 1117,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-11.json",
+    "sha256": "0db0616c582985e3734a4de25abbb37c0ed78597ff567c87911e27dc1741968b",
+    "bytes": 505,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-12.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "bytes": 511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-13.json",
+    "sha256": "b0bcf0782395f692e33109067d80de0eba9309e6675c2893d5563fa5ac244bb2",
+    "bytes": 614,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-2.json",
+    "sha256": "3b49269b38c205f27afd1c5efb011619670675d927c0436f5a99992ab1e09830",
+    "bytes": 319,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-3.json",
+    "sha256": "f5da343aae6ec9b05dcb81ed3d018dd23419dc09166ac5981e3e8446b7ac4827",
+    "bytes": 404,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-4.json",
+    "sha256": "780afc989ba0436c284a332cd18e27ad121a6249670cf346dc95b7fa83e299c6",
+    "bytes": 551,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-5.json",
+    "sha256": "8ad7a21b0d42eb8968faf3e72433a72e77dbb667758ac22afad01bf00c9f49f6",
+    "bytes": 294,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-6.json",
+    "sha256": "d9aab7c46e25440be52f28a435ce4d6bc98b3688d1765fde5c05466ec87a6d41",
+    "bytes": 421,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-7.json",
+    "sha256": "64f3303a126413596116ec9a5b29ee330da783eed5a44c64d40c2fbcec2c8567",
+    "bytes": 192,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-8.json",
+    "sha256": "0ac6ed9c072c8c84d9566911e36db48044b58683341fa60f563392d557f488eb",
+    "bytes": 223,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/discovery-9.json",
+    "sha256": "b0c93041f4260719647670d53cf028e11572e39e410991ba781025684ebfa0c0",
+    "bytes": 714,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-0-execution.json",
+    "sha256": "b9c8845d57cee1557bba85e1e281492304879fb79492d6e2d5a53ea7d7bf8ca7",
+    "bytes": 350,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-0.log",
+    "sha256": "a32cdc90c12b03d8cdd044bbf546f54e16fb5f9028608da13e867c89c534708b",
+    "bytes": 351,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-1-execution.json",
+    "sha256": "c4d39267d49580ec99f48cf087f38f204529040b0691174e2d0291053d0a6f6b",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-1.log",
+    "sha256": "8b8dbcdb0a64542caf42275de4c46f2f1893002732ebda855e0bb2b6641f924f",
+    "bytes": 424,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-10-execution.json",
+    "sha256": "db3d3fd5534788e6baa8c16a9654f78376a90cec666c8ea63e6b1563c08d444d",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-10.log",
+    "sha256": "d366304a5ca081709eec135b68120e343dcdd7b8f627d3e0b127d38dc96103fb",
+    "bytes": 1724,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-11-execution.json",
+    "sha256": "ed7e1364bbe21b31cdf98be12c0644aef266f6bfa93fd86a6ea1c7de7fc4d344",
+    "bytes": 350,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-11.log",
+    "sha256": "ef2f6b4f225f8262bea62c257417fbd44e7c39efa2ab798d37da490d15adaf25",
+    "bytes": 877,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-12-execution.json",
+    "sha256": "bfa2412d24314bdf142fe930102505268b86afdcffae21404f7004ca1a86eb84",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-12.log",
+    "sha256": "66a345c42360f7ffda36fdd255790e5bdfdd08113c612082185ac879bd5029d4",
+    "bytes": 889,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-13-execution.json",
+    "sha256": "ed94185a0fcbd5152a5329852ea1884d3174d3e20724fdba4b61a7e3017270d7",
+    "bytes": 352,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-13.log",
+    "sha256": "c7bd1294f09cf6c8f2c31e9b4432253cb9cbc6d9ea3f8ab900b16d66e014d003",
+    "bytes": 698,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-2-execution.json",
+    "sha256": "f32dc9352c56ba45e063babdd7cd1994d440bc1b1b2956abed07d2718c858f20",
+    "bytes": 351,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-2.log",
+    "sha256": "3ec0c0f535672a6973bd39f91b48822af9e4a6ead5efaf36e7e50888a9c35bba",
+    "bytes": 381,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-3-execution.json",
+    "sha256": "e8753dc2496f36a722fbc58fe4924ee525135db3312cf95ec0bfff69e9d5c81a",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-3.log",
+    "sha256": "14fac7a6544782ad692cc990c859dea5586d6581daa86de05106d38a2ce5cfb7",
+    "bytes": 469,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-4-execution.json",
+    "sha256": "2b66e5aa75685706ee4c3dfd771f6416fcf799dab24d2bb09661ffb5c44f9744",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-4.log",
+    "sha256": "e5bb4624c487711da34e45668d802525f6c65a23654bba2c125bec0c1c92755d",
+    "bytes": 622,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-5-execution.json",
+    "sha256": "8b4877f38746072ea2cb3e675d3f7c7abc73bf898844c7f1848fae609146a066",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-5.log",
+    "sha256": "ee9849d3fc2aa77fca98c0558e6a5e64f349081c47c00e4c6be6473a1bbbaae6",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-6-execution.json",
+    "sha256": "34133071f0e45e9f2adc6d1dbbb5358683a1638bf16ffed3c2fc8f3ee5820617",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-6.log",
+    "sha256": "30a870ea122f4ca9350d17091d7215d2187c069948e294c0007bb3e337734d7b",
+    "bytes": 776,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-7-execution.json",
+    "sha256": "b35c227e3daaee1fd9ef75a6722f4841ce10ec19278695d8aac6fcc55f55b6c2",
+    "bytes": 373,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-7.log",
+    "sha256": "b8a88e365d38c9b9354e5b4e0f17000d6a96f2703ddbe3d52b136b10f0e26bad",
+    "bytes": 504,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-8-execution.json",
+    "sha256": "4b7a483e3760e8a32abc3e3049600bf870d8d8a5e78d22317e788139493573b2",
+    "bytes": 382,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-8.log",
+    "sha256": "dbf54ccc6a1ac23b05bb7ac01489d398834ab235e8e254917d88ea0bd9af603e",
+    "bytes": 248,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-9-execution.json",
+    "sha256": "78a29edb500f698080c27f0c794eab672e44f8c5f2bade4968c39f82f3354d75",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/focused-9.log",
+    "sha256": "88ad7e23f7effe4dc98c75e3376dbac397cc11fbc6917dc8eefed8b8b3c67fd3",
+    "bytes": 789,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/fullfan-A.json",
+    "sha256": "3b0f1f52adeea21cf8e6f307fd33b4b9afdc3d46c07c9466228b06e12e2a52c3",
+    "bytes": 27818,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/fullfan-B.json",
+    "sha256": "6098766482eb9acd2a1fbb27f00625ae0be1d30a29311a62a4376aac77012cf4",
+    "bytes": 4289,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/fullfan-C.json",
+    "sha256": "e29fc2127c8d2b22fd71b89c1c3b531a5edd35a70c84dd10e15b11fb0cc7efee",
+    "bytes": 3035,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/host-disk.txt",
+    "sha256": "eeb635065a987f76a28ca45d4cf0bbb894b5bdbb5892fec4f231668c0a0e6cef",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/host-load.txt",
+    "sha256": "dffdde23c3b04b22e3711384a8a76b79b41768950b16a7c283b3882caec9a330",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/kernel-tests",
+    "sha256": "1e46ced18d0bf7971d4bc880ff3612e96037c76afac7fcf64dfe9222b308fd47",
+    "bytes": 9561088,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/manifest.json",
+    "sha256": "f546f14871cdef0526c1db3ba967c9af6ad411162ecca22b4367523b4bb1a8b4",
+    "bytes": 34002,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/ownership-A.json",
+    "sha256": "6b2a0dbb186b866c21f908bef64827f7f952048296fb537053bac23044109202",
+    "bytes": 80503,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "bytes": 123379,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/activation-C-association.json",
+    "sha256": "b8e1b683b07a1d718ff7d39b46873b016e7f0958394ddfeabe7dbf9b47e69a47",
+    "bytes": 12511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/activation-C-frontier-local.json",
+    "sha256": "77da3159fe5252affcd2a22ff1472241ce656d3cadb4b6ce90628bc5239f0033",
+    "bytes": 73779,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/activation-C.json",
+    "sha256": "8c5f231971baa474559634409eb936330eb244d57a61099d54985d8da06fbc9e",
+    "bytes": 25232,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/alias-C-local.json",
+    "sha256": "5c7cb8e16bf0ecdd3b16368478cc293df0d8e3ab5b90b569efe35b9b6c2195c5",
+    "bytes": 1037475,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/alias-C.json",
+    "sha256": "33e28919e7d21ae4b94394f45a9eeed182d91ac656c8a23942f4831e337c9d7b",
+    "bytes": 1106,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/binary.json",
+    "sha256": "07e2123fd31a42d8b793d31d9e779208a4f093e919adcace2bec00a81220f139",
+    "bytes": 221,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/build-execution.json",
+    "sha256": "f88d45ef5b823e3502160280f43251c818debe1516594906e91c79b30961a6b3",
+    "bytes": 461,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/build.log",
+    "sha256": "7a95e947fd59386f2d9ec8d6a2f5c3223d0cb9721e431ac7cc7677918f344bc3",
+    "bytes": 42606,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/clean-kernel-execution.json",
+    "sha256": "8e0623241e725e2017825d74615d7e8df9c82acf5e023fb4608a17e12979aaad",
+    "bytes": 334,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/clean-kernel.log",
+    "sha256": "428bdc22ca602de41355f50159f059b130fec0f9d5f9b05a43488e3a70aee558",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/component-attempt-execution.json",
+    "sha256": "e211eaebce5fc3b7a6930b9e5127f6bc7cac0588dab069a0648a0f4e831cdfd3",
+    "bytes": 376,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/component-attempt.json",
+    "sha256": "595939275e8d4603453ba7dea1f8f54c338a20e9462a743bec00db9b41f4c267",
+    "bytes": 4862712,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/component-attempt.log",
+    "sha256": "e99ec1f29e1229ee033a7c5f2ae88608c35ebdc2a586c424ea13d477eae51153",
+    "bytes": 211,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-0.json",
+    "sha256": "4806c6e56a1c71170a0bd5681bb1d409d23a3cb8692b3bb7d13dd8833c36e079",
+    "bytes": 289,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-1.json",
+    "sha256": "a2f75c9b8a3e7b2250f9b9ea5983ed056ce887a2fab9bbe24896776d3ff524a4",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-10.json",
+    "sha256": "cfcb2984aa46a4bc7644fe6160ba6e19b97a3a5bb591eb64fad9ccc444bae495",
+    "bytes": 1117,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-11.json",
+    "sha256": "0db0616c582985e3734a4de25abbb37c0ed78597ff567c87911e27dc1741968b",
+    "bytes": 505,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-12.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "bytes": 511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-13.json",
+    "sha256": "b0bcf0782395f692e33109067d80de0eba9309e6675c2893d5563fa5ac244bb2",
+    "bytes": 614,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-2.json",
+    "sha256": "3b49269b38c205f27afd1c5efb011619670675d927c0436f5a99992ab1e09830",
+    "bytes": 319,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-3.json",
+    "sha256": "f5da343aae6ec9b05dcb81ed3d018dd23419dc09166ac5981e3e8446b7ac4827",
+    "bytes": 404,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-4.json",
+    "sha256": "780afc989ba0436c284a332cd18e27ad121a6249670cf346dc95b7fa83e299c6",
+    "bytes": 551,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-5.json",
+    "sha256": "8ad7a21b0d42eb8968faf3e72433a72e77dbb667758ac22afad01bf00c9f49f6",
+    "bytes": 294,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-6.json",
+    "sha256": "d9aab7c46e25440be52f28a435ce4d6bc98b3688d1765fde5c05466ec87a6d41",
+    "bytes": 421,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-7.json",
+    "sha256": "64f3303a126413596116ec9a5b29ee330da783eed5a44c64d40c2fbcec2c8567",
+    "bytes": 192,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-8.json",
+    "sha256": "0ac6ed9c072c8c84d9566911e36db48044b58683341fa60f563392d557f488eb",
+    "bytes": 223,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-9.json",
+    "sha256": "b0c93041f4260719647670d53cf028e11572e39e410991ba781025684ebfa0c0",
+    "bytes": 714,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "bytes": 186,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-0-execution.json",
+    "sha256": "16fecc6708a5a8265dfbb34a3c5f83cce564eb3af2f5f77df25ca065bba4e8ee",
+    "bytes": 350,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-0.log",
+    "sha256": "a32cdc90c12b03d8cdd044bbf546f54e16fb5f9028608da13e867c89c534708b",
+    "bytes": 351,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-1-execution.json",
+    "sha256": "35a28c39b4e23d7f2dd38436bcaded8d8c657cc4ff8d879fdedb1c8ce861223a",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-1.log",
+    "sha256": "8b8dbcdb0a64542caf42275de4c46f2f1893002732ebda855e0bb2b6641f924f",
+    "bytes": 424,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-10-execution.json",
+    "sha256": "d57e38c032c5089b8e679b2057375eb622d7b4cea57bf26d2fa0e3c4bcc5d38b",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-10.log",
+    "sha256": "350dca3d403e788ee88823c8ebb21454d714b8292d790fc180ef89b09ddca010",
+    "bytes": 1724,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-11-execution.json",
+    "sha256": "7d6972e88b51f71edcccd87cd0b71847548b5e48116607a5ff88ae6742f5a3a4",
+    "bytes": 349,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-11.log",
+    "sha256": "944cdb752966eb5c6193be62460a2c08f86a22ceb79d439fdedac6e12419e9d5",
+    "bytes": 877,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-12-execution.json",
+    "sha256": "7eaab4a24c5d8ae3faf0897f63895d977c67da3344c3843510a496e0910449b4",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-12.log",
+    "sha256": "7236bc9040202d7a5131b48b5f83ed9515bbb6f6a34a92e8b6f2fa3a489e478a",
+    "bytes": 889,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-13-execution.json",
+    "sha256": "5167470c5066b177a6e9cb88865e1440daae5bc131b0e8485ccfae7c34c50bd3",
+    "bytes": 352,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-13.log",
+    "sha256": "c7bd1294f09cf6c8f2c31e9b4432253cb9cbc6d9ea3f8ab900b16d66e014d003",
+    "bytes": 698,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-2-execution.json",
+    "sha256": "a9d6b4581eb3969e42b9ccafbcdc03fa02608d699b754caf3f317ab50411575e",
+    "bytes": 351,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-2.log",
+    "sha256": "a87917a6a292b2d00cc275d3c5fa3a970d5352512bc7a92723564bc08e66a724",
+    "bytes": 381,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-3-execution.json",
+    "sha256": "fe7f18ac883e6b183aa757b371fafe8ea623cd77e70d6ae0e0d774b852c4e705",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-3.log",
+    "sha256": "14fac7a6544782ad692cc990c859dea5586d6581daa86de05106d38a2ce5cfb7",
+    "bytes": 469,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-4-execution.json",
+    "sha256": "e3e92034ff8ae799c8ccf1689f932a6809c096d032091c5ac8045105b823b316",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-4.log",
+    "sha256": "e5bb4624c487711da34e45668d802525f6c65a23654bba2c125bec0c1c92755d",
+    "bytes": 622,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-5-execution.json",
+    "sha256": "a6d104a1682416842ddb2e0f3fedbc74b386ad7d9064a3765109c616fe80e00d",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-5.log",
+    "sha256": "ee9849d3fc2aa77fca98c0558e6a5e64f349081c47c00e4c6be6473a1bbbaae6",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-6-execution.json",
+    "sha256": "2a2279f4e2f00edf1fe3b336a8c7bd1281df4395aa7f0eca06a93edbeb7a03bd",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-6.log",
+    "sha256": "688680720db73487f5338b1bc1dce8ac94ea4d19db240ee3e3f4f0af036db287",
+    "bytes": 776,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-7-execution.json",
+    "sha256": "a1b8818124f44cdc902f12596d1506997d9372c6c5e4be502d98dbac13d4bcd2",
+    "bytes": 375,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-7.log",
+    "sha256": "d6cf0f68c75dabbead212a5aba3fd75a145d1a0bdd39f4b9c696bc71dc54431d",
+    "bytes": 504,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-8-execution.json",
+    "sha256": "193f8b2fd835de39f9353c1a64a8ab6c1bb949f1e966df0701fcb863ef34f613",
+    "bytes": 382,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-8.log",
+    "sha256": "dbf54ccc6a1ac23b05bb7ac01489d398834ab235e8e254917d88ea0bd9af603e",
+    "bytes": 248,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-9-execution.json",
+    "sha256": "35d47715fbb5750d91d6bfb3fb7c9661d2d94ade3b2627c58cec49bbf43aa8e3",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/focused-9.log",
+    "sha256": "88ad7e23f7effe4dc98c75e3376dbac397cc11fbc6917dc8eefed8b8b3c67fd3",
+    "bytes": 789,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/fullfan-A.json",
+    "sha256": "3b0f1f52adeea21cf8e6f307fd33b4b9afdc3d46c07c9466228b06e12e2a52c3",
+    "bytes": 27818,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/fullfan-B.json",
+    "sha256": "6098766482eb9acd2a1fbb27f00625ae0be1d30a29311a62a4376aac77012cf4",
+    "bytes": 4289,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/fullfan-C.json",
+    "sha256": "e29fc2127c8d2b22fd71b89c1c3b531a5edd35a70c84dd10e15b11fb0cc7efee",
+    "bytes": 3035,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/fullfan-combined.json",
+    "sha256": "58080147ab7c6947eb3378fffa026f2e9aacaddac03a1eddf9b7dbaf530e987b",
+    "bytes": 29608,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/host-disk.txt",
+    "sha256": "eeb635065a987f76a28ca45d4cf0bbb894b5bdbb5892fec4f231668c0a0e6cef",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/host-load.txt",
+    "sha256": "110ce943cd64abd2fc3f1796e64c0edffe02305c498e4416ed14bffb5fb68cb3",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/kernel-tests",
+    "sha256": "6e565953e7cd69c3191df808e12792f27adb5ccd6ba7b2ce107c9a508417a2a0",
+    "bytes": 9617600,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/library-check-execution.json",
+    "sha256": "a815e6a052b1a5fc51cd3e110aa4001f853276968b4629045fab679876413a42",
+    "bytes": 441,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/library-check.log",
+    "sha256": "31817fc8667865c7619d9ed3160f3c9c28b0ce931dd75cce5b2523f494e63eed",
+    "bytes": 113450,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/manifest.json",
+    "sha256": "c52418959f40613b73decda86bc8cc37af20c89d675fac2c4021e0cc8fe801f4",
+    "bytes": 34002,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/ownership-A.json",
+    "sha256": "6b2a0dbb186b866c21f908bef64827f7f952048296fb537053bac23044109202",
+    "bytes": 80503,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Composed/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "bytes": 123379,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/activation-C-association.json",
+    "sha256": "b8e1b683b07a1d718ff7d39b46873b016e7f0958394ddfeabe7dbf9b47e69a47",
+    "bytes": 12511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/activation-C-frontier-local.json",
+    "sha256": "294f4090c8663dba985510ec8f12895b9f96d16053c2bd642409e58fa9e1a2a2",
+    "bytes": 73779,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/activation-C.json",
+    "sha256": "ceb78d985b40360fd366d3ca937d7e59d5b835c4bca01d0dfca31f91bdfa14ef",
+    "bytes": 25232,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/alias-C-local.json",
+    "sha256": "d2b3863b997346184e9919fd2f0b30e9055e8ce3ae9c13a344d3e70746639931",
+    "bytes": 1037475,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/alias-C.json",
+    "sha256": "33e28919e7d21ae4b94394f45a9eeed182d91ac656c8a23942f4831e337c9d7b",
+    "bytes": 1106,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/binary.json",
+    "sha256": "741cfcffb6f4a4fef129a7ea0cce255e64762b1868c7f0c9e063f19be688003a",
+    "bytes": 221,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/build-execution.json",
+    "sha256": "df7541c15229a2c553ccc138be9a9491118dca094213f95d30b8329d107bd9c5",
+    "bytes": 460,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/build.log",
+    "sha256": "5f84fffbac42623602aee2f1ec89748227a233aafa5c79580ec119b33bfa9f53",
+    "bytes": 42606,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/clean-kernel-execution.json",
+    "sha256": "f7c73ea45428dc5410d6c43f5ab31604827002a2e80944b3765ecec1db11516d",
+    "bytes": 333,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/clean-kernel.log",
+    "sha256": "cc80fcf76dd40fc4008c572168aa4485e9df0282628b5872a49fd101bc86fd36",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/component-attempt-execution.json",
+    "sha256": "4a9a911a295ef4c9f9b80b098d78f83f005022602633c6931c67cce23ec0a7e5",
+    "bytes": 376,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/component-attempt.json",
+    "sha256": "55856ec0b17f14c1dbcddaf1637154422d4bb800f5b033bfebd9ace29480fb45",
+    "bytes": 4862712,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/component-attempt.log",
+    "sha256": "947b23e35e29d83863f8f500d86908be068f66257558002fe8ac2f7209926872",
+    "bytes": 211,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-0.json",
+    "sha256": "486b47bf3438942579bed7a841632f5a7a444aff7d6834ab65d9ef3a53882725",
+    "bytes": 395,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-1.json",
+    "sha256": "a2f75c9b8a3e7b2250f9b9ea5983ed056ce887a2fab9bbe24896776d3ff524a4",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-10.json",
+    "sha256": "cfcb2984aa46a4bc7644fe6160ba6e19b97a3a5bb591eb64fad9ccc444bae495",
+    "bytes": 1117,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-11.json",
+    "sha256": "0db0616c582985e3734a4de25abbb37c0ed78597ff567c87911e27dc1741968b",
+    "bytes": 505,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-12.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "bytes": 511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-13.json",
+    "sha256": "b0bcf0782395f692e33109067d80de0eba9309e6675c2893d5563fa5ac244bb2",
+    "bytes": 614,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-2.json",
+    "sha256": "3b49269b38c205f27afd1c5efb011619670675d927c0436f5a99992ab1e09830",
+    "bytes": 319,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-3.json",
+    "sha256": "f5da343aae6ec9b05dcb81ed3d018dd23419dc09166ac5981e3e8446b7ac4827",
+    "bytes": 404,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-4.json",
+    "sha256": "780afc989ba0436c284a332cd18e27ad121a6249670cf346dc95b7fa83e299c6",
+    "bytes": 551,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-5.json",
+    "sha256": "8ad7a21b0d42eb8968faf3e72433a72e77dbb667758ac22afad01bf00c9f49f6",
+    "bytes": 294,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-6.json",
+    "sha256": "d9aab7c46e25440be52f28a435ce4d6bc98b3688d1765fde5c05466ec87a6d41",
+    "bytes": 421,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-7.json",
+    "sha256": "64f3303a126413596116ec9a5b29ee330da783eed5a44c64d40c2fbcec2c8567",
+    "bytes": 192,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-8.json",
+    "sha256": "0ac6ed9c072c8c84d9566911e36db48044b58683341fa60f563392d557f488eb",
+    "bytes": 223,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-9.json",
+    "sha256": "b0c93041f4260719647670d53cf028e11572e39e410991ba781025684ebfa0c0",
+    "bytes": 714,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "bytes": 186,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-0-execution.json",
+    "sha256": "f91c5ffded6c8cf9fe85565820d6cf68ad6403b51e836032e53bc0b9e63476a9",
+    "bytes": 351,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-0.log",
+    "sha256": "f94e2c078d95774e9abd4ac98a83349e956d11ba66ffc35743b36f0a8528e4ee",
+    "bytes": 462,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-1-execution.json",
+    "sha256": "d3193da78821ca89310014a2757ac1596a3552b481781f88a9999b1215e147af",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-1.log",
+    "sha256": "b36fd81ca130395eb3717038734ec9bb2748942e96a49617b64b58cc60ee3c18",
+    "bytes": 424,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-10-execution.json",
+    "sha256": "b8ef073c0908a596d22614b997ccaf9d24b1c2ff11fb5ff924cddf81b75fee98",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-10.log",
+    "sha256": "2258a55f3634c70bc437390cef84198955b1c237553bd6e2dbe719ad4ef54906",
+    "bytes": 1724,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-11-execution.json",
+    "sha256": "eb8c5afd7645bfbe33af1eef2f5e39df8e422af9eb9d23c7078bfe550d5c93a7",
+    "bytes": 349,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-11.log",
+    "sha256": "5e36eea86c189a639f9873623373be3eaae8992a833064b14c293c23b58a6508",
+    "bytes": 877,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-12-execution.json",
+    "sha256": "80eb1b5d5b505aabf2e3bc2df54d99eced65afd70dea102dbb6e425e67a4d8fb",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-12.log",
+    "sha256": "ba2abe08e6585506ead5111e76493adcd4c0541ec655a119b6aa82f5422ddec8",
+    "bytes": 889,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-13-execution.json",
+    "sha256": "c3a477a714d80dd710b268bb8692871e6972d3133af94932d8db3b78729a1b42",
+    "bytes": 352,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-13.log",
+    "sha256": "e75bf080b9fb25e3dd9bc148892f2ee980071822852b949758ece68caf735916",
+    "bytes": 698,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-2-execution.json",
+    "sha256": "d4c0a29e0404072989cde53dd512a64e016e53bebf6136a12b0f3c2dadabbc92",
+    "bytes": 351,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-2.log",
+    "sha256": "c4ff06fd94ffdae0d14493410c971d0318b352883da0d2846611b5d4143eadb4",
+    "bytes": 381,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-3-execution.json",
+    "sha256": "93eca8980711c3370a41a7e804e0069c044f1dd3506e18334864c675f9afceaf",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-3.log",
+    "sha256": "ea43549882f2259309ed47e4ff9866ca2d972b418b53e27593ea135ae719f7d6",
+    "bytes": 469,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-4-execution.json",
+    "sha256": "d1f9595acb9132b15fbcb6712ab1b1260d2e9d32d233193010284858cdd89d1e",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-4.log",
+    "sha256": "eef3b5ad2eee9a3f1a2acfbbe4932bf8e471927a402cd1472f1b61e0f73ccec0",
+    "bytes": 622,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-5-execution.json",
+    "sha256": "f3696376b45e48969316a4ce9ebc6976fb88d8040bff87c4c823855ca1661077",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-5.log",
+    "sha256": "2cc7300b6ac696c82aec6fa51ac955b2ff61bebebf9e1e9b3ec0e2b4f592caca",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-6-execution.json",
+    "sha256": "f0a33ee5aa8f7969a8467f38b4301d9086aecaddc1eee23f91342aa6f3f1a151",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-6.log",
+    "sha256": "4b400f3bf11f5dec95e280eb92555586a4f79b08e96da5fc8461c88c5d522e3d",
+    "bytes": 776,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-7-execution.json",
+    "sha256": "2e055c4b578721cc8a75f0ff0c9c16af2e1ad3fd5e5167160e901bc8a191104c",
+    "bytes": 376,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-7.log",
+    "sha256": "3c60d6cb571f651ccfc6ec3fb73bb9d9fa875aad41a0658bc16b8a5328cb3dcf",
+    "bytes": 504,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-8-execution.json",
+    "sha256": "3169120e61023b343a60a4b64d2ef4f72eb12550411004e3c061078cfdfbf7b6",
+    "bytes": 382,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-8.log",
+    "sha256": "0e93234a2300a3f968520a0709adc7d0b0444389ea650982e192d8866ec2d2d2",
+    "bytes": 248,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-9-execution.json",
+    "sha256": "ac9a2f70d1fda09b789b32b52c4380e50b9cce426e16fd4646c1696fa4bbe75e",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/focused-9.log",
+    "sha256": "ab6adbea54edf60d819a89d9accbd359ffbb52e226c99cd213b148d916c0e606",
+    "bytes": 789,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/fullfan-A.json",
+    "sha256": "741d27ceca0ee8cd6a746ca0804ba723c054ea155c9ab5e58fe06cd4c8fb0bd6",
+    "bytes": 27864,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/fullfan-B.json",
+    "sha256": "6098766482eb9acd2a1fbb27f00625ae0be1d30a29311a62a4376aac77012cf4",
+    "bytes": 4289,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/fullfan-C.json",
+    "sha256": "f7a43ce656742fb122d697054b50b445ee4f5ae101176d44b44ad733edd992f8",
+    "bytes": 3923,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/fullfan-combined.json",
+    "sha256": "d6fb1c72bb4edfcdce563fe6559e79372a8f103a0753c7d1ff559e11567fd102",
+    "bytes": 29652,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/host-disk.txt",
+    "sha256": "eeb635065a987f76a28ca45d4cf0bbb894b5bdbb5892fec4f231668c0a0e6cef",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/host-load.txt",
+    "sha256": "a817d06125b211e1c5b2b74db82261d73a0d2e5ca7c1fb57a35bb0d56f36534d",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/host-memory.txt",
+    "sha256": "72cf5fa8287fc6ca675803ab2649735b635215d224e4daf95d4cfd51d0bb11f1",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/kernel-tests",
+    "sha256": "38729ffe1fb63814ef00e0590f0442cce557122a668a6596036afe46bb6b864e",
+    "bytes": 9596144,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/library-check-execution.json",
+    "sha256": "db7caa5dfaa36e5a5a8364ebb2cb9fd172672c38fecb4d580d8310f5f74010aa",
+    "bytes": 441,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/library-check.log",
+    "sha256": "d21293d1d7c9bd74432f0295301c0a7f8baacb4d8dc7c59748504e0a9c8c4fc4",
+    "bytes": 113450,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/manifest.json",
+    "sha256": "210be73002f70e29393735ce5ce990c9d253afec07986154b36ba4d0dde9f561",
+    "bytes": 34002,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/ownership-A.json",
+    "sha256": "6b2a0dbb186b866c21f908bef64827f7f952048296fb537053bac23044109202",
+    "bytes": 80503,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Reviewed/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "bytes": 123379,
+    "archived": true
+  }
+]

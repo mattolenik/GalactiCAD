@@ -1,21 +1,21 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [ownership/outside milestone](../research/sfcc-patch-ownership/README.md)
-preserves the complete 205-cell / 1,031-face, 1,775-triangle reconstruction and its
-1,929 validated generated queries exactly. Supplied pregraph metadata transport now
-passes for 851 original points, 1,031 faces and 414 pins. The first actual untouched
-outside consumer passes its local compatibility checks, but 375 face-adjacent
-outside cells remain a larger bounded-audit obligation.
+Status: the [whole-first-fan certificate](../research/sfcc-full-fan/README.md)
+covers all six closed triangle domains with one local full-source root graph.
+Fifteen accepted pieces use 24 of 128 allowed checks. The uniform bound after f32
+mesh rounding is 0.0005058201434644458 mm, below the unchanged 0.01 mm tolerance.
+The exact projected fan is an embedded disk in both precisions. All 48 selected
+checks and the library validation pass; the fresh full-component run preserves
+geometry, metadata and all query evidence exactly.
 
-The frozen fixture disables quality triangulation, so absent owner labels do not
-by themselves establish unsupported carriers. The first cylinder fan has certified
-small exposed interior regions and one tiny positive-field counterexample to its
-chosen exact graph lift. No full-fan coverage or displacement bound follows.
-The selected source passes 50 focused tests and a non-test library check.
-**Stage 4 publication and production acceptance remain open.** Next certify a
-full composed-field root graph with qualified boundary transport and approximation
-error, and establish complete outside compatibility without increasing limits.
-Remaining replacement-stage metadata and checker allocation accounting also stay open.
+**Stage 4 publication and production acceptance remain open.** The local graph
+may switch source facets and does not prove intended cell-trimmed coverage or
+conforming neighbor transport. An actual X-face midpoint moves about 2.23725e-6 mm
+off face [0,3464532,2] under the lift. Next reconstruct its actual retained opposite
+consumer [7,26,58,86] and prove a shared source boundary and compatible patch union.
+Other fans, complete outside coverage, replacement-stage metadata and checker
+allocation accounting remain open. The bound is for continuous represented-source
+geometry, not CPU/WGSL numerical parity.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and

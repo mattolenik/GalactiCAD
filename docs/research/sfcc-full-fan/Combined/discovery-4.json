@@ -1,0 +1,10 @@
+{
+  "filter": "metadata_c_",
+  "tests": [
+    "sfcc::private_arc_a::retained_metadata_c::tests::metadata_c_exact_transport_preserves_reversed_membership_and_explicit_alias",
+    "sfcc::private_arc_a::retained_metadata_c::tests::metadata_c_rejects_changed_normal_key_and_pin_bits",
+    "sfcc::private_arc_a::retained_metadata_c::tests::metadata_c_rejects_lost_protection_wrong_orientation_and_invented_pin",
+    "sfcc::private_arc_a::retained_metadata_c::tests::metadata_c_rejects_noninjective_map_and_directed_segment_reversal"
+  ],
+  "exitCode": 0
+}

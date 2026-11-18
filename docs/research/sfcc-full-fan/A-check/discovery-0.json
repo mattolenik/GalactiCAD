@@ -1,0 +1,7 @@
+{
+  "filter": "fullfan_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_a_actual_closed_source_graph"
+  ],
+  "exitCode": 0
+}

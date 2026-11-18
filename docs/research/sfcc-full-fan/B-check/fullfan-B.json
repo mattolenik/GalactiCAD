@@ -1,0 +1,192 @@
+{
+  "boundaryEvidence": {
+    "boundary": [
+      40,
+      38,
+      41,
+      464,
+      465,
+      647
+    ],
+    "boundaryIntervals": [
+      [
+        465,
+        647,
+        20,
+        4562274570535920534,
+        0
+      ],
+      [
+        465,
+        647,
+        39,
+        4555569617026713521,
+        0
+      ],
+      [
+        40,
+        647,
+        49,
+        4629807001818732852,
+        4629841154425225216
+      ]
+    ],
+    "cell": [
+      7,
+      25,
+      58,
+      86
+    ],
+    "cellBoxHex": [
+      "c02328e73507c672",
+      "c003f45f6f365a98",
+      "40158efcca8a1862",
+      "c022ab4d9b6e2cd8",
+      "c001fdf908cff432",
+      "40168a2ffdbd4b95"
+    ],
+    "parentReceiptSha256": "cd25d6db584fbe2717416f14e703073da6642aa2eaf1b690b7159bded678bac5",
+    "scope": "actual stored boundary/cell/interval evidence; exact source-face correspondence not implied"
+  },
+  "exactCellTrimCoverageProved": false,
+  "geometry": {
+    "conditionalLiftTheorem": "a continuous unique source root in X over this entire YZ disk gives a homeomorphic lifted disk; shared edges agree by common root uniqueness",
+    "exported": {
+      "apex": 653,
+      "boundary": [
+        40,
+        38,
+        41,
+        464,
+        465,
+        647
+      ],
+      "exactCyclicFan": true,
+      "precision": "f32 represented coordinates",
+      "projectedDiskEmbedded": true,
+      "projection": "YZ",
+      "scope": "entire closed projected polygon tiled once by the indexed fan; no source exposure claim",
+      "sharedEdgeAffineXAgrees": true,
+      "simpleBoundary": true,
+      "strictKernelApex": true,
+      "triangleCount": 6,
+      "winding": -1
+    },
+    "intendedTrimBoundaryCorrespondenceProved": false,
+    "pointBits": [
+      [
+        38,
+        [
+          13844816554298846424,
+          13835618776295404592,
+          4617801817764908076
+        ]
+      ],
+      [
+        40,
+        [
+          13844816554298846762,
+          13836166026439335478,
+          4617801809107539645
+        ]
+      ],
+      [
+        41,
+        [
+          13844830331837451734,
+          13835618776295404592,
+          4617754209319262306
+        ]
+      ],
+      [
+        464,
+        [
+          13844830331837451734,
+          13835894973616301924,
+          4617754209319262306
+        ]
+      ],
+      [
+        465,
+        [
+          13844830331814374579,
+          13836165891772662319,
+          4617754209319262306
+        ]
+      ],
+      [
+        647,
+        [
+          13844830282047795546,
+          13836166026439335478,
+          4617754382154335013
+        ]
+      ],
+      [
+        653,
+        [
+          13844825742648919353,
+          13835938411809740731,
+          4617770119601665062
+        ]
+      ]
+    ],
+    "publicationAuthorized": false,
+    "roundingProof": "same barycentric coordinates give convex combinations of vertex displacements; triangle norm bounded by largest vertex norm",
+    "sourceFacePlaneIncidencePreservedByXLift": false,
+    "sourceRootExistenceProvedHere": false,
+    "triangleMeshToExportBounds": [
+      5.206356205475152e-7,
+      5.206356205475152e-7,
+      5.206356205475152e-7,
+      5.206356205475152e-7,
+      5.206356205475152e-7,
+      5.206356205475152e-7
+    ],
+    "triangles": [
+      653,
+      40,
+      38,
+      653,
+      38,
+      41,
+      653,
+      41,
+      464,
+      653,
+      464,
+      465,
+      653,
+      465,
+      647,
+      653,
+      647,
+      40
+    ],
+    "uniformMeshToExportBound": 5.206356205475152e-7,
+    "working": {
+      "apex": 653,
+      "boundary": [
+        40,
+        38,
+        41,
+        464,
+        465,
+        647
+      ],
+      "exactCyclicFan": true,
+      "precision": "f64 represented coordinates",
+      "projectedDiskEmbedded": true,
+      "projection": "YZ",
+      "scope": "entire closed projected polygon tiled once by the indexed fan; no source exposure claim",
+      "sharedEdgeAffineXAgrees": true,
+      "simpleBoundary": true,
+      "strictKernelApex": true,
+      "triangleCount": 6,
+      "winding": -1
+    }
+  },
+  "parentReceiptSha256": "c6d12b6a99c6cfd914e936a66f009f73f3eded377697872f1e9a2ba1b9155da3",
+  "sourceFingerprint": "10977506807348230851",
+  "sourceRootCertificateNeeded": true
+}

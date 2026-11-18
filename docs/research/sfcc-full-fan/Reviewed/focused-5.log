@@ -1,0 +1,7 @@
+
+running 2 tests
+test sfcc::private_arc_a::stage4_component_b::outside_b::outside_b_identity_requires_original_key_and_position ... ok
+test sfcc::private_arc_a::stage4_component_b::outside_b::outside_b_join_checks_actual_contacts_and_partial_topology ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 426 filtered out; finished in 0.00s
+

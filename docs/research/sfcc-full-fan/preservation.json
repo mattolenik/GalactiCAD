@@ -1,0 +1,56 @@
+{
+  "parentManifest": "docs/research/sfcc-patch-ownership/Clamp/manifest.json",
+  "parentManifestSha256": "f013d746168b124c7fb39a61ab63cff9ae6ec4ad18d18a196308f16e9a478273",
+  "parentInputCount": 207,
+  "selected": "Reviewed",
+  "restorations": [
+    {
+      "packet": "A-check",
+      "patchSha256": "688944ae8b1dabbb7e1baa7b886e58700912048c517a32029c8cb43931923589",
+      "manifestSha256": "f31828bd422b3d2feec03471f8d5fe28424100df20e90a1bbb668e7e003c169f",
+      "verifiedInputCount": 208,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-fullfan-restore-6_yka3s3",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "B-check",
+      "patchSha256": "fe18f51ae08f4fa995d94a279910067a30aff6f03a8f12f7b2dcb39a5bc3e542",
+      "manifestSha256": "f575116583819cbc10e2c50402ea40bd4b8da67b26fd8f8724bdf7901891d5e7",
+      "verifiedInputCount": 209,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-fullfan-restore-umcxk0oe",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-check",
+      "patchSha256": "e686ed76063e9b01f38d8d0c59d8800383336f5dc11f1d90094272dc5b8a8ce4",
+      "manifestSha256": "84325a25be16503b7d485512d8fd92cc2a35a4014ec9ddeb75c90815307e50c2",
+      "verifiedInputCount": 209,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-fullfan-restore-1u5r6bpt",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Combined",
+      "patchSha256": "caadf6001ae35eb82794dd541df8f182c843e6a84fa709b9f29b99a54404604d",
+      "manifestSha256": "f546f14871cdef0526c1db3ba967c9af6ad411162ecca22b4367523b4bb1a8b4",
+      "verifiedInputCount": 212,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-fullfan-restore-2dnt0apz",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Composed",
+      "patchSha256": "162dea7cd5c72716c1ff8eff69ff1cd488a1742c80cc9e535969ad86d0b0b58b",
+      "manifestSha256": "c52418959f40613b73decda86bc8cc37af20c89d675fac2c4021e0cc8fe801f4",
+      "verifiedInputCount": 212,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-fullfan-restore-_rt_s4y1",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Reviewed",
+      "patchSha256": "dc7e78d7a23e5f734675b8ac0585d22ba8ee21c8850e21b2604792de097b9fca",
+      "manifestSha256": "210be73002f70e29393735ce5ce990c9d253afec07986154b36ba4d0dde9f561",
+      "verifiedInputCount": 212,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-fullfan-restore-dv6y6mpl",
+      "result": "all input hashes match"
+    }
+  ]
+}

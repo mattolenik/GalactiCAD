@@ -1,0 +1,13 @@
+{
+  "step": "focused-2",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round35-fullfan/Combined/kernel-tests",
+    "fullfan_c_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 57.59825020801509,
+  "elapsedSeconds": 1.0717438329593278,
+  "exitCode": 0,
+  "timedOut": false
+}

@@ -1756,6 +1756,46 @@ fan, including boundary transport/error, and design complete bounded outside
 coverage. Full surface ownership, outside compatibility, replacement-stage metadata,
 allocator accounting and production/native-WASM/GPU/full-model acceptance remain open.
 
+## Round 35: whole first-fan root graph and exported approximation bound
+
+The [whole-fan milestone](sfcc-full-fan/README.md) replaces selected source-region
+probes with a complete local theorem over all six closed triangle domains. A
+source-bound reduced max function has strict opposite signs across one common X
+slab and decrease rate at least 0.8610098527465292. Its zeros agree with the full
+composed source under the admitted finite-branch/ancestor restrictions. Fifteen
+accepted pieces, reached in 24 globally bounded checks, cover the input domains;
+shared roots agree by common-slab uniqueness. No global scalar-field monotonicity
+or remote-sheet exclusion is claimed.
+
+Interval Hessian bounds and a whole-triangle interpolation remainder establish
+working-mesh displacement at most 0.0005052995078438982 mm. Independent exact YZ
+fan checks prove embedded disks in f64 and f32, with preserved projected orientation.
+The explicit same-input composition adds at most 5.206356205475152e-7 mm of export
+rounding, giving 0.0005058201434644458 mm under the original 0.01 mm tolerance.
+No owner labels or geometry are changed; active source facets may switch.
+
+The boundary witness identifies the same source root at an actual X-face edge
+midpoint, about 2.23725e-6 mm off the original plane. Its initial fixture had the
+wrong face length; review binds the actual [0,3464532,2] record, segment, extents
+and both consumers and rejects shortened records. A separate source-binder guard
+now explicitly matches the cylinder primitive's 1e-6 size floor. Neither correction
+changes the source/error bounds on the actual witness.
+
+The final source passes 48 distinct tests in 28.698 seconds and a non-test library
+check. A fresh 36.856-second diagnostic preserves the complete component's points,
+triangles, topology, intervals, generated queries/costs and retained metadata exactly.
+It still has 1,775 triangles, 1,929 validated generated events and 8,413 charges.
+The proof data bind to the actual first fan and corrected actual frontier record.
+
+Next reconstruct the retained opposite consumer [7,26,58,86] and prove compatible
+shared-boundary transport and a joined source-patch cover. A graph over the current
+projected fan is not automatically the intended cell-trimmed source patch. Exact
+face-plane preservation is not the only possible strategy, but a common transported
+boundary needs independent proof. Other fan ownership, complete outside coverage,
+replacement metadata, allocator accounting and production/parity acceptance remain
+open. The theorem concerns continuous real geometry over represented parameters,
+not bitwise CPU or WGSL field evaluation.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

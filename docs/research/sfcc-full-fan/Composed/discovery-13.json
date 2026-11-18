@@ -1,0 +1,12 @@
+{
+  "filter": "graph_b_",
+  "tests": [
+    "sfcc::cell_mesh::reliability_tests::graph_b_actual_degree_guard_is_observational",
+    "sfcc::private_arc_a::graph_b::tests::graph_b_abandonment_is_explicit_and_scope_can_be_cleared",
+    "sfcc::private_arc_a::graph_b::tests::graph_b_byte_cap_and_hex_are_exact",
+    "sfcc::private_arc_a::graph_b::tests::graph_b_inactive_capture_does_not_create_diagnostic_state",
+    "sfcc::private_arc_a::graph_b::tests::graph_b_new_cell_without_attempt_discards_previous_failure",
+    "sfcc::private_arc_a::graph_b::tests::graph_b_query_indices_are_read_only"
+  ],
+  "exitCode": 0
+}

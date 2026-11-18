@@ -1,0 +1,201 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/fullfan-boundary-b.json
+@@ -0,0 +1,49 @@
++{
++  "parentReceiptSha256": "cd25d6db584fbe2717416f14e703073da6642aa2eaf1b690b7159bded678bac5",
++  "cell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "cellBoxHex": [
++    "c02328e73507c672",
++    "c003f45f6f365a98",
++    "40158efcca8a1862",
++    "c022ab4d9b6e2cd8",
++    "c001fdf908cff432",
++    "40168a2ffdbd4b95"
++  ],
++  "boundary": [
++    40,
++    38,
++    41,
++    464,
++    465,
++    647
++  ],
++  "boundaryIntervals": [
++    [
++      465,
++      647,
++      20,
++      4562274570535920534,
++      0
++    ],
++    [
++      465,
++      647,
++      39,
++      4555569617026713521,
++      0
++    ],
++    [
++      40,
++      647,
++      49,
++      4629807001818732852,
++      4629841154425225216
++    ]
++  ],
++  "scope": "actual stored boundary/cell/interval evidence; exact source-face correspondence not implied"
++}
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -2315,3 +2315,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="ownership_a.rs"]
+ pub(crate) mod ownership_a;
++
++#[cfg(all(test,feature="serde"))]
++#[path="fullfan_geometry_b.rs"]
++pub(crate) mod fullfan_geometry_b;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/fullfan_geometry_b.rs
+@@ -0,0 +1,136 @@
++//! Exact fan-domain embedding and conditional graph-lift transport; no source equation is evaluated.
++use crate::sfcc::{predicates::orient2d, triangle_quality as q};
++use crate::sdf::enclosure::Interval as I;
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++type Point = [f64; 3];
++type Result<T> = std::result::Result<T, &'static str>;
++
++fn yz(p: Point) -> [f64; 2] { [p[1], p[2]] }
++fn on_segment(a: [f64;2], b: [f64;2], p: [f64;2]) -> bool {
++    orient2d(a,b,p)==0 && (0..2).all(|k|p[k]>=a[k].min(b[k]) && p[k]<=a[k].max(b[k]))
++}
++fn segments_meet(a:[f64;2],b:[f64;2],c:[f64;2],d:[f64;2])->bool {
++    let s=[orient2d(a,b,c),orient2d(a,b,d),orient2d(c,d,a),orient2d(c,d,b)];
++    (s[0]*s[1]<0 && s[2]*s[3]<0)
++        || on_segment(a,b,c) || on_segment(a,b,d) || on_segment(c,d,a) || on_segment(c,d,b)
++}
++fn domain(boundary:&[usize], triangles:&[usize], points:&BTreeMap<usize,Point>, rounded:bool)->Result<Value> {
++    if boundary.len()<3 || boundary.len()>64 || triangles.len()!=3*boundary.len() || points.len()>128 {
++        return Err("fan_domain_inventory");
++    }
++    let ids:BTreeSet<_>=boundary.iter().copied().collect();
++    let apex=triangles[0];
++    if ids.len()!=boundary.len() || ids.contains(&apex) {return Err("fan_domain_repeated_boundary_or_apex");}
++    let get=|id:usize|->Result<Point>{
++        let p=*points.get(&id).ok_or("fan_domain_missing_point")?;
++        let p=if rounded {q::rounded(p)} else {p};
++        if p.iter().any(|v|!v.is_finite()) {return Err("fan_domain_nonfinite");}
++        Ok(p)
++    };
++    let center=yz(get(apex)?);
++    let polygon:Vec<_>=boundary.iter().map(|&id|get(id).map(yz)).collect::<Result<_>>()?;
++    if polygon.iter().enumerate().any(|(i,p)|polygon[..i].contains(p)) {return Err("fan_domain_projected_vertex_collision");}
++    let winding=orient2d(polygon[0],polygon[1],center);
++    if winding==0 {return Err("fan_domain_apex_not_strict_kernel");}
++    for i in 0..boundary.len() {
++        let j=(i+1)%boundary.len();
++        if triangles[3*i..3*i+3]!=[apex,boundary[i],boundary[j]] {return Err("fan_domain_triangle_inventory");}
++        if orient2d(polygon[i],polygon[j],center)!=winding {return Err("fan_domain_apex_not_strict_kernel");}
++        for k in i+1..boundary.len() {
++            let l=(k+1)%boundary.len();
++            if j==k || l==i {continue;}
++            if segments_meet(polygon[i],polygon[j],polygon[k],polygon[l]) {return Err("fan_domain_boundary_self_contact");}
++        }
++    }
++    Ok(json!({"precision":if rounded {"f32 represented coordinates"} else {"f64 represented coordinates"},
++        "projection":"YZ","apex":apex,"boundary":boundary,"triangleCount":boundary.len(),"winding":winding,
++        "simpleBoundary":true,"strictKernelApex":true,"exactCyclicFan":true,"projectedDiskEmbedded":true,
++        "sharedEdgeAffineXAgrees":true,"scope":"entire closed projected polygon tiled once by the indexed fan; no source exposure claim"}))
++}
++fn distance_upper(a:Point,b:Point)->Option<f64>{
++    let mut s=I::point(0.);
++    for k in 0..3 {s=s.add(crate::sfcc::loft_seam::square(I::point(a[k]).sub(I::point(b[k]))?)?)?;}
++    let d=s.hi.sqrt().next_up();d.is_finite().then_some(d)
++}
++pub(crate) struct FanDomain { report: Value, export_bounds: Vec<f64> }
++impl FanDomain {
++    pub(crate) fn report(&self) -> &Value { &self.report }
++}
++
++pub(crate) fn audit(boundary:&[usize],triangles:&[usize],points:&BTreeMap<usize,Point>)->Result<FanDomain>{
++    let working=domain(boundary,triangles,points,false)?;
++    let exported=domain(boundary,triangles,points,true)?;
++    let mut per_triangle=Vec::with_capacity(boundary.len());
++    for t in triangles.chunks_exact(3) {
++        let mut upper=0.0_f64;
++        for id in t {let p=*points.get(id).ok_or("fan_domain_missing_point")?;
++            upper=upper.max(distance_upper(p,q::rounded(p)).ok_or("fan_domain_rounding_bound")?);
++        }
++        per_triangle.push(upper);
++    }
++    let upper=per_triangle.iter().copied().fold(0.,f64::max);
++    let report=json!({"working":working,"exported":exported,"triangles":triangles,
++        "pointBits":points.iter().map(|(&id,p)|json!([id,p.map(f64::to_bits)])).collect::<Vec<_>>(),
++        "uniformMeshToExportBound":upper,"triangleMeshToExportBounds":per_triangle,
++        "roundingProof":"same barycentric coordinates give convex combinations of vertex displacements; triangle norm bounded by largest vertex norm",
++        "conditionalLiftTheorem":"a continuous unique source root in X over this entire YZ disk gives a homeomorphic lifted disk; shared edges agree by common root uniqueness",
++        "sourceRootExistenceProvedHere":false,"intendedTrimBoundaryCorrespondenceProved":false,
++        "sourceFacePlaneIncidencePreservedByXLift":false,"publicationAuthorized":false});
++    Ok(FanDomain{report,export_bounds:per_triangle})
++}
++
++/// Conditional composition only; the caller must independently bind each source bound to this exact triangle.
++pub(crate) fn combine_error(geometry:&FanDomain, source_bounds:&[f64], tolerance:f64)->Result<Value>{
++    let rounded=&geometry.export_bounds;
++    if source_bounds.is_empty() || source_bounds.len()!=rounded.len() || !tolerance.is_finite() || tolerance<=0. {
++        return Err("fan_transport_scope");
++    }
++    let mut total=0.0_f64;
++    for (&source,rounded) in source_bounds.iter().zip(rounded) {
++        let rounded=*rounded;
++        if !source.is_finite() || source<0. || !rounded.is_finite() || rounded<0. {return Err("fan_transport_bound");}
++        let sum=I::point(source).add(I::point(rounded)).ok_or("fan_transport_bound")?.hi;
++        total=total.max(sum);
++    }
++    if total>tolerance {return Err("fan_transport_tolerance");}
++    Ok(json!({"conditionalSourceToExportUpper":total,"tolerance":tolerance,
++        "wholeTriangleAndBoundaryErrorConditionalOnSourceBounds":true,
++        "proof":"source-to-working graph bound plus barycentric working-to-export bound; no equality of f64 and f32 projected domains assumed",
++        "exactSourceFaceOrFeatureBoundaryIncidence":false,"publicationAuthorized":false}))
++}
++
++#[test]
++fn fullfan_b_actual_projected_disk_and_export_rounding(){
++    let saved:Value=serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let points:BTreeMap<usize,Point>=saved["points"].as_array().unwrap().iter().map(|r|(r["id"].as_u64().unwrap() as usize,
++        std::array::from_fn(|k|f64::from_bits(u64::from_str_radix(r["positionHex"][k].as_str().unwrap(),16).unwrap())))).collect();
++    let boundary:Vec<usize>=serde_json::from_value(saved["fan"]["polygon"].clone()).unwrap();
++    let triangles:Vec<usize>=serde_json::from_value(saved["fan"]["triangles"].clone()).unwrap();
++    let domain=audit(&boundary,&triangles,&points).unwrap();
++    let report=domain.report();
++    assert_eq!(report["working"]["triangleCount"],6);assert_eq!(report["exported"]["projectedDiskEmbedded"],true);
++    let receipt=json!({"parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":saved["fingerprint"],"geometry":report,
++        "boundaryEvidence":serde_json::from_str::<Value>(include_str!("../../fixtures/fullfan-boundary-b.json")).unwrap(),
++        "sourceRootCertificateNeeded":true,"exactCellTrimCoverageProved":false});
++    if let Ok(path)=std::env::var("SFCC_FULLFAN_B_RECEIPT"){std::fs::write(path,serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();}
++}
++#[test]
++fn fullfan_b_refuses_wrong_inventory_fold_and_export_collapse(){
++    let mut points=BTreeMap::from([(0,[0.,0.,0.]),(1,[0.,-1.,-1.]),(2,[0.,1.,-1.]),(3,[0.,1.,1.]),(4,[0.,-1.,1.])]);
++    let boundary=[1,2,3,4];let triangles=[0,1,2,0,2,3,0,3,4,0,4,1];
++    assert!(audit(&boundary,&triangles,&points).is_ok());
++    let mut wrong=triangles;wrong.swap(1,2);assert!(audit(&boundary,&wrong,&points).is_err());
++    points.insert(0,[0.,3.,0.]);assert!(audit(&boundary,&triangles,&points).is_err());
++    points.insert(0,[0.,0.,0.]);points.insert(2,[0.,-1.+1e-10,-1.]);
++    assert!(domain(&boundary,&triangles,&points,false).is_ok());
++    assert_eq!(domain(&boundary,&triangles,&points,true),Err("fan_domain_projected_vertex_collision"));
++}
++#[test]
++fn fullfan_b_error_composition_retains_original_limit(){
++    let geometry=FanDomain{report:Value::Null,export_bounds:vec![1e-7,2e-7]};
++    assert!(combine_error(&geometry,&[0.001,0.002],0.01).is_ok());
++    assert!(combine_error(&geometry,&[0.01,0.01],0.01).is_err());
++    assert!(combine_error(&geometry,&[f64::NAN,0.],0.01).is_err());
++    assert!(combine_error(&geometry,&[0.],0.01).is_err());
++}

@@ -1,0 +1,12 @@
+{
+  "base": "/tmp/sfcc-ownership-clamp",
+  "components": [
+    "/tmp/sfcc-fullfan-a-reviewed",
+    "/tmp/sfcc-fullfan-b-reviewed",
+    "/tmp/sfcc-fullfan-c"
+  ],
+  "selectedSource": "/tmp/sfcc-fullfan-composed",
+  "rootChanges": "combined exposure declarations; explicit bit-identical triangle binding and source/export error composition in positive source test",
+  "composedTestSha256": "f16436cde410feecef2f372dbd0141efe024388042e225482d4b17c7336db6ad",
+  "priorCombined": "independent tests only; composition assertion caught changed fixture API before adding proof binding"
+}

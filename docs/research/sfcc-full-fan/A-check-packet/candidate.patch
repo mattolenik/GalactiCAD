@@ -1,0 +1,585 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -439,3 +439,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="ownership_source_a.rs"]
+ pub(crate) mod ownership_source_a;
++
++#[cfg(all(test, feature="serde"))]
++#[path="fullfan_source_a.rs"]
++pub(crate) mod fullfan_source_a;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/fullfan_source_a.rs
+@@ -0,0 +1,572 @@
++//! Closed-domain source root graphs; source branch and numerical mesh ownership remain distinct.
++use super::*;
++use serde_json::{json, Value};
++type R<T> = std::result::Result<T, &'static str>;
++type P = [I; 3];
++type Triangle = [P; 3];
++const MAX_PIECES: usize = 128;
++fn quotient(a: I, b: I) -> Option<I> {
++    if b.lo <= 0. && b.hi >= 0. {
++        return None;
++    }
++    mul(a, interval((1. / b.hi).next_down(), (1. / b.lo).next_up())?)
++}
++fn absmax(x: I) -> f64 {
++    x.lo.abs().max(x.hi.abs())
++}
++fn hull(points: &Triangle) -> Option<P> {
++    let mut out = [I::point(0.); 3];
++    for k in 0..3 {
++        out[k] = interval(
++            points.iter().map(|p| p[k].lo).fold(f64::INFINITY, f64::min),
++            points
++                .iter()
++                .map(|p| p[k].hi)
++                .fold(f64::NEG_INFINITY, f64::max),
++        )?;
++    }
++    Some(out)
++}
++fn diameter2(points: &Triangle) -> Option<f64> {
++    let mut upper: f64 = 0.;
++    for i in 0..3 {
++        for j in i + 1..3 {
++            let mut sum = I::point(0.);
++            for k in 0..3 {
++                sum = sum.add(square(points[i][k].sub(points[j][k])?)?)?;
++            }
++            upper = upper.max(sum.hi);
++        }
++    }
++    Some(upper)
++}
++fn midpoint(a: P, b: P) -> Option<P> {
++    Some([
++        a[0].add(b[0])?.mul(0.5)?,
++        a[1].add(b[1])?.mul(0.5)?,
++        a[2].add(b[2])?.mul(0.5)?,
++    ])
++}
++fn split(t: Triangle) -> Option<[Triangle; 2]> {
++    let mut selected = (0, 1, 2);
++    let mut longest = f64::NEG_INFINITY;
++    for (a, b, c) in [(0, 1, 2), (1, 2, 0), (2, 0, 1)] {
++        let d = square(t[a][1].sub(t[b][1])?)?
++            .add(square(t[a][2].sub(t[b][2])?)?)?
++            .hi;
++        if d > longest {
++            longest = d;
++            selected = (a, b, c);
++        }
++    }
++    let (a, b, c) = selected;
++    let m = midpoint(t[a], t[b])?;
++    Some([[t[a], m, t[c]], [m, t[b], t[c]]])
++}
++
++struct Source<'a> {
++    f: &'a SfccFeatureSet,
++    cylinder_id: usize,
++    source: [usize; 3],
++    native: &'a Leaf,
++    other: &'a Leaf,
++    groove: &'a Leaf,
++    cap: &'a Leaf,
++    sphere: &'a Leaf,
++    p: TwistedSideParams,
++    center: [f64; 3],
++    radius: f64,
++    half: f64,
++    inner_r: f64,
++    chamfer_r: f64,
++    outer_r: f64,
++}
++impl<'a> Source<'a> {
++    fn bind(f: &'a SfccFeatureSet, cylinder_id: usize) -> Option<Self> {
++        let (source, _, _) = alias_face_b::select(f)?;
++        let cyl = f.strata.get(cylinder_id)?;
++        let (center, axis, radius) = cyl.certificate_cylinder()?;
++        if axis != [0., 1., 0.] || radius <= 0. || !radius.is_finite() || cyl.sign != 1. {
++            return None;
++        }
++        let root = cyl.exposure_root_a()?;
++        let (cap_cut, sphere, outer_r) =
++            pair(root, Some((BlendKind::Smax, SminMode::Round))).ok()?;
++        let (groove_cut, cap, _) = pair(cap_cut, None).ok()?;
++        let (hard, groove, chamfer_r) =
++            pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).ok()?;
++        let (inner, cylinder, _) = pair(hard, None).ok()?;
++        let (other, native, inner_r) =
++            pair(inner, Some((BlendKind::Smin, SminMode::Round))).ok()?;
++        let cylinder = leaf(cylinder, 1.).ok()?;
++        let native = leaf(native, 1.).ok()?;
++        let other = leaf(other, 1.).ok()?;
++        let groove = leaf(groove, -1.).ok()?;
++        let cap = leaf(cap, -1.).ok()?;
++        let sphere = leaf(sphere, 1.).ok()?;
++        let (p, rn, ro, rr) = f.strata[source[0]].round_twisted_source(&f.strata[source[1]])?;
++        let registered = cyl.correlated_cylinder_source_c(&f.strata[source[0]])?;
++        if !std::ptr::eq(cylinder, registered)
++            || !std::ptr::eq(native, rn)
++            || !std::ptr::eq(other, ro)
++            || rr != inner_r
++            || cylinder.pos != center
++            || [native, other, groove, sphere]
++                .iter()
++                .any(|l| l.pos[0] != center[0] || l.pos[2] != center[2])
++        {
++            return None;
++        }
++        let Shape::Cylinder { r, h } = cylinder.shape else {
++            return None;
++        };
++        if r != radius {
++            return None;
++        }
++        Some(Self {
++            f,
++            cylinder_id,
++            source,
++            native,
++            other,
++            groove,
++            cap,
++            sphere,
++            p,
++            center,
++            radius,
++            half: h,
++            inner_r,
++            chamfer_r,
++            outer_r,
++        })
++    }
++    fn raw(&self, xyz: P) -> Option<(I, I, [I; 2], I, I, I)> {
++        let x = xyz[0].sub(I::point(self.center[0]))?;
++        let y = xyz[1];
++        let z = xyz[2].sub(I::point(self.center[2]))?;
++        let local_y = y.sub(I::point(self.p.pos_y))?;
++        if !self.p.h.is_finite()
++            || self.p.h <= 0.
++            || local_y.lo < -self.p.h
++            || local_y.hi > self.p.h
++        {
++            return None;
++        }
++        let k = div(I::point(self.p.twist_rad), 2. * self.p.h)?;
++        let theta = mul(local_y.add(I::point(self.p.h))?, k)?;
++        let (sn, cs) = sin_cos(theta)?;
++        let u = mul(x, cs)?.add(mul(z, sn)?)?;
++        let v = mul(z, cs)?.sub(mul(x, sn)?)?;
++        let a = cs.mul(self.p.nx2)?.sub(sn.mul(self.p.nz2)?)?;
++        let b = sn.mul(self.p.nx2)?.add(cs.mul(self.p.nz2)?)?;
++        let e = u
++            .sub(I::point(self.p.v0x))?
++            .mul(self.p.nx2)?
++            .add(v.sub(I::point(self.p.v0z))?.mul(self.p.nz2)?)?;
++        let rho = sqrt(square(x)?.add(square(z)?)?)?;
++        Some((e, rho, [u, v], a, b, k))
++    }
++    fn inside_native_upper(&self, q: [I; 2], y: I) -> Option<f64> {
++        let Shape::Extrude { verts, h, .. } = &self.native.shape else {
++            return None;
++        };
++        let n = verts.len() / 2;
++        if n < 3 || n > 64 || verts.len() != 2 * n || verts.iter().any(|v| !v.is_finite()) {
++            return None;
++        }
++        let v = |i: usize| [verts[2 * (i % n)], verts[2 * (i % n) + 1]];
++        let orientation = crate::sfcc::predicates::orient2d(v(0), v(1), v(2));
++        if orientation == 0 {
++            return None;
++        }
++        let mut margin = f64::INFINITY;
++        for i in 0..n {
++            for j in 0..n {
++                if j != i
++                    && j != (i + 1) % n
++                    && crate::sfcc::predicates::orient2d(v(i), v(i + 1), v(j)) != orientation
++                {
++                    return None;
++                }
++            }
++            let a = v(i);
++            let b = v(i + 1);
++            let dx = I::point(b[0]).sub(I::point(a[0]))?;
++            let dz = I::point(b[1]).sub(I::point(a[1]))?;
++            let distance = quotient(
++                mul(dx, q[1].sub(I::point(a[1]))?)?
++                    .sub(mul(dz, q[0].sub(I::point(a[0]))?)?)?
++                    .mul(orientation as f64)?,
++                sqrt(square(dx)?.add(square(dz)?)?)?,
++            )?;
++            if distance.lo <= 0. {
++                return None;
++            }
++            margin = margin.min(distance.lo);
++        }
++        let axial = y.sub(I::point(self.native.pos[1]))?;
++        let cap = I::point(absmax(axial)).sub(I::point(*h))?;
++        let upper = (-margin).max(cap.hi);
++        (upper < 0.).then_some(upper)
++    }
++    fn admit(&self, xyz: P) -> R<Region> {
++        let (e, rho, q, a, b, k) = self.raw(xyz).ok_or("raw_or_clamp")?;
++        if rho.lo <= 0. {
++            return Err("axis");
++        }
++        let c = rho.sub(I::point(self.radius)).ok_or("arithmetic")?;
++        upper_source_a::cap_margin(xyz[1], self.center[1], self.half, c).ok_or("cylinder_cap")?;
++        let other =
++            activation_a::meridian_bound(self.other, rho, xyz[1]).ok_or("other_finite_meridian")?;
++        let groove = activation_a::meridian_bound(self.groove, rho, xyz[1])
++            .ok_or("groove_finite_meridian")?;
++        if other.distance.lo <= self.inner_r || groove.distance.lo <= 0. {
++            return Err("inner_or_groove_activity");
++        }
++        let inactive_native = self.inside_native_upper(q, xyz[1]).is_some_and(|n| {
++            n < 0.
++                && I::point(n)
++                    .sub(groove.distance)
++                    .and_then(|a| a.add(I::point(self.chamfer_r)))
++                    .is_some_and(|v| v.hi < 0.)
++        });
++        if !inactive_native {
++            upper_source_a::finite_profile_level(self.p, self.native, q, e)
++                .ok_or("native_finite_side")?;
++            upper_source_a::cap_margin(xyz[1], self.p.pos_y, self.p.h, e).ok_or("native_cap")?;
++            if e.hi >= self.inner_r {
++                return Err("inner_round_activity");
++            }
++        }
++        let Shape::Extrude { h: cap_h, .. } = self.cap.shape else {
++            return Err("cap_source");
++        };
++        let cap_margin = I::point(self.cap.pos[1])
++            .sub(I::point(cap_h))
++            .and_then(|v| v.sub(xyz[1]))
++            .ok_or("arithmetic")?
++            .lo;
++        let Shape::Sphere { r: sphere_r } = self.sphere.shape else {
++            return Err("sphere_source");
++        };
++        let axial = xyz[1]
++            .sub(I::point(self.sphere.pos[1]))
++            .ok_or("arithmetic")?;
++        let sphere2 = square(rho)
++            .and_then(|v| v.add(square(axial)?))
++            .ok_or("arithmetic")?;
++        let sphere_distance = sqrt(sphere2).ok_or("arithmetic")?;
++        let outer_margin = I::point(sphere_r)
++            .sub(I::point(self.outer_r))
++            .and_then(|v| v.sub(sphere_distance))
++            .ok_or("arithmetic")?
++            .lo;
++        if cap_margin <= 0. || outer_margin <= 0. {
++            return Err("ancestor_activity");
++        }
++        let cx = quotient(
++            xyz[0].sub(I::point(self.center[0])).ok_or("arithmetic")?,
++            rho,
++        )
++        .ok_or("arithmetic")?;
++        let w = std::f64::consts::FRAC_1_SQRT_2;
++        let qe_dx = a
++            .sub(mul(groove.nr, cx).ok_or("arithmetic")?)
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?;
++        let qc_dx = mul(I::point(1.).sub(groove.nr).ok_or("arithmetic")?, cx)
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?;
++        let derivative = if inactive_native {
++            cx.hi.max(qc_dx.hi)
++        } else {
++            cx.hi.max(qc_dx.hi).max(a.hi).max(qe_dx.hi)
++        };
++        if derivative >= 0. {
++            return Err("root_direction_not_monotone");
++        }
++        let m_rho = quotient(I::point(1.), rho).ok_or("arithmetic")?.hi;
++        let eyy = square(k)
++            .and_then(|kk| {
++                mul(
++                    kk,
++                    mul(a, xyz[0].sub(I::point(self.center[0]))?)?
++                        .add(mul(b, xyz[2].sub(I::point(self.center[2]))?)?)?,
++                )
++            })
++            .ok_or("arithmetic")?;
++        let ax = mul(k, b).ok_or("arithmetic")?;
++        let bz = mul(k, a).ok_or("arithmetic")?;
++        let m_e = sqrt(
++            square(ax)
++                .and_then(|v| v.add(square(bz)?))
++                .and_then(|v| v.mul(2.))
++                .and_then(|v| v.add(square(eyy)?))
++                .ok_or("arithmetic")?,
++        )
++        .ok_or("arithmetic")?
++        .hi;
++        let m_qe = I::point(m_e)
++            .add(I::point(m_rho).mul(absmax(groove.nr)).ok_or("arithmetic")?)
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?
++            .hi;
++        let m_qc = I::point(m_rho)
++            .mul(absmax(I::point(1.).sub(groove.nr).ok_or("arithmetic")?))
++            .and_then(|v| v.mul(w))
++            .ok_or("arithmetic")?
++            .hi;
++        Ok(Region {
++            groove,
++            active_native: !inactive_native,
++            mu: -derivative,
++            m: [m_e, m_rho, m_qe, m_qc],
++            cap_margin,
++            outer_margin,
++        })
++    }
++    fn terms(&self, xyz: P, r: &Region) -> Option<[I; 4]> {
++        let (e, rho, _, _, _, _) = self.raw(xyz)?;
++        let c = rho.sub(I::point(self.radius))?;
++        let d = mul(r.groove.nr, rho)?
++            .add(mul(r.groove.ny, xyz[1])?)?
++            .add(r.groove.offset)?;
++        let w = std::f64::consts::FRAC_1_SQRT_2;
++        Some([
++            e,
++            c,
++            e.sub(d)?.add(I::point(self.chamfer_r))?.mul(w)?,
++            c.sub(d)?.add(I::point(self.chamfer_r))?.mul(w)?,
++        ])
++    }
++    fn bound_terms(&self, t: Triangle, r: &Region) -> Option<([f64; 4], [f64; 4])> {
++        let values = [
++            self.terms(t[0], r)?,
++            self.terms(t[1], r)?,
++            self.terms(t[2], r)?,
++        ];
++        let d2 = diameter2(&t)?;
++        let mut lo = [0.; 4];
++        let mut hi = [0.; 4];
++        for k in 0..4 {
++            let error = div(I::point(r.m[k]).mul(d2)?, 6.)?.hi;
++            lo[k] = I::point(values.iter().map(|v| v[k].lo).fold(f64::INFINITY, f64::min))
++                .sub(I::point(error))?
++                .lo;
++            hi[k] = I::point(
++                values
++                    .iter()
++                    .map(|v| v[k].hi)
++                    .fold(f64::NEG_INFINITY, f64::max),
++            )
++            .add(I::point(error))?
++            .hi;
++        }
++        Some((lo, hi))
++    }
++    fn piece(&self, t: Triangle, slab: I, tolerance: f64) -> R<Value> {
++        let mut b = hull(&t).ok_or("arithmetic")?;
++        b[0] = slab;
++        let r = self.admit(b)?;
++        let mut left = t;
++        let mut right = t;
++        for p in &mut left {
++            p[0] = I::point(slab.lo);
++        }
++        for p in &mut right {
++            p[0] = I::point(slab.hi);
++        }
++        let (lo, _) = self.bound_terms(left, &r).ok_or("arithmetic")?;
++        let (_, hi) = self.bound_terms(right, &r).ok_or("arithmetic")?;
++        let indices: &[usize] = if r.active_native {
++            &[0, 1, 2, 3]
++        } else {
++            &[1, 3]
++        };
++        let left_lower = indices
++            .iter()
++            .map(|&i| lo[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        let right_upper = indices
++            .iter()
++            .map(|&i| hi[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        if left_lower <= 0. || right_upper >= 0. {
++            return Err("strict_brackets");
++        }
++        let (lo, hi) = self.bound_terms(t, &r).ok_or("arithmetic")?;
++        let lower = indices
++            .iter()
++            .map(|&i| lo[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        let upper = indices
++            .iter()
++            .map(|&i| hi[i])
++            .fold(f64::NEG_INFINITY, f64::max);
++        let residual = (-lower).max(upper).max(0.);
++        let error = div(I::point(residual), r.mu).ok_or("arithmetic")?.hi;
++        if error > tolerance {
++            return Err("approximation_bound");
++        }
++        Ok(
++            json!({"slab": [slab.lo,slab.hi],"domainImage":t.map(|p|p.map(|v|[v.lo,v.hi])),"nativeSideActiveCandidate":r.active_native,
++            "reducedFunctionDecreasingRateLower":r.mu,"leftSignLower":left_lower,"rightSignUpper":right_upper,
++            "meshResidualBounds":[lower,upper],"sameYZRootDisplacementUpper":error,"capMargin":r.cap_margin,"outerRoundMargin":r.outer_margin}),
++        )
++    }
++}
++struct Region {
++    groove: activation_a::MeridianBound,
++    active_native: bool,
++    mu: f64,
++    m: [f64; 4],
++    cap_margin: f64,
++    outer_margin: f64,
++}
++
++pub(crate) fn certify(
++    f: &SfccFeatureSet,
++    cylinder_id: usize,
++    triangles: &[[[f64; 3]; 3]],
++    tolerance: f64,
++) -> std::result::Result<Value, String> {
++    if triangles.is_empty()
++        || triangles.len() > 128
++        || !tolerance.is_finite()
++        || tolerance <= 0.
++        || triangles.iter().flatten().flatten().any(|x| !x.is_finite())
++    {
++        return Err("invalid_domain".into());
++    }
++    let source = Source::bind(f, cylinder_id).ok_or("source_binding")?;
++    let minx = triangles
++        .iter()
++        .flatten()
++        .map(|p| p[0])
++        .fold(f64::INFINITY, f64::min);
++    let maxx = triangles
++        .iter()
++        .flatten()
++        .map(|p| p[0])
++        .fold(f64::NEG_INFINITY, f64::max);
++    let slab = interval(
++        I::point(minx).sub(I::point(tolerance)).ok_or("slab")?.lo,
++        I::point(maxx).add(I::point(tolerance)).ok_or("slab")?.hi,
++    )
++    .ok_or("slab")?;
++    let mut stack: Vec<_> = triangles
++        .iter()
++        .enumerate()
++        .rev()
++        .map(|(i, t)| (i, 0, t.map(|p| p.map(I::point))))
++        .collect();
++    let mut attempts = 0;
++    let mut accepted = Vec::new();
++    let mut bounds = vec![0.0_f64; triangles.len()];
++    let mut failures = Vec::new();
++    while let Some((index, depth, t)) = stack.pop() {
++        attempts += 1;
++        if attempts > MAX_PIECES {
++            return Err(format!(
++                "piece_cap: accepted {}, pending {}, last {:?}",
++                accepted.len(),
++                stack.len(),
++                failures.last()
++            ));
++        }
++        match source.piece(t, slab, tolerance) {
++            Ok(mut row) => {
++                let bound = row["sameYZRootDisplacementUpper"]
++                    .as_f64()
++                    .ok_or("bound_encoding")?;
++                bounds[index] = bounds[index].max(bound);
++                row["triangle"] = json!(index);
++                row["depth"] = json!(depth);
++                accepted.push(row);
++            }
++            Err(reason) => {
++                failures.push(json!({"triangle":index,"depth":depth,"reason":reason}));
++                if depth >= 12 {
++                    return Err(format!(
++                        "unproved_piece: {reason}, triangle {index}, depth {depth}"
++                    ));
++                }
++                let [a, b] = split(t).ok_or("split_arithmetic")?;
++                stack.push((index, depth + 1, b));
++                stack.push((index, depth + 1, a));
++            }
++        }
++    }
++    Ok(
++        json!({"scope":"unique full-source root graph over every supplied closed projected triangle, and same-YZ mesh-to-root displacement; supplied-domain topology and cell-face boundary transport are separate obligations",
++        "sourceFingerprint":source.f.fingerprint().to_string(),"source":source.source,"cylinder":source.cylinder_id,"commonWorldXSlab":[slab.lo,slab.hi],
++        "triangleCount":triangles.len(),"attempts":attempts,"acceptedPieces":accepted.len(),"pieceCap":MAX_PIECES,"perTriangleSourceBounds":bounds,
++        "uniformSourceBound":bounds.iter().copied().fold(0.,f64::max),"tolerance":tolerance,"refinedFailures":failures,"pieces":accepted,
++        "fullClosedTriangleDomainsCovered":true,"sharedEdgeRootsAgreeByCommonSlabUniqueness":true,"fullFieldGloballyMonotoneClaimed":false,
++        "cellFaceBoundaryTransportProved":false,"patchLabelsAssigned":false,"publicationReady":false}),
++    )
++}
++
++#[test]
++fn fullfan_a_actual_closed_source_graph() {
++    use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let input: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json")).unwrap();
++    let root = crate::scene_bridge::build_csg_tree_from_json(input["sceneJson"].as_str().unwrap())
++        .unwrap();
++    let cube = SfccWorldCube {
++        min_x: input["cube"]["min"][0].as_f64().unwrap(),
++        min_y: input["cube"]["min"][1].as_f64().unwrap(),
++        min_z: input["cube"]["min"][2].as_f64().unwrap(),
++        size: input["cube"]["max"][0].as_f64().unwrap() - input["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let f = build_pipeline_context(&root, &cube, &PipelineTuning::default()).features;
++    assert_eq!(
++        f.fingerprint().to_string(),
++        saved["fingerprint"].as_str().unwrap()
++    );
++    let points: std::collections::BTreeMap<usize, [f64; 3]> = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|p| {
++            (
++                p["id"].as_u64().unwrap() as usize,
++                std::array::from_fn(|k| {
++                    f64::from_bits(
++                        u64::from_str_radix(p["positionHex"][k].as_str().unwrap(), 16).unwrap(),
++                    )
++                }),
++            )
++        })
++        .collect();
++    let ids: Vec<usize> = serde_json::from_value(saved["fan"]["triangles"].clone()).unwrap();
++    let triangles: Vec<_> = ids
++        .chunks_exact(3)
++        .map(|t| [points[&t[0]], points[&t[1]], points[&t[2]]])
++        .collect();
++    let tolerance = f64::from_bits(
++        u64::from_str_radix(saved["options"]["surfaceTolHex"].as_str().unwrap(), 16).unwrap(),
++    );
++    let result = certify(
++        &f,
++        saved["fan"]["stratum"].as_u64().unwrap() as usize,
++        &triangles,
++        tolerance,
++    );
++    if let Ok(path) = std::env::var("SFCC_FULLFAN_A_RECEIPT") {
++        std::fs::write(
++            path,
++            serde_json::to_vec_pretty(
++                &json!({"result":result,"parentReceiptSha256":saved["parentReceiptSha256"]}),
++            )
++            .unwrap(),
++        )
++        .unwrap();
++    }
++    assert!(result.is_ok(), "{result:?}");
++}

@@ -1,0 +1,10 @@
+
+running 5 tests
+test sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_exact_activation_coverage_and_dual_incoming ... ok
+test sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_refuses_disconnected_equal_parameter_and_gaps ... ok
+test sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_refuses_event_relabel_and_duplicate_membership ... ok
+test sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_refuses_missing_dual_membership_and_native_tail ... ok
+test sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_whole_mesh_rejects_cross_cell_contacts_and_export_collapse ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.00s
+

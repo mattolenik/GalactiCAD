@@ -1,0 +1,20 @@
+
+running 8 tests
+test sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_original_records_replay_missing_native_node ... ok
+test sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_scope_preserves_contract_and_required_sharing_refuses ... 
+thread 'sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_scope_preserves_contract_and_required_sharing_refuses' (27514477) panicked at kernel/src/sfcc/activation_frontier_replay_c_tests.rs:1371:61:
+activation replay scope
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test sfcc::cell_mesh::activation_frontier_replay_c_tests::activation_c_frontier_typed_handoff_reconstructs_and_validates_actual_graph ... ok
+test sfcc::private_arc_a::activation_frontier_c::activation_c_diagnostic_scope_restores_after_unwind ... 
+thread 'sfcc::private_arc_a::activation_frontier_c::activation_c_diagnostic_scope_restores_after_unwind' (27514614) panicked at kernel/src/sfcc/activation_frontier_c.rs:259:9:
+scope control
+ok
+test sfcc::private_arc_a::activation_frontier_c::activation_c_frontier_selection_requires_one_actual_inventory_consumer ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_actual_event_parameters_and_frontier_branch_associations ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_event_preparation_rejects_wrong_source_cell_range_and_budget ... ok
+test sfcc::shared_twisted_proof::exposure_a::activation_event_c::tests::activation_c_event_rejects_coherent_malformed_original_ranges ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 419 filtered out; finished in 6.44s
+

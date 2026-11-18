@@ -1,0 +1,8 @@
+{
+  "filter": "fullfan_c_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::fullfan_boundary_c::fullfan_c_actual_x_face_lift_does_not_preserve_boundary_plane",
+    "sfcc::shared_twisted_proof::exposure_a::fullfan_boundary_c::fullfan_c_plane_exclusion_requires_strict_finite_separation"
+  ],
+  "exitCode": 0
+}

@@ -1,0 +1,9 @@
+{
+  "filter": "span49_a_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::span49_a::span49_a_actual_consumed_arc_and_query_associations",
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::span49_a::span49_a_order_requires_strict_parameter_and_canonical_progress",
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::span49_a::span49_a_rejects_corrupted_original_span_provenance"
+  ],
+  "exitCode": 0
+}

@@ -1,0 +1,1860 @@
+{
+  "result": {
+    "Ok": {
+      "associations": [
+        {
+          "originalTube": [
+            [
+              -9.33725438989119,
+              -2.5720380357250736,
+              5.482664933360676
+            ],
+            [
+              -8.83198077755685,
+              -2.4120380357250646,
+              6.180540846552623
+            ]
+          ],
+          "parameterBits": 4629663183038855226,
+          "physicalGeneratedDistanceUpper": [
+            2.337799657255022e-13,
+            2.337799657255022e-13
+          ],
+          "pointBits": [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.33725438989119,
+              -2.5720380357250736,
+              5.482664933360676
+            ],
+            [
+              -8.83198077755685,
+              -2.4120380357250646,
+              6.180540846552623
+            ]
+          ],
+          "parameterBits": 4629672491513358892,
+          "physicalGeneratedDistanceUpper": [
+            3.405617045266825e-14,
+            3.405617045266825e-14
+          ],
+          "pointBits": [
+            13844754554782986831,
+            13836166026439335470,
+            4618010093824456129
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.33725438989119,
+              -2.5720380357250736,
+              5.482664933360676
+            ],
+            [
+              -8.83198077755685,
+              -2.4120380357250646,
+              6.180540846552623
+            ]
+          ],
+          "parameterBits": 4629681799987862557,
+          "physicalGeneratedDistanceUpper": [
+            3.1022738505322766e-14,
+            3.1022738505322766e-14
+          ],
+          "pointBits": [
+            13844760732348307875,
+            13836166026439335478,
+            4617989758678473706
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.33725438989119,
+              -2.5720380357250736,
+              5.482664933360676
+            ],
+            [
+              -8.83198077755685,
+              -2.4120380357250646,
+              6.180540846552623
+            ]
+          ],
+          "parameterBits": 4629691108462366222,
+          "physicalGeneratedDistanceUpper": [
+            3.147712339076734e-14,
+            3.147712339076734e-14
+          ],
+          "pointBits": [
+            13844766889387815847,
+            13836166026439335478,
+            4617969401442536110
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629700416936869888,
+          "physicalGeneratedDistanceUpper": [
+            3.147712339076734e-14,
+            3.147712339076734e-14
+          ],
+          "pointBits": [
+            13844773025837132680,
+            13836166026439335478,
+            4617949022357655430
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629727063157335629,
+          "physicalGeneratedDistanceUpper": [
+            3.1022738505322766e-14,
+            3.1022738505322766e-14
+          ],
+          "pointBits": [
+            13844784004549049791,
+            13836166026439335478,
+            4617912335395004196
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629753709377801370,
+          "physicalGeneratedDistanceUpper": [
+            3.1022738505322766e-14,
+            3.1022738505322766e-14
+          ],
+          "pointBits": [
+            13844794919135655985,
+            13836166026439335478,
+            4617875569959526307
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629780355598267111,
+          "physicalGeneratedDistanceUpper": [
+            3.1022738505322766e-14,
+            3.1022738505322766e-14
+          ],
+          "pointBits": [
+            13844805769186638512,
+            13836166026439335478,
+            4617838727408422511
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629807001818732852,
+          "physicalGeneratedDistanceUpper": [
+            1.199762047962197e-12,
+            1.199762047962197e-12
+          ],
+          "pointBits": [
+            13844816554298846762,
+            13836166026439335478,
+            4617801809107539645
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629815539970355943,
+          "physicalGeneratedDistanceUpper": [
+            3.147712339076734e-14,
+            3.147712339076734e-14
+          ],
+          "pointBits": [
+            13844819996330407069,
+            13836166026439335477,
+            4617789963710297298
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629824078121979034,
+          "physicalGeneratedDistanceUpper": [
+            3.147712339076734e-14,
+            3.147712339076734e-14
+          ],
+          "pointBits": [
+            13844823431640932157,
+            13836166026439335478,
+            4617778110722018473
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629832616273602125,
+          "physicalGeneratedDistanceUpper": [
+            3.147712339076734e-14,
+            3.147712339076734e-14
+          ],
+          "pointBits": [
+            13844826860217632349,
+            13836166026439335478,
+            4617766250188178055
+          ]
+        },
+        {
+          "originalTube": [
+            [
+              -9.438961851300313,
+              -2.5720380357250736,
+              5.3097897051654375
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "parameterBits": 4629841154425225216,
+          "physicalGeneratedDistanceUpper": [
+            3.4915806328045833e-13,
+            3.4915806328045833e-13
+          ],
+          "pointBits": [
+            13844830282047795546,
+            13836166026439335478,
+            4617754382154335013
+          ]
+        }
+      ],
+      "chargedAfter": 77,
+      "chargedBefore": 64,
+      "chart": 49,
+      "consumedRangeBits": [
+        4629663183038855226,
+        4629841154425225216
+      ],
+      "corner": 13,
+      "effectiveErrorLimit": 0.01,
+      "globalPieceCap": 128,
+      "meshMutationPerformed": false,
+      "neighboring2DTransportProved": false,
+      "orderedConsumedEvents": true,
+      "originalChordTolerance": 0.02,
+      "originalQueryRecords": 15,
+      "originalRangeBits": [
+        0,
+        4629841154425225216
+      ],
+      "outerPointUsesOriginalZFaceRoot": true,
+      "parentReceiptSha256": "7ff26c9d0a897daa48913e7e31e4e33544e8bfa3b688ac4fa5a1dd988f554757",
+      "physicalPoint40UsesOriginalXFaceRoot": true,
+      "publicationReady": false,
+      "rawParameterContinuityOrTotalityProved": false,
+      "retainedAllowance": 3.796655370190979e-7,
+      "retainedHalfChordLimit": 0.01,
+      "scope": "three actual consumed edges and their recorded own queries mapped to one closed source-exposed ideal arc; no continuous raw Newton map claim",
+      "sourceFingerprint": "10977506807348230851",
+      "sourcePieceCount": 32,
+      "sourceProofs": [
+        {
+          "chart": 49,
+          "closedCanonicalArcExposed": true,
+          "closureArgument": "terminal is the correlated native E=0,cylinder rho=R,groove-level event; the native field decreases strictly with world Z on the complete closed cover, so E<=0 including the terminal",
+          "coefficientFamily": "physical source",
+          "fullPhysicalSourceZeroProved": true,
+          "generatedCarrierArcRestrictionsProved": false,
+          "generatedCarrierExactPhysicalIdentityClaimed": false,
+          "grooveLevelBounds": [
+            0.7,
+            0.7
+          ],
+          "heightBounds": [
+            -2.492038035725099,
+            -2.492038035725039
+          ],
+          "outerZBits": 4618030406640159634,
+          "parameterization": "Z=Z_terminal+s*(Z_outer-Z_terminal), s in [0,1], negative-X cylinder branch; midpoint enclosures never replace the exact correlated terminal",
+          "pieceCount": 16,
+          "pieces": [
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7203491602654267,
+              "fraction": [
+                0.0,
+                0.0625
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.358961851300348,
+                  -2.492038035725099,
+                  5.389789705165213
+                ],
+                [
+                  -9.350121000867938,
+                  -2.492038035725039,
+                  5.405112142141753
+                ]
+              ],
+              "nativeCapMargin": 6.496067223033461,
+              "nativeDerivativeInZ": [
+                -0.7773628660467454,
+                -0.7752294511039605
+              ],
+              "nativeFiniteProfileMargin": 0.5893959603334163,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.719665465231259,
+              "fraction": [
+                0.0625,
+                0.125
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.35012100086819,
+                  -2.492038035725099,
+                  5.405112142141344
+                ],
+                [
+                  -9.34124664985904,
+                  -2.492038035725039,
+                  5.4204345791179085
+                ]
+              ],
+              "nativeCapMargin": 6.484139746218125,
+              "nativeDerivativeInZ": [
+                -0.7795023527310384,
+                -0.7773628660466478
+              ],
+              "nativeFiniteProfileMargin": 0.5734171921257846,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7189791818930711,
+              "fraction": [
+                0.125,
+                0.1875
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.341246649859306,
+                  -2.492038035725099,
+                  5.420434579117475
+                ],
+                [
+                  -9.332338702703842,
+                  -2.492038035725039,
+                  5.435757016094064
+                ]
+              ],
+              "nativeCapMargin": 6.472179440441354,
+              "nativeDerivativeInZ": [
+                -0.7816479573474068,
+                -0.7795023527309374
+              ],
+              "nativeFiniteProfileMargin": 0.5574300064168703,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7182903028319552,
+              "fraction": [
+                0.1875,
+                0.25
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.332338702704124,
+                  -2.492038035725099,
+                  5.435757016093606
+                ],
+                [
+                  -9.323397063105032,
+                  -2.492038035725039,
+                  5.45107945307022
+                ]
+              ],
+              "nativeCapMargin": 6.460186211604831,
+              "nativeDerivativeInZ": [
+                -0.7837997265272368,
+                -0.781647957347302
+              ],
+              "nativeFiniteProfileMargin": 0.5414343787487313,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7175988205724008,
+              "fraction": [
+                0.25,
+                0.3125
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.323397063105329,
+                  -2.492038035725099,
+                  5.451079453069737
+                ],
+                [
+                  -9.314421634030602,
+                  -2.492038035725039,
+                  5.466401890046375
+                ]
+              ],
+              "nativeCapMargin": 6.448159964892322,
+              "nativeDerivativeInZ": [
+                -0.7859577073485219,
+                -0.7837997265271284
+              ],
+              "nativeFiniteProfileMargin": 0.5254302844758131,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7169047275817517,
+              "fraction": [
+                0.3125,
+                0.375
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.314421634030913,
+                  -2.492038035725099,
+                  5.466401890045869
+                ],
+                [
+                  -9.305412317706791,
+                  -2.492038035725039,
+                  5.48172432702253
+                ]
+              ],
+              "nativeCapMargin": 6.43610060476278,
+              "nativeDerivativeInZ": [
+                -0.7881219473416462,
+                -0.78595770734841
+              ],
+              "nativeFiniteProfileMargin": 0.5094176987631024,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7162080162696569,
+              "fraction": [
+                0.375,
+                0.4375
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.305412317707118,
+                  -2.492038035725099,
+                  5.481724327022
+                ],
+                [
+                  -9.296369015610958,
+                  -2.492038035725039,
+                  5.497046763998685
+                ]
+              ],
+              "nativeCapMargin": 6.424008034943377,
+              "nativeDerivativeInZ": [
+                -0.7902924944952591,
+                -0.7881219473415306
+              ],
+              "nativeFiniteProfileMargin": 0.4933965965843112,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7155086789875126,
+              "fraction": [
+                0.4375,
+                0.5
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.296369015611301,
+                  -2.492038035725099,
+                  5.4970467639981315
+                ],
+                [
+                  -9.287291628464343,
+                  -2.492038035725039,
+                  5.51236920097484
+                ]
+              ],
+              "nativeCapMargin": 6.411882158422435,
+              "nativeDerivativeInZ": [
+                -0.7924693972622415,
+                -0.7902924944951397
+              ],
+              "nativeFiniteProfileMargin": 0.4773669527200067,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7148067080278974,
+              "fraction": [
+                0.5,
+                0.5625
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.2872916284647,
+                  -2.492038035725099,
+                  5.512369200974263
+                ],
+                [
+                  -9.27818005622474,
+                  -2.492038035725039,
+                  5.527691637950995
+                ]
+              ],
+              "nativeCapMargin": 6.399722877442258,
+              "nativeDerivativeInZ": [
+                -0.7946527045657693,
+                -0.7924693972621187
+              ],
+              "nativeFiniteProfileMargin": 0.4613287417557103,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7141020956240018,
+              "fraction": [
+                0.5625,
+                0.625
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.278180056225114,
+                  -2.492038035725099,
+                  5.527691637950394
+                ],
+                [
+                  -9.269034198079074,
+                  -2.492038035725039,
+                  5.54301407492715
+                ]
+              ],
+              "nativeCapMargin": 6.387530093491893,
+              "nativeDerivativeInZ": [
+                -0.7968424658054684,
+                -0.7946527045656424
+              ],
+              "nativeFiniteProfileMargin": 0.44528193807999833,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7133948339490472,
+              "fraction": [
+                0.625,
+                0.6875
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.269034198079463,
+                  -2.492038035725099,
+                  5.543014074926525
+                ],
+                [
+                  -9.259853952435884,
+                  -2.492038035725039,
+                  5.558336511903305
+                ]
+              ],
+              "nativeCapMargin": 6.37530370729977,
+              "nativeDerivativeInZ": [
+                -0.7990387308636725,
+                -0.7968424658053379
+              ],
+              "nativeFiniteProfileMargin": 0.42922651588255417,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7126849151157001,
+              "fraction": [
+                0.6875,
+                0.75
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.25985395243629,
+                  -2.492038035725099,
+                  5.558336511902656
+                ],
+                [
+                  -9.250639216917703,
+                  -2.492038035725039,
+                  5.573658948879461
+                ]
+              ],
+              "nativeCapMargin": 6.363043618826259,
+              "nativeDerivativeInZ": [
+                -0.8012415501117781,
+                -0.7990387308635384
+              ],
+              "nativeFiniteProfileMargin": 0.4131624491522022,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7119723311754772,
+              "fraction": [
+                0.75,
+                0.8125
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.250639216918124,
+                  -2.492038035725099,
+                  5.573658948878787
+                ],
+                [
+                  -9.241389888353337,
+                  -2.492038035725039,
+                  5.588981385855616
+                ]
+              ],
+              "nativeCapMargin": 6.350749727256137,
+              "nativeDerivativeInZ": [
+                -0.8034509744167003,
+                -0.80124155011164
+              ],
+              "nativeFiniteProfileMargin": 0.3970897116749274,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7112570741181423,
+              "fraction": [
+                0.8125,
+                0.875
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.241389888353774,
+                  -2.492038035725099,
+                  5.588981385854919
+                ],
+                [
+                  -9.232105862770046,
+                  -2.492038035725039,
+                  5.604303822831771
+                ]
+              ],
+              "nativeCapMargin": 6.338421930990931,
+              "nativeDerivativeInZ": [
+                -0.805667055147436,
+                -0.8034509744165585
+              ],
+              "nativeFiniteProfileMargin": 0.38100827703184253,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7105391358710963,
+              "fraction": [
+                0.875,
+                0.9375
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.2321058627705,
+                  -2.492038035725099,
+                  5.60430382283105
+                ],
+                [
+                  -9.222787035385618,
+                  -2.492038035725039,
+                  5.6196262598079265
+                ]
+              ],
+              "nativeCapMargin": 6.326060127641183,
+              "nativeDerivativeInZ": [
+                -0.8078898441817283,
+                -0.8056670551472902
+              ],
+              "nativeFiniteProfileMargin": 0.36491811859715256,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7098185082987584,
+              "fraction": [
+                0.9375,
+                1.0
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.222787035386087,
+                  -2.492038035725099,
+                  5.619626259807181
+                ],
+                [
+                  -9.21343330060034,
+                  -2.492038035725039,
+                  5.634948696784082
+                ]
+              ],
+              "nativeCapMargin": 6.313664214018603,
+              "nativeDerivativeInZ": [
+                -0.8101193939128425,
+                -0.8078898441815788
+              ],
+              "nativeFiniteProfileMargin": 0.34881920953608075,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            }
+          ],
+          "rawNumericalParameterContinuityProved": false,
+          "sourceFingerprint": "10977506807348230851",
+          "terminalImage": [
+            [
+              -9.358961851300423,
+              -2.492038035725099,
+              5.389789705165214
+            ],
+            [
+              -9.358961851300037,
+              -2.492038035725039,
+              5.389789705165597
+            ]
+          ],
+          "terminalNativeCylinderGrooveJacobianLower": 0.5589639038202537
+        },
+        {
+          "chart": 49,
+          "closedCanonicalArcExposed": false,
+          "closureArgument": "terminal is the correlated native E=0,cylinder rho=R,groove-level event; the native field decreases strictly with world Z on the complete closed cover, so E<=0 including the terminal",
+          "coefficientFamily": "generated carrier",
+          "fullPhysicalSourceZeroProved": false,
+          "generatedCarrierArcRestrictionsProved": true,
+          "generatedCarrierExactPhysicalIdentityClaimed": false,
+          "grooveLevelBounds": [
+            0.6999999999999998,
+            0.7000000000000001
+          ],
+          "heightBounds": [
+            -2.492038035725099,
+            -2.492038035725039
+          ],
+          "outerZBits": 4618030406640159634,
+          "parameterization": "Z=Z_terminal+s*(Z_outer-Z_terminal), s in [0,1], negative-X cylinder branch; midpoint enclosures never replace the exact correlated terminal",
+          "pieceCount": 16,
+          "pieces": [
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7203491602654267,
+              "fraction": [
+                0.0,
+                0.0625
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.358961851300348,
+                  -2.492038035725099,
+                  5.389789705165213
+                ],
+                [
+                  -9.350121000867938,
+                  -2.492038035725039,
+                  5.405112142141753
+                ]
+              ],
+              "nativeCapMargin": 6.496067223033461,
+              "nativeDerivativeInZ": [
+                -0.7773628660467454,
+                -0.7752294511039605
+              ],
+              "nativeFiniteProfileMargin": 0.5893959603334163,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.719665465231259,
+              "fraction": [
+                0.0625,
+                0.125
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.35012100086819,
+                  -2.492038035725099,
+                  5.405112142141344
+                ],
+                [
+                  -9.34124664985904,
+                  -2.492038035725039,
+                  5.4204345791179085
+                ]
+              ],
+              "nativeCapMargin": 6.484139746218125,
+              "nativeDerivativeInZ": [
+                -0.7795023527310384,
+                -0.7773628660466478
+              ],
+              "nativeFiniteProfileMargin": 0.5734171921257846,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7189791818930711,
+              "fraction": [
+                0.125,
+                0.1875
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.341246649859306,
+                  -2.492038035725099,
+                  5.420434579117475
+                ],
+                [
+                  -9.332338702703842,
+                  -2.492038035725039,
+                  5.435757016094064
+                ]
+              ],
+              "nativeCapMargin": 6.472179440441354,
+              "nativeDerivativeInZ": [
+                -0.7816479573474068,
+                -0.7795023527309374
+              ],
+              "nativeFiniteProfileMargin": 0.5574300064168703,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7182903028319552,
+              "fraction": [
+                0.1875,
+                0.25
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.332338702704124,
+                  -2.492038035725099,
+                  5.435757016093606
+                ],
+                [
+                  -9.323397063105032,
+                  -2.492038035725039,
+                  5.45107945307022
+                ]
+              ],
+              "nativeCapMargin": 6.460186211604831,
+              "nativeDerivativeInZ": [
+                -0.7837997265272368,
+                -0.781647957347302
+              ],
+              "nativeFiniteProfileMargin": 0.5414343787487313,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7175988205724008,
+              "fraction": [
+                0.25,
+                0.3125
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.323397063105329,
+                  -2.492038035725099,
+                  5.451079453069737
+                ],
+                [
+                  -9.314421634030602,
+                  -2.492038035725039,
+                  5.466401890046375
+                ]
+              ],
+              "nativeCapMargin": 6.448159964892322,
+              "nativeDerivativeInZ": [
+                -0.7859577073485219,
+                -0.7837997265271284
+              ],
+              "nativeFiniteProfileMargin": 0.5254302844758131,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7169047275817517,
+              "fraction": [
+                0.3125,
+                0.375
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.314421634030913,
+                  -2.492038035725099,
+                  5.466401890045869
+                ],
+                [
+                  -9.305412317706791,
+                  -2.492038035725039,
+                  5.48172432702253
+                ]
+              ],
+              "nativeCapMargin": 6.43610060476278,
+              "nativeDerivativeInZ": [
+                -0.7881219473416462,
+                -0.78595770734841
+              ],
+              "nativeFiniteProfileMargin": 0.5094176987631024,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7162080162696569,
+              "fraction": [
+                0.375,
+                0.4375
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.305412317707118,
+                  -2.492038035725099,
+                  5.481724327022
+                ],
+                [
+                  -9.296369015610958,
+                  -2.492038035725039,
+                  5.497046763998685
+                ]
+              ],
+              "nativeCapMargin": 6.424008034943377,
+              "nativeDerivativeInZ": [
+                -0.7902924944952591,
+                -0.7881219473415306
+              ],
+              "nativeFiniteProfileMargin": 0.4933965965843112,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7155086789875126,
+              "fraction": [
+                0.4375,
+                0.5
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.296369015611301,
+                  -2.492038035725099,
+                  5.4970467639981315
+                ],
+                [
+                  -9.287291628464343,
+                  -2.492038035725039,
+                  5.51236920097484
+                ]
+              ],
+              "nativeCapMargin": 6.411882158422435,
+              "nativeDerivativeInZ": [
+                -0.7924693972622415,
+                -0.7902924944951397
+              ],
+              "nativeFiniteProfileMargin": 0.4773669527200067,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7148067080278974,
+              "fraction": [
+                0.5,
+                0.5625
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.2872916284647,
+                  -2.492038035725099,
+                  5.512369200974263
+                ],
+                [
+                  -9.27818005622474,
+                  -2.492038035725039,
+                  5.527691637950995
+                ]
+              ],
+              "nativeCapMargin": 6.399722877442258,
+              "nativeDerivativeInZ": [
+                -0.7946527045657693,
+                -0.7924693972621187
+              ],
+              "nativeFiniteProfileMargin": 0.4613287417557103,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7141020956240018,
+              "fraction": [
+                0.5625,
+                0.625
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.278180056225114,
+                  -2.492038035725099,
+                  5.527691637950394
+                ],
+                [
+                  -9.269034198079074,
+                  -2.492038035725039,
+                  5.54301407492715
+                ]
+              ],
+              "nativeCapMargin": 6.387530093491893,
+              "nativeDerivativeInZ": [
+                -0.7968424658054684,
+                -0.7946527045656424
+              ],
+              "nativeFiniteProfileMargin": 0.44528193807999833,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7133948339490472,
+              "fraction": [
+                0.625,
+                0.6875
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.269034198079463,
+                  -2.492038035725099,
+                  5.543014074926525
+                ],
+                [
+                  -9.259853952435884,
+                  -2.492038035725039,
+                  5.558336511903305
+                ]
+              ],
+              "nativeCapMargin": 6.37530370729977,
+              "nativeDerivativeInZ": [
+                -0.7990387308636725,
+                -0.7968424658053379
+              ],
+              "nativeFiniteProfileMargin": 0.42922651588255417,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7126849151157001,
+              "fraction": [
+                0.6875,
+                0.75
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.25985395243629,
+                  -2.492038035725099,
+                  5.558336511902656
+                ],
+                [
+                  -9.250639216917703,
+                  -2.492038035725039,
+                  5.573658948879461
+                ]
+              ],
+              "nativeCapMargin": 6.363043618826259,
+              "nativeDerivativeInZ": [
+                -0.8012415501117781,
+                -0.7990387308635384
+              ],
+              "nativeFiniteProfileMargin": 0.4131624491522022,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7119723311754772,
+              "fraction": [
+                0.75,
+                0.8125
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.250639216918124,
+                  -2.492038035725099,
+                  5.573658948878787
+                ],
+                [
+                  -9.241389888353337,
+                  -2.492038035725039,
+                  5.588981385855616
+                ]
+              ],
+              "nativeCapMargin": 6.350749727256137,
+              "nativeDerivativeInZ": [
+                -0.8034509744167003,
+                -0.80124155011164
+              ],
+              "nativeFiniteProfileMargin": 0.3970897116749274,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7112570741181423,
+              "fraction": [
+                0.8125,
+                0.875
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.241389888353774,
+                  -2.492038035725099,
+                  5.588981385854919
+                ],
+                [
+                  -9.232105862770046,
+                  -2.492038035725039,
+                  5.604303822831771
+                ]
+              ],
+              "nativeCapMargin": 6.338421930990931,
+              "nativeDerivativeInZ": [
+                -0.805667055147436,
+                -0.8034509744165585
+              ],
+              "nativeFiniteProfileMargin": 0.38100827703184253,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7105391358710963,
+              "fraction": [
+                0.875,
+                0.9375
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.2321058627705,
+                  -2.492038035725099,
+                  5.60430382283105
+                ],
+                [
+                  -9.222787035385618,
+                  -2.492038035725039,
+                  5.6196262598079265
+                ]
+              ],
+              "nativeCapMargin": 6.326060127641183,
+              "nativeDerivativeInZ": [
+                -0.8078898441817283,
+                -0.8056670551472902
+              ],
+              "nativeFiniteProfileMargin": 0.36491811859715256,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            },
+            {
+              "capCutMargin": 7.492038035725037,
+              "cylinderCapMargin": 7.507961964274899,
+              "cylinderGrooveTransverseLower": 0.7098185082987584,
+              "fraction": [
+                0.9375,
+                1.0
+              ],
+              "grooveDistance": [
+                0.6999999999999736,
+                0.7000000000000266
+              ],
+              "image": [
+                [
+                  -9.222787035386087,
+                  -2.492038035725099,
+                  5.619626259807181
+                ],
+                [
+                  -9.21343330060034,
+                  -2.492038035725039,
+                  5.634948696784082
+                ]
+              ],
+              "nativeCapMargin": 6.313664214018603,
+              "nativeDerivativeInZ": [
+                -0.8101193939128425,
+                -0.8078898441815788
+              ],
+              "nativeFiniteProfileMargin": 0.34881920953608075,
+              "otherDistance": [
+                1.837136440220446,
+                1.8371364402204786
+              ],
+              "outerRoundMargin": 3.076566286736259
+            }
+          ],
+          "rawNumericalParameterContinuityProved": false,
+          "sourceFingerprint": "10977506807348230851",
+          "terminalImage": [
+            [
+              -9.358961851300423,
+              -2.492038035725099,
+              5.389789705165214
+            ],
+            [
+              -9.358961851300037,
+              -2.492038035725039,
+              5.389789705165597
+            ]
+          ],
+          "terminalNativeCylinderGrooveJacobianLower": 0.5589639038202537
+        }
+      ],
+      "spans": [
+        {
+          "edge": [
+            1116,
+            1117
+          ],
+          "endpointAssociationUpper": 2.337799657255022e-13,
+          "exportRoundingUpper": 2.1837086657788728e-7,
+          "exportedEdgeToPhysicalArcUpper": 0.00009762186761519515,
+          "graphSecondDerivativeUpper": 0.149136182626004,
+          "originalParameterBits": [
+            4629663183038855226,
+            4629700416936869888
+          ],
+          "originalProjectionTube": [
+            [
+              -9.33725438989119,
+              -2.572038035725073,
+              5.482664933360676
+            ],
+            [
+              -9.131581120391166,
+              -2.4120380357250646,
+              5.713815900776595
+            ]
+          ],
+          "physicalEndpointImages": [
+            [
+              [
+                -9.21343330060059,
+                -2.492038035725099,
+                5.634948696783697
+              ],
+              [
+                -9.213433300600574,
+                -2.492038035725039,
+                5.634948696783697
+              ]
+            ],
+            [
+              [
+                -9.25725438989118,
+                -2.492038035725099,
+                5.562664933360685
+              ],
+              [
+                -9.257254389891164,
+                -2.492038035725039,
+                5.562664933360685
+              ]
+            ]
+          ],
+          "wholeArcInterpolationErrorUpper": 0.00009740349651483726,
+          "workingEdgeToPhysicalArcUpper": 0.00009740349674861725
+        },
+        {
+          "edge": [
+            1117,
+            40
+          ],
+          "endpointAssociationUpper": 1.199762047962197e-12,
+          "exportRoundingUpper": 2.1837086657788728e-7,
+          "exportedEdgeToPhysicalArcUpper": 0.00031441763691510014,
+          "graphSecondDerivativeUpper": 0.14702829329886524,
+          "originalParameterBits": [
+            4629700416936869888,
+            4629807001818732852
+          ],
+          "originalProjectionTube": [
+            [
+              -9.414280617128552,
+              -2.5720380357250736,
+              5.351741140492485
+            ],
+            [
+              -9.177254389891155,
+              -2.4120380357250646,
+              5.6426649333606935
+            ]
+          ],
+          "physicalEndpointImages": [
+            [
+              [
+                -9.25725438989118,
+                -2.492038035725099,
+                5.562664933360685
+              ],
+              [
+                -9.257254389891164,
+                -2.492038035725039,
+                5.562664933360685
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -2.492038035725099,
+                5.4319133015149506
+              ],
+              [
+                -9.334576470564954,
+                -2.492038035725039,
+                5.431913301514966
+              ]
+            ]
+          ],
+          "wholeArcInterpolationErrorUpper": 0.00031419926484876014,
+          "workingEdgeToPhysicalArcUpper": 0.0003141992660485222
+        },
+        {
+          "edge": [
+            40,
+            647
+          ],
+          "endpointAssociationUpper": 1.199762047962197e-12,
+          "exportRoundingUpper": 2.430539407623117e-7,
+          "exportedEdgeToPhysicalArcUpper": 0.00003205019037086085,
+          "graphSecondDerivativeUpper": 0.1434047898320838,
+          "originalParameterBits": [
+            4629807001818732852,
+            4629841154425225216
+          ],
+          "originalProjectionTube": [
+            [
+              -9.438961851300313,
+              -2.572038035725073,
+              5.3097897051654375
+            ],
+            [
+              -9.254280617128522,
+              -2.412038035725065,
+              5.511741140492502
+            ]
+          ],
+          "physicalEndpointImages": [
+            [
+              [
+                -9.334576470564954,
+                -2.492038035725099,
+                5.4319133015149506
+              ],
+              [
+                -9.334576470564954,
+                -2.492038035725039,
+                5.431913301514966
+              ]
+            ],
+            [
+              [
+                -9.358961851300423,
+                -2.492038035725099,
+                5.389789705165214
+              ],
+              [
+                -9.358961851300037,
+                -2.492038035725039,
+                5.389789705165597
+              ]
+            ]
+          ],
+          "wholeArcInterpolationErrorUpper": 0.00003180713523033648,
+          "workingEdgeToPhysicalArcUpper": 0.00003180713643009854
+        }
+      ],
+      "surfaceTolerance": 0.01,
+      "terminalUsesCorrelatedNativeClosure": true,
+      "uniformExportedArcErrorUpper": 0.00031441763691510014,
+      "uniqueOwnQueries": 13,
+      "vertices": [
+        {
+          "generatedImage": [
+            [
+              -9.21343330060059,
+              -2.492038035725099,
+              5.634948696783697
+            ],
+            [
+              -9.213433300600574,
+              -2.492038035725039,
+              5.634948696783697
+            ]
+          ],
+          "id": 1116,
+          "parameterBits": 4629663183038855226,
+          "physicalImage": [
+            [
+              -9.21343330060059,
+              -2.492038035725099,
+              5.634948696783697
+            ],
+            [
+              -9.213433300600574,
+              -2.492038035725039,
+              5.634948696783697
+            ]
+          ]
+        },
+        {
+          "generatedImage": [
+            [
+              -9.25725438989118,
+              -2.492038035725099,
+              5.562664933360685
+            ],
+            [
+              -9.257254389891164,
+              -2.492038035725039,
+              5.562664933360685
+            ]
+          ],
+          "id": 1117,
+          "parameterBits": 4629700416936869888,
+          "physicalImage": [
+            [
+              -9.25725438989118,
+              -2.492038035725099,
+              5.562664933360685
+            ],
+            [
+              -9.257254389891164,
+              -2.492038035725039,
+              5.562664933360685
+            ]
+          ]
+        },
+        {
+          "generatedImage": [
+            [
+              -9.334576470564954,
+              -2.492038035725099,
+              5.4319133015149506
+            ],
+            [
+              -9.334576470564954,
+              -2.492038035725039,
+              5.431913301514966
+            ]
+          ],
+          "id": 40,
+          "parameterBits": 4629807001818732852,
+          "physicalImage": [
+            [
+              -9.334576470564954,
+              -2.492038035725099,
+              5.4319133015149506
+            ],
+            [
+              -9.334576470564954,
+              -2.492038035725039,
+              5.431913301514966
+            ]
+          ]
+        },
+        {
+          "generatedImage": [
+            [
+              -9.358961851300423,
+              -2.492038035725099,
+              5.389789705165214
+            ],
+            [
+              -9.358961851300037,
+              -2.492038035725039,
+              5.389789705165597
+            ]
+          ],
+          "id": 647,
+          "parameterBits": 4629841154425225216,
+          "physicalImage": [
+            [
+              -9.358961851300423,
+              -2.492038035725099,
+              5.389789705165214
+            ],
+            [
+              -9.358961851300037,
+              -2.492038035725039,
+              5.389789705165597
+            ]
+          ]
+        }
+      ],
+      "wholeOriginalCurve49RangeProved": false
+    }
+  }
+}

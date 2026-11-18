@@ -1,0 +1,228 @@
+{
+  "parentReceiptSha256": "64b62c86aca4d3354d0e2cc9770aebbdf0feb5d41397ee966f50b8045c257a68",
+  "result": {
+    "Ok": {
+      "acceptedStrips": 5,
+      "analyticRoot": "rho_*(Y)=min(R,(R+ny*Y+offset-r)/(1-nr)); Z_*(Y)=centerZ+sqrt(rho_*(Y)^2-(faceX-centerX)^2)",
+      "boundaryTangencyExcluded": true,
+      "branchDomains": "chamfer on [Ymin,Y*], cylinder on [Y*,Ymax], with one shared ideal feature/face endpoint",
+      "chartBinding": 49,
+      "completeFaceIntersectionProved": true,
+      "conditionalNonpositiveCylinderRegionCovered": true,
+      "connectedContourComponents": 1,
+      "cylinderBranchZBounds": [
+        5.4319133015149506,
+        5.431913301514966
+      ],
+      "face": [
+        0,
+        3464532,
+        2
+      ],
+      "fullFieldGloballyMonotoneClaimed": false,
+      "globalCheckCap": 128,
+      "grooveCoefficients": {
+        "nr": [
+          -0.5547001962252297,
+          -0.5547001962252286
+        ],
+        "ny": [
+          0.8320502943378428,
+          0.8320502943378445
+        ],
+        "offset": [
+          8.764263100358606,
+          8.764263100358635
+        ]
+      },
+      "lowerBoundaryChamferRootZBounds": [
+        5.4294818831714915,
+        5.429481883171608
+      ],
+      "lowerFaceEdgeSignUpper": -0.02120154105727678,
+      "originalCapturedPolylineCorrespondenceProved": false,
+      "physicalChamferRadius": 0.7,
+      "positiveCylinderRegionExcluded": true,
+      "publicationReady": false,
+      "radius": 10.8,
+      "rectangle": [
+        [
+          -9.334576470564954,
+          -2.4943226517164696,
+          5.3896361967837
+        ],
+        [
+          -9.334576470564954,
+          -2.249010151716469,
+          5.634948696783697
+        ]
+      ],
+      "rectangleBits": [
+        [
+          13844816554298846424,
+          13836171170937199256,
+          4617754209319262306
+        ],
+        [
+          13844816554298846424,
+          13835618776295404592,
+          4618030406640159634
+        ]
+      ],
+      "reducedPositiveZDerivativeLower": 0.49430195878705174,
+      "refinedRefusals": [
+        {
+          "depth": 0,
+          "reason": "face_native_interior",
+          "yStrip": [
+            -2.4943226517164696,
+            -2.249010151716469
+          ]
+        },
+        {
+          "depth": 1,
+          "reason": "face_native_interior",
+          "yStrip": [
+            -2.4943226517164696,
+            -2.3716664017164693
+          ]
+        },
+        {
+          "depth": 2,
+          "reason": "face_native_interior",
+          "yStrip": [
+            -2.4943226517164696,
+            -2.4329945267164694
+          ]
+        },
+        {
+          "depth": 3,
+          "reason": "face_native_interior",
+          "yStrip": [
+            -2.4943226517164696,
+            -2.4636585892164695
+          ]
+        }
+      ],
+      "rootPerClosedYFiber": 1,
+      "scope": "complete zero set of the continuous represented source on this entire original face rectangle; not just captured contour segments",
+      "source": [
+        10,
+        30,
+        15
+      ],
+      "sourceBranches": 2,
+      "sourceChecks": 10,
+      "sourceFingerprint": "10977506807348230851",
+      "strata": [
+        31,
+        15
+      ],
+      "strips": [
+        {
+          "capCutMargin": 7.478990620466468,
+          "conditionalRadius": [
+            10.778798458942715,
+            10.8
+          ],
+          "cylinderCapMargin": 7.484475807226243,
+          "grooveDistanceLower": 0.6980990845919046,
+          "grooveEdge": 2,
+          "nativeChamferNumeratorUpper": -0.00164616063641676,
+          "nativeUpper": -0.0035470760445122044,
+          "otherDistanceLower": 1.817151494075871,
+          "outerRoundMargin": 3.070632969157154,
+          "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+          "yStrip": [
+            -2.4943226517164696,
+            -2.47899062046647
+          ]
+        },
+        {
+          "capCutMargin": 7.463658589216467,
+          "conditionalRadius": [
+            10.778798458942715,
+            10.8
+          ],
+          "cylinderCapMargin": 7.499807838476242,
+          "grooveDistanceLower": 0.710856105706264,
+          "grooveEdge": 2,
+          "nativeChamferNumeratorUpper": -0.045009685174274165,
+          "nativeUpper": -0.03415357946801027,
+          "otherDistanceLower": 1.8240081868975013,
+          "outerRoundMargin": 3.063646502480379,
+          "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+          "yStrip": [
+            -2.47899062046647,
+            -2.4636585892164695
+          ]
+        },
+        {
+          "capCutMargin": 7.432994526716468,
+          "conditionalRadius": [
+            10.778798458942715,
+            10.8
+          ],
+          "cylinderCapMargin": 7.515139869726243,
+          "grooveDistanceLower": 0.7236131268206237,
+          "grooveEdge": 2,
+          "nativeChamferNumeratorUpper": -0.07298130578211658,
+          "nativeUpper": -0.04936817896149295,
+          "otherDistanceLower": 1.8308648797191316,
+          "outerRoundMargin": 3.0496275802110087,
+          "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+          "yStrip": [
+            -2.4636585892164695,
+            -2.4329945267164694
+          ]
+        },
+        {
+          "capCutMargin": 7.3716664017164675,
+          "conditionalRadius": [
+            10.778798458942715,
+            10.8
+          ],
+          "cylinderCapMargin": 7.545803932226242,
+          "grooveDistanceLower": 0.7491271690493427,
+          "grooveEdge": 2,
+          "nativeChamferNumeratorUpper": -0.1298642662994137,
+          "nativeUpper": -0.08073709725007101,
+          "otherDistanceLower": 1.8445782653623919,
+          "outerRoundMargin": 3.021406522361976,
+          "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+          "yStrip": [
+            -2.4329945267164694,
+            -2.3716664017164693
+          ]
+        },
+        {
+          "capCutMargin": 7.249010151716467,
+          "conditionalRadius": [
+            10.778798458942715,
+            10.8
+          ],
+          "cylinderCapMargin": 7.607132057226243,
+          "grooveDistanceLower": 0.8001552535067811,
+          "grooveEdge": 2,
+          "nativeChamferNumeratorUpper": -0.24326319104378222,
+          "nativeUpper": -0.14310793753700124,
+          "otherDistanceLower": 1.8720050366489127,
+          "outerRoundMargin": 2.9642374886131253,
+          "scope": "entire strip restricted to C<=0; no native nearest-side assumption",
+          "yStrip": [
+            -2.3716664017164693,
+            -2.249010151716469
+          ]
+        }
+      ],
+      "transitionHeightBounds": [
+        -2.492038035725099,
+        -2.492038035725039
+      ],
+      "unrepresentedFaceContoursExcluded": true,
+      "upperFaceEdgeSignLower": 0.10352991926050768,
+      "wholeCellInteriorCoverageProved": false,
+      "zeroEquivalentReducedFunction": "H=max(rho-R,w*((1-nr)*rho-R-ny*Y-offset+r)); native, native-chamfer, negative groove/cap and outer terms are excluded only under checked conditions"
+    }
+  }
+}

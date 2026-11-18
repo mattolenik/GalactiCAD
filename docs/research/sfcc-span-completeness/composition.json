@@ -1,0 +1,41 @@
+{
+  "source": "/tmp/sfcc-spancomplete-combined",
+  "inputs": [
+    {
+      "source": "/tmp/sfcc-span49-a-fixed/gcad-wasm/kernel/src/sfcc/feature49_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/feature49_a.rs",
+      "sha256": "180dd758d23122761af12ef91a3c97727892cab4c14fead3191c5639e2384c05"
+    },
+    {
+      "source": "/tmp/sfcc-span49-a-fixed/gcad-wasm/kernel/src/sfcc/span49_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/span49_a.rs",
+      "sha256": "8cbb822268d9abb6e5b801f9fa49c1240e8cff96dab6d2e73dc01f1503048cf0"
+    },
+    {
+      "source": "/tmp/sfcc-span49-a-fixed/gcad-wasm/kernel/fixtures/span49-consumed-a.json",
+      "target": "gcad-wasm/kernel/fixtures/span49-consumed-a.json",
+      "sha256": "54d23bd0331bb5fde533317defa36feac5209eae00f5ff4aea813561c9352d55"
+    },
+    {
+      "source": "/tmp/sfcc-completeness-b/gcad-wasm/kernel/src/sfcc/face_complete_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/face_complete_b.rs",
+      "sha256": "018e084179d58cb4807f9f72c5e3077a56ccfb19ec447118c246e65b139fa1dc"
+    },
+    {
+      "source": "/tmp/sfcc-spancomplete-c/gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "sha256": "2395552e52d12e6681919ec3e14fd44570bff2e2565e547d336a39bedc634b80"
+    },
+    {
+      "source": "/tmp/sfcc-spancomplete-c/gcad-wasm/kernel/src/sfcc/predicates.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/predicates.rs",
+      "sha256": "fbab6b3ccf4fabd090c9a489b1dba54d8e040851b7dc7f76926934a5bf16591e"
+    },
+    {
+      "source": "/tmp/sfcc-spancomplete-c/gcad-wasm/kernel/src/sfcc/span_complete_c.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/span_complete_c.rs",
+      "sha256": "5c622520fffbe4d041a02f57fc1e234cac1864eaf87e761e61fa46b6dcfba711"
+    }
+  ],
+  "rootChange": "combined A/B child declarations on feature49_a"
+}

@@ -1,21 +1,21 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [captured-face/endpoint milestone](../research/sfcc-face-endpoint/README.md)
-certifies the four fans around both recorded contour segments: 21 triangles, one
-source graph, 65 accepted pieces and 109 of 128 checks. A bounded interior-vertex
-transport establishes an ideal feature/face endpoint correspondence while fixing
-the outer neighborhood boundary and leaving the mesh untouched. Its final f32
-pointwise bound is 0.0010243948722129135 mm under the unchanged 0.01 mm tolerance.
-The original parameter association passes directly within its existing allowance.
-All 65 selected tests and the library check pass; fresh runtime geometry, metadata
-and query evidence remain identical.
+Status: the [span/completeness milestone](../research/sfcc-span-completeness/README.md)
+certifies the three consumed curve-49 edges over parameters [31.867718621208247,33],
+with 13 checked own queries and an exported arc bound of 0.00031441763691510014 mm
+under the unchanged 0.01 mm limit. A separate source-level proof covers the entire
+original face rectangle and establishes one connected, two-branch contour with no
+additional crossings. All 72 selected tests and library validation pass; fresh
+runtime geometry, metadata and query evidence are unchanged.
 
-**Stage 4 publication and production acceptance remain open.** The theorem covers
-the captured neighborhood and one ideal feature endpoint. It does not establish
-whole curve-49 transport or exclude extra true face intersections. Next certify
-the consumed feature spans and source-level face completeness, then extend the
-compatible ownership to more cells. Broader outside coverage, replacement-stage
-metadata, checker allocation accounting and production parity remain open.
+**Stage 4 publication and production acceptance remain open.** An exact predicate
+shows that the prior fixed outer-boundary lift at nodes 647/1116 is not exactly on
+the ideal physical feature. This is not a mesh-error or tolerance failure, but it
+prevents silently adopting the new arc under the old map. Next bind the incident
+consumers and prove compatible 2D boundary transport at those nodes, then bind the
+captured polyline to the complete ideal face contour. Whole-curve/raw-parameter
+claims, broader ownership, remaining outside coverage, allocation accounting and
+production parity remain open.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and

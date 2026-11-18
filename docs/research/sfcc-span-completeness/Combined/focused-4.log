@@ -1,0 +1,9 @@
+
+running 4 tests
+test sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_actual_second_pair_and_whole_face_source_attempt ... ok
+test sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_endpoint_transport_rejects_unbound_boundary_and_outside_targets ... ok
+test sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_rejects_renamed_endpoint_and_export_collapse ... ok
+test sfcc::shared_twisted_proof::exposure_a::face_join_c::face_c_union_requires_all_sectors_and_conforming_projection ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 449 filtered out; finished in 1.30s
+

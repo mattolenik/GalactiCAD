@@ -1877,6 +1877,45 @@ certify the consumed curve 49 spans and source-level face completeness before
 expanding to other cells. Global ownership, outside coverage, allocator accounting
 and production/native-WASM/GPU/full-model acceptance remain open.
 
+## Round 38: consumed feature spans, exhaustive face contour and an adoption constraint
+
+The [span/completeness milestone](sfcc-span-completeness/README.md) certifies three
+actual curve-49 edges over [31.867718621208247,33], not the complete original chart.
+A correlated native/cylinder/groove terminal and a negative native derivative give
+closed physical arc exposure through corner 13. Physical/generated families remain
+separate. All 13 unique own queries reproduce 15 recorded events and pass direct
+image/tube/source/order checks under the original allowance. Whole-chord interpolation,
+endpoint association and export rounding bound arc error by 0.00031441763691510014 mm
+under the unchanged 0.01 mm limit, with 32 source pieces and separate 64→77 charges.
+
+The face proof is independent of the captured segments. Cylinder positivity excludes
+one region; five admitted Y strips cover the complete conditional C<=0 region and
+exclude native/native-chamfer/cap/ancestor contributions there. A zero/sign-equivalent
+synthetic H has strictly positive Z derivative and opposite edge signs. Ten checks
+prove exactly one source root per closed Y fiber on [0,3464532,2]: one connected
+contour with chamfer and cylinder branches meeting at the ideal feature root.
+Additional crossings and boundary tangencies on this face are excluded in the
+continuous represented-source model. A new captured-polyline transport is not implied.
+
+An exact dyadic meridian predicate separately returns a negative nonzero level
+comparison at the retained Y coordinate. Thus the old outer-fixed source lifts at
+647/1116 cannot exactly belong to the ideal physical feature. This does not refute
+the moved endpoint 40, prove a tolerance failure or establish a mesh defect. It does
+require additional compatible 2D boundary transport before adopting the ideal arc.
+
+The selected source passes 72 tests in 37.747 seconds, a non-test library check and
+a 37.041-second fresh diagnostic. Parent geometry, topology, intervals, generated
+records/costs and metadata remain identical; all four span payloads and all 15 query
+records bind to that fresh runtime. An initial vertex/event bit-key parsing mismatch
+was corrected explicitly and its failed execution preserved; no numerical limit
+or proof rule was loosened.
+
+Next identify the incident consumers at 647/1116 and prove compatible boundary/domain
+transport with error bounds, then bind the captured polyline to the now-complete
+ideal face contour. Full original curve 49 coverage, raw query continuity, broader
+ownership, outside coverage, allocation accounting and production/native-WASM/GPU
+acceptance remain open. No geometry was mutated or published.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

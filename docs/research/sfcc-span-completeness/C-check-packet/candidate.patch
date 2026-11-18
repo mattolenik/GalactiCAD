@@ -1,0 +1,165 @@
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -459,3 +459,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="face_join_c.rs"]
+ pub(crate) mod face_join_c;
++
++#[cfg(all(test, feature="serde"))]
++#[path="span_complete_c.rs"]
++pub(crate) mod span_complete_c;
+--- a/gcad-wasm/kernel/src/sfcc/predicates.rs
++++ b/gcad-wasm/kernel/src/sfcc/predicates.rs
+@@ -209,6 +209,27 @@
+     Some(d[0].mul(&d[0]).add(&d[1].mul(&d[1])).add(&d[2].mul(&d[2]))
+         .sub(&Dyadic::from(r).mul(&Dyadic::from(r))).sign())
+ }
++/// Sign of squared distance to the represented meridian line minus a positive level squared.
++/// The caller must separately establish the finite exterior segment branch.
++#[cfg(all(test, feature = "serde"))]
++pub(crate) fn meridian_level_sign(
++    rho: f64, world_y: f64, center_y: f64, a: [f64; 2], b: [f64; 2], level: f64,
++) -> Option<i8> {
++    if ![rho, world_y, center_y, a[0], a[1], b[0], b[1], level]
++        .iter().all(|x| x.is_finite()) || level <= 0. {
++        return None;
++    }
++    let dr = difference(b[0], a[0]);
++    let dy = difference(b[1], a[1]);
++    let length2 = dr.mul(&dr).add(&dy.mul(&dy));
++    if length2.sign() == 0 { return None; }
++    let wr = difference(rho, a[0]);
++    let wy = difference(world_y, center_y).sub(&Dyadic::from(a[1]));
++    let determinant = dy.mul(&wr).sub(&dr.mul(&wy));
++    let level = Dyadic::from(level);
++    Some(determinant.mul(&determinant).sub(&level.mul(&level).mul(&length2)).sign())
++}
++
+ fn cross(a: &[Dyadic; 2], b: &[Dyadic; 2]) -> Dyadic {
+     a[0].mul(&b[1]).sub(&a[1].mul(&b[0]))
+ }
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/span_complete_c.rs
+@@ -0,0 +1,122 @@
++//! Exact compatibility discriminator for an old fixed-Y source correspondence.
++use super::*;
++use crate::sfcc::{pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube}, predicates::meridian_level_sign, validation::NumericalGuard};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++
++type Point = [f64; 3];
++fn edge(a: usize, b: usize) -> [usize; 2] { [a.min(b), a.max(b)] }
++
++#[test]
++fn span_complete_c_exact_meridian_predicate_controls() {
++    let (a, b) = ([0., 0.], [3., 4.]);
++    assert_eq!(meridian_level_sign(0., 5., 0., a, b, 3.), Some(0));
++    assert_eq!(meridian_level_sign(0., 5.0_f64.next_up(), 0., a, b, 3.), Some(1));
++    assert_eq!(meridian_level_sign(0., 5.0_f64.next_down(), 0., a, b, 3.), Some(-1));
++    assert_eq!(meridian_level_sign(0., 7., 2., a, b, 3.), Some(0));
++    assert_eq!(meridian_level_sign(0., 5., 0., b, a, 3.), Some(0));
++    assert_eq!(meridian_level_sign(0., 5., 0., a, a, 3.), None);
++    assert_eq!(meridian_level_sign(0., 5., 0., a, b, 0.), None);
++    assert_eq!(meridian_level_sign(0., f64::NAN, 0., a, b, 3.), None);
++}
++
++#[test]
++fn span_complete_c_retained_height_and_outer_boundary_obligation() {
++    let _numerics = NumericalGuard::new();
++    let original: Value = serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let fixture: Value = serde_json::from_str(include_str!("../../fixtures/face-fans-c.json")).unwrap();
++    let tree = crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap() - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
++    let features = &context.features;
++    assert_eq!(features.fingerprint().to_string(), fixture["sourceFingerprint"].as_str().unwrap());
++    let points: BTreeMap<usize, Point> = fixture["points"].as_array().unwrap().iter().map(|p| {
++        (p["id"].as_u64().unwrap() as usize, std::array::from_fn(|k| f64::from_bits(p["positionBits"][k].as_u64().unwrap())))
++    }).collect();
++    assert_eq!(points.len(), fixture["points"].as_array().unwrap().len());
++    let shared = fixture["commonEndpoint"].as_u64().unwrap() as usize;
++    let pins = fixture["originalTarget"]["originalPins"].as_array().unwrap();
++    let selected: Vec<_> = pins.iter().filter(|p| p["candidatePoint"].as_u64() == Some(shared as u64)).collect();
++    assert_eq!(selected.len(), 1);
++    let chart = selected[0]["chart"].as_u64().unwrap() as usize;
++    let face: [i64; 3] = serde_json::from_value(fixture["face"].clone()).unwrap();
++    assert_eq!(face[0], 0);
++    let grid = crate::math::grid::unpack_point(&context.lat, face[1]);
++    let plane = crate::math::grid::point_to_world(&context.lat, grid[0], grid[1], grid[2])[0];
++    let point = points[&shared];
++    let endpoint = feature49_a::endpoint_geometry(features, chart, point, plane).unwrap();
++    assert_eq!(endpoint["physicalFeatureZeroAndExposureProved"], true);
++    let cylinder_id = endpoint["strata"][1].as_u64().unwrap() as usize;
++    let cylinder = &features.strata[cylinder_id];
++    let (_, axis, radius) = cylinder.certificate_cylinder().unwrap();
++    assert_eq!(axis, [0., 1., 0.]);
++    let root = cylinder.exposure_root_a().unwrap();
++    let (cap_cut, _, _) = pair(root, Some((BlendKind::Smax, SminMode::Round))).unwrap();
++    let (groove_cut, _, _) = pair(cap_cut, None).unwrap();
++    let (_, groove_node, level) = pair(groove_cut, Some((BlendKind::Smax, SminMode::Chamfer))).unwrap();
++    let groove = leaf(groove_node, -1.).unwrap();
++    assert_eq!(level.to_bits(), endpoint["physicalChamferRadius"].as_f64().unwrap().to_bits());
++    assert_eq!(radius.to_bits(), endpoint["physicalFaceFeature"]["radius"].as_f64().unwrap().to_bits());
++    let branch = activation_a::meridian_bound(groove, I::point(radius), I::point(point[1])).unwrap();
++    assert!(branch.distance.lo > 0. && branch.projection_margin > 0. && branch.nearest_margin > 0.);
++    assert_eq!(branch.edge as u64, endpoint["physicalFaceFeature"]["finiteBranch"].as_u64().unwrap());
++    let Shape::Lathe { edges } = &groove.shape else { panic!("bound groove must be a lathe"); };
++    let segment = &edges[branch.edge];
++    let exact_sign = meridian_level_sign(radius, point[1], groove.pos[1],
++        [segment.r0, segment.y0], [segment.r1, segment.y1], level).unwrap();
++
++    let mut mesh_edges: BTreeMap<[usize; 2], usize> = BTreeMap::new();
++    for patch in fixture["patches"].as_array().unwrap() {
++        let triangles: Vec<usize> = serde_json::from_value(patch["triangles"].clone()).unwrap();
++        assert_eq!(triangles.len() % 3, 0);
++        for t in triangles.chunks_exact(3) { for k in 0..3 { *mesh_edges.entry(edge(t[k],t[(k+1)%3])).or_default() += 1; } }
++    }
++    let boundary_vertices: BTreeSet<_> = mesh_edges.iter().filter(|(_,n)| **n == 1).flat_map(|(e,_)| *e).collect();
++    assert!(!boundary_vertices.contains(&shared));
++    let mut feature_edges = Vec::new();
++    for row in fixture["originalTarget"]["candidateMembershipsAtSharedPoints"].as_array().unwrap() {
++        if row["chart"].as_u64() == Some(chart as u64) {
++            feature_edges.push(serde_json::from_value::<[usize;2]>(row["edge"].clone()).unwrap());
++        }
++    }
++    let mapping: Vec<usize> = serde_json::from_value(fixture["outsideToJoined"].clone()).unwrap();
++    for row in fixture["outsideCurveMemberships"].as_array().unwrap() {
++        if row["chart"].as_u64() == Some(chart as u64) {
++            let local: [usize;2] = serde_json::from_value(row["edge"].clone()).unwrap();
++            feature_edges.push(local.map(|id| mapping[id]));
++        }
++    }
++    assert_eq!(feature_edges.len(), 3);
++    let feature_nodes: BTreeSet<_> = feature_edges.iter().flat_map(|e| *e).collect();
++    assert_eq!(feature_nodes, BTreeSet::from([40,647,1116,1117]));
++    for &id in &feature_nodes { assert_eq!(points[&id][1].to_bits(), point[1].to_bits()); }
++    let fixed_outer_nodes: Vec<_> = feature_nodes.intersection(&boundary_vertices).copied().collect();
++    assert_eq!(fixed_outer_nodes, [647,1116]);
++    let report = json!({
++        "scope":"exact retained-height membership discriminator on an independently admitted finite exterior meridian branch; no mesh-error magnitude or acceptance claim",
++        "sourceFingerprint":features.fingerprint().to_string(),"parentReceiptSha256":fixture["parentReceiptSha256"],
++        "chart":chart,"cylinder":cylinder_id,"physicalChamferRadiusBits":level.to_bits(),"radiusBits":radius.to_bits(),
++        "retainedYBits":point[1].to_bits(),"grooveCenterYBits":groove.pos[1].to_bits(),
++        "meridianEdge":branch.edge,"meridianEndpointBits":[[segment.r0.to_bits(),segment.y0.to_bits()],[segment.r1.to_bits(),segment.y1.to_bits()]],
++        "positiveExteriorDistanceAndFiniteBranchProved":true,"squaredLineDistanceMinusPhysicalLevelSquaredSign":exact_sign,
++        "predicate":"sign((dy*(R-r0)-dr*((Y-centerY)-y0))^2-r^2*(dr^2+dy^2)), evaluated without rounded intermediate products/differences",
++        "retainedHeightExactlyIdealFeatureHeight":exact_sign==0,
++        "physicalIdealFeatureRequiresCylinderAndGrooveConstraints":true,
++        "consumedFeatureEdgesJoinedIds":feature_edges,"consumedFeatureNodes":feature_nodes,
++        "outerFeatureNodesFixedByPriorStarMap":fixed_outer_nodes,
++        "priorOuterBoundaryFixedMapCannotExactlyTransportTheseIdealFeatureEndpoints":exact_sign!=0,
++        "priorMovedEndpoint40IsNotRefuted":true,
++        "numericalAssociationOrToleranceFailureProved":false,"meshInvalidityProved":false,
++        "wholeCurveParameterizationProved":false,"newGeometryOrCurveQueries":0,"meshMutationPerformed":false,"publicationReady":false,
++        "limitation":"nonzero exact membership does not imply a material displacement; adopting new ideal targets at outer vertices requires additional compatible boundary transport, while independent arc/chord approximation may still pass"
++    });
++    if let Ok(path)=std::env::var("SFCC_SPAN_COMPLETE_C_RECEIPT") {
++        std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    }
++    assert_ne!(exact_sign, 0, "actual discriminator may refute this expected nonidentity; preserve its report before asserting");
++}

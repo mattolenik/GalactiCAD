@@ -1,0 +1,97 @@
+{
+  "selected": "Combined",
+  "sourceManifestSha256": "3a0dcff5674fa1c2f1d1fdef1fdf11be443d45e3ec7cae8b10ac0aeb4b7a8a50",
+  "componentReceiptSha256": "9d24506fa18d298472229264fee95ad674b8d45988ec1fa46db5b23263a1e2f1",
+  "preservation": {
+    "candidatePointsIdentical": true,
+    "candidateTrianglesIdentical": true,
+    "candidateTopologyIdentical": true,
+    "intervalsIdenticalAfterSorting": true,
+    "candidateGeneratedQueriesIdentical": true,
+    "candidateQueryCostsIdentical": true,
+    "retainedMetadataIdentical": true,
+    "outsideEvidenceIdenticalModuloAddressesAndUnorderedRows": true,
+    "spanVertexBitsMatchFreshRuntime": true,
+    "allConsumedQueryRecordsMatchFreshRuntime": true,
+    "arcAndFaceUseSameSource": true,
+    "arcPoint40AndFaceJoinEnclosuresMatch": true
+  },
+  "consumedParameterRange": [
+    31.867718621208247,
+    33.0
+  ],
+  "originalCurveRange": [
+    0.0,
+    33.0
+  ],
+  "consumedEdges": [
+    [
+      1116,
+      1117
+    ],
+    [
+      1117,
+      40
+    ],
+    [
+      40,
+      647
+    ]
+  ],
+  "originalQueryRecords": 15,
+  "uniqueOwnQueries": 13,
+  "arcCharges": [
+    64,
+    77
+  ],
+  "arcPieces": 32,
+  "arcExportBound": 0.00031441763691510014,
+  "maximumDirectAssociationUpper": 1.199762047962197e-12,
+  "retainedAssociationAllowance": 3.796655370190979e-07,
+  "effectiveEdgeErrorLimit": 0.01,
+  "face": [
+    0,
+    3464532,
+    2
+  ],
+  "faceSourceChecks": 10,
+  "faceAcceptedStrips": 5,
+  "faceComponents": 1,
+  "faceBranches": 2,
+  "rootPerClosedYFiber": 1,
+  "faceReducedZDerivativeLower": 0.49430195878705174,
+  "faceTransitionHeight": [
+    -2.492038035725099,
+    -2.492038035725039
+  ],
+  "faceCylinderBranchZ": [
+    5.4319133015149506,
+    5.431913301514966
+  ],
+  "faceLowerChamferRootZ": [
+    5.4294818831714915,
+    5.429481883171608
+  ],
+  "unrepresentedFaceContoursExcluded": true,
+  "exactRetainedHeightSign": -1,
+  "priorFixedOuterNodes": [
+    647,
+    1116
+  ],
+  "priorFixedBoundaryMapCompatibleWithIdealFeature": false,
+  "meshDefectProved": false,
+  "new2DBoundaryTransportProved": false,
+  "originalCapturedFacePolylineCorrespondenceProved": false,
+  "wholeRawCurveParameterizationProved": false,
+  "publicationReady": false,
+  "mainTriangles": 1775,
+  "mainGeneratedQueries": 1929,
+  "mainCharges": 8413,
+  "outsideTriangles": 11,
+  "outsideGeneratedQueries": 9,
+  "outsideCharges": 2121,
+  "liveStatePreserved": true,
+  "focusedTestsPassed": 72,
+  "focusedCampaignSeconds": 37.74679825006751,
+  "componentSeconds": 37.04056837502867
+}

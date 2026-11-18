@@ -1,0 +1,1179 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/span49-consumed-a.json
+@@ -0,0 +1,447 @@
++{
++  "parentReceiptSha256": "7ff26c9d0a897daa48913e7e31e4e33544e8bfa3b688ac4fa5a1dd988f554757",
++  "sourceFingerprint": "10977506807348230851",
++  "chart": 49,
++  "originalTarget": {
++    "candidateEdge": [
++      40,
++      38
++    ],
++    "candidateMembershipsAtSharedPoints": [
++      {
++        "chart": 49,
++        "edge": [
++          40,
++          647
++        ],
++        "rangeBits": [
++          4629807001818732852,
++          4629841154425225216
++        ]
++      }
++    ],
++    "consumers": [
++      [
++        [
++          7,
++          25,
++          58,
++          86
++        ],
++        1,
++        true
++      ],
++      [
++        [
++          7,
++          26,
++          58,
++          86
++        ],
++        0,
++        false
++      ]
++    ],
++    "face": [
++      0,
++      3464532,
++      2
++    ],
++    "globalEdgeInCandidateOrder": [
++      4074,
++      4072
++    ],
++    "insideCell": [
++      7,
++      25,
++      58,
++      86
++    ],
++    "originalPins": [
++      {
++        "candidatePoint": 40,
++        "chart": 49,
++        "cornerEnds": [
++          -1,
++          13
++        ],
++        "originalPoint": 4074,
++        "parameterBits": 4629807001818732852,
++        "rangeBits": [
++          0,
++          4629841154425225216
++        ],
++        "strata": [
++          31,
++          15
++        ],
++        "stratumSources": [
++          {
++            "compoundPresent": true,
++            "compoundTermsIncluded": false,
++            "domain": [
++              {
++                "branch": null,
++                "partners": [],
++                "path": [
++                  0,
++                  0
++                ],
++                "rootAddressProcessLocal": "7510c80810"
++              }
++            ],
++            "field": null,
++            "id": 31,
++            "leafIndex": 18446744073709551615,
++            "localIndex": 0,
++            "ownerNodeId": -1,
++            "signHex": "3ff0000000000000"
++          },
++          {
++            "compoundPresent": false,
++            "compoundTermsIncluded": false,
++            "domain": [
++              {
++                "branch": null,
++                "partners": [],
++                "path": [
++                  0,
++                  0,
++                  0,
++                  1
++                ],
++                "rootAddressProcessLocal": "7510c80810"
++              }
++            ],
++            "field": null,
++            "id": 15,
++            "leafIndex": 2,
++            "localIndex": 0,
++            "ownerNodeId": -1,
++            "signHex": "3ff0000000000000"
++          }
++        ]
++      }
++    ],
++    "originalSegments": [
++      [
++        4072,
++        4074
++      ],
++      [
++        4074,
++        4073
++      ]
++    ],
++    "outsideCell": [
++      7,
++      26,
++      58,
++      86
++    ],
++    "publicationAuthorized": false,
++    "scope": "actual source-bound first fan and unique original opposite face consumer; no geometry authority",
++    "sourceFingerprint": "10977506807348230851"
++  },
++  "outerFace": {
++    "consumedForward": [
++      0,
++      0
++    ],
++    "consumedReverse": [
++      0,
++      0
++    ],
++    "face": [
++      2,
++      3464534,
++      2
++    ],
++    "interiorCycle": false,
++    "pins": [
++      [
++        49,
++        4629663183038855226,
++        4608
++      ]
++    ],
++    "segments": [
++      [
++        4606,
++        4608
++      ],
++      [
++        4608,
++        4607
++      ]
++    ]
++  },
++  "outsideToJoined": [
++    38,
++    39,
++    40,
++    1114,
++    1115,
++    1116,
++    478,
++    1117,
++    1118,
++    1119
++  ],
++  "points": [
++    {
++      "id": 40,
++      "positionBits": [
++        13844816554298846762,
++        13836166026439335478,
++        4617801809107539645
++      ],
++      "key": "Str(\"F0:3464532:49:32.757331135496\")",
++      "parameterBits": 4629807001818732852
++    },
++    {
++      "id": 647,
++      "positionBits": [
++        13844830282047795546,
++        13836166026439335478,
++        4617754382154335013
++      ],
++      "key": "Str(\"corner:13\")",
++      "parameterBits": 4629841154425225216
++    },
++    {
++      "id": 1116,
++      "positionBits": [
++        13844748356756957604,
++        13836166026439335478,
++        4618030406640159853
++      ],
++      "key": "Str(\"F2:3464534:49:31.867718621208\")",
++      "parameterBits": 4629663183038855226
++    },
++    {
++      "id": 1117,
++      "positionBits": [
++        13844773025837132680,
++        13836166026439335478,
++        4617949022357655430
++      ],
++      "key": "Unkeyed",
++      "parameterBits": 4629700416936869888
++    }
++  ],
++  "edges": [
++    {
++      "chart": 49,
++      "edge": [
++        40,
++        647
++      ],
++      "rangeBits": [
++        4629807001818732852,
++        4629841154425225216
++      ],
++      "origin": "candidate"
++    },
++    {
++      "chart": 49,
++      "edge": [
++        40,
++        1117
++      ],
++      "rangeBits": [
++        4629807001818732852,
++        4629700416936869888
++      ],
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "edge": [
++        1116,
++        1117
++      ],
++      "rangeBits": [
++        4629663183038855226,
++        4629700416936869888
++      ],
++      "origin": "outside"
++    }
++  ],
++  "queryEvents": [
++    {
++      "chart": 49,
++      "parameterBits": 4629824078121979034,
++      "pointBits": [
++        13844823431640932157,
++        13836166026439335478,
++        4617778110722018473
++      ],
++      "querySucceeded": true,
++      "origin": "candidate"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629807001818732852,
++      "pointBits": [
++        13844816554298846762,
++        13836166026439335478,
++        4617801809107539645
++      ],
++      "querySucceeded": true,
++      "origin": "candidate"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629841154425225216,
++      "pointBits": [
++        13844830282047795546,
++        13836166026439335478,
++        4617754382154335013
++      ],
++      "querySucceeded": true,
++      "origin": "candidate"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629815539970355943,
++      "pointBits": [
++        13844819996330407069,
++        13836166026439335477,
++        4617789963710297298
++      ],
++      "querySucceeded": true,
++      "origin": "candidate"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629824078121979034,
++      "pointBits": [
++        13844823431640932157,
++        13836166026439335478,
++        4617778110722018473
++      ],
++      "querySucceeded": true,
++      "origin": "candidate"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629832616273602125,
++      "pointBits": [
++        13844826860217632349,
++        13836166026439335478,
++        4617766250188178055
++      ],
++      "querySucceeded": true,
++      "origin": "candidate"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629807001818732852,
++      "pointBits": [
++        13844816554298846762,
++        13836166026439335478,
++        4617801809107539645
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629700416936869888,
++      "pointBits": [
++        13844773025837132680,
++        13836166026439335478,
++        4617949022357655430
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629663183038855226,
++      "pointBits": [
++        13844748356756957604,
++        13836166026439335478,
++        4618030406640159853
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629780355598267111,
++      "pointBits": [
++        13844805769186638512,
++        13836166026439335478,
++        4617838727408422511
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629753709377801370,
++      "pointBits": [
++        13844794919135655985,
++        13836166026439335478,
++        4617875569959526307
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629727063157335629,
++      "pointBits": [
++        13844784004549049791,
++        13836166026439335478,
++        4617912335395004196
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629691108462366222,
++      "pointBits": [
++        13844766889387815847,
++        13836166026439335478,
++        4617969401442536110
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629681799987862557,
++      "pointBits": [
++        13844760732348307875,
++        13836166026439335478,
++        4617989758678473706
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    },
++    {
++      "chart": 49,
++      "parameterBits": 4629672491513358892,
++      "pointBits": [
++        13844754554782986831,
++        13836166026439335470,
++        4618010093824456129
++      ],
++      "querySucceeded": true,
++      "origin": "outside"
++    }
++  ],
++  "surfaceTolerance": 0.01,
++  "chordTolerance": 0.02,
++  "cornerPoint": 647,
++  "sharedPoint": 40,
++  "outerPoint": 1116,
++  "outerOriginalPointBinding": [
++    4608,
++    5
++  ]
++}
+--- a/gcad-wasm/kernel/src/sfcc/feature49_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature49_a.rs
+@@ -531,3 +531,7 @@
+     foreign.strata[15].sign = -1.;
+     assert!(endpoint_geometry(&foreign, chart, point, point[0]).is_none());
+ }
++
++#[cfg(all(test,feature="serde"))]
++#[path="span49_a.rs"]
++pub(crate) mod span49_a;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/span49_a.rs
+@@ -0,0 +1,716 @@
++//! Consumed curve-49 edges mapped to one source-exposed closed arc; no raw Newton continuity claim.
++use super::*;
++use crate::sfcc::shared_twisted_proof::correlated_c::transport_a::Transport;
++use std::collections::BTreeMap;
++type R<T> = std::result::Result<T, String>;
++
++struct Arc<'a> {
++    source: Source<'a>,
++    branch: activation_a::MeridianBound,
++    level: I,
++    y: I,
++    terminal: Image,
++    z_end: f64,
++    generated: bool,
++}
++impl<'a> Arc<'a> {
++    fn bind(
++        f: &'a SfccFeatureSet,
++        chart: usize,
++        point: [f64; 3],
++        z_end: f64,
++        generated: bool,
++    ) -> Option<Self> {
++        let source = Source::bind(f, chart)?;
++        if source.p.nx2 != 0. || source.p.nz2 != 1. || !z_end.is_finite() {
++            return None;
++        }
++        let branch = activation_a::meridian_bound(
++            source.groove,
++            I::point(source.radius),
++            I::point(point[1]),
++        )?;
++        let level = if generated {
++            div(I::point(source.offset), source.weight)?
++        } else {
++            I::point(source.chamfer_radius)
++        };
++        if level.lo <= 0. {
++            return None;
++        }
++        let y = quotient(
++            level
++                .sub(mul(branch.nr, I::point(source.radius))?)?
++                .sub(branch.offset)?,
++            branch.ny,
++        )?;
++        let ly = y.sub(I::point(source.p.pos_y))?;
++        if !source.p.h.is_finite() || source.p.h <= 0. || ly.lo < -source.p.h || ly.hi > source.p.h
++        {
++            return None;
++        }
++        let u = sqrt(square(I::point(source.radius))?.sub(square(I::point(source.p.v0z))?)?)?;
++        if u.lo <= 0. {
++            return None;
++        }
++        let v = I::point(source.p.v0z);
++        upper_source_a::finite_profile_level(source.p, source.native, [u, v], I::point(0.))?;
++        let (sn, cs) =
++            sin_cos(div(ly.add(I::point(source.p.h))?, 2. * source.p.h)?.mul(source.p.twist_rad)?)?;
++        let terminal = [
++            mul(u, cs)?
++                .sub(mul(v, sn)?)?
++                .add(I::point(source.center[0]))?,
++            y,
++            mul(u, sn)?
++                .add(mul(v, cs)?)?
++                .add(I::point(source.center[2]))?,
++        ];
++        if terminal[0].hi >= source.center[0]
++            || terminal[2].lo <= source.center[2]
++            || terminal[2].hi >= z_end
++            || z_end >= source.center[2] + source.radius
++        {
++            return None;
++        }
++        let check = activation_a::meridian_bound(source.groove, I::point(source.radius), y)?;
++        if !same_meridian(branch, check) || abs_lower(branch.ny) <= 0. {
++            return None;
++        }
++        Some(Self {
++            source,
++            branch,
++            level,
++            y,
++            terminal,
++            z_end,
++            generated,
++        })
++    }
++    fn image(&self, z: I) -> Option<Image> {
++        let rz = z.sub(I::point(self.source.center[2]))?;
++        let rad = square(I::point(self.source.radius))?.sub(square(rz)?)?;
++        if rz.lo <= 0. || rad.lo <= 0. {
++            return None;
++        }
++        Some([
++            sqrt(rad)?.mul(-1.)?.add(I::point(self.source.center[0]))?,
++            self.y,
++            z,
++        ])
++    }
++    fn piece(&self, s: I) -> Option<Value> {
++        if s.lo < 0. || s.hi > 1. {
++            return None;
++        }
++        let z = self.terminal[2].add(mul(s, I::point(self.z_end).sub(self.terminal[2])?)?)?;
++        let p = self.image(z)?;
++        let source = &self.source;
++        let x = p[0].sub(I::point(source.center[0]))?;
++        let rz = p[2].sub(I::point(source.center[2]))?;
++        let ly = self.y.sub(I::point(source.p.pos_y))?;
++        let (sn, cs) =
++            sin_cos(div(ly.add(I::point(source.p.h))?, 2. * source.p.h)?.mul(source.p.twist_rad)?)?;
++        let u = mul(x, cs)?.add(mul(rz, sn)?)?;
++        let v = mul(rz, cs)?.sub(mul(x, sn)?)?;
++        let e = v.sub(I::point(source.p.v0z))?;
++        let profile = upper_source_a::finite_profile_level(source.p, source.native, [u, v], e)?;
++        let native_cap = upper_source_a::cap_margin(self.y, source.p.pos_y, source.p.h, e)?;
++        let cylinder_cap =
++            upper_source_a::cap_margin(self.y, source.center[1], source.half, I::point(0.))?;
++        let xprime = quotient(rz, x.mul(-1.)?)?;
++        let ez = mul(sn.mul(-1.)?, xprime)?.add(cs)?;
++        if ez.hi >= 0. {
++            return None;
++        }
++        let other = activation_a::meridian_bound(source.other, I::point(source.radius), self.y)?;
++        let groove = activation_a::meridian_bound(source.groove, I::point(source.radius), self.y)?;
++        if other.distance.lo <= source.inner_radius
++            || groove.distance.lo <= 0.
++            || !same_meridian(groove, self.branch)
++        {
++            return None;
++        }
++        let Shape::Extrude { h, .. } = source.cap.shape else {
++            return None;
++        };
++        let cap = I::point(source.cap.pos[1])
++            .sub(I::point(h))?
++            .sub(self.y)?
++            .lo;
++        let Shape::Sphere { r } = source.sphere.shape else {
++            return None;
++        };
++        let sphere_distance = sqrt(
++            square(I::point(source.radius))?
++                .add(square(self.y.sub(I::point(source.sphere.pos[1]))?)?)?,
++        )?;
++        let sphere = I::point(r)
++            .sub(I::point(source.outer_radius))?
++            .sub(sphere_distance)?
++            .lo;
++        if cap <= 0. || sphere <= 0. {
++            return None;
++        }
++        let transverse = mul(quotient(x, I::point(source.radius))?, self.branch.ny)?;
++        if abs_lower(transverse) <= 0. {
++            return None;
++        }
++        Some(
++            json!({"fraction":[s.lo,s.hi],"image":bounds(p),"nativeDerivativeInZ":[ez.lo,ez.hi],
++            "nativeFiniteProfileMargin":profile,"nativeCapMargin":native_cap,"cylinderCapMargin":cylinder_cap,
++            "otherDistance":[other.distance.lo,other.distance.hi],"grooveDistance":[groove.distance.lo,groove.distance.hi],
++            "capCutMargin":cap,"outerRoundMargin":sphere,"cylinderGrooveTransverseLower":abs_lower(transverse)}),
++        )
++    }
++    fn proof(&self) -> R<Value> {
++        let mut rows = Vec::new();
++        for i in 0..16 {
++            let part = interval(i as f64 / 16., (i + 1) as f64 / 16.).ok_or("arc_fraction")?;
++            rows.push(
++                self.piece(part)
++                    .ok_or_else(|| format!("arc_source_piece:{i}:generated={}", self.generated))?,
++            );
++        }
++        let u = sqrt(
++            square(I::point(self.source.radius))
++                .and_then(|r| r.sub(square(I::point(self.source.p.v0z))?))
++                .ok_or("corner_arithmetic")?,
++        )
++        .ok_or("corner_arithmetic")?;
++        let determinant = mul(
++            quotient(u, I::point(self.source.radius)).ok_or("corner_arithmetic")?,
++            self.branch.ny,
++        )
++        .ok_or("corner_arithmetic")?;
++        if abs_lower(determinant) <= 0. {
++            return Err("corner_nontransverse".into());
++        }
++        Ok(
++            json!({"coefficientFamily":if self.generated{"generated carrier"}else{"physical source"},
++            "sourceFingerprint":self.source.f.fingerprint().to_string(),"chart":self.source.chart,
++            "heightBounds":[self.y.lo,self.y.hi],"grooveLevelBounds":[self.level.lo,self.level.hi],"terminalImage":bounds(self.terminal),
++            "outerZBits":self.z_end.to_bits(),"terminalNativeCylinderGrooveJacobianLower":abs_lower(determinant),
++            "pieces":rows,"pieceCount":16,"closedCanonicalArcExposed":!self.generated,"generatedCarrierArcRestrictionsProved":self.generated,
++            "closureArgument":"terminal is the correlated native E=0,cylinder rho=R,groove-level event; the native field decreases strictly with world Z on the complete closed cover, so E<=0 including the terminal",
++            "parameterization":"Z=Z_terminal+s*(Z_outer-Z_terminal), s in [0,1], negative-X cylinder branch; midpoint enclosures never replace the exact correlated terminal",
++            "fullPhysicalSourceZeroProved":!self.generated,"generatedCarrierExactPhysicalIdentityClaimed":false,
++            "rawNumericalParameterContinuityProved":false}),
++        )
++    }
++    fn target(
++        &self,
++        id: usize,
++        point: Point,
++        corner: usize,
++        shared: usize,
++        outer: usize,
++        face_x: f64,
++    ) -> Option<Image> {
++        if id == corner {
++            Some(self.terminal)
++        } else if id == shared {
++            self.source
++                .feature(self.branch, self.level, 0, face_x)
++                .map(|v| v.0)
++        } else if id == outer {
++            self.source
++                .feature(self.branch, self.level, 2, self.z_end)
++                .map(|v| v.0)
++        } else {
++            self.source
++                .feature(self.branch, self.level, 2, point[2])
++                .map(|v| v.0)
++        }
++    }
++}
++type Point = [f64; 3];
++fn number(v: &Value) -> R<f64> {
++    let x = f64::from_bits(v.as_u64().ok_or("bits")?);
++    if x.is_finite() {
++        Ok(x)
++    } else {
++        Err("nonfinite".into())
++    }
++}
++fn ordered(rows: &[(f64, Image)]) -> bool {
++    !rows.is_empty()
++        && rows
++            .windows(2)
++            .all(|w| w[0].0 < w[1].0 && w[0].1[2].lo > w[1].1[2].hi)
++}
++fn record_point(row: &Value) -> R<Point> {
++    Ok([
++        number(&row["positionBits"][0])?,
++        number(&row["positionBits"][1])?,
++        number(&row["positionBits"][2])?,
++    ])
++}
++
++pub(crate) fn certify_consumed(
++    f: &SfccFeatureSet,
++    saved: &Value,
++    lat: &crate::math::grid::SfccLattice,
++    chord: f64,
++    surface: f64,
++) -> R<Value> {
++    if saved["sourceFingerprint"].as_str() != Some(f.fingerprint().to_string().as_str())
++        || !chord.is_finite()
++        || chord <= 0.
++        || !surface.is_finite()
++        || surface <= 0.
++        || saved["surfaceTolerance"].as_f64().map(f64::to_bits) != Some(surface.to_bits())
++        || saved["chordTolerance"].as_f64().map(f64::to_bits) != Some(chord.to_bits())
++    {
++        return Err("span_scope".into());
++    }
++    let chart = saved["chart"].as_u64().ok_or("chart")? as usize;
++    let curve = f.curves.get(chart).ok_or("chart")?;
++    let corner = saved["cornerPoint"].as_u64().ok_or("corner_point")? as usize;
++    let shared = saved["sharedPoint"].as_u64().ok_or("shared_point")? as usize;
++    let outer = saved["outerPoint"].as_u64().ok_or("outer_point")? as usize;
++    let vertices = saved["points"].as_array().ok_or("vertices")?;
++    if vertices.len() != 4 || saved["edges"].as_array().is_none_or(|e| e.len() != 3) {
++        return Err("span_inventory".into());
++    }
++    let mut points = BTreeMap::new();
++    let mut parameters = BTreeMap::new();
++    for v in vertices {
++        let id = v["id"].as_u64().ok_or("vertex_id")? as usize;
++        let t = number(&v["parameterBits"])?;
++        if t < curve.t_min
++            || t > curve.t_max
++            || points.insert(id, record_point(v)?).is_some()
++            || parameters.insert(id, t).is_some()
++        {
++            return Err("vertex_binding".into());
++        }
++    }
++    let mut chain: Vec<_> = parameters.iter().map(|(&id, &t)| (t, id)).collect();
++    chain.sort_by(|a, b| a.0.total_cmp(&b.0));
++    if chain[0].1 != outer
++        || chain[3].1 != corner
++        || chain[3].0.to_bits() != curve.t_max.to_bits()
++        || chain.windows(2).any(|w| w[0].0 >= w[1].0)
++    {
++        return Err("consumed_parameter_chain".into());
++    }
++    let corner_id = usize::try_from(curve.corner_end).map_err(|_| "corner_source")?;
++    let c = f.corners.get(corner_id).ok_or("corner_source")?;
++    if !c.curve_ends.contains(&(chart, 1))
++        || [c.x, c.y, c.z].map(f64::to_bits) != points[&corner].map(f64::to_bits)
++        || vertices
++            .iter()
++            .find(|v| v["id"].as_u64() == Some(corner as u64))
++            .unwrap()["key"]
++            != format!("Str(\"corner:{}\")", corner_id)
++    {
++        return Err("corner_incidence".into());
++    }
++    if shared == corner || shared == outer || !points.contains_key(&shared) {
++        return Err("shared_vertex_binding".into());
++    }
++    let mut recorded = Vec::new();
++    for row in saved["edges"].as_array().ok_or("edge_inventory")? {
++        let ids: [usize; 2] =
++            serde_json::from_value(row["edge"].clone()).map_err(|_| "edge_shape")?;
++        let ts: [u64; 2] =
++            serde_json::from_value(row["rangeBits"].clone()).map_err(|_| "edge_parameters")?;
++        if row["chart"].as_u64() != Some(chart as u64) || ids[0] == ids[1] {
++            return Err("edge_chart_or_identity".into());
++        }
++        for k in 0..2 {
++            if parameters.get(&ids[k]).is_none_or(|t| t.to_bits() != ts[k]) {
++                return Err("edge_parameter_bits".into());
++            }
++        }
++        recorded.push(ids);
++    }
++    let mut edges = Vec::new();
++    for w in chain.windows(2) {
++        let matched = recorded
++            .iter()
++            .filter(|ids| **ids == [w[0].1, w[1].1] || **ids == [w[1].1, w[0].1])
++            .count();
++        if matched != 1 {
++            return Err("edge_chain_gap_or_duplicate".into());
++        }
++        edges.push([w[0].1, w[1].1]);
++    }
++    let face: [i64; 3] = serde_json::from_value(saved["originalTarget"]["face"].clone())
++        .map_err(|_| "shared_face")?;
++    let outside: [i64; 3] =
++        serde_json::from_value(saved["outerFace"]["face"].clone()).map_err(|_| "outer_face")?;
++    if face[0] != 0 || outside[0] != 2 || face[2] <= 0 || outside[2] <= 0 {
++        return Err("face_axes".into());
++    }
++    let coordinate = |face: [i64; 3]| {
++        let g = crate::math::grid::unpack_point(lat, face[1]);
++        crate::math::grid::point_to_world(lat, g[0], g[1], g[2])[face[0] as usize]
++    };
++    let face_x = coordinate(face);
++    let outer_z = coordinate(outside);
++    let target = &saved["originalTarget"];
++    if target["sourceFingerprint"] != saved["sourceFingerprint"] {
++        return Err("original_target_source".into());
++    }
++    let pins = target["originalPins"].as_array().ok_or("shared_pins")?;
++    if pins.len() != 1 {
++        return Err("shared_pin_inventory".into());
++    }
++    let pin = &pins[0];
++    if pin["candidatePoint"].as_u64() != Some(shared as u64)
++        || pin["chart"].as_u64() != Some(chart as u64)
++        || pin["parameterBits"].as_u64() != Some(parameters[&shared].to_bits())
++        || pin["strata"] != json!(curve.adjacent_strata)
++        || pin["rangeBits"] != json!([curve.t_min.to_bits(), curve.t_max.to_bits()])
++        || pin["cornerEnds"] != json!([curve.corner_start, curve.corner_end])
++    {
++        return Err("shared_pin_binding".into());
++    }
++    let op = saved["outerFace"]["pins"].as_array().ok_or("outer_pins")?;
++    let outer_binding: [usize; 2] =
++        serde_json::from_value(saved["outerOriginalPointBinding"].clone())
++            .map_err(|_| "outer_binding")?;
++    if op.len() != 1
++        || op[0][0].as_u64() != Some(chart as u64)
++        || op[0][1].as_u64() != Some(parameters[&outer].to_bits())
++        || op[0][2].as_u64() != Some(outer_binding[0] as u64)
++        || saved["outsideToJoined"][outer_binding[1]].as_u64() != Some(outer as u64)
++    {
++        return Err("outer_pin_binding".into());
++    }
++    for (id, face) in [(shared, face), (outer, outside)] {
++        let row = vertices
++            .iter()
++            .find(|v| v["id"].as_u64() == Some(id as u64))
++            .ok_or("face_vertex")?;
++        let expected = format!(
++            "Str(\"F{}:{}:{}:{:.12}\")",
++            face[0], face[1], chart, parameters[&id]
++        );
++        if row["key"].as_str() != Some(expected.as_str()) {
++            return Err("original_face_pin_key".into());
++        }
++    }
++
++    let physical =
++        Arc::bind(f, chart, points[&shared], outer_z, false).ok_or("physical_arc_bind")?;
++    let generated =
++        Arc::bind(f, chart, points[&shared], outer_z, true).ok_or("generated_arc_bind")?;
++    if ![
++        physical.source.source[0],
++        physical.source.source[1],
++        physical.source.cylinder_id,
++        physical.source.compound_id,
++    ]
++    .iter()
++    .all(|s| c.strata.contains(s))
++    {
++        return Err("corner_constraint_inventory".into());
++    }
++    let proofs = [physical.proof()?, generated.proof()?];
++    let mut targets: [BTreeMap<usize, Image>; 2] = std::array::from_fn(|_| BTreeMap::new());
++    for (slot, arc) in [&physical, &generated].iter().enumerate() {
++        for (&id, &p) in &points {
++            targets[slot].insert(
++                id,
++                arc.target(id, p, corner, shared, outer, face_x)
++                    .ok_or_else(|| format!("target:{slot}/{id}"))?,
++            );
++        }
++        let rows: Vec<_> = chain
++            .iter()
++            .map(|&(t, id)| (t, targets[slot][&id]))
++            .collect();
++        if !ordered(&rows) {
++            return Err("ideal_vertex_order".into());
++        }
++    }
++    for (id, face) in [(shared, face), (outer, outside)] {
++        let grid = crate::math::grid::unpack_point(lat, face[1]);
++        let mut far = grid;
++        for k in 0..3 {
++            if k != face[0] as usize {
++                far[k] = far[k].checked_add(face[2]).ok_or("face_extent")?;
++            }
++        }
++        let lo = crate::math::grid::point_to_world(lat, grid[0], grid[1], grid[2]);
++        let hi = crate::math::grid::point_to_world(lat, far[0], far[1], far[2]);
++        for target in &targets {
++            if !(0..3).all(|k| {
++                k == face[0] as usize || (target[&id][k].lo > lo[k] && target[&id][k].hi < hi[k])
++            }) {
++                return Err("ideal_face_root_extent".into());
++            }
++        }
++    }
++    let mut events = BTreeMap::<u64, Point>::new();
++    let original = saved["queryEvents"].as_array().ok_or("events")?;
++    if original.is_empty() || original.len() > 2048 {
++        return Err("event_inventory".into());
++    }
++    for e in original {
++        let t = number(&e["parameterBits"])?;
++        if e["chart"].as_u64() != Some(chart as u64)
++            || e["querySucceeded"] != true
++            || t < chain[0].0
++            || t > chain[3].0
++        {
++            return Err("event_scope".into());
++        }
++        let p = record_point(e)?;
++        let bits = t.to_bits();
++        if events
++            .insert(bits, p)
++            .is_some_and(|old| old.map(f64::to_bits) != p.map(f64::to_bits))
++        {
++            return Err("event_point_conflict".into());
++        }
++    }
++    if events.len() > 64 {
++        return Err("request_query_cap".into());
++    }
++    for (&id, &t) in &parameters {
++        if events
++            .get(&t.to_bits())
++            .is_none_or(|p| p.map(f64::to_bits) != points[&id].map(f64::to_bits))
++        {
++            return Err("vertex_own_event_missing".into());
++        }
++    }
++    let primary =
++        crate::sfcc::stage4_source_preflight_c::selected_pair_c(f).map_err(str::to_owned)?;
++    let mut budget =
++        Transport::bind(f, primary, chord).map_err(|e| format!("budget_bind:{e:?}"))?;
++    let before = budget.charged_queries();
++    let (_, _, refine) = curve.traced_carriers().ok_or("curve_carriers")?;
++    let allowance = budget.allowance().min(8. * refine.curve_eps);
++    if !allowance.is_finite() || allowance <= 0. {
++        return Err("allowance".into());
++    }
++    let mut associations = Vec::new();
++    let mut ordered_events: [Vec<(f64, Image)>; 2] = std::array::from_fn(|_| Vec::new());
++    let mut events: Vec<_> = events
++        .into_iter()
++        .map(|(t, p)| (f64::from_bits(t), p))
++        .collect();
++    events.sort_by(|a, b| a.0.total_cmp(&b.0));
++    budget.phase("consumed_curve49_own_queries");
++    for &(t, p) in &events {
++        budget
++            .reserve_external(1)
++            .map_err(|e| format!("query_budget:{e:?}"))?;
++        budget.external_direct_attempt();
++        let own = curve.point_at_checked(t).ok_or("own_query_failed")?;
++        if own.map(f64::to_bits) != p.map(f64::to_bits) {
++            return Err("own_query_bits".into());
++        }
++        for &sid in &curve.adjacent_strata {
++            let s = &f.strata[sid];
++            if !(s.domain_contains(own, budget.allowance())
++                || curve.upper_source_member(&f.strata, sid, t, own, budget.allowance()))
++                || !s
++                    .raw_field(own[0], own[1], own[2])
++                    .normalized_equation()
++                    .is_some_and(|v| v.value.is_finite() && v.value.abs() <= budget.allowance())
++            {
++                return Err("original_query_source_contract".into());
++            }
++        }
++        let id = parameters
++            .iter()
++            .find_map(|(&id, &value)| (value.to_bits() == t.to_bits()).then_some(id));
++        let mut lo = t.floor().max(curve.t_min);
++        let hi = (lo + 1.).min(curve.t_max);
++        if lo == hi {
++            lo = (hi - 1.).max(curve.t_min);
++        }
++        let tube = curve.projection_tube(lo, hi).ok_or("original_query_tube")?;
++        if !contains(tube, own.map(I::point)) {
++            return Err("own_outside_tube".into());
++        }
++        let mut bounds_vec = Vec::new();
++        for (slot, arc) in [&physical, &generated].iter().enumerate() {
++            let image = if let Some(id) = id {
++                targets[slot][&id]
++            } else {
++                arc.target(usize::MAX, own, corner, shared, outer, face_x)
++                    .ok_or("event_ideal_target")?
++            };
++            let upper = distance(own.map(I::point), image).ok_or("association_arithmetic")?[1];
++            if upper > allowance || !contains(tube, image) {
++                return Err(format!("own_image_association:{t}/{slot}:{upper}"));
++            }
++            ordered_events[slot].push((t, image));
++            bounds_vec.push(upper);
++        }
++        associations.push(json!({"parameterBits":t.to_bits(),"pointBits":own.map(f64::to_bits),"physicalGeneratedDistanceUpper":bounds_vec,"originalTube":[tube.0,tube.1]}));
++    }
++    if ordered_events.iter().any(|r| !ordered(r)) {
++        return Err("consumed_event_order".into());
++    }
++    let mut spans = Vec::new();
++    let mut overall = 0.0_f64;
++    let error_limit = surface.min(chord * 0.5);
++    for ids in edges {
++        let pa = points[&ids[0]];
++        let pb = points[&ids[1]];
++        let ia = targets[0][&ids[0]];
++        let ib = targets[0][&ids[1]];
++        let z = interval(ib[2].lo, ia[2].hi).ok_or("span_z")?;
++        let rz = z
++            .sub(I::point(physical.source.center[2]))
++            .ok_or("span_arithmetic")?;
++        let r2 = square(I::point(physical.source.radius)).ok_or("span_arithmetic")?;
++        let radical = r2
++            .sub(square(rz).ok_or("span_arithmetic")?)
++            .ok_or("span_arithmetic")?;
++        let denominator =
++            mul(radical, sqrt(radical).ok_or("span_axis")?).ok_or("span_arithmetic")?;
++        let curvature = quotient(r2, denominator).ok_or("span_curvature")?.hi;
++        let width = ia[2].sub(ib[2]).ok_or("span_arithmetic")?;
++        let interpolation = div(
++            I::point(curvature)
++                .mul(square(width).ok_or("span_arithmetic")?.hi)
++                .ok_or("span_arithmetic")?,
++            8.,
++        )
++        .ok_or("span_arithmetic")?
++        .hi;
++        let endpoint_error = distance(pa.map(I::point), ia).ok_or("span_arithmetic")?[1]
++            .max(distance(pb.map(I::point), ib).ok_or("span_arithmetic")?[1]);
++        let working = I::point(endpoint_error)
++            .add(I::point(interpolation))
++            .ok_or("span_arithmetic")?
++            .hi;
++        let rounded = distance(pa.map(I::point), pa.map(|v| I::point(v as f32 as f64)))
++            .ok_or("span_arithmetic")?[1]
++            .max(
++                distance(pb.map(I::point), pb.map(|v| I::point(v as f32 as f64)))
++                    .ok_or("span_arithmetic")?[1],
++            );
++        let exported = I::point(working)
++            .add(I::point(rounded))
++            .ok_or("span_arithmetic")?
++            .hi;
++        if !exported.is_finite() || exported > error_limit {
++            return Err("whole_edge_error_limit".into());
++        }
++        let tube = curve
++            .projection_tube(parameters[&ids[0]], parameters[&ids[1]])
++            .ok_or("whole_span_tube")?;
++        for (slot, arc) in [&physical, &generated].iter().enumerate() {
++            let za = targets[slot][&ids[0]][2];
++            let zb = targets[slot][&ids[1]][2];
++            let image = arc
++                .image(interval(zb.lo, za.hi).ok_or("span_z")?)
++                .ok_or("span_image")?;
++            if !contains(tube, image) {
++                return Err("whole_ideal_span_outside_original_tube".into());
++            }
++        }
++        overall = overall.max(exported);
++        spans.push(json!({"edge":ids,"originalParameterBits":ids.map(|id|parameters[&id].to_bits()),"physicalEndpointImages":ids.map(|id|bounds(targets[0][&id])),
++            "graphSecondDerivativeUpper":curvature,"wholeArcInterpolationErrorUpper":interpolation,"endpointAssociationUpper":endpoint_error,"workingEdgeToPhysicalArcUpper":working,"exportRoundingUpper":rounded,"exportedEdgeToPhysicalArcUpper":exported,"originalProjectionTube":[tube.0,tube.1]}));
++    }
++    Ok(
++        json!({"scope":"three actual consumed edges and their recorded own queries mapped to one closed source-exposed ideal arc; no continuous raw Newton map claim",
++        "parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":f.fingerprint().to_string(),"chart":chart,"corner":corner_id,
++        "originalRangeBits":[curve.t_min.to_bits(),curve.t_max.to_bits()],"consumedRangeBits":[chain[0].0.to_bits(),chain[3].0.to_bits()],
++        "sourceProofs":proofs,"sourcePieceCount":32,"globalPieceCap":128,"vertices":chain.iter().map(|&(t,id)|json!({"id":id,"parameterBits":t.to_bits(),"physicalImage":bounds(targets[0][&id]),"generatedImage":bounds(targets[1][&id])})).collect::<Vec<_>>(),
++        "originalQueryRecords":original.len(),"uniqueOwnQueries":events.len(),"associations":associations,"orderedConsumedEvents":true,
++        "chargedBefore":before,"chargedAfter":budget.charged_queries(),"retainedAllowance":allowance,"spans":spans,"uniformExportedArcErrorUpper":overall,
++        "surfaceTolerance":surface,"originalChordTolerance":chord,"retainedHalfChordLimit":chord*0.5,"effectiveErrorLimit":error_limit,
++        "physicalPoint40UsesOriginalXFaceRoot":true,"outerPointUsesOriginalZFaceRoot":true,"terminalUsesCorrelatedNativeClosure":true,
++        "rawParameterContinuityOrTotalityProved":false,"wholeOriginalCurve49RangeProved":false,"neighboring2DTransportProved":false,"meshMutationPerformed":false,"publicationReady":false}),
++    )
++}
++
++#[test]
++fn span49_a_actual_consumed_arc_and_query_associations() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, _, input, lat) = super::fixture();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/span49-consumed-a.json")).unwrap();
++    let result = certify_consumed(
++        &f,
++        &saved,
++        &lat,
++        input["tuning"]["curveChordTolMm"].as_f64().unwrap(),
++        input["tuning"]["surfaceTolMm"].as_f64().unwrap(),
++    );
++    if let Ok(path) = std::env::var("SFCC_SPAN49_A_RECEIPT") {
++        std::fs::write(
++            path,
++            serde_json::to_vec_pretty(&json!({"result":result})).unwrap(),
++        )
++        .unwrap();
++    }
++    assert!(result.is_ok(), "{result:?}");
++}
++#[test]
++fn span49_a_order_requires_strict_parameter_and_canonical_progress() {
++    let image = |z| [I::point(0.), I::point(0.), I::point(z)];
++    assert!(ordered(&[
++        (1., image(3.)),
++        (2., image(2.)),
++        (3., image(1.))
++    ]));
++    assert!(!ordered(&[(1., image(3.)), (1., image(2.))]));
++    assert!(!ordered(&[(1., image(3.)), (2., image(3.))]));
++    assert!(!ordered(&[(1., image(2.)), (2., image(3.))]));
++    assert!(!ordered(&[]));
++}
++
++#[test]
++fn span49_a_rejects_corrupted_original_span_provenance() {
++    let _guard = crate::sfcc::validation::NumericalGuard::new();
++    let (f, _, input, lat) = super::fixture();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/span49-consumed-a.json")).unwrap();
++    let chord = input["tuning"]["curveChordTolMm"].as_f64().unwrap();
++    let surface = input["tuning"]["surfaceTolMm"].as_f64().unwrap();
++    let mut bad = saved.clone();
++    bad["edges"][0]["rangeBits"][0] = json!(0u64);
++    assert_eq!(
++        certify_consumed(&f, &bad, &lat, chord, surface).unwrap_err(),
++        "edge_parameter_bits"
++    );
++    let mut bad = saved.clone();
++    bad["edges"][0]["edge"] = Value::Null;
++    assert_eq!(
++        certify_consumed(&f, &bad, &lat, chord, surface).unwrap_err(),
++        "edge_shape"
++    );
++    let mut bad = saved.clone();
++    bad["originalTarget"]["originalPins"][0]["parameterBits"] = json!(0u64);
++    assert_eq!(
++        certify_consumed(&f, &bad, &lat, chord, surface).unwrap_err(),
++        "shared_pin_binding"
++    );
++    let mut bad = saved.clone();
++    bad["outerOriginalPointBinding"][1] = json!(0);
++    assert_eq!(
++        certify_consumed(&f, &bad, &lat, chord, surface).unwrap_err(),
++        "outer_pin_binding"
++    );
++    let mut bad = saved.clone();
++    bad["sharedPoint"] = json!(999999);
++    assert_eq!(
++        certify_consumed(&f, &bad, &lat, chord, surface).unwrap_err(),
++        "shared_vertex_binding"
++    );
++    assert_eq!(
++        certify_consumed(&f, &saved, &lat, chord, 0.).unwrap_err(),
++        "span_scope"
++    );
++    assert_eq!(
++        certify_consumed(&f, &saved, &lat, chord * 2., surface).unwrap_err(),
++        "span_scope"
++    );
++    assert_eq!(
++        certify_consumed(&f, &saved, &lat, chord, surface * 2.).unwrap_err(),
++        "span_scope"
++    );
++}

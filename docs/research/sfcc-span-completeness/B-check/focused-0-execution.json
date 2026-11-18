@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round38-spans/B-check/kernel-tests",
+    "complete_b_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.79157841595588,
+  "elapsedSeconds": 1.2856605830020271,
+  "exitCode": 0,
+  "timedOut": false
+}

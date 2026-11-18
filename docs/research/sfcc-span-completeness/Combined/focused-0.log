@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::feature49_a::span49_a::span49_a_actual_consumed_arc_and_query_associations ... ok
+test sfcc::shared_twisted_proof::exposure_a::feature49_a::span49_a::span49_a_order_requires_strict_parameter_and_canonical_progress ... ok
+test sfcc::shared_twisted_proof::exposure_a::feature49_a::span49_a::span49_a_rejects_corrupted_original_span_provenance ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 2.62s
+

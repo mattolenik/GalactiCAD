@@ -1,0 +1,187 @@
+{
+  "actualFaceLengthAndOriginalSegmentBound": true,
+  "cell": [
+    7,
+    25,
+    58,
+    86
+  ],
+  "dyadicMidpointBounds": [
+    [
+      -9.334576470565258,
+      -9.334576470565251
+    ],
+    [
+      -2.37052409372077,
+      -2.370524093720768
+    ],
+    [
+      5.431917146157831,
+      5.431917146157835
+    ]
+  ],
+  "edge": [
+    40,
+    38
+  ],
+  "exactFaceIncidencePreserved": false,
+  "face": [
+    0,
+    3464532,
+    2
+  ],
+  "faceCompatibleAlternativeTransportExcluded": false,
+  "faceExtentAllowance": 3.796655370190979e-7,
+  "faceRectangleBits": [
+    [
+      13844816554298846424,
+      13836171170937199256,
+      4617754209319262306
+    ],
+    [
+      13844816554298846424,
+      13835618776295404592,
+      4618030406640159634
+    ]
+  ],
+  "fullFanGraphRefuted": false,
+  "liftToFacePlaneDistanceBounds": [
+    2.2372495038780467e-6,
+    2.237249521641616e-6
+  ],
+  "limitation": "a common source lift shared by neighbouring consumers could still be valid; cell-trimmed coverage and conforming interface transport require separate proof",
+  "originalCellBoxBits": [
+    13844954652959295090,
+    13836171170937199256,
+    4617754209319262306,
+    13844816554298846424,
+    13835618776295404594,
+    4618030406640159637
+  ],
+  "originalFaceRecord": {
+    "consumers": [
+      [
+        [
+          7,
+          25,
+          58,
+          86
+        ],
+        1,
+        true
+      ],
+      [
+        [
+          7,
+          26,
+          58,
+          86
+        ],
+        0,
+        false
+      ]
+    ],
+    "face": [
+      0,
+      3464532,
+      2
+    ],
+    "oldSegments": [
+      [
+        4072,
+        4074
+      ],
+      [
+        4074,
+        4073
+      ]
+    ],
+    "outsideLeafPresent": true,
+    "pointBindings": {
+      "4072": 38,
+      "4073": 39,
+      "4074": 40
+    }
+  },
+  "originalVertexBits": [
+    [
+      13844816554298846762,
+      13836166026439335478,
+      4617801809107539645
+    ],
+    [
+      13844816554298846424,
+      13835618776295404592,
+      4617801817764908076
+    ]
+  ],
+  "parentReceiptSha256": "cd25d6db584fbe2717416f14e703073da6642aa2eaf1b690b7159bded678bac5",
+  "planeBits": 13844816554298846424,
+  "publicationAuthorized": false,
+  "sameYZLiftToMeshMidpointDistanceBounds": [
+    2.237249800529639e-6,
+    2.2372498253986355e-6
+  ],
+  "scope": "source-qualified lift of exact dyadic midpoint of an actual captured X-face boundary edge",
+  "source": {
+    "capCutMargin": 7.370524093720767,
+    "composedSourcePositiveLower": 0.0,
+    "cylinderCapMargin": 7.629475906279228,
+    "cylinderGraphDerivativeLower": 0.864312429010688,
+    "finiteProfileMargin": 0.24710885980713362,
+    "fullSourceEqualsCylinder": true,
+    "grooveDistance": [
+      0.8011057112108272,
+      0.8011057112108319
+    ],
+    "grooveMargin": [
+      0.10110571121082722,
+      0.10110571121083191
+    ],
+    "nativeCapMargin": 6.349315480582385,
+    "nativeIsInnerField": true,
+    "nativeLevel": [
+      -0.2801604256968428,
+      -0.28016042569667904
+    ],
+    "otherDistance": [
+      1.8914791271275755,
+      1.8914791271275821
+    ],
+    "outerRoundMargin": 3.0208785629102723,
+    "projectionOwnershipDisproved": false,
+    "scope": "entire source cylinder graph over supplied YZ rectangle; not fan coverage or boundary transport",
+    "source": [
+      10,
+      30,
+      15
+    ],
+    "sourceFingerprint": "10977506807348230851",
+    "wholeFanOwnership": false,
+    "worldImage": [
+      [
+        -9.33457423331545,
+        -2.37052409372077,
+        5.431917146157831
+      ],
+      [
+        -9.334574233315433,
+        -2.370524093720768,
+        5.431917146157835
+      ]
+    ],
+    "yzBox": [
+      [
+        -2.37052409372077,
+        5.431917146157831
+      ],
+      [
+        -2.370524093720768,
+        5.431917146157835
+      ]
+    ]
+  },
+  "sourceFingerprint": "10977506807348230851",
+  "surfaceTolerance": 0.01,
+  "surfaceToleranceViolationProved": false
+}

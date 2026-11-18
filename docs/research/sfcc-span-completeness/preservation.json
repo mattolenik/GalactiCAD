@@ -1,0 +1,40 @@
+{
+  "parentManifest": "docs/research/sfcc-face-endpoint/Endpoint/manifest.json",
+  "parentManifestSha256": "0cb51b4d445ec1a42d9ad5104e73c1091625e0dd24e21ad74b543b04d6e4d65e",
+  "parentInputCount": 218,
+  "selected": "Combined",
+  "restorations": [
+    {
+      "packet": "A-check",
+      "patchSha256": "f4587b33f98aae0fafdd559e60028d68dbf4e5e5ee4d18356697c2a77a417ffa",
+      "manifestSha256": "62bba596bc1f200e42fe3ed98d959748ed27a97dfbed32f84d20de3c361066dc",
+      "verifiedInputCount": 220,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-spancomplete-restore-_knfe_vm",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "B-check",
+      "patchSha256": "59d12404c86c52b0c8ef6730182208c30e52e198e64ca281a7456c0bdca28645",
+      "manifestSha256": "6132f7ee1288cda447206244c78d65034d4cafc5fdcf13d7e8849c3d748b8d9a",
+      "verifiedInputCount": 219,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-spancomplete-restore-us9zfykf",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-check",
+      "patchSha256": "218662585f0c41d2d4235e21776e9a8b3a25edbe98f8bb1f5c5ff699ca29ec8d",
+      "manifestSha256": "c1ba9c111992a50252970eee64ebfef3e06e28fae3447ddedc48d67017cadab5",
+      "verifiedInputCount": 219,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-spancomplete-restore-6c6xeq2k",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Combined",
+      "patchSha256": "ca4f6127d00bbf960848ae1d19fb71938a31fb0909a38e8a62625f7859c0b155",
+      "manifestSha256": "3a0dcff5674fa1c2f1d1fdef1fdf11be443d45e3ec7cae8b10ac0aeb4b7a8a50",
+      "verifiedInputCount": 222,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-spancomplete-restore-6bpjoeqz",
+      "result": "all input hashes match"
+    }
+  ]
+}

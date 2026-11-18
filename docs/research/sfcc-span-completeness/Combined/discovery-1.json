@@ -1,0 +1,8 @@
+{
+  "filter": "complete_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::face_complete_b::complete_b_actual_face_has_one_complete_two_branch_contour",
+    "sfcc::shared_twisted_proof::exposure_a::feature49_a::face_complete_b::complete_b_face_identity_and_extent_fail_closed"
+  ],
+  "exitCode": 0
+}

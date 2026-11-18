@@ -1,0 +1,10 @@
+{
+  "filter": "paired_a_",
+  "tests": [
+    "sfcc::cell_mesh::ownership_a::paired_a_fan_scope_restores_previous_inventory_after_unwind",
+    "sfcc::private_arc_a::stage4_component_b::outside_b::paired_a_fan_binding_rejects_changed_captured_point",
+    "sfcc::private_arc_a::stage4_component_b::outside_b::paired_a_fan_binding_requires_actual_emitted_triangles",
+    "sfcc::private_arc_a::stage4_component_b::outside_b::paired_a_selected_fan_requires_exact_directed_shared_edge"
+  ],
+  "exitCode": 0
+}

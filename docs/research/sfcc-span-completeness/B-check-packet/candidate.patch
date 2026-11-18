@@ -1,0 +1,460 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/face_complete_b.rs
+@@ -0,0 +1,447 @@
++//! Full original-face zero set for one positively admitted source family.
++use super::*;
++use crate::math::grid::{pack_point, point_to_world, unpack_point, SfccLattice};
++type R<T> = std::result::Result<T, &'static str>;
++const MAX_CHECKS: usize = 128;
++
++fn face_rectangle(lat: &SfccLattice, face: [i64; 3]) -> Option<[[f64; 3]; 2]> {
++    if face[0] != 0
++        || face[1] < 0
++        || face[2] <= 0
++        || lat.max_depth == 0
++        || lat.max_depth > crate::tuning::SFCC_MAX_DEPTH
++        || lat.res != 1i64 << lat.max_depth
++        || lat.span != lat.res + 1
++        || face[2] > lat.res
++        || !lat.step.is_finite()
++        || lat.step <= 0.
++    {
++        return None;
++    }
++    let low = unpack_point(lat, face[1]);
++    if low.iter().any(|&v| v < 0 || v > lat.res)
++        || pack_point(lat, low[0], low[1], low[2]) != face[1]
++    {
++        return None;
++    }
++    let mut high = low;
++    for k in 1..3 {
++        high[k] = low[k].checked_add(face[2])?;
++        if high[k] > lat.res {
++            return None;
++        }
++    }
++    let rect = [
++        point_to_world(lat, low[0], low[1], low[2]),
++        point_to_world(lat, high[0], high[1], high[2]),
++    ];
++    if rect.iter().flatten().any(|v| !v.is_finite())
++        || rect[0][1] >= rect[1][1]
++        || rect[0][2] >= rect[1][2]
++    {
++        return None;
++    }
++    Some(rect)
++}
++
++// A positive ball inside every oriented convex support halfplane is inside the polygon.
++fn native_upper(source: &Source<'_>, q: [I; 2], y: I) -> Option<f64> {
++    let Shape::Extrude { verts, h, .. } = &source.native.shape else {
++        return None;
++    };
++    let n = verts.len() / 2;
++    if n < 3
++        || n > 64
++        || verts.len() != 2 * n
++        || verts.iter().any(|v| !v.is_finite())
++        || !h.is_finite()
++        || *h <= 0.
++    {
++        return None;
++    }
++    let v = |i: usize| [verts[2 * (i % n)], verts[2 * (i % n) + 1]];
++    let orientation = crate::sfcc::predicates::orient2d(v(0), v(1), v(2));
++    if orientation == 0 {
++        return None;
++    }
++    let mut margin = f64::INFINITY;
++    for i in 0..n {
++        for j in 0..n {
++            if j != i
++                && j != (i + 1) % n
++                && crate::sfcc::predicates::orient2d(v(i), v(i + 1), v(j)) != orientation
++            {
++                return None;
++            }
++        }
++        let a = v(i);
++        let b = v(i + 1);
++        let dx = I::point(b[0]).sub(I::point(a[0]))?;
++        let dz = I::point(b[1]).sub(I::point(a[1]))?;
++        let distance = quotient(
++            mul(dx, q[1].sub(I::point(a[1]))?)?
++                .sub(mul(dz, q[0].sub(I::point(a[0]))?)?)?
++                .mul(orientation as f64)?,
++            sqrt(square(dx)?.add(square(dz)?)?)?,
++        )?;
++        if distance.lo <= 0. {
++            return None;
++        }
++        margin = margin.min(distance.lo);
++    }
++    let local_y = y.sub(I::point(source.native.pos[1]))?;
++    let cap = I::point(local_y.lo.abs().max(local_y.hi.abs())).sub(I::point(*h))?;
++    let upper = (-margin).max(cap.hi);
++    (upper < 0.).then_some(upper)
++}
++
++fn admitted_strip(
++    source: &Source<'_>,
++    branch: activation_a::MeridianBound,
++    x: I,
++    z: I,
++    rho: I,
++    y: I,
++) -> R<Value> {
++    let local_y = y.sub(I::point(source.p.pos_y)).ok_or("face_arithmetic")?;
++    if !source.p.h.is_finite()
++        || source.p.h <= 0.
++        || local_y.lo < -source.p.h
++        || local_y.hi > source.p.h
++    {
++        return Err("face_twist_clamp");
++    }
++    let theta = div(
++        local_y.add(I::point(source.p.h)).ok_or("face_arithmetic")?,
++        2. * source.p.h,
++    )
++    .and_then(|v| v.mul(source.p.twist_rad))
++    .ok_or("face_arithmetic")?;
++    let (sn, cs) = sin_cos(theta).ok_or("face_trigonometric_bound")?;
++    let u = mul(x, cs)
++        .and_then(|v| v.add(mul(z, sn)?))
++        .ok_or("face_arithmetic")?;
++    let v = mul(z, cs)
++        .and_then(|v| v.sub(mul(x, sn)?))
++        .ok_or("face_arithmetic")?;
++    let native = native_upper(source, [u, v], y).ok_or("face_native_interior")?;
++    let other =
++        activation_a::meridian_bound(source.other, rho, y).ok_or("face_other_finite_branch")?;
++    let groove =
++        activation_a::meridian_bound(source.groove, rho, y).ok_or("face_groove_finite_branch")?;
++    if !same_meridian(branch, groove) {
++        return Err("face_groove_branch_changed");
++    }
++    if other.distance.lo <= source.inner_radius || groove.distance.lo <= 0. {
++        return Err("face_inner_or_groove_activity");
++    }
++    let native_chamfer = I::point(native)
++        .sub(groove.distance)
++        .and_then(|v| v.add(I::point(source.chamfer_radius)))
++        .ok_or("face_arithmetic")?;
++    if native_chamfer.hi >= 0. {
++        return Err("face_native_chamfer_not_excluded");
++    }
++    let c = rho.sub(I::point(source.radius)).ok_or("face_arithmetic")?;
++    let cylinder_cap = upper_source_a::cap_margin(y, source.center[1], source.half, c)
++        .ok_or("face_cylinder_cap")?;
++    let Shape::Extrude { h, .. } = source.cap.shape else {
++        return Err("face_cap_source");
++    };
++    if !h.is_finite() || h <= 0. {
++        return Err("face_cap_source");
++    }
++    let cap_margin = I::point(source.cap.pos[1])
++        .sub(I::point(h))
++        .and_then(|v| v.sub(y))
++        .ok_or("face_arithmetic")?
++        .lo;
++    let Shape::Sphere { r } = source.sphere.shape else {
++        return Err("face_sphere_source");
++    };
++    let sphere_distance = sqrt(
++        square(rho)
++            .and_then(|v| v.add(square(y.sub(I::point(source.sphere.pos[1]))?)?))
++            .ok_or("face_arithmetic")?,
++    )
++    .ok_or("face_arithmetic")?;
++    let outer_margin = I::point(r)
++        .sub(I::point(source.outer_radius))
++        .and_then(|v| v.sub(sphere_distance))
++        .ok_or("face_arithmetic")?
++        .lo;
++    if cap_margin <= 0. || outer_margin <= 0. {
++        return Err("face_ancestor_activity");
++    }
++    Ok(
++        json!({"yStrip":[y.lo,y.hi],"conditionalRadius":[rho.lo,rho.hi],
++        "nativeUpper":native,"nativeChamferNumeratorUpper":native_chamfer.hi,
++        "otherDistanceLower":other.distance.lo,"grooveDistanceLower":groove.distance.lo,
++        "grooveEdge":groove.edge,"cylinderCapMargin":cylinder_cap,"capCutMargin":cap_margin,"outerRoundMargin":outer_margin,
++        "scope":"entire strip restricted to C<=0; no native nearest-side assumption"}),
++    )
++}
++
++/// Source-level completeness on the supplied original lattice face, independent of captured segment count.
++pub(crate) fn certify_face(
++    f: &SfccFeatureSet,
++    chart: usize,
++    lat: &SfccLattice,
++    face: [i64; 3],
++) -> std::result::Result<Value, String> {
++    let rect = face_rectangle(lat, face).ok_or("face_identity_or_extent")?;
++    certify_rectangle(f, chart, face, rect)
++}
++fn certify_rectangle(
++    f: &SfccFeatureSet,
++    chart: usize,
++    face: [i64; 3],
++    rect: [[f64; 3]; 2],
++) -> std::result::Result<Value, String> {
++    let source = Source::bind(f, chart).ok_or("face_source_binding")?;
++    if rect.iter().flatten().any(|x| !x.is_finite())
++        || rect[0][0].to_bits() != rect[1][0].to_bits()
++        || rect[0][1] >= rect[1][1]
++        || rect[0][2] >= rect[1][2]
++    {
++        return Err("face_rectangle".into());
++    }
++    let x = I::point(rect[0][0])
++        .sub(I::point(source.center[0]))
++        .ok_or("face_arithmetic")?;
++    let y = interval(rect[0][1], rect[1][1]).ok_or("face_arithmetic")?;
++    let full_z = interval(rect[0][2], rect[1][2])
++        .and_then(|v| v.sub(I::point(source.center[2])))
++        .ok_or("face_arithmetic")?;
++    if x.hi >= 0. || full_z.lo <= 0. {
++        return Err("face_hemisphere".into());
++    }
++    let cylinder_z = sqrt(
++        square(I::point(source.radius))
++            .and_then(|v| v.sub(square(x)?))
++            .ok_or("face_cylinder_root")?,
++    )
++    .ok_or("face_cylinder_root")?;
++    if cylinder_z.lo <= full_z.lo || cylinder_z.hi >= full_z.hi {
++        return Err("face_cylinder_not_strictly_inside".into());
++    }
++    // On C<=0, the exact positive-Z domain ends at the exact cylinder root; its interval image is a conservative cover.
++    let z = interval(full_z.lo, cylinder_z.hi).ok_or("face_arithmetic")?;
++    let rho_lower = sqrt(
++        square(x)
++            .and_then(|v| v.add(square(I::point(full_z.lo))?))
++            .ok_or("face_arithmetic")?,
++    )
++    .ok_or("face_arithmetic")?;
++    let rho = interval(rho_lower.lo, source.radius).ok_or("face_conditional_radius")?;
++    let middle_y = rect[0][1] * 0.5 + rect[1][1] * 0.5;
++    if !middle_y.is_finite() || middle_y < rect[0][1] || middle_y > rect[1][1] {
++        return Err("face_anchor".into());
++    }
++    let branch =
++        activation_a::meridian_bound(source.groove, I::point(source.radius), I::point(middle_y))
++            .ok_or("face_anchor_branch")?;
++    let one_minus_nr = I::point(1.).sub(branch.nr).ok_or("face_arithmetic")?;
++    if branch.ny.lo <= 0. || one_minus_nr.lo <= 0. || source.chamfer_radius <= 0. {
++        return Err("face_root_direction".into());
++    }
++    let mut stack = vec![(rect[0][1], rect[1][1], 0usize)];
++    let mut checks = 1usize; // The source branch anchor is included in the global work count.
++    let mut accepted = Vec::new();
++    let mut refusals = Vec::new();
++    while let Some((low, high, depth)) = stack.pop() {
++        if checks >= MAX_CHECKS {
++            return Err(format!(
++                "face_global_check_cap: accepted {}, pending {}, last {:?}",
++                accepted.len(),
++                stack.len() + 1,
++                refusals.last()
++            ));
++        }
++        checks += 1;
++        let strip = interval(low, high).ok_or("face_arithmetic")?;
++        match admitted_strip(&source, branch, x, z, rho, strip) {
++            Ok(row) => accepted.push(row),
++            Err(reason) => {
++                refusals.push(json!({"yStrip":[low,high],"depth":depth,"reason":reason}));
++                let mid = low * 0.5 + high * 0.5;
++                if depth >= 16 || !mid.is_finite() || mid <= low || mid >= high {
++                    return Err(format!(
++                        "face_unproved_strip: {reason}, [{low},{high}], depth {depth}"
++                    ));
++                }
++                stack.push((mid, high, depth + 1));
++                stack.push((low, mid, depth + 1));
++            }
++        }
++    }
++    let transition = quotient(
++        I::point(source.chamfer_radius)
++            .sub(mul(branch.nr, I::point(source.radius)).ok_or("face_arithmetic")?)
++            .and_then(|v| v.sub(branch.offset))
++            .ok_or("face_arithmetic")?,
++        branch.ny,
++    )
++    .ok_or("face_transition")?;
++    if transition.lo <= y.lo || transition.hi >= y.hi {
++        return Err("face_join_not_strictly_inside".into());
++    }
++    let rho_q = |height: I| -> Option<I> {
++        quotient(
++            I::point(source.radius)
++                .add(mul(branch.ny, height)?)?
++                .add(branch.offset)?
++                .sub(I::point(source.chamfer_radius))?,
++            one_minus_nr,
++        )
++    };
++    let bottom_radius = rho_q(I::point(y.lo)).ok_or("face_lower_root")?;
++    let top_radius = rho_q(I::point(y.hi)).ok_or("face_upper_root")?;
++    if bottom_radius.lo <= x.lo.abs().max(x.hi.abs())
++        || bottom_radius.hi >= source.radius
++        || top_radius.lo <= source.radius
++    {
++        return Err("face_root_branch_order".into());
++    }
++    let bottom_z = sqrt(
++        square(bottom_radius)
++            .and_then(|v| v.sub(square(x)?))
++            .ok_or("face_lower_root")?,
++    )
++    .ok_or("face_lower_root")?;
++    if bottom_z.lo <= full_z.lo || bottom_z.hi >= cylinder_z.lo {
++        return Err("face_roots_not_strictly_inside".into());
++    }
++    let full_rho = sqrt(
++        square(x)
++            .and_then(|v| v.add(square(full_z)?))
++            .ok_or("face_arithmetic")?,
++    )
++    .ok_or("face_arithmetic")?;
++    let cz = quotient(I::point(full_z.lo), full_rho).ok_or("face_derivative")?;
++    let qz = mul(one_minus_nr, cz)
++        .and_then(|v| v.mul(std::f64::consts::FRAC_1_SQRT_2))
++        .ok_or("face_derivative")?;
++    let monotone = cz.lo.min(qz.lo);
++    if monotone <= 0. {
++        return Err("face_derivative".into());
++    }
++    let low_c = rho_lower.sub(I::point(source.radius)).ok_or("face_signs")?;
++    let low_q = mul(one_minus_nr, rho_lower)
++        .and_then(|v| v.sub(I::point(source.radius)))
++        .and_then(|v| v.sub(mul(branch.ny, I::point(y.lo))?))
++        .and_then(|v| v.sub(branch.offset))
++        .and_then(|v| v.add(I::point(source.chamfer_radius)))
++        .and_then(|v| v.mul(std::f64::consts::FRAC_1_SQRT_2))
++        .ok_or("face_signs")?;
++    let upper_rho = sqrt(
++        square(x)
++            .and_then(|v| v.add(square(I::point(full_z.hi))?))
++            .ok_or("face_signs")?,
++    )
++    .ok_or("face_signs")?;
++    let high_c = upper_rho.sub(I::point(source.radius)).ok_or("face_signs")?;
++    if low_c.hi.max(low_q.hi) >= 0. || high_c.lo <= 0. {
++        return Err("face_strict_brackets".into());
++    }
++    let cylinder_world_z = cylinder_z
++        .add(I::point(source.center[2]))
++        .ok_or("face_arithmetic")?;
++    let bottom_world_z = bottom_z
++        .add(I::point(source.center[2]))
++        .ok_or("face_arithmetic")?;
++    Ok(
++        json!({"scope":"complete zero set of the continuous represented source on this entire original face rectangle; not just captured contour segments",
++        "sourceFingerprint":f.fingerprint().to_string(),"chartBinding":chart,"source":source.source,"strata":[source.compound_id,source.cylinder_id],
++        "face":face,"rectangle":rect,"rectangleBits":rect.map(|p|p.map(f64::to_bits)),"radius":source.radius,"physicalChamferRadius":source.chamfer_radius,
++        "grooveCoefficients":{"nr":[branch.nr.lo,branch.nr.hi],"ny":[branch.ny.lo,branch.ny.hi],"offset":[branch.offset.lo,branch.offset.hi]},
++        "sourceChecks":checks,"globalCheckCap":MAX_CHECKS,"acceptedStrips":accepted.len(),"strips":accepted,"refinedRefusals":refusals,
++        "positiveCylinderRegionExcluded":true,"conditionalNonpositiveCylinderRegionCovered":true,
++        "zeroEquivalentReducedFunction":"H=max(rho-R,w*((1-nr)*rho-R-ny*Y-offset+r)); native, native-chamfer, negative groove/cap and outer terms are excluded only under checked conditions",
++        "fullFieldGloballyMonotoneClaimed":false,"reducedPositiveZDerivativeLower":monotone,"lowerFaceEdgeSignUpper":low_c.hi.max(low_q.hi),"upperFaceEdgeSignLower":high_c.lo,
++        "transitionHeightBounds":[transition.lo,transition.hi],"cylinderBranchZBounds":[cylinder_world_z.lo,cylinder_world_z.hi],
++        "lowerBoundaryChamferRootZBounds":[bottom_world_z.lo,bottom_world_z.hi],
++        "analyticRoot":"rho_*(Y)=min(R,(R+ny*Y+offset-r)/(1-nr)); Z_*(Y)=centerZ+sqrt(rho_*(Y)^2-(faceX-centerX)^2)",
++        "rootPerClosedYFiber":1,"connectedContourComponents":1,"sourceBranches":2,
++        "branchDomains":"chamfer on [Ymin,Y*], cylinder on [Y*,Ymax], with one shared ideal feature/face endpoint",
++        "completeFaceIntersectionProved":true,"unrepresentedFaceContoursExcluded":true,"boundaryTangencyExcluded":true,
++        "originalCapturedPolylineCorrespondenceProved":false,"wholeCellInteriorCoverageProved":false,"publicationReady":false}),
++    )
++}
++
++#[test]
++fn complete_b_actual_face_has_one_complete_two_branch_contour() {
++    use crate::sfcc::{
++        pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++        validation::NumericalGuard,
++    };
++    let _guard = NumericalGuard::new();
++    let original: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/face-fans-c.json")).unwrap();
++    let root =
++        crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap()
++            - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&root, &cube, &PipelineTuning::default());
++    assert_eq!(
++        context.features.fingerprint().to_string(),
++        saved["sourceFingerprint"].as_str().unwrap()
++    );
++    assert_eq!(saved["face"], saved["originalTarget"]["face"]);
++    let face: [i64; 3] = serde_json::from_value(saved["face"].clone()).unwrap();
++    let endpoint = saved["commonEndpoint"].as_u64().unwrap();
++    let pins = saved["originalTarget"]["originalPins"].as_array().unwrap();
++    let chart = pins
++        .iter()
++        .find(|p| p["candidatePoint"].as_u64() == Some(endpoint))
++        .unwrap()["chart"]
++        .as_u64()
++        .unwrap() as usize;
++    let result = certify_face(&context.features, chart, &context.lat, face);
++    if let Ok(path) = std::env::var("SFCC_COMPLETE_B_RECEIPT") {
++        std::fs::write(
++            path,
++            serde_json::to_vec_pretty(
++                &json!({"parentReceiptSha256":saved["parentReceiptSha256"],"result":result}),
++            )
++            .unwrap(),
++        )
++        .unwrap();
++    }
++    assert!(result.is_ok(), "{result:?}");
++    let report = result.unwrap();
++    assert_eq!(report["rootPerClosedYFiber"], 1);
++    assert_eq!(report["sourceBranches"], 2);
++    assert_eq!(
++        certify_face(&context.features, usize::MAX, &context.lat, face).unwrap_err(),
++        "face_source_binding"
++    );
++    let source = Source::bind(&context.features, chart).unwrap();
++    let rect = face_rectangle(&context.lat, face).unwrap();
++    let mut bad = rect;
++    bad[0][2] = source.center[2] - 1.;
++    assert_eq!(
++        certify_rectangle(&context.features, chart, face, bad).unwrap_err(),
++        "face_hemisphere"
++    );
++}
++#[test]
++fn complete_b_face_identity_and_extent_fail_closed() {
++    let lat = crate::math::grid::make_lattice(4, -10., -10., -10., 20.);
++    let key = pack_point(&lat, 4, 4, 4);
++    assert!(face_rectangle(&lat, [0, key, 2]).is_some());
++    assert!(face_rectangle(&lat, [1, key, 2]).is_none());
++    assert!(face_rectangle(&lat, [0, key, 0]).is_none());
++    assert!(face_rectangle(&lat, [0, key, 20]).is_none());
++    let mut bad = lat;
++    bad.span = 0;
++    assert!(face_rectangle(&bad, [0, key, 2]).is_none());
++}
+--- a/gcad-wasm/kernel/src/sfcc/feature49_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/feature49_a.rs
+@@ -531,3 +531,7 @@
+     foreign.strata[15].sign = -1.;
+     assert!(endpoint_geometry(&foreign, chart, point, point[0]).is_none());
+ }
++
++#[cfg(all(test,feature="serde"))]
++#[path="face_complete_b.rs"]
++pub(crate) mod face_complete_b;

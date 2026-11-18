@@ -1,0 +1,1154 @@
+[
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/activation-C.json",
+    "sha256": "1f42ae0cbb990ff50f0a06f3bfd18a19d25f72c60197dd3106421f1591e07fd8",
+    "bytes": 25232,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/adoption-C.json",
+    "sha256": "93a97b9df0ef304abc8b92b636ff02db3e9ed55c7874fe6fe407295ceda09cf6",
+    "bytes": 165000,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/binary.json",
+    "sha256": "e654adaa9ffd8e6f62ff677ce4a0022c50157682e8d835ea0c6e2d1fae0a324d",
+    "bytes": 221,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/boundary-B-first-cell.json",
+    "sha256": "256063bd4be34612e3172c9ab28797cf9caaa6df41efcf01e92a7bab8ea16514",
+    "bytes": 7380,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/build-execution.json",
+    "sha256": "fd2d211d2558876e1bf17024e41e8ac01f57eadea6c26f5e9e1b5f53ad3cbf55",
+    "bytes": 460,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/build.log",
+    "sha256": "e492e4fbf892a5ed38b246919b2cee51c0292cc2547e1193418b70210cc3a253",
+    "bytes": 42606,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/clean-kernel-execution.json",
+    "sha256": "4e3d02a0054d1b280f5832a8d4fd372d2646fa1bf02009c00ca96d86aa567105",
+    "bytes": 335,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/clean-kernel.log",
+    "sha256": "b6892f8cafb7c4c509a6e0c4e5644c43e91ba1f4fde044da53265994988fd03f",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/component-attempt-execution.json",
+    "sha256": "6ccab2dcb5e235282cbc14072b83008a8dda01e4faa6c58a833b888820b0368b",
+    "bytes": 377,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/component-attempt.json",
+    "sha256": "cddd321355b49af0d6a2b4e3764e1eb3679bbcef4773e0176ef2c8ec55317ab3",
+    "bytes": 4936365,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/component-attempt.log",
+    "sha256": "2270efe40b7d4bbba142393f5ab6ded1739bc91a3bc01c6cdb3d5e42aa71295d",
+    "bytes": 211,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/discovery-0.json",
+    "sha256": "13662b73577222329d4e1001de9411abeac29fc1e12cc290fdf5660fa8dcdbca",
+    "bytes": 194,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/discovery-1.json",
+    "sha256": "e44cbdb77a2b84a9d4286ab64255980bc6ec67f20f2b133be66ea3765b2d2066",
+    "bytes": 752,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/discovery-2.json",
+    "sha256": "0f1698e112eda154f811b18a744cedae9f1df8342bd2a90ce16a919d54a0adcb",
+    "bytes": 185,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "bytes": 186,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/focused-0-execution.json",
+    "sha256": "205056d07d8d1d3e86e78e84ee8b94ba1d042a5b9ad6d24bd02466f2ea8a52ec",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/focused-0.log",
+    "sha256": "bc43767630e6bcc367748262e5d37f74bd79c2f1213855e896ddc7fbb899d742",
+    "bytes": 249,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/focused-1-execution.json",
+    "sha256": "2f33cc99ec049a6ff211c6a4471bdb33ec052434451ef3bd517bd7039fcd6900",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/focused-1.log",
+    "sha256": "16dcd25fb7ed4f5fa3bc8d1b09a4d138c452a6304528cb9fcf1d78a3e698757b",
+    "bytes": 3961,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/focused-2-execution.json",
+    "sha256": "f3414d52cf01acc227f284f7d98ff86eaa78645e30d242d60839b1b3d1e79339",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/focused-2.log",
+    "sha256": "bcffefaf0f1d828e054941ef7853e6a6307adf39a2673675ef5ab5bc5e53f429",
+    "bytes": 233,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/host-disk.txt",
+    "sha256": "9adfc8dffa9a78526629b5654c5bc396ff4bf28d8cb3cfd677a412757b6ad66e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/host-load.txt",
+    "sha256": "b2c56e9b17ad6ad68f9d5787627f5a4dc6e9bb8575c4f874b1d78eac1deea5f3",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/host-memory.txt",
+    "sha256": "d18d3d326fc84549de1a68b9d3183129cfe5030a2adeffd1d3daf89f06fa0a63",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/kernel-tests",
+    "sha256": "9d3f81eb1d1f3e257a0a50492cf957b828b11352353f88801b57ab5cc2c2b1a8",
+    "bytes": 10473216,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture/manifest.json",
+    "sha256": "a886145b6cc24b182296324e8e341ea9c4e27a97a9b7357dde685c3f6a8238e2",
+    "bytes": 36508,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/activation-C.json",
+    "sha256": "cdc911c23a2c497e5484e7c926c33d4a88ad69ae5de8707074d0a32943a02c30",
+    "bytes": 25232,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/adoption-C.json",
+    "sha256": "93a97b9df0ef304abc8b92b636ff02db3e9ed55c7874fe6fe407295ceda09cf6",
+    "bytes": 165000,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/binary.json",
+    "sha256": "4af88557601e11fd13f176055a2e0ee42a52f332717c1e04e551da2fd74dadb6",
+    "bytes": 230,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/build-execution.json",
+    "sha256": "b7aef3882ce9c04d06cd5dd52b5f29a6d502a8eec2e837b37a9957601b93de7f",
+    "bytes": 470,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/build.log",
+    "sha256": "65c9029662fc083c40cf252493c43afce7acfd4a2d33ad33da95cce5b55382eb",
+    "bytes": 43083,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/clean-kernel-execution.json",
+    "sha256": "c4a217bd28601a78c0de3c7bf658809f55c02f158e9f5122d2e9f1cfc16484c9",
+    "bytes": 343,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/clean-kernel.log",
+    "sha256": "dfc04cbb92340c2e73a384ba024a51c5ec557419effa78315f945393ec638a0f",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/component-attempt-execution.json",
+    "sha256": "35c792e2ea4077f0aa0ee0aa316016258ae0c5d324249a0482170e212f528b93",
+    "bytes": 386,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/component-attempt.json",
+    "sha256": "28231cbb0f829c201e6b39000a5788d815600b059b7bf0a54e2ea3b382d212c2",
+    "bytes": 5051397,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/component-attempt.log",
+    "sha256": "2ab1c396c7340c547d322f1b620e4c4cc2fc731d9cb1a59a44671c63990cc21a",
+    "bytes": 211,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/discovery-0.json",
+    "sha256": "4b1405ccc07020cdf330f32623fed5a557c30b23be0fa9c80cd87ca5249fda18",
+    "bytes": 487,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/discovery-1.json",
+    "sha256": "e44cbdb77a2b84a9d4286ab64255980bc6ec67f20f2b133be66ea3765b2d2066",
+    "bytes": 752,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/discovery-2.json",
+    "sha256": "0f1698e112eda154f811b18a744cedae9f1df8342bd2a90ce16a919d54a0adcb",
+    "bytes": 185,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "bytes": 186,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/focused-0-execution.json",
+    "sha256": "1ad1eee6993c8485a2ec33aa364beb560be407315ae2256657004c69ad6dfda5",
+    "bytes": 363,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/focused-0.log",
+    "sha256": "20b8c85132043f358d7931646ea9a87d2d8a5e8d6878bacfd39bbd302b66e8cd",
+    "bytes": 553,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/focused-1-execution.json",
+    "sha256": "90a005f96c7fbdd6a374d8e995347eb34ea1001e77cee6eefd3e409c00de5521",
+    "bytes": 363,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/focused-1.log",
+    "sha256": "35998399ef89519c1e70505eee163ea1338c2d1b984e4a54e9146ec41d2400a3",
+    "bytes": 3961,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/focused-2-execution.json",
+    "sha256": "34f3bc946499836d2f829c84521484bf7398641ce88346cfe97729707eb65d0d",
+    "bytes": 368,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/focused-2.log",
+    "sha256": "e65d20f656a2f17478a8fa2c13d9643eb4cf12b85789e554efb245e9300c9d57",
+    "bytes": 233,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/host-disk.txt",
+    "sha256": "9adfc8dffa9a78526629b5654c5bc396ff4bf28d8cb3cfd677a412757b6ad66e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/host-load.txt",
+    "sha256": "b46619e725093220a1e0063a6dc4ed81450233d27d40064efd2b29285646665e",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/host-memory.txt",
+    "sha256": "d18d3d326fc84549de1a68b9d3183129cfe5030a2adeffd1d3daf89f06fa0a63",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/kernel-tests",
+    "sha256": "44d2c2c1f6cb58ccd1a8aafc6a8c0e613a84f08c0160a619532684f931a50bb4",
+    "bytes": 10520832,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Capture-reviewed/manifest.json",
+    "sha256": "d6f7400555e3efc19426d9181001726c0c3165a9148be763d6632c24b764099f",
+    "bytes": 36526,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/adoption-C.json",
+    "sha256": "51de3e709ee3d7ffd1ea1d34c9a0d568c104ff26815c7c3932af37c981d08828",
+    "bytes": 24907,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/binary-reuse.json",
+    "sha256": "a7337eec5bfa1b0f1eada26c22707499dd540569be3e6b75ea3adb60df242260",
+    "bytes": 211,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/binary.json",
+    "sha256": "2cc4b9df08a5a88f417d7be06aa190f666a01621e12ba57987014c9c13dc93a7",
+    "bytes": 230,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/discovery-0.json",
+    "sha256": "0f1698e112eda154f811b18a744cedae9f1df8342bd2a90ce16a919d54a0adcb",
+    "bytes": 185,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/focused-0-execution.json",
+    "sha256": "d8f860c530bc8ec1bdb468266c2475b4c6247a589653ee3cad270713d8b5f619",
+    "bytes": 370,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/focused-0.log",
+    "sha256": "e1c14d0684478e0a8a5a8de272d996d8ad8574d54833bb52f8019fd2e46dc3db",
+    "bytes": 3982,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/input-fixture-binding.json",
+    "sha256": "c3df9b4704b5060e6a1b11acc87b9c5de3f17ba16a67e1132646c8303411176a",
+    "bytes": 171,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/input-fixture.json",
+    "sha256": "a8c0145afa01a9cc450fbc1960e4836e0ae04c159d2b41fc3d5619edb7220cbb",
+    "bytes": 98845,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/kernel-tests",
+    "sha256": "44d2c2c1f6cb58ccd1a8aafc6a8c0e613a84f08c0160a619532684f931a50bb4",
+    "bytes": 10520832,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Expanded-attempt/manifest.json",
+    "sha256": "4af02905b87909629e8c3fca3ab3a2230b98c776aeecbb8398685dbce1f0e60e",
+    "bytes": 36709,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/activation-C-association.json",
+    "sha256": "b8e1b683b07a1d718ff7d39b46873b016e7f0958394ddfeabe7dbf9b47e69a47",
+    "bytes": 12511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/activation-C-frontier-local.json",
+    "sha256": "b877cae051de8ec0d1bbf5fa561f05d14f9e271f357e08bcf9b272021894dc6a",
+    "bytes": 73779,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/activation-C.json",
+    "sha256": "e6ead110e432ed109ac4e415c062904cc771d3a470cf7c8552adbd65f3c6d541",
+    "bytes": 25232,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/adoption-composition.json",
+    "sha256": "fa570bd54209bf5385af74cddfc1293c979f64e3a53736b705a5f9cb614745b9",
+    "bytes": 260816,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/alias-C-local.json",
+    "sha256": "65e49271a2b9199dc13b5af35ec92315755bd69837509af247e9a0eef47aae18",
+    "bytes": 1037475,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/alias-C.json",
+    "sha256": "33e28919e7d21ae4b94394f45a9eeed182d91ac656c8a23942f4831e337c9d7b",
+    "bytes": 1106,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/binary.json",
+    "sha256": "7a3b5e32ed4ffc654309bbf6094f2f92e34e81bb1521e0a672d7bce851dcebf4",
+    "bytes": 224,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/build-execution.json",
+    "sha256": "296b325a0a32d5c85d264fcc5b40458fde45927ac0895e90a5d35e8958d0f1bc",
+    "bytes": 464,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/build.log",
+    "sha256": "cf63a1812a9b5bf7ec68f329b8ac6555c3c4a9f88cbc7ed33a423a561ca87252",
+    "bytes": 42765,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/clean-kernel-execution.json",
+    "sha256": "9959a0509c162bbba94cc2ecfcba57f8da30309407741cae4eb10e376a0596dc",
+    "bytes": 337,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/clean-kernel.log",
+    "sha256": "3b12379e83b8baa79621861ddb0676e87d3f5bc47ffcd293064beed15c8094a6",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/complete-B.json",
+    "sha256": "8bf8a62c72f46a138f4c066ef7be13ce0c31b030eeffa98f5b54182cbf2a3cc2",
+    "bytes": 7152,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/component-attempt-execution.json",
+    "sha256": "6c46d1fd14310bc67a32628aab637266fd5479e66c91357e5de4d9e738a33bfe",
+    "bytes": 380,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/component-attempt.json",
+    "sha256": "93ce7a09a8b091d2333c270603c40925372b191a142db47ff9392bf87e4b7a93",
+    "bytes": 5051397,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/component-attempt.log",
+    "sha256": "0894191755564ca5071841983e3a5ebeed22441bbec9a05108ee0c353dbf4cb8",
+    "bytes": 211,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-0.json",
+    "sha256": "40ad7ec958529dbf9ff7098559c3e2366fc3d94497f448a29daa62824a4128ea",
+    "bytes": 235,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-1.json",
+    "sha256": "cf24e85db428c1e7c6f2090fd52389a3a99e359bca500eb8416e97b6249f495b",
+    "bytes": 1205,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-10.json",
+    "sha256": "b5f6c109ed6107d56d2d0291c5b14a0ea941fdff646dae9e8897d5f5d4321a41",
+    "bytes": 418,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-11.json",
+    "sha256": "e0e76bcf9bbad77e6fde999749eeee4a7e35ebe482163c305a81b34458f628a5",
+    "bytes": 401,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-12.json",
+    "sha256": "7b93ea1e72cef9ae2889c40778fb75219f3bc525c683c509b51a5808be88a50d",
+    "bytes": 501,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-13.json",
+    "sha256": "080eb92d76a9bfbdd6377b6ea6331118d4281cfe9a9ca695bd4a8efac2d47a2b",
+    "bytes": 321,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-14.json",
+    "sha256": "f5da343aae6ec9b05dcb81ed3d018dd23419dc09166ac5981e3e8446b7ac4827",
+    "bytes": 404,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-15.json",
+    "sha256": "780afc989ba0436c284a332cd18e27ad121a6249670cf346dc95b7fa83e299c6",
+    "bytes": 551,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-16.json",
+    "sha256": "8ad7a21b0d42eb8968faf3e72433a72e77dbb667758ac22afad01bf00c9f49f6",
+    "bytes": 294,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-17.json",
+    "sha256": "d9aab7c46e25440be52f28a435ce4d6bc98b3688d1765fde5c05466ec87a6d41",
+    "bytes": 421,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-18.json",
+    "sha256": "64f3303a126413596116ec9a5b29ee330da783eed5a44c64d40c2fbcec2c8567",
+    "bytes": 192,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-19.json",
+    "sha256": "b0c93041f4260719647670d53cf028e11572e39e410991ba781025684ebfa0c0",
+    "bytes": 714,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-2.json",
+    "sha256": "4b1405ccc07020cdf330f32623fed5a557c30b23be0fa9c80cd87ca5249fda18",
+    "bytes": 487,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-20.json",
+    "sha256": "cfcb2984aa46a4bc7644fe6160ba6e19b97a3a5bb591eb64fad9ccc444bae495",
+    "bytes": 1117,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-21.json",
+    "sha256": "0db0616c582985e3734a4de25abbb37c0ed78597ff567c87911e27dc1741968b",
+    "bytes": 505,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-22.json",
+    "sha256": "ed880bab1cd90564e1e8472956c13f1718a12e0787f7729b1c93951d25f90400",
+    "bytes": 511,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-23.json",
+    "sha256": "b0bcf0782395f692e33109067d80de0eba9309e6675c2893d5563fa5ac244bb2",
+    "bytes": 614,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-3.json",
+    "sha256": "a72d4896102069ea0bd77c6eafa25ed1d1776f4519e8bccaef30a928c1af4fec",
+    "bytes": 563,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-4.json",
+    "sha256": "486b47bf3438942579bed7a841632f5a7a444aff7d6834ab65d9ef3a53882725",
+    "bytes": 395,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-5.json",
+    "sha256": "3d4fe872b629f34d845a3c3b9f3b3eb2e0f89d423f1d0bccb8947c251f861627",
+    "bytes": 440,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-6.json",
+    "sha256": "cd94d3c0b0fead0350a638a6adcb88f3a0ba52d8e15b16fd8aa9039258820476",
+    "bytes": 325,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-7.json",
+    "sha256": "5aa28ab9d9cc4fff37631c96c557515102e6b6a75be1fd532106eb16eb83eb82",
+    "bytes": 309,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-8.json",
+    "sha256": "a806102d0a924879a17208e621103596d497317761f00071d479750e8d3f4196",
+    "bytes": 539,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-9.json",
+    "sha256": "c34f48db04d213bae51119e9d7a5b8fdfc838db3c54862681b63fad5cc1326f0",
+    "bytes": 319,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/discovery-component.json",
+    "sha256": "46be61032e53c30a7ccbb79ea4be2c787e4067222cd07453b0e6468bd94efc00",
+    "bytes": 186,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/face-C.json",
+    "sha256": "f0f08f7bd99118eda55f74c9de1fdabad0a1b8b2ecd5677ce2227d8b8a4524cf",
+    "bytes": 152992,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/feature49-A.json",
+    "sha256": "e1772e6a85478c0df61930d459370c73b1a1896cd2af263e524b7c477e060639",
+    "bytes": 9490,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-0-execution.json",
+    "sha256": "de584dc4bc1c5661c246561600149b4c6f7cfbdac4c46daf5eca6ed3e45981bc",
+    "bytes": 399,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-0.log",
+    "sha256": "6fe44cd99432034880cebab40114aeea8b3d8b52b5b027617a674c41333415a7",
+    "bytes": 246,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-1-execution.json",
+    "sha256": "4396d553b2fa2e943588f0831117d1f305c5dbaf2c06893a5e640ace35f9f864",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-1.log",
+    "sha256": "ec23dd77dce120b0e0ae9ee933e461e5c325daade928dac6fcf4babe64b20da3",
+    "bytes": 8404,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-10-execution.json",
+    "sha256": "204a99a94a16b9ad9f0ed69dec373bfa4956600c7bc94335f199138fba99a22b",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-10.log",
+    "sha256": "dfa321692ef1fcb40fa83a8b076399c9a6514230bdf2292a330a1c0a9abe7d65",
+    "bytes": 486,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-11-execution.json",
+    "sha256": "4314d7036da483b17bc3faa43c86159cca5b4e2ffc4b3090ddce5eee42b2442f",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-11.log",
+    "sha256": "5a4c838b9249fd228673294d56a4e43e040e9ff47513286105ff3de7331170c2",
+    "bytes": 469,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-12-execution.json",
+    "sha256": "1d1f860bd165c47663d8de9d10f881a25f8300c76b37eaee81ee42547f99c529",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-12.log",
+    "sha256": "7ac3e9d71eb3f544360b0d603b656a45ab636c38ee3fd254542fcbefb67e9393",
+    "bytes": 836,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-13-execution.json",
+    "sha256": "348fe774e27027f9c40e7c9e6b00a842d1a6f5c0461313680e5b41853f0f96f2",
+    "bytes": 355,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-13.log",
+    "sha256": "518e59bff9480546242e8a6593d0f07ad063feece2807cb4174a020cf565a31e",
+    "bytes": 384,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-14-execution.json",
+    "sha256": "4328b4d933bb5df652bfe3836db0b1bb1cfdcc0bde45ad742bdc1eab15aebb8d",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-14.log",
+    "sha256": "55637278ff5ae3d0a85db19a176169060df32840a0ba458e331e40b57f19afb8",
+    "bytes": 469,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-15-execution.json",
+    "sha256": "e0d5ff399e07cb8fc82944a09b0281dbe009c1df430325288b74e28fa6577744",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-15.log",
+    "sha256": "0c2e960f68ce11ebceeba30408a177a4421d22764822c55a8812a5a45f4d423d",
+    "bytes": 622,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-16-execution.json",
+    "sha256": "da2646a107b16d8d2ad7fb62c5ea003dfa290e33127f89c88e9a4128264e4b27",
+    "bytes": 358,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-16.log",
+    "sha256": "4e7d3ea6d5e1a28f8cc73ef60ca1df7f8a4ed91349e782cc96c49e528bd77c66",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-17-execution.json",
+    "sha256": "b7a015fd52ecab19112e8ce34f74c964aee6166a88ad0e1643052e866f92d06f",
+    "bytes": 358,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-17.log",
+    "sha256": "f096bef7f9ce6618c3bb27e82e9cdf89174055825ef2b2be1c5b3c3562199953",
+    "bytes": 776,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-18-execution.json",
+    "sha256": "84c49fb061127ca595024019a8204dd90cbdf0b5b71b1182c31cd219f0525dc9",
+    "bytes": 379,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-18.log",
+    "sha256": "dfc57bd4344927cb02b60f153fe0904deafc823d7c63cf336d33f7998afaac5f",
+    "bytes": 504,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-19-execution.json",
+    "sha256": "f8c9bb386951ef51759e6893555766b33825b71ce027278bfb3b66d8694cc640",
+    "bytes": 359,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-19.log",
+    "sha256": "534e2535d436f91a188bd2b81ab45dcd6c6831c1ec62114658fbcd6fd4bcf98b",
+    "bytes": 789,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-2-execution.json",
+    "sha256": "83d77654b2359785390e0b5ad4bdcedf51a67e23e212dcaa9b1ed43c0571807e",
+    "bytes": 358,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-2.log",
+    "sha256": "b307ec01f59a00ef7a6ea2dc319e548bd7db43c2e2727f37beea77289166b5be",
+    "bytes": 553,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-20-execution.json",
+    "sha256": "961f9e315892ff259c00507864b2c058380b28a2ab8d72c159e51541a09be63d",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-20.log",
+    "sha256": "3d2747eacccc2483072ee24784f004d7a0d820ca786b1a25213ee221b86cfc8c",
+    "bytes": 1724,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-21-execution.json",
+    "sha256": "aa7f247fba47c7719751760449cc8d0012f3c8a9e1d4cdd6a0e34e8edec4e848",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-21.log",
+    "sha256": "dd978322a12a1db3a0c2e61047bbd620bbceb5ffd78fc28ab72bfb16d993a061",
+    "bytes": 877,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-22-execution.json",
+    "sha256": "c34de944349f3fcdcb5eabaaf126cf3314357ff86b357880e5db4fa8abee5901",
+    "bytes": 360,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-22.log",
+    "sha256": "147c97c0806ba49e5701e7ee31e2bfb02c63f4613650f6ad5ac0b037b258bd3a",
+    "bytes": 889,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-23-execution.json",
+    "sha256": "5a575e3512385d5ccb8626f709f26b6200ecee1d9c5cc9445eef2e09741706a9",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-23.log",
+    "sha256": "d3646d67da2ea6586dfcb62d45f51f62bcb222fac2ba7d722fa6df053dccadd8",
+    "bytes": 698,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-3-execution.json",
+    "sha256": "4a32c67c421e4216837a67f4f7b7926ceb7b5ad85bf2f13b7eebdb2078736b2d",
+    "bytes": 354,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-3.log",
+    "sha256": "acd414959d7de0f1b770b2bbf666a7ed3b832d70b47f09fc4f28d40dd3b63e98",
+    "bytes": 635,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-4-execution.json",
+    "sha256": "8e54eefda9290751bb6f9afcdeb5c738594a39c2ae9877b8ba0085ed05803170",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-4.log",
+    "sha256": "d6c5b006f429213ba665b1b235bfdf55303598bce94032d124d796c47bd34e05",
+    "bytes": 462,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-5-execution.json",
+    "sha256": "d119c315d32c5591025f4c15c5287d3079ba4a9ca0c15cb2683c8ff19d31e7d9",
+    "bytes": 353,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-5.log",
+    "sha256": "4a7fb41f973dcd14f003135bf33907d2a72f406b8d7cc404a5948f0a9cd7bc88",
+    "bytes": 508,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-6-execution.json",
+    "sha256": "7393106edacdd047122c006218ee39643651a4ea4d97b6a9e0fc6f8d7ba5c1ad",
+    "bytes": 356,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-6.log",
+    "sha256": "99a6a1374371c3dad9c0886652e66b20ab9cd1312f8a297122d144a84b5161bf",
+    "bytes": 386,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-7-execution.json",
+    "sha256": "18d4df9176b3a23a02872cc83a74c12512039036f6b4d06c0f0576a3860d9ca1",
+    "bytes": 360,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-7.log",
+    "sha256": "a5d315584f39bd96413598a72b1a9ab91d9d2e0d64ba8bc99f38915984778c09",
+    "bytes": 365,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-8-execution.json",
+    "sha256": "2f9d3809212b5aab4fe3ba59f14dd3a1177d0d361cad202b26078c90e0e0d1a4",
+    "bytes": 350,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-8.log",
+    "sha256": "7aa2f19d39a4809d006caedc388de34df3233ba49c91434965d902d49757022e",
+    "bytes": 614,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-9-execution.json",
+    "sha256": "2e17252946865dd8ab1722518918bcfb0e17e99fc2ba6f67a6745690709444b9",
+    "bytes": 357,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/focused-9.log",
+    "sha256": "b37d7f3be72f0daf263a73cc5dd5bc8b8795afd50d87fc91108bf610c08e7219",
+    "bytes": 379,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/fullfan-A.json",
+    "sha256": "df1fa16136f474b65134f26bcfe25c8b6962f37f7dfd0ed10aed650304396f89",
+    "bytes": 28261,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/fullfan-C.json",
+    "sha256": "f7a43ce656742fb122d697054b50b445ee4f5ae101176d44b44ad733edd992f8",
+    "bytes": 3923,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/fullfan-combined.json",
+    "sha256": "6f4b9513012f006d5889527aef69b1aebe6d1c18f5e39dd69bbddfbda5d5a88d",
+    "bytes": 30033,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/host-disk.txt",
+    "sha256": "9adfc8dffa9a78526629b5654c5bc396ff4bf28d8cb3cfd677a412757b6ad66e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/host-load.txt",
+    "sha256": "0eea5b03c0624629292d652d13370daaa60ebc9050383a8c23555ebc3ac8403f",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/host-memory.txt",
+    "sha256": "d18d3d326fc84549de1a68b9d3183129cfe5030a2adeffd1d3daf89f06fa0a63",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/kernel-tests",
+    "sha256": "25fd19b3f514472b324f9ad5c14e414c6c14baf3a9ebd97d706de634ac4a3920",
+    "bytes": 10785152,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/library-check-execution.json",
+    "sha256": "109e5365668437863d28d5fb9a7a87be31d5ac85ec869245bf2cde03a1073254",
+    "bytes": 444,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/library-check.log",
+    "sha256": "fb7fcb398e2ea99c66fe11b3a8c396ca025d5fdbc857d6ad65d1221eb1dd4495",
+    "bytes": 113960,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/manifest.json",
+    "sha256": "4be74e6c43a91d3ecdf95a46b4681f95cf4d6a072803c07e807805584393b970",
+    "bytes": 36927,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/ownership-A.json",
+    "sha256": "6b2a0dbb186b866c21f908bef64827f7f952048296fb537053bac23044109202",
+    "bytes": 80503,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/paired-B.json",
+    "sha256": "b2dc882af9e92e507af1710adab947c82b3e426f5214ae31b5caa47d51288691",
+    "bytes": 12922,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/paired-C.json",
+    "sha256": "57717e40a0d78d82cd3a3bff0388c2db9db598a122b2463283cbbf80c63d24a0",
+    "bytes": 111437,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/paired-combined.json",
+    "sha256": "a0b1a1707c3809c1d64adba7ea5817df6c067148d69bc57559491e35a82897b4",
+    "bytes": 125847,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/runtime-A.json",
+    "sha256": "c5aee7820febff59fda7913dbd3a63d5902cc9eefb51ac0cb2a749ccbe5a7a6e",
+    "bytes": 123379,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/span49-A.json",
+    "sha256": "737607a5f2a4d65f0831a8b391904c95c534918f28d7404ee6004b0633f924e3",
+    "bytes": 57447,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/spancomplete-C.json",
+    "sha256": "5c75e26020dd2be3235d0670fd6db6a337bf8c09e81666a4edc07977a413adb3",
+    "bytes": 1934,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/adoption-C.json",
+    "sha256": "7a973344a4136c1293078a24f953a5a5aabd9be7bfa9162b10eed44031aa443e",
+    "bytes": 191409,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/binary.json",
+    "sha256": "fc6b3e0c61d2d249a6a70b5817761e443b6aeb60ebdf8cd0c365f611da4ce550",
+    "bytes": 219,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/build-execution.json",
+    "sha256": "f44b4a9d247f77b9a01fe94dba68cee039e9a7927c50a4879d0ce29a401cd712",
+    "bytes": 459,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/build.log",
+    "sha256": "69357b2c35f2083dbff6fa23cc80976a846a59220e0b7561fa43ca3567279f96",
+    "bytes": 42500,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/clean-kernel-execution.json",
+    "sha256": "b7f4fbe1366c6cc60d36458716eb8fc4d98a970c1fa762b78d9f6a70bbdcd7fe",
+    "bytes": 332,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/clean-kernel.log",
+    "sha256": "dfc04cbb92340c2e73a384ba024a51c5ec557419effa78315f945393ec638a0f",
+    "bytes": 37,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/discovery-0.json",
+    "sha256": "3d158dd836e48dbdc66a29b7c74bb42a697cbaaae5fdeb3abf0b8ba031d48b5f",
+    "bytes": 214,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/discovery-1.json",
+    "sha256": "a72d4896102069ea0bd77c6eafa25ed1d1776f4519e8bccaef30a928c1af4fec",
+    "bytes": 563,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/discovery-2.json",
+    "sha256": "7e07373b54e1dc6eda4aa0428733ec5be50c36e2be52a46317c356efe4c5455b",
+    "bytes": 877,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/discovery-3.json",
+    "sha256": "4b1405ccc07020cdf330f32623fed5a557c30b23be0fa9c80cd87ca5249fda18",
+    "bytes": 487,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-0-execution.json",
+    "sha256": "16e081aa8bad7c14784292c69ef4ab18c53383a9f4e232579fd8913368b97a8b",
+    "bytes": 386,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-0.log",
+    "sha256": "9c4f114bafc43d66e5e7ef5137d0f2a76bed7fff1338fd5daed72fee4cab7842",
+    "bytes": 233,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-1-execution.json",
+    "sha256": "2d5eeec5eb60d20fc9a4a4ceaa49e82a067b9d0c7c0df17e1dd3a0f63d2f932f",
+    "bytes": 348,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-1.log",
+    "sha256": "5e2b9db982792052832f51dbc7ef6177ee103a4a089a57845bc1b0705f0b587e",
+    "bytes": 635,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-2-execution.json",
+    "sha256": "0d4ec83c3dc529deebd4c06443ee8853bb00e3b6f6bdd4114c61c77f782ca47e",
+    "bytes": 352,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-2.log",
+    "sha256": "e9697d5537a50907104893f7880a55091e7d230f8161a1aa4993124ba338a9cf",
+    "bytes": 8066,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-3-execution.json",
+    "sha256": "565a6e373a7428f5d76542b28900fbfe39ca12d57e7401f8445bba28d9306f80",
+    "bytes": 352,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/focused-3.log",
+    "sha256": "680b08a63d0da70b30b0b39fab9f58b4fc56cd5b3e0339c757d1c5370a4854a1",
+    "bytes": 553,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/fullfan-C.json",
+    "sha256": "f7a43ce656742fb122d697054b50b445ee4f5ae101176d44b44ad733edd992f8",
+    "bytes": 3923,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/host-disk.txt",
+    "sha256": "9adfc8dffa9a78526629b5654c5bc396ff4bf28d8cb3cfd677a412757b6ad66e",
+    "bytes": 89,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/host-load.txt",
+    "sha256": "ea110449793c0df9dec7a109a7bd1fa2c0ed0a1fa98323528223028c7af8b063",
+    "bytes": 46,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/host-memory.txt",
+    "sha256": "d18d3d326fc84549de1a68b9d3183129cfe5030a2adeffd1d3daf89f06fa0a63",
+    "bytes": 110,
+    "archived": true
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/kernel-tests",
+    "sha256": "1329af0a9f2efeff7b783dec638f00bcb40e3f06edd7fed3ed0be7c53880b953",
+    "bytes": 10586496,
+    "archived": false
+  },
+  {
+    "path": ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Local/manifest.json",
+    "sha256": "3e76a64eac864f8c30832075f2d35be113745bdb2d049731625ae4369c134b1d",
+    "bytes": 36757,
+    "archived": true
+  }
+]

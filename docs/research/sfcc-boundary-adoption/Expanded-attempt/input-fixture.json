@@ -1,0 +1,5208 @@
+{
+  "cells": [
+    {
+      "cell": [
+        7,
+        25,
+        58,
+        86
+      ],
+      "patchIndices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "triangles": [
+        653,
+        40,
+        38,
+        653,
+        38,
+        41,
+        653,
+        41,
+        464,
+        653,
+        464,
+        465,
+        653,
+        465,
+        647,
+        653,
+        647,
+        40,
+        654,
+        39,
+        40,
+        654,
+        40,
+        647,
+        654,
+        647,
+        460,
+        654,
+        460,
+        39,
+        655,
+        458,
+        459,
+        655,
+        459,
+        650,
+        655,
+        650,
+        649,
+        655,
+        649,
+        648,
+        655,
+        648,
+        647,
+        655,
+        647,
+        465,
+        655,
+        465,
+        458,
+        656,
+        459,
+        460,
+        656,
+        460,
+        647,
+        656,
+        647,
+        648,
+        656,
+        648,
+        649,
+        656,
+        649,
+        650,
+        656,
+        650,
+        459
+      ]
+    },
+    {
+      "cell": [
+        7,
+        26,
+        58,
+        86
+      ],
+      "patchIndices": [
+        4,
+        5
+      ],
+      "triangles": [
+        1118,
+        40,
+        39,
+        1118,
+        39,
+        478,
+        1118,
+        478,
+        1115,
+        1118,
+        1115,
+        1116,
+        1118,
+        1116,
+        1117,
+        1118,
+        1117,
+        40,
+        1119,
+        1116,
+        1114,
+        1119,
+        1114,
+        38,
+        1119,
+        38,
+        40,
+        1119,
+        40,
+        1117,
+        1119,
+        1117,
+        1116
+      ]
+    },
+    {
+      "cell": [
+        7,
+        26,
+        58,
+        87
+      ],
+      "localToJoined": [
+        1114,
+        1115,
+        1116,
+        1120,
+        1121,
+        1122,
+        1123,
+        1124,
+        1125,
+        1126
+      ],
+      "patchIndices": [
+        6,
+        7
+      ],
+      "triangles": [
+        1125,
+        1122,
+        1120,
+        1125,
+        1120,
+        1114,
+        1125,
+        1114,
+        1116,
+        1125,
+        1116,
+        1122,
+        1126,
+        1116,
+        1115,
+        1126,
+        1115,
+        1123,
+        1126,
+        1123,
+        1124,
+        1126,
+        1124,
+        1121,
+        1126,
+        1121,
+        1122,
+        1126,
+        1122,
+        1116
+      ]
+    }
+  ],
+  "commonEndpoint": 40,
+  "complete": true,
+  "continuousSourceOwnershipProved": false,
+  "corner647": {
+    "cellPatchCount": 4,
+    "cellTriangleCount": 23,
+    "closedBoxConsumerCells": [
+      [
+        7,
+        25,
+        58,
+        86
+      ]
+    ],
+    "completeCandidateTriangleStarBound": true,
+    "incidentTriangles": [
+      [
+        653,
+        465,
+        647
+      ],
+      [
+        653,
+        647,
+        40
+      ],
+      [
+        654,
+        40,
+        647
+      ],
+      [
+        654,
+        647,
+        460
+      ],
+      [
+        655,
+        648,
+        647
+      ],
+      [
+        655,
+        647,
+        465
+      ],
+      [
+        656,
+        460,
+        647
+      ],
+      [
+        656,
+        647,
+        648
+      ]
+    ],
+    "point": 647,
+    "positionBits": [
+      13844830282047795546,
+      13836166026439335478,
+      4617754382154335013
+    ],
+    "sourceCorner": 13
+  },
+  "cylinderSource": 15,
+  "endpoint1116": {
+    "allOriginalFaceRecordsAndLeavesExamined": true,
+    "consumers": [
+      {
+        "cellsAndSides": [
+          [
+            [
+              7,
+              26,
+              58,
+              86
+            ],
+            1
+          ],
+          [
+            [
+              7,
+              26,
+              58,
+              87
+            ],
+            0
+          ]
+        ],
+        "face": [
+          2,
+          3464534,
+          2
+        ]
+      }
+    ],
+    "discreteOwnershipBasis": "original FaceRecord incidence, exact integer plane and leaf-side extents; raw boxes only exclude unrepresented owners",
+    "faceOwnershipAndRetainedDefect": [
+      {
+        "exactRecordConsumerCells": [
+          [
+            7,
+            26,
+            58,
+            86
+          ],
+          [
+            7,
+            26,
+            58,
+            87
+          ]
+        ],
+        "face": [
+          2,
+          3464534,
+          2
+        ],
+        "retainedPointDefect": {
+          "coordinateDefectUpper": [
+            0.0,
+            0.0,
+            1.9451107391432745e-13
+          ],
+          "originalAllowance": 3.796655370190979e-07,
+          "planeSignedDefectInterval": [
+            1.945110739143274e-13,
+            1.9451107391432745e-13
+          ],
+          "rectangleBits": [
+            [
+              13844816554298846424,
+              13836171170937199256,
+              4618030406640159634
+            ],
+            [
+              13844678455638397759,
+              13835618776295404592,
+              4618030406640159634
+            ]
+          ],
+          "rectangleDistanceUpperL1": 1.9451107391432748e-13,
+          "retainedPointExactlyOnPlane": false,
+          "scope": "retained point distance to represented original face rectangle, not ideal-target containment or exact geometric ownership"
+        }
+      }
+    ],
+    "faces": [
+      {
+        "face": [
+          2,
+          3464534,
+          2
+        ],
+        "pin": {
+          "chart": 49,
+          "globalPoint": 4608,
+          "parameterBits": 4629663183038855226,
+          "sourceIdentities": [
+            {
+              "compoundPresent": true,
+              "compoundTermsIncluded": false,
+              "domain": [
+                {
+                  "branch": null,
+                  "partners": [],
+                  "path": [
+                    0,
+                    0
+                  ],
+                  "rootAddressProcessLocal": "7b031f0010"
+                }
+              ],
+              "field": null,
+              "id": 31,
+              "leafIndex": 18446744073709551615,
+              "localIndex": 0,
+              "ownerNodeId": -1,
+              "signHex": "3ff0000000000000"
+            },
+            {
+              "compoundPresent": false,
+              "compoundTermsIncluded": false,
+              "domain": [
+                {
+                  "branch": null,
+                  "partners": [],
+                  "path": [
+                    0,
+                    0,
+                    0,
+                    1
+                  ],
+                  "rootAddressProcessLocal": "7b031f0010"
+                }
+              ],
+              "field": null,
+              "id": 15,
+              "leafIndex": 2,
+              "localIndex": 0,
+              "ownerNodeId": -1,
+              "signHex": "3ff0000000000000"
+            }
+          ],
+          "strata": [
+            31,
+            15
+          ]
+        },
+        "segments": [
+          [
+            4606,
+            4608
+          ],
+          [
+            4608,
+            4607
+          ]
+        ]
+      }
+    ],
+    "globalPoint": 4608,
+    "idealTargetFaceMembershipProved": false,
+    "joinedPoint": 1116,
+    "newConsumerCells": [
+      [
+        7,
+        26,
+        58,
+        87
+      ]
+    ],
+    "outsideLocalPoint": 5,
+    "positionBits": [
+      13844748356756957604,
+      13836166026439335478,
+      4618030406640159853
+    ],
+    "rawClosedBoxConsumerCells": [
+      [
+        7,
+        26,
+        58,
+        87
+      ]
+    ]
+  },
+  "expandedComponentCells": 207,
+  "expandedComponentFaces": 1042,
+  "idealTargetAdoptionProved": false,
+  "newConsumerReplay": {
+    "allGeneratedQueriesValidated": true,
+    "cell": [
+      7,
+      26,
+      58,
+      87
+    ],
+    "cellBoxBits": [
+      13844816554298846424,
+      13836171170937199256,
+      4618030406640159634,
+      13844678455638397758,
+      13835618776295404594,
+      4618306603961056965
+    ],
+    "chargedBeforeReservation": 64,
+    "curveMemberships": [
+      {
+        "chart": 49,
+        "edge": [
+          2,
+          5
+        ],
+        "rangeBits": [
+          4629663183038855226,
+          4629560222592246017
+        ]
+      }
+    ],
+    "faces": [
+      {
+        "consumedForward": [],
+        "consumedReverse": [],
+        "face": [
+          0,
+          3464534,
+          2
+        ],
+        "interiorCycle": false,
+        "pins": [],
+        "segments": []
+      },
+      {
+        "consumedForward": [
+          0,
+          0
+        ],
+        "consumedReverse": [
+          0,
+          0
+        ],
+        "face": [
+          0,
+          3596632,
+          2
+        ],
+        "interiorCycle": false,
+        "pins": [
+          [
+            49,
+            4629560222592246017,
+            4611
+          ]
+        ],
+        "segments": [
+          [
+            4609,
+            4611
+          ],
+          [
+            4611,
+            4610
+          ]
+        ]
+      },
+      {
+        "consumedForward": [
+          0
+        ],
+        "consumedReverse": [
+          0
+        ],
+        "face": [
+          1,
+          3464534,
+          1
+        ],
+        "interiorCycle": false,
+        "pins": [],
+        "segments": [
+          [
+            4607,
+            36109
+          ]
+        ]
+      },
+      {
+        "consumedForward": [
+          0
+        ],
+        "consumedReverse": [
+          0
+        ],
+        "face": [
+          1,
+          3530583,
+          1
+        ],
+        "interiorCycle": false,
+        "pins": [],
+        "segments": [
+          [
+            36109,
+            36383
+          ]
+        ]
+      },
+      {
+        "consumedForward": [
+          0
+        ],
+        "consumedReverse": [
+          0
+        ],
+        "face": [
+          1,
+          3530584,
+          1
+        ],
+        "interiorCycle": false,
+        "pins": [],
+        "segments": [
+          [
+            36383,
+            4610
+          ]
+        ]
+      },
+      {
+        "consumedForward": [
+          0
+        ],
+        "consumedReverse": [
+          0
+        ],
+        "face": [
+          1,
+          3465048,
+          2
+        ],
+        "interiorCycle": false,
+        "pins": [],
+        "segments": [
+          [
+            4606,
+            4609
+          ]
+        ]
+      },
+      {
+        "consumedForward": [
+          0,
+          0
+        ],
+        "consumedReverse": [
+          0,
+          0
+        ],
+        "face": [
+          2,
+          3464534,
+          2
+        ],
+        "interiorCycle": false,
+        "pins": [
+          [
+            49,
+            4629663183038855226,
+            4608
+          ]
+        ],
+        "segments": [
+          [
+            4606,
+            4608
+          ],
+          [
+            4608,
+            4607
+          ]
+        ]
+      }
+    ],
+    "failedCellCount": 0,
+    "failureAttribution": "outside internal failures are baseline retained-cell failures; a candidate/outside conflict alone does not prove which side caused it",
+    "fanCaptureA": {
+      "complete": true,
+      "fans": 2,
+      "first": {
+        "assignedOwners": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "boundary": [
+          5,
+          3,
+          0,
+          2
+        ],
+        "carrierKind": "Cylinder",
+        "cellBoxBits": [
+          13844816554298846424,
+          13836171170937199256,
+          4618030406640159634,
+          13844678455638397758,
+          13835618776295404594,
+          4618306603961056965
+        ],
+        "chordTolerance": 0.02,
+        "continuousSourceOwnershipProved": false,
+        "diskPathEnabled": false,
+        "hypothesisStratum": 15,
+        "points": [
+          {
+            "id": 0,
+            "positionBits": [
+              13844748356977640844,
+              13835618776295404592,
+              4618030406640159634
+            ]
+          },
+          {
+            "id": 2,
+            "positionBits": [
+              13844748356756957604,
+              13836166026439335478,
+              4618030406640159853
+            ]
+          },
+          {
+            "id": 3,
+            "positionBits": [
+              13844678455638397759,
+              13835618776295404592,
+              4618253528714040814
+            ]
+          },
+          {
+            "id": 5,
+            "positionBits": [
+              13844678455638397759,
+              13836166026439335478,
+              4618253526875424072
+            ]
+          },
+          {
+            "id": 8,
+            "positionBits": [
+              13844713708077402966,
+              13835892401367370035,
+              4618142345450737534
+            ]
+          }
+        ],
+        "qualityTriangulation": false,
+        "returned": true,
+        "sourceIdentity": {
+          "compoundPresent": false,
+          "compoundTermsIncluded": false,
+          "domain": [
+            {
+              "branch": null,
+              "partners": [],
+              "path": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "rootAddressProcessLocal": "7b031f0010"
+            }
+          ],
+          "field": null,
+          "id": 15,
+          "leafIndex": 2,
+          "localIndex": 0,
+          "ownerNodeId": -1,
+          "signHex": "3ff0000000000000"
+        },
+        "supportedLocalCarrier": true,
+        "surfaceTolerance": 0.01,
+        "triangles": [
+          8,
+          5,
+          3,
+          8,
+          3,
+          0,
+          8,
+          0,
+          2,
+          8,
+          2,
+          5
+        ]
+      },
+      "overflow": false,
+      "pairedFans": [
+        {
+          "assignedOwners": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "boundary": [
+            5,
+            3,
+            0,
+            2
+          ],
+          "carrierKind": "Cylinder",
+          "cellBoxBits": [
+            13844816554298846424,
+            13836171170937199256,
+            4618030406640159634,
+            13844678455638397758,
+            13835618776295404594,
+            4618306603961056965
+          ],
+          "chordTolerance": 0.02,
+          "continuousSourceOwnershipProved": false,
+          "diskPathEnabled": false,
+          "hypothesisStratum": 15,
+          "points": [
+            {
+              "id": 0,
+              "positionBits": [
+                13844748356977640844,
+                13835618776295404592,
+                4618030406640159634
+              ]
+            },
+            {
+              "id": 2,
+              "positionBits": [
+                13844748356756957604,
+                13836166026439335478,
+                4618030406640159853
+              ]
+            },
+            {
+              "id": 3,
+              "positionBits": [
+                13844678455638397759,
+                13835618776295404592,
+                4618253528714040814
+              ]
+            },
+            {
+              "id": 5,
+              "positionBits": [
+                13844678455638397759,
+                13836166026439335478,
+                4618253526875424072
+              ]
+            },
+            {
+              "id": 8,
+              "positionBits": [
+                13844713708077402966,
+                13835892401367370035,
+                4618142345450737534
+              ]
+            }
+          ],
+          "qualityTriangulation": false,
+          "returned": true,
+          "sourceIdentity": {
+            "compoundPresent": false,
+            "compoundTermsIncluded": false,
+            "domain": [
+              {
+                "branch": null,
+                "partners": [],
+                "path": [
+                  0,
+                  0,
+                  0,
+                  1
+                ],
+                "rootAddressProcessLocal": "7b031f0010"
+              }
+            ],
+            "field": null,
+            "id": 15,
+            "leafIndex": 2,
+            "localIndex": 0,
+            "ownerNodeId": -1,
+            "signHex": "3ff0000000000000"
+          },
+          "supportedLocalCarrier": true,
+          "surfaceTolerance": 0.01,
+          "triangles": [
+            8,
+            5,
+            3,
+            8,
+            3,
+            0,
+            8,
+            0,
+            2,
+            8,
+            2,
+            5
+          ]
+        },
+        {
+          "assignedOwners": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "boundary": [
+            2,
+            1,
+            6,
+            7,
+            4,
+            5
+          ],
+          "carrierKind": "Compound",
+          "cellBoxBits": [
+            13844816554298846424,
+            13836171170937199256,
+            4618030406640159634,
+            13844678455638397758,
+            13835618776295404594,
+            4618306603961056965
+          ],
+          "chordTolerance": 0.02,
+          "continuousSourceOwnershipProved": false,
+          "diskPathEnabled": false,
+          "hypothesisStratum": 31,
+          "points": [
+            {
+              "id": 1,
+              "positionBits": [
+                13844747549898595909,
+                13836171170937199256,
+                4618030406640159634
+              ]
+            },
+            {
+              "id": 2,
+              "positionBits": [
+                13844748356756957604,
+                13836166026439335478,
+                4618030406640159853
+              ]
+            },
+            {
+              "id": 4,
+              "positionBits": [
+                13844678455638397759,
+                13836171170937199256,
+                4618250984810510084
+              ]
+            },
+            {
+              "id": 5,
+              "positionBits": [
+                13844678455638397759,
+                13836166026439335478,
+                4618253526875424072
+              ]
+            },
+            {
+              "id": 6,
+              "positionBits": [
+                13844747504968622092,
+                13836171170937199256,
+                4618030553548975900
+              ]
+            },
+            {
+              "id": 7,
+              "positionBits": [
+                13844704676989602914,
+                13836171170937199256,
+                4618168505300608302
+              ]
+            },
+            {
+              "id": 9,
+              "positionBits": [
+                13844717691560225764,
+                13836169939663886695,
+                4618127636648362788
+              ]
+            }
+          ],
+          "qualityTriangulation": false,
+          "returned": true,
+          "sourceIdentity": {
+            "compoundPresent": true,
+            "compoundTermsIncluded": false,
+            "domain": [
+              {
+                "branch": null,
+                "partners": [],
+                "path": [
+                  0,
+                  0
+                ],
+                "rootAddressProcessLocal": "7b031f0010"
+              }
+            ],
+            "field": null,
+            "id": 31,
+            "leafIndex": 18446744073709551615,
+            "localIndex": 0,
+            "ownerNodeId": -1,
+            "signHex": "3ff0000000000000"
+          },
+          "supportedLocalCarrier": false,
+          "surfaceTolerance": 0.01,
+          "triangles": [
+            9,
+            2,
+            1,
+            9,
+            1,
+            6,
+            9,
+            6,
+            7,
+            9,
+            7,
+            4,
+            9,
+            4,
+            5,
+            9,
+            5,
+            2
+          ]
+        }
+      ],
+      "patchLabelsChanged": false,
+      "rows": [
+        {
+          "counts": [
+            1,
+            4,
+            1
+          ],
+          "qualityTriangulation": false,
+          "stratum": 15,
+          "supportedLocalCarrier": true
+        },
+        {
+          "counts": [
+            1,
+            6,
+            1
+          ],
+          "qualityTriangulation": false,
+          "stratum": 31,
+          "supportedLocalCarrier": false
+        }
+      ],
+      "scope": "fan entry/output hypotheses and option gates only; zero additional field or curve queries",
+      "triangles": 10
+    },
+    "featureCellFallbacks": 0,
+    "finalChargedQueries": 2117,
+    "fullOutsideContactAudit": false,
+    "generatedPostvalidationFailures": [],
+    "generatedQueries": 5,
+    "initialPoints": 8,
+    "invalidWorkingOrExportedOrientation": [],
+    "inventory": {
+      "cellCap": 256,
+      "selectionRule": "unique actual opposite consumer of the endpoint's original face records"
+    },
+    "joined": {
+      "candidateTriangleCount": 1775,
+      "completeOutsideContactAudit": false,
+      "contactingOutsideTrianglesRoundedBroadphase": [],
+      "contactingOutsideTrianglesWorkingOrExported": [],
+      "outsideToJoined": [
+        1114,
+        1115,
+        1116,
+        1117,
+        1118,
+        1119,
+        1120,
+        1121,
+        1122,
+        1123
+      ],
+      "outsideTriangleCount": 10,
+      "partialJoinedLinkFailureMayNeedOtherOutsideConsumers": true,
+      "partialJoinedTopology": {
+        "boundaryEdges": [
+          [
+            0,
+            172
+          ],
+          [
+            185,
+            0
+          ],
+          [
+            1,
+            170
+          ],
+          [
+            172,
+            1
+          ],
+          [
+            2,
+            176
+          ],
+          [
+            234,
+            2
+          ],
+          [
+            182,
+            3
+          ],
+          [
+            3,
+            191
+          ],
+          [
+            80,
+            4
+          ],
+          [
+            4,
+            99
+          ],
+          [
+            105,
+            5
+          ],
+          [
+            5,
+            124
+          ],
+          [
+            130,
+            6
+          ],
+          [
+            6,
+            148
+          ],
+          [
+            152,
+            7
+          ],
+          [
+            7,
+            168
+          ],
+          [
+            8,
+            206
+          ],
+          [
+            211,
+            8
+          ],
+          [
+            9,
+            211
+          ],
+          [
+            214,
+            9
+          ],
+          [
+            215,
+            10
+          ],
+          [
+            10,
+            266
+          ],
+          [
+            261,
+            11
+          ],
+          [
+            11,
+            271
+          ],
+          [
+            71,
+            12
+          ],
+          [
+            12,
+            179
+          ],
+          [
+            180,
+            13
+          ],
+          [
+            13,
+            185
+          ],
+          [
+            224,
+            14
+          ],
+          [
+            14,
+            234
+          ],
+          [
+            18,
+            15
+          ],
+          [
+            15,
+            193
+          ],
+          [
+            16,
+            163
+          ],
+          [
+            193,
+            16
+          ],
+          [
+            198,
+            17
+          ],
+          [
+            17,
+            199
+          ],
+          [
+            199,
+            18
+          ],
+          [
+            19,
+            252
+          ],
+          [
+            256,
+            19
+          ],
+          [
+            20,
+            257
+          ],
+          [
+            266,
+            20
+          ],
+          [
+            21,
+            300
+          ],
+          [
+            331,
+            21
+          ],
+          [
+            22,
+            23
+          ],
+          [
+            286,
+            22
+          ],
+          [
+            23,
+            278
+          ],
+          [
+            24,
+            315
+          ],
+          [
+            319,
+            24
+          ],
+          [
+            26,
+            25
+          ],
+          [
+            25,
+            382
+          ],
+          [
+            378,
+            26
+          ],
+          [
+            332,
+            27
+          ],
+          [
+            27,
+            336
+          ],
+          [
+            28,
+            415
+          ],
+          [
+            417,
+            28
+          ],
+          [
+            346,
+            29
+          ],
+          [
+            29,
+            381
+          ],
+          [
+            30,
+            421
+          ],
+          [
+            442,
+            30
+          ],
+          [
+            31,
+            390
+          ],
+          [
+            412,
+            31
+          ],
+          [
+            32,
+            385
+          ],
+          [
+            390,
+            32
+          ],
+          [
+            33,
+            370
+          ],
+          [
+            385,
+            33
+          ],
+          [
+            34,
+            426
+          ],
+          [
+            431,
+            34
+          ],
+          [
+            406,
+            35
+          ],
+          [
+            35,
+            413
+          ],
+          [
+            36,
+            458
+          ],
+          [
+            461,
+            36
+          ],
+          [
+            458,
+            37
+          ],
+          [
+            37,
+            475
+          ],
+          [
+            40,
+            38
+          ],
+          [
+            38,
+            41
+          ],
+          [
+            39,
+            40
+          ],
+          [
+            478,
+            39
+          ],
+          [
+            41,
+            464
+          ],
+          [
+            437,
+            42
+          ],
+          [
+            42,
+            442
+          ],
+          [
+            44,
+            43
+          ],
+          [
+            43,
+            485
+          ],
+          [
+            474,
+            44
+          ],
+          [
+            490,
+            45
+          ],
+          [
+            45,
+            503
+          ],
+          [
+            436,
+            46
+          ],
+          [
+            46,
+            461
+          ],
+          [
+            47,
+            451
+          ],
+          [
+            467,
+            47
+          ],
+          [
+            503,
+            48
+          ],
+          [
+            48,
+            518
+          ],
+          [
+            492,
+            49
+          ],
+          [
+            49,
+            496
+          ],
+          [
+            512,
+            50
+          ],
+          [
+            50,
+            521
+          ],
+          [
+            508,
+            51
+          ],
+          [
+            51,
+            515
+          ],
+          [
+            52,
+            54
+          ],
+          [
+            534,
+            52
+          ],
+          [
+            53,
+            525
+          ],
+          [
+            539,
+            53
+          ],
+          [
+            54,
+            545
+          ],
+          [
+            55,
+            564
+          ],
+          [
+            570,
+            55
+          ],
+          [
+            57,
+            56
+          ],
+          [
+            56,
+            578
+          ],
+          [
+            567,
+            57
+          ],
+          [
+            580,
+            58
+          ],
+          [
+            58,
+            584
+          ],
+          [
+            594,
+            59
+          ],
+          [
+            59,
+            606
+          ],
+          [
+            603,
+            60
+          ],
+          [
+            60,
+            608
+          ],
+          [
+            622,
+            61
+          ],
+          [
+            61,
+            631
+          ],
+          [
+            62,
+            65
+          ],
+          [
+            636,
+            62
+          ],
+          [
+            63,
+            64
+          ],
+          [
+            65,
+            63
+          ],
+          [
+            64,
+            644
+          ],
+          [
+            66,
+            67
+          ],
+          [
+            86,
+            66
+          ],
+          [
+            67,
+            71
+          ],
+          [
+            72,
+            68
+          ],
+          [
+            68,
+            89
+          ],
+          [
+            74,
+            72
+          ],
+          [
+            191,
+            74
+          ],
+          [
+            76,
+            78
+          ],
+          [
+            96,
+            76
+          ],
+          [
+            78,
+            77
+          ],
+          [
+            77,
+            79
+          ],
+          [
+            79,
+            83
+          ],
+          [
+            84,
+            80
+          ],
+          [
+            83,
+            86
+          ],
+          [
+            87,
+            84
+          ],
+          [
+            89,
+            87
+          ],
+          [
+            90,
+            91
+          ],
+          [
+            93,
+            90
+          ],
+          [
+            91,
+            96
+          ],
+          [
+            97,
+            92
+          ],
+          [
+            92,
+            114
+          ],
+          [
+            111,
+            93
+          ],
+          [
+            99,
+            97
+          ],
+          [
+            101,
+            103
+          ],
+          [
+            121,
+            101
+          ],
+          [
+            103,
+            102
+          ],
+          [
+            102,
+            104
+          ],
+          [
+            104,
+            108
+          ],
+          [
+            109,
+            105
+          ],
+          [
+            108,
+            111
+          ],
+          [
+            112,
+            109
+          ],
+          [
+            114,
+            112
+          ],
+          [
+            115,
+            116
+          ],
+          [
+            118,
+            115
+          ],
+          [
+            116,
+            121
+          ],
+          [
+            122,
+            117
+          ],
+          [
+            117,
+            139
+          ],
+          [
+            136,
+            118
+          ],
+          [
+            124,
+            122
+          ],
+          [
+            126,
+            128
+          ],
+          [
+            145,
+            126
+          ],
+          [
+            128,
+            127
+          ],
+          [
+            127,
+            129
+          ],
+          [
+            129,
+            133
+          ],
+          [
+            134,
+            130
+          ],
+          [
+            133,
+            136
+          ],
+          [
+            137,
+            134
+          ],
+          [
+            139,
+            137
+          ],
+          [
+            140,
+            141
+          ],
+          [
+            158,
+            140
+          ],
+          [
+            141,
+            145
+          ],
+          [
+            146,
+            142
+          ],
+          [
+            142,
+            161
+          ],
+          [
+            148,
+            146
+          ],
+          [
+            150,
+            151
+          ],
+          [
+            167,
+            150
+          ],
+          [
+            151,
+            155
+          ],
+          [
+            156,
+            152
+          ],
+          [
+            155,
+            158
+          ],
+          [
+            159,
+            156
+          ],
+          [
+            161,
+            159
+          ],
+          [
+            165,
+            162
+          ],
+          [
+            162,
+            194
+          ],
+          [
+            163,
+            167
+          ],
+          [
+            168,
+            165
+          ],
+          [
+            170,
+            175
+          ],
+          [
+            176,
+            171
+          ],
+          [
+            171,
+            190
+          ],
+          [
+            175,
+            222
+          ],
+          [
+            179,
+            181
+          ],
+          [
+            181,
+            180
+          ],
+          [
+            186,
+            182
+          ],
+          [
+            188,
+            186
+          ],
+          [
+            190,
+            188
+          ],
+          [
+            194,
+            205
+          ],
+          [
+            197,
+            198
+          ],
+          [
+            210,
+            197
+          ],
+          [
+            203,
+            200
+          ],
+          [
+            200,
+            214
+          ],
+          [
+            205,
+            203
+          ],
+          [
+            206,
+            251
+          ],
+          [
+            207,
+            210
+          ],
+          [
+            239,
+            207
+          ],
+          [
+            218,
+            215
+          ],
+          [
+            216,
+            233
+          ],
+          [
+            267,
+            216
+          ],
+          [
+            230,
+            218
+          ],
+          [
+            221,
+            220
+          ],
+          [
+            220,
+            223
+          ],
+          [
+            222,
+            221
+          ],
+          [
+            223,
+            227
+          ],
+          [
+            228,
+            224
+          ],
+          [
+            227,
+            230
+          ],
+          [
+            231,
+            228
+          ],
+          [
+            233,
+            231
+          ],
+          [
+            236,
+            238
+          ],
+          [
+            246,
+            236
+          ],
+          [
+            238,
+            237
+          ],
+          [
+            237,
+            239
+          ],
+          [
+            241,
+            242
+          ],
+          [
+            253,
+            241
+          ],
+          [
+            242,
+            246
+          ],
+          [
+            247,
+            243
+          ],
+          [
+            243,
+            256
+          ],
+          [
+            249,
+            247
+          ],
+          [
+            251,
+            249
+          ],
+          [
+            252,
+            279
+          ],
+          [
+            274,
+            253
+          ],
+          [
+            257,
+            259
+          ],
+          [
+            259,
+            258
+          ],
+          [
+            258,
+            260
+          ],
+          [
+            260,
+            302
+          ],
+          [
+            264,
+            261
+          ],
+          [
+            303,
+            264
+          ],
+          [
+            269,
+            267
+          ],
+          [
+            271,
+            269
+          ],
+          [
+            273,
+            274
+          ],
+          [
+            278,
+            273
+          ],
+          [
+            279,
+            275
+          ],
+          [
+            275,
+            289
+          ],
+          [
+            284,
+            281
+          ],
+          [
+            281,
+            308
+          ],
+          [
+            282,
+            286
+          ],
+          [
+            311,
+            282
+          ],
+          [
+            287,
+            284
+          ],
+          [
+            289,
+            287
+          ],
+          [
+            290,
+            292
+          ],
+          [
+            302,
+            290
+          ],
+          [
+            292,
+            291
+          ],
+          [
+            291,
+            293
+          ],
+          [
+            293,
+            297
+          ],
+          [
+            298,
+            294
+          ],
+          [
+            294,
+            305
+          ],
+          [
+            297,
+            329
+          ],
+          [
+            300,
+            298
+          ],
+          [
+            305,
+            303
+          ],
+          [
+            306,
+            307
+          ],
+          [
+            317,
+            306
+          ],
+          [
+            307,
+            311
+          ],
+          [
+            308,
+            319
+          ],
+          [
+            315,
+            312
+          ],
+          [
+            312,
+            333
+          ],
+          [
+            313,
+            317
+          ],
+          [
+            336,
+            313
+          ],
+          [
+            320,
+            322
+          ],
+          [
+            329,
+            320
+          ],
+          [
+            322,
+            321
+          ],
+          [
+            321,
+            323
+          ],
+          [
+            323,
+            352
+          ],
+          [
+            327,
+            324
+          ],
+          [
+            324,
+            331
+          ],
+          [
+            354,
+            327
+          ],
+          [
+            338,
+            332
+          ],
+          [
+            333,
+            342
+          ],
+          [
+            340,
+            337
+          ],
+          [
+            337,
+            365
+          ],
+          [
+            368,
+            338
+          ],
+          [
+            342,
+            340
+          ],
+          [
+            343,
+            345
+          ],
+          [
+            353,
+            343
+          ],
+          [
+            345,
+            344
+          ],
+          [
+            344,
+            346
+          ],
+          [
+            350,
+            347
+          ],
+          [
+            347,
+            358
+          ],
+          [
+            382,
+            350
+          ],
+          [
+            352,
+            353
+          ],
+          [
+            356,
+            354
+          ],
+          [
+            358,
+            356
+          ],
+          [
+            359,
+            360
+          ],
+          [
+            370,
+            359
+          ],
+          [
+            360,
+            364
+          ],
+          [
+            365,
+            361
+          ],
+          [
+            361,
+            374
+          ],
+          [
+            364,
+            367
+          ],
+          [
+            367,
+            368
+          ],
+          [
+            372,
+            369
+          ],
+          [
+            369,
+            386
+          ],
+          [
+            374,
+            372
+          ],
+          [
+            375,
+            377
+          ],
+          [
+            381,
+            375
+          ],
+          [
+            377,
+            376
+          ],
+          [
+            376,
+            395
+          ],
+          [
+            397,
+            378
+          ],
+          [
+            386,
+            394
+          ],
+          [
+            392,
+            389
+          ],
+          [
+            389,
+            410
+          ],
+          [
+            394,
+            392
+          ],
+          [
+            395,
+            396
+          ],
+          [
+            396,
+            399
+          ],
+          [
+            400,
+            397
+          ],
+          [
+            399,
+            417
+          ],
+          [
+            402,
+            400
+          ],
+          [
+            424,
+            402
+          ],
+          [
+            404,
+            405
+          ],
+          [
+            425,
+            404
+          ],
+          [
+            405,
+            409
+          ],
+          [
+            410,
+            406
+          ],
+          [
+            409,
+            412
+          ],
+          [
+            413,
+            431
+          ],
+          [
+            415,
+            420
+          ],
+          [
+            421,
+            416
+          ],
+          [
+            416,
+            424
+          ],
+          [
+            420,
+            435
+          ],
+          [
+            430,
+            425
+          ],
+          [
+            426,
+            446
+          ],
+          [
+            427,
+            430
+          ],
+          [
+            449,
+            427
+          ],
+          [
+            434,
+            433
+          ],
+          [
+            433,
+            436
+          ],
+          [
+            435,
+            434
+          ],
+          [
+            440,
+            437
+          ],
+          [
+            462,
+            440
+          ],
+          [
+            444,
+            445
+          ],
+          [
+            451,
+            444
+          ],
+          [
+            445,
+            449
+          ],
+          [
+            446,
+            455
+          ],
+          [
+            453,
+            450
+          ],
+          [
+            450,
+            468
+          ],
+          [
+            455,
+            453
+          ],
+          [
+            464,
+            462
+          ],
+          [
+            466,
+            467
+          ],
+          [
+            471,
+            466
+          ],
+          [
+            468,
+            474
+          ],
+          [
+            481,
+            471
+          ],
+          [
+            475,
+            490
+          ],
+          [
+            476,
+            479
+          ],
+          [
+            489,
+            476
+          ],
+          [
+            479,
+            478
+          ],
+          [
+            480,
+            481
+          ],
+          [
+            483,
+            480
+          ],
+          [
+            485,
+            482
+          ],
+          [
+            482,
+            493
+          ],
+          [
+            496,
+            483
+          ],
+          [
+            487,
+            489
+          ],
+          [
+            504,
+            487
+          ],
+          [
+            498,
+            492
+          ],
+          [
+            493,
+            502
+          ],
+          [
+            500,
+            497
+          ],
+          [
+            497,
+            508
+          ],
+          [
+            511,
+            498
+          ],
+          [
+            502,
+            500
+          ],
+          [
+            517,
+            504
+          ],
+          [
+            506,
+            507
+          ],
+          [
+            513,
+            506
+          ],
+          [
+            507,
+            511
+          ],
+          [
+            515,
+            512
+          ],
+          [
+            520,
+            513
+          ],
+          [
+            518,
+            517
+          ],
+          [
+            519,
+            520
+          ],
+          [
+            522,
+            519
+          ],
+          [
+            521,
+            527
+          ],
+          [
+            530,
+            522
+          ],
+          [
+            525,
+            526
+          ],
+          [
+            526,
+            530
+          ],
+          [
+            527,
+            533
+          ],
+          [
+            533,
+            531
+          ],
+          [
+            531,
+            540
+          ],
+          [
+            537,
+            534
+          ],
+          [
+            535,
+            539
+          ],
+          [
+            543,
+            535
+          ],
+          [
+            540,
+            537
+          ],
+          [
+            542,
+            543
+          ],
+          [
+            546,
+            542
+          ],
+          [
+            545,
+            552
+          ],
+          [
+            554,
+            546
+          ],
+          [
+            552,
+            549
+          ],
+          [
+            549,
+            563
+          ],
+          [
+            550,
+            554
+          ],
+          [
+            556,
+            550
+          ],
+          [
+            555,
+            556
+          ],
+          [
+            559,
+            555
+          ],
+          [
+            561,
+            558
+          ],
+          [
+            558,
+            571
+          ],
+          [
+            564,
+            559
+          ],
+          [
+            563,
+            561
+          ],
+          [
+            565,
+            566
+          ],
+          [
+            574,
+            565
+          ],
+          [
+            566,
+            570
+          ],
+          [
+            571,
+            567
+          ],
+          [
+            576,
+            574
+          ],
+          [
+            578,
+            575
+          ],
+          [
+            575,
+            581
+          ],
+          [
+            584,
+            576
+          ],
+          [
+            593,
+            580
+          ],
+          [
+            581,
+            587
+          ],
+          [
+            587,
+            585
+          ],
+          [
+            585,
+            591
+          ],
+          [
+            591,
+            588
+          ],
+          [
+            588,
+            597
+          ],
+          [
+            589,
+            593
+          ],
+          [
+            599,
+            589
+          ],
+          [
+            597,
+            594
+          ],
+          [
+            595,
+            599
+          ],
+          [
+            601,
+            595
+          ],
+          [
+            600,
+            601
+          ],
+          [
+            604,
+            600
+          ],
+          [
+            606,
+            603
+          ],
+          [
+            612,
+            604
+          ],
+          [
+            608,
+            621
+          ],
+          [
+            609,
+            612
+          ],
+          [
+            614,
+            609
+          ],
+          [
+            613,
+            614
+          ],
+          [
+            617,
+            613
+          ],
+          [
+            619,
+            616
+          ],
+          [
+            616,
+            625
+          ],
+          [
+            627,
+            617
+          ],
+          [
+            621,
+            619
+          ],
+          [
+            625,
+            622
+          ],
+          [
+            623,
+            627
+          ],
+          [
+            629,
+            623
+          ],
+          [
+            628,
+            629
+          ],
+          [
+            633,
+            628
+          ],
+          [
+            631,
+            636
+          ],
+          [
+            634,
+            633
+          ],
+          [
+            642,
+            634
+          ],
+          [
+            638,
+            639
+          ],
+          [
+            643,
+            638
+          ],
+          [
+            639,
+            642
+          ],
+          [
+            645,
+            643
+          ],
+          [
+            644,
+            646
+          ],
+          [
+            646,
+            645
+          ],
+          [
+            1114,
+            1116
+          ],
+          [
+            1117,
+            1114
+          ],
+          [
+            1116,
+            1115
+          ],
+          [
+            1115,
+            1120
+          ],
+          [
+            1119,
+            1117
+          ],
+          [
+            1118,
+            1119
+          ],
+          [
+            1121,
+            1118
+          ],
+          [
+            1120,
+            1121
+          ]
+        ],
+        "duplicateFaces": 0,
+        "edges": 2902,
+        "invalidVertexLinks": [],
+        "localTopologyValid": true,
+        "misorientedInternalEdges": 0,
+        "nonManifoldEdges": 0,
+        "scope": "indexed open-component combinatorics only; no geometric or outside-contact verdict",
+        "triangles": 1785,
+        "usedVertices": 1119
+      },
+      "publicationReady": false,
+      "scope": "candidate against one actual original-stage outside consumer; no unmeshed outside exclusion"
+    },
+    "options": {
+      "chordToleranceBits": 4581421828931458171,
+      "maxPolylinePoints": 16,
+      "projectMaxIters": 8,
+      "qualityTriangulation": false,
+      "surfaceToleranceBits": 4576918229304087675
+    },
+    "originalFaceConsumptionValid": true,
+    "pointBindings": [
+      [
+        4606,
+        0
+      ],
+      [
+        4607,
+        1
+      ],
+      [
+        4608,
+        2
+      ],
+      [
+        4609,
+        3
+      ],
+      [
+        4610,
+        4
+      ],
+      [
+        4611,
+        5
+      ],
+      [
+        36109,
+        6
+      ],
+      [
+        36383,
+        7
+      ]
+    ],
+    "points": [
+      {
+        "id": 0,
+        "key": "Num(27720384)",
+        "normalBits": [
+          13829231259225977479,
+          9223372036854775808,
+          4602874766224029526
+        ],
+        "positionBits": [
+          13844748356977640844,
+          13835618776295404592,
+          4618030406640159634
+        ]
+      },
+      {
+        "id": 1,
+        "key": "Num(27716272)",
+        "normalBits": [
+          13828321759478865758,
+          13825543893483073090,
+          4601959500326449807
+        ],
+        "positionBits": [
+          13844747549898595909,
+          13836171170937199256,
+          4618030406640159634
+        ]
+      },
+      {
+        "id": 2,
+        "key": "Str(\"F2:3464534:49:31.867718621208\")",
+        "normalBits": [
+          13829000490704490766,
+          13821303479772216763,
+          4602733628073385454
+        ],
+        "positionBits": [
+          13844748356756957604,
+          13836166026439335478,
+          4618030406640159853
+        ]
+      },
+      {
+        "id": 3,
+        "key": "Num(28777170)",
+        "normalBits": [
+          13829127701305224874,
+          9223372036854775808,
+          4603040041582540340
+        ],
+        "positionBits": [
+          13844678455638397759,
+          13835618776295404592,
+          4618253528714040814
+        ]
+      },
+      {
+        "id": 4,
+        "key": "Num(28773066)",
+        "normalBits": [
+          13828231497293832571,
+          13825543893483073088,
+          4602247646050177199
+        ],
+        "positionBits": [
+          13844678455638397759,
+          13836171170937199256,
+          4618250984810510084
+        ]
+      },
+      {
+        "id": 5,
+        "key": "Str(\"F0:3596632:49:31.501929634164\")",
+        "normalBits": [
+          13828900043555205008,
+          13821303479772216763,
+          4602893938752541977
+        ],
+        "positionBits": [
+          13844678455638397759,
+          13836166026439335478,
+          4618253526875424072
+        ]
+      },
+      {
+        "id": 6,
+        "key": "Num(28244666)",
+        "normalBits": [
+          13828321700782957843,
+          13825543893483073088,
+          4601959692235243397
+        ],
+        "positionBits": [
+          13844747504968622092,
+          13836171170937199256,
+          4618030553548975900
+        ]
+      },
+      {
+        "id": 7,
+        "key": "Num(28244672)",
+        "normalBits": [
+          13828265752037590538,
+          13825543893483073088,
+          4602139901620781442
+        ],
+        "positionBits": [
+          13844704676989602914,
+          13836171170937199256,
+          4618168505300608302
+        ]
+      },
+      {
+        "id": 8,
+        "key": "Unkeyed",
+        "normalBits": [
+          13829179927759857791,
+          0,
+          4602957684007016882
+        ],
+        "positionBits": [
+          13844713708077402966,
+          13835892401367370035,
+          4618142345450737534
+        ]
+      },
+      {
+        "id": 9,
+        "key": "Unkeyed",
+        "normalBits": [
+          13828282572041474681,
+          13825543893483073088,
+          4602086287015740615
+        ],
+        "positionBits": [
+          13844717691560225764,
+          13836169939663886695,
+          4618127636648362788
+        ]
+      }
+    ],
+    "publicationReady": false,
+    "queryAndGraphEvidence": {
+      "activePrivateCell": [
+        7,
+        26,
+        58,
+        87
+      ],
+      "finalChargedQueries": 2117,
+      "generatedQueries": [
+        {
+          "chart": 49,
+          "parameterBits": 4629560222592246017,
+          "pointBits": [
+            13844678455638397759,
+            13836166026439335478,
+            4618253526875424072
+          ],
+          "querySucceeded": true
+        },
+        {
+          "chart": 49,
+          "parameterBits": 4629663183038855226,
+          "pointBits": [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ],
+          "querySucceeded": true
+        },
+        {
+          "chart": 49,
+          "parameterBits": 4629585962703898319,
+          "pointBits": [
+            13844696159753032139,
+            13836166026439335478,
+            4618198023192358968
+          ],
+          "querySucceeded": true
+        },
+        {
+          "chart": 49,
+          "parameterBits": 4629611702815550622,
+          "pointBits": [
+            13844713712306082023,
+            13836166026439335478,
+            4618142331953025311
+          ],
+          "querySucceeded": true
+        },
+        {
+          "chart": 49,
+          "parameterBits": 4629637442927202924,
+          "pointBits": [
+            13844731111794705446,
+            13836166026439335478,
+            4618086458104475989
+          ],
+          "querySucceeded": true
+        }
+      ],
+      "generatedQueryCost": {
+        "attempted": 5,
+        "exhausted": false,
+        "finished": true,
+        "refunded": 0,
+        "reserved": 2048,
+        "scope": "reservation remains charged, including unused slots; failed and discarded attempts retained",
+        "successful": 5,
+        "unusedReserved": 2043
+      },
+      "lastQueryPhase": "outside_complete",
+      "pairedFanCaptureA": {
+        "complete": true,
+        "fans": 2,
+        "first": {
+          "assignedOwners": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "boundary": [
+            5,
+            3,
+            0,
+            2
+          ],
+          "carrierKind": "Cylinder",
+          "cellBoxBits": [
+            13844816554298846424,
+            13836171170937199256,
+            4618030406640159634,
+            13844678455638397758,
+            13835618776295404594,
+            4618306603961056965
+          ],
+          "chordTolerance": 0.02,
+          "continuousSourceOwnershipProved": false,
+          "diskPathEnabled": false,
+          "hypothesisStratum": 15,
+          "points": [
+            {
+              "id": 0,
+              "positionBits": [
+                13844748356977640844,
+                13835618776295404592,
+                4618030406640159634
+              ]
+            },
+            {
+              "id": 2,
+              "positionBits": [
+                13844748356756957604,
+                13836166026439335478,
+                4618030406640159853
+              ]
+            },
+            {
+              "id": 3,
+              "positionBits": [
+                13844678455638397759,
+                13835618776295404592,
+                4618253528714040814
+              ]
+            },
+            {
+              "id": 5,
+              "positionBits": [
+                13844678455638397759,
+                13836166026439335478,
+                4618253526875424072
+              ]
+            },
+            {
+              "id": 8,
+              "positionBits": [
+                13844713708077402966,
+                13835892401367370035,
+                4618142345450737534
+              ]
+            }
+          ],
+          "qualityTriangulation": false,
+          "returned": true,
+          "sourceIdentity": {
+            "compoundPresent": false,
+            "compoundTermsIncluded": false,
+            "domain": [
+              {
+                "branch": null,
+                "partners": [],
+                "path": [
+                  0,
+                  0,
+                  0,
+                  1
+                ],
+                "rootAddressProcessLocal": "7b031f0010"
+              }
+            ],
+            "field": null,
+            "id": 15,
+            "leafIndex": 2,
+            "localIndex": 0,
+            "ownerNodeId": -1,
+            "signHex": "3ff0000000000000"
+          },
+          "supportedLocalCarrier": true,
+          "surfaceTolerance": 0.01,
+          "triangles": [
+            8,
+            5,
+            3,
+            8,
+            3,
+            0,
+            8,
+            0,
+            2,
+            8,
+            2,
+            5
+          ]
+        },
+        "overflow": false,
+        "pairedFans": [
+          {
+            "assignedOwners": [
+              null,
+              null,
+              null,
+              null
+            ],
+            "boundary": [
+              5,
+              3,
+              0,
+              2
+            ],
+            "carrierKind": "Cylinder",
+            "cellBoxBits": [
+              13844816554298846424,
+              13836171170937199256,
+              4618030406640159634,
+              13844678455638397758,
+              13835618776295404594,
+              4618306603961056965
+            ],
+            "chordTolerance": 0.02,
+            "continuousSourceOwnershipProved": false,
+            "diskPathEnabled": false,
+            "hypothesisStratum": 15,
+            "points": [
+              {
+                "id": 0,
+                "positionBits": [
+                  13844748356977640844,
+                  13835618776295404592,
+                  4618030406640159634
+                ]
+              },
+              {
+                "id": 2,
+                "positionBits": [
+                  13844748356756957604,
+                  13836166026439335478,
+                  4618030406640159853
+                ]
+              },
+              {
+                "id": 3,
+                "positionBits": [
+                  13844678455638397759,
+                  13835618776295404592,
+                  4618253528714040814
+                ]
+              },
+              {
+                "id": 5,
+                "positionBits": [
+                  13844678455638397759,
+                  13836166026439335478,
+                  4618253526875424072
+                ]
+              },
+              {
+                "id": 8,
+                "positionBits": [
+                  13844713708077402966,
+                  13835892401367370035,
+                  4618142345450737534
+                ]
+              }
+            ],
+            "qualityTriangulation": false,
+            "returned": true,
+            "sourceIdentity": {
+              "compoundPresent": false,
+              "compoundTermsIncluded": false,
+              "domain": [
+                {
+                  "branch": null,
+                  "partners": [],
+                  "path": [
+                    0,
+                    0,
+                    0,
+                    1
+                  ],
+                  "rootAddressProcessLocal": "7b031f0010"
+                }
+              ],
+              "field": null,
+              "id": 15,
+              "leafIndex": 2,
+              "localIndex": 0,
+              "ownerNodeId": -1,
+              "signHex": "3ff0000000000000"
+            },
+            "supportedLocalCarrier": true,
+            "surfaceTolerance": 0.01,
+            "triangles": [
+              8,
+              5,
+              3,
+              8,
+              3,
+              0,
+              8,
+              0,
+              2,
+              8,
+              2,
+              5
+            ]
+          },
+          {
+            "assignedOwners": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "boundary": [
+              2,
+              1,
+              6,
+              7,
+              4,
+              5
+            ],
+            "carrierKind": "Compound",
+            "cellBoxBits": [
+              13844816554298846424,
+              13836171170937199256,
+              4618030406640159634,
+              13844678455638397758,
+              13835618776295404594,
+              4618306603961056965
+            ],
+            "chordTolerance": 0.02,
+            "continuousSourceOwnershipProved": false,
+            "diskPathEnabled": false,
+            "hypothesisStratum": 31,
+            "points": [
+              {
+                "id": 1,
+                "positionBits": [
+                  13844747549898595909,
+                  13836171170937199256,
+                  4618030406640159634
+                ]
+              },
+              {
+                "id": 2,
+                "positionBits": [
+                  13844748356756957604,
+                  13836166026439335478,
+                  4618030406640159853
+                ]
+              },
+              {
+                "id": 4,
+                "positionBits": [
+                  13844678455638397759,
+                  13836171170937199256,
+                  4618250984810510084
+                ]
+              },
+              {
+                "id": 5,
+                "positionBits": [
+                  13844678455638397759,
+                  13836166026439335478,
+                  4618253526875424072
+                ]
+              },
+              {
+                "id": 6,
+                "positionBits": [
+                  13844747504968622092,
+                  13836171170937199256,
+                  4618030553548975900
+                ]
+              },
+              {
+                "id": 7,
+                "positionBits": [
+                  13844704676989602914,
+                  13836171170937199256,
+                  4618168505300608302
+                ]
+              },
+              {
+                "id": 9,
+                "positionBits": [
+                  13844717691560225764,
+                  13836169939663886695,
+                  4618127636648362788
+                ]
+              }
+            ],
+            "qualityTriangulation": false,
+            "returned": true,
+            "sourceIdentity": {
+              "compoundPresent": true,
+              "compoundTermsIncluded": false,
+              "domain": [
+                {
+                  "branch": null,
+                  "partners": [],
+                  "path": [
+                    0,
+                    0
+                  ],
+                  "rootAddressProcessLocal": "7b031f0010"
+                }
+              ],
+              "field": null,
+              "id": 31,
+              "leafIndex": 18446744073709551615,
+              "localIndex": 0,
+              "ownerNodeId": -1,
+              "signHex": "3ff0000000000000"
+            },
+            "supportedLocalCarrier": false,
+            "surfaceTolerance": 0.01,
+            "triangles": [
+              9,
+              2,
+              1,
+              9,
+              1,
+              6,
+              9,
+              6,
+              7,
+              9,
+              7,
+              4,
+              9,
+              4,
+              5,
+              9,
+              5,
+              2
+            ]
+          }
+        ],
+        "patchLabelsChanged": false,
+        "rows": [
+          {
+            "counts": [
+              1,
+              4,
+              1
+            ],
+            "qualityTriangulation": false,
+            "stratum": 15,
+            "supportedLocalCarrier": true
+          },
+          {
+            "counts": [
+              1,
+              6,
+              1
+            ],
+            "qualityTriangulation": false,
+            "stratum": 31,
+            "supportedLocalCarrier": false
+          }
+        ],
+        "scope": "fan entry/output hypotheses and option gates only; zero additional field or curve queries",
+        "triangles": 10
+      },
+      "queryCosts": {
+        "bind": {
+          "cacheHits": 0,
+          "cachedEvents": 64,
+          "charged": 64,
+          "consumeAttempts": 64,
+          "consumeFailures": 0,
+          "cumulative": true,
+          "externalDirectAttempts": 0,
+          "externalReservationCalls": 0,
+          "externalReserved": 0,
+          "failedMaps": 0,
+          "generatedTotal": 0,
+          "generatedValidated": 0,
+          "graphFailedBeforeValidation": false,
+          "inverseIterations": 0,
+          "ledgerEquationHolds": true,
+          "limits": {
+            "iterations": 64,
+            "request": 64,
+            "total": 16384
+          },
+          "lookups": 64,
+          "mapCalls": 0,
+          "mapRequestNewQueryHistogram": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "maximumRequest": 1,
+          "requestCapRefusals": 0,
+          "scope": "curve-query attempts; no field-evaluation or CPU-time equivalence; reservations are not performed work",
+          "totalCapRefusals": 0
+        },
+        "outside_complete": {
+          "cacheHits": 0,
+          "cachedEvents": 64,
+          "charged": 2117,
+          "consumeAttempts": 64,
+          "consumeFailures": 0,
+          "cumulative": true,
+          "externalDirectAttempts": 5,
+          "externalReservationCalls": 6,
+          "externalReserved": 2053,
+          "failedMaps": 0,
+          "generatedTotal": 5,
+          "generatedValidated": 5,
+          "graphFailedBeforeValidation": false,
+          "inverseIterations": 0,
+          "ledgerEquationHolds": true,
+          "limits": {
+            "iterations": 64,
+            "request": 64,
+            "total": 16384
+          },
+          "lookups": 64,
+          "mapCalls": 0,
+          "mapRequestNewQueryHistogram": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "maximumRequest": 1,
+          "requestCapRefusals": 0,
+          "scope": "curve-query attempts; no field-evaluation or CPU-time equivalence; reservations are not performed work",
+          "totalCapRefusals": 0
+        },
+        "outside_generated_queries": {
+          "cacheHits": 0,
+          "cachedEvents": 64,
+          "charged": 2112,
+          "consumeAttempts": 64,
+          "consumeFailures": 0,
+          "cumulative": true,
+          "externalDirectAttempts": 0,
+          "externalReservationCalls": 1,
+          "externalReserved": 2048,
+          "failedMaps": 0,
+          "generatedTotal": 5,
+          "generatedValidated": 0,
+          "graphFailedBeforeValidation": false,
+          "inverseIterations": 0,
+          "ledgerEquationHolds": true,
+          "limits": {
+            "iterations": 64,
+            "request": 64,
+            "total": 16384
+          },
+          "lookups": 64,
+          "mapCalls": 0,
+          "mapRequestNewQueryHistogram": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "maximumRequest": 1,
+          "requestCapRefusals": 0,
+          "scope": "curve-query attempts; no field-evaluation or CPU-time equivalence; reservations are not performed work",
+          "totalCapRefusals": 0
+        },
+        "outside_generated_validation": {
+          "cacheHits": 0,
+          "cachedEvents": 64,
+          "charged": 2117,
+          "consumeAttempts": 64,
+          "consumeFailures": 0,
+          "cumulative": true,
+          "externalDirectAttempts": 5,
+          "externalReservationCalls": 6,
+          "externalReserved": 2053,
+          "failedMaps": 0,
+          "generatedTotal": 5,
+          "generatedValidated": 5,
+          "graphFailedBeforeValidation": false,
+          "inverseIterations": 0,
+          "ledgerEquationHolds": true,
+          "limits": {
+            "iterations": 64,
+            "request": 64,
+            "total": 16384
+          },
+          "lookups": 64,
+          "mapCalls": 0,
+          "mapRequestNewQueryHistogram": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "maximumRequest": 1,
+          "requestCapRefusals": 0,
+          "scope": "curve-query attempts; no field-evaluation or CPU-time equivalence; reservations are not performed work",
+          "totalCapRefusals": 0
+        }
+      }
+    },
+    "queryBudgetScope": "separate observational ledger, unchanged 16384 total / 2048 reservation; not pooled with either previous ledger",
+    "scope": "first actual untouched frontier consumer replayed before ordinary cell meshing; no primary or secondary quotient in outside view",
+    "sharedOriginalFaces": [
+      [
+        2,
+        3464534,
+        2
+      ]
+    ],
+    "sourceFingerprint": "10977506807348230851",
+    "triangles": [
+      8,
+      5,
+      3,
+      8,
+      3,
+      0,
+      8,
+      0,
+      2,
+      8,
+      2,
+      5,
+      9,
+      2,
+      1,
+      9,
+      1,
+      6,
+      9,
+      6,
+      7,
+      9,
+      7,
+      4,
+      9,
+      4,
+      5,
+      9,
+      5,
+      2
+    ]
+  },
+  "patches": [
+    {
+      "boundary": [
+        40,
+        38,
+        41,
+        464,
+        465,
+        647
+      ],
+      "carrierKind": "Cylinder",
+      "cellBoxBits": [
+        13844954652959295090,
+        13836171170937199256,
+        4617754209319262306,
+        13844816554298846424,
+        13835618776295404594,
+        4618030406640159637
+      ],
+      "chordTolerance": 0.02,
+      "continuousSourceOwnershipProved": false,
+      "hypothesisStratum": 15,
+      "points": [
+        {
+          "id": 38,
+          "positionBits": [
+            13844816554298846424,
+            13835618776295404592,
+            4617801817764908076
+          ]
+        },
+        {
+          "id": 40,
+          "positionBits": [
+            13844816554298846762,
+            13836166026439335478,
+            4617801809107539645
+          ]
+        },
+        {
+          "id": 41,
+          "positionBits": [
+            13844830331837451734,
+            13835618776295404592,
+            4617754209319262306
+          ]
+        },
+        {
+          "id": 464,
+          "positionBits": [
+            13844830331837451734,
+            13835894973616301924,
+            4617754209319262306
+          ]
+        },
+        {
+          "id": 465,
+          "positionBits": [
+            13844830331814374579,
+            13836165891772662319,
+            4617754209319262306
+          ]
+        },
+        {
+          "id": 647,
+          "positionBits": [
+            13844830282047795546,
+            13836166026439335478,
+            4617754382154335013
+          ]
+        },
+        {
+          "id": 653,
+          "positionBits": [
+            13844825742648919353,
+            13835938411809740731,
+            4617770119601665062
+          ]
+        }
+      ],
+      "qualityTriangulation": false,
+      "returned": true,
+      "sourceIdentity": {
+        "compoundPresent": false,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rootAddressProcessLocal": "7b031f0010"
+          }
+        ],
+        "field": null,
+        "id": 15,
+        "leafIndex": 2,
+        "localIndex": 0,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "surfaceTolerance": 0.01,
+      "triangles": [
+        653,
+        40,
+        38,
+        653,
+        38,
+        41,
+        653,
+        41,
+        464,
+        653,
+        464,
+        465,
+        653,
+        465,
+        647,
+        653,
+        647,
+        40
+      ]
+    },
+    {
+      "boundary": [
+        39,
+        40,
+        647,
+        460
+      ],
+      "carrierKind": "Field",
+      "cellBoxBits": [
+        13844954652959295090,
+        13836171170937199256,
+        4617754209319262306,
+        13844816554298846424,
+        13835618776295404594,
+        4618030406640159637
+      ],
+      "chordTolerance": 0.02,
+      "continuousSourceOwnershipProved": false,
+      "hypothesisStratum": 39,
+      "points": [
+        {
+          "id": 39,
+          "positionBits": [
+            13844816554298846424,
+            13836171170937199256,
+            4617799094638878133
+          ]
+        },
+        {
+          "id": 40,
+          "positionBits": [
+            13844816554298846762,
+            13836166026439335478,
+            4617801809107539645
+          ]
+        },
+        {
+          "id": 460,
+          "positionBits": [
+            13844827650848918399,
+            13836171170937199257,
+            4617760755969393917
+          ]
+        },
+        {
+          "id": 647,
+          "positionBits": [
+            13844830282047795546,
+            13836166026439335478,
+            4617754382154335013
+          ]
+        },
+        {
+          "id": 654,
+          "positionBits": [
+            13844822768012469158,
+            13836168617584839349,
+            4617779019314262603
+          ]
+        }
+      ],
+      "qualityTriangulation": false,
+      "returned": true,
+      "sourceIdentity": {
+        "compoundPresent": false,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": {
+              "kind": "Child(1)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "7b03030210"
+          }
+        ],
+        "field": {
+          "branch": {
+            "kind": "Child(1)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "7b03030210"
+        },
+        "id": 39,
+        "leafIndex": 18446744073709551615,
+        "localIndex": 0,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "surfaceTolerance": 0.01,
+      "triangles": [
+        654,
+        39,
+        40,
+        654,
+        40,
+        647,
+        654,
+        647,
+        460,
+        654,
+        460,
+        39
+      ]
+    },
+    {
+      "boundary": [
+        458,
+        459,
+        650,
+        649,
+        648,
+        647,
+        465
+      ],
+      "carrierKind": "TwistedSide",
+      "cellBoxBits": [
+        13844954652959295090,
+        13836171170937199256,
+        4617754209319262306,
+        13844816554298846424,
+        13835618776295404594,
+        4618030406640159637
+      ],
+      "chordTolerance": 0.02,
+      "continuousSourceOwnershipProved": false,
+      "hypothesisStratum": 10,
+      "points": [
+        {
+          "id": 458,
+          "positionBits": [
+            13844827666411667413,
+            13836171170937199256,
+            4617754209319262306
+          ]
+        },
+        {
+          "id": 459,
+          "positionBits": [
+            13844827771266531156,
+            13836171170937187002,
+            4617755369420993716
+          ]
+        },
+        {
+          "id": 465,
+          "positionBits": [
+            13844830331814374579,
+            13836165891772662319,
+            4617754209319262306
+          ]
+        },
+        {
+          "id": 647,
+          "positionBits": [
+            13844830282047795546,
+            13836166026439335478,
+            4617754382154335013
+          ]
+        },
+        {
+          "id": 648,
+          "positionBits": [
+            13844830187233903547,
+            13836166220664319136,
+            4617754419537920016
+          ]
+        },
+        {
+          "id": 649,
+          "positionBits": [
+            13844829891361871162,
+            13836166826779996655,
+            4617754536155328740
+          ]
+        },
+        {
+          "id": 650,
+          "positionBits": [
+            13844828706376621362,
+            13836169254640459311,
+            4617755002379997287
+          ]
+        },
+        {
+          "id": 655,
+          "positionBits": [
+            13844829261744532900,
+            13836168075307039100,
+            4617754590022194856
+          ]
+        }
+      ],
+      "qualityTriangulation": false,
+      "returned": true,
+      "sourceIdentity": {
+        "compoundPresent": false,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "rootAddressProcessLocal": "7b031f0010"
+          }
+        ],
+        "field": null,
+        "id": 10,
+        "leafIndex": 1,
+        "localIndex": 3,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "surfaceTolerance": 0.01,
+      "triangles": [
+        655,
+        458,
+        459,
+        655,
+        459,
+        650,
+        655,
+        650,
+        649,
+        655,
+        649,
+        648,
+        655,
+        648,
+        647,
+        655,
+        647,
+        465,
+        655,
+        465,
+        458
+      ]
+    },
+    {
+      "boundary": [
+        459,
+        460,
+        647,
+        648,
+        649,
+        650
+      ],
+      "carrierKind": "Field",
+      "cellBoxBits": [
+        13844954652959295090,
+        13836171170937199256,
+        4617754209319262306,
+        13844816554298846424,
+        13835618776295404594,
+        4618030406640159637
+      ],
+      "chordTolerance": 0.02,
+      "continuousSourceOwnershipProved": false,
+      "hypothesisStratum": 38,
+      "points": [
+        {
+          "id": 459,
+          "positionBits": [
+            13844827771266531156,
+            13836171170937187002,
+            4617755369420993716
+          ]
+        },
+        {
+          "id": 460,
+          "positionBits": [
+            13844827650848918399,
+            13836171170937199257,
+            4617760755969393917
+          ]
+        },
+        {
+          "id": 647,
+          "positionBits": [
+            13844830282047795546,
+            13836166026439335478,
+            4617754382154335013
+          ]
+        },
+        {
+          "id": 648,
+          "positionBits": [
+            13844830187233903547,
+            13836166220664319136,
+            4617754419537920016
+          ]
+        },
+        {
+          "id": 649,
+          "positionBits": [
+            13844829891361871162,
+            13836166826779996655,
+            4617754536155328740
+          ]
+        },
+        {
+          "id": 650,
+          "positionBits": [
+            13844828706376621362,
+            13836169254640459311,
+            4617755002379997287
+          ]
+        },
+        {
+          "id": 656,
+          "positionBits": [
+            13844829081532605267,
+            13836168445143818604,
+            4617755744270549230
+          ]
+        }
+      ],
+      "qualityTriangulation": false,
+      "returned": true,
+      "sourceIdentity": {
+        "compoundPresent": false,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": {
+              "kind": "Child(0)",
+              "nativeBandHex": "3e997a9ab0c2db32",
+              "path": [
+                0,
+                0,
+                0
+              ]
+            },
+            "partners": [
+              1,
+              18446744073709551615,
+              1
+            ],
+            "path": [],
+            "rootAddressProcessLocal": "7b03030210"
+          }
+        ],
+        "field": {
+          "branch": {
+            "kind": "Child(0)",
+            "nativeBandHex": "3e997a9ab0c2db32",
+            "path": [
+              0,
+              0,
+              0
+            ]
+          },
+          "partners": [
+            1,
+            18446744073709551615,
+            1
+          ],
+          "path": [],
+          "rootAddressProcessLocal": "7b03030210"
+        },
+        "id": 38,
+        "leafIndex": 18446744073709551615,
+        "localIndex": 0,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "surfaceTolerance": 0.01,
+      "triangles": [
+        656,
+        459,
+        460,
+        656,
+        460,
+        647,
+        656,
+        647,
+        648,
+        656,
+        648,
+        649,
+        656,
+        649,
+        650,
+        656,
+        650,
+        459
+      ]
+    },
+    {
+      "boundary": [
+        40,
+        39,
+        478,
+        1115,
+        1116,
+        1117
+      ],
+      "hypothesisStratum": 31,
+      "idSpace": "candidate plus exactly keyed outside points",
+      "points": [
+        {
+          "id": 39,
+          "outsideLocalId": 1,
+          "positionBits": [
+            13844816554298846424,
+            13836171170937199256,
+            4617799094638878133
+          ]
+        },
+        {
+          "id": 40,
+          "outsideLocalId": 2,
+          "positionBits": [
+            13844816554298846762,
+            13836166026439335478,
+            4617801809107539645
+          ]
+        },
+        {
+          "id": 1115,
+          "outsideLocalId": 4,
+          "positionBits": [
+            13844747549898595909,
+            13836171170937199256,
+            4618030406640159634
+          ]
+        },
+        {
+          "id": 1116,
+          "outsideLocalId": 5,
+          "positionBits": [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ]
+        },
+        {
+          "id": 478,
+          "outsideLocalId": 6,
+          "positionBits": [
+            13844789161382673385,
+            13836171170937199256,
+            4617892307979710970
+          ]
+        },
+        {
+          "id": 1117,
+          "outsideLocalId": 7,
+          "positionBits": [
+            13844773025837132680,
+            13836166026439335478,
+            4617949022357655430
+          ]
+        },
+        {
+          "id": 1118,
+          "outsideLocalId": 8,
+          "positionBits": [
+            13844782035343704292,
+            13836169018175885646,
+            4617917375411644382
+          ]
+        }
+      ],
+      "sourceIdentity": {
+        "compoundPresent": true,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0
+            ],
+            "rootAddressProcessLocal": "7b031f0010"
+          }
+        ],
+        "field": null,
+        "id": 31,
+        "leafIndex": 18446744073709551615,
+        "localIndex": 0,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "sourceOwnershipProved": false,
+      "triangles": [
+        1118,
+        40,
+        39,
+        1118,
+        39,
+        478,
+        1118,
+        478,
+        1115,
+        1118,
+        1115,
+        1116,
+        1118,
+        1116,
+        1117,
+        1118,
+        1117,
+        40
+      ]
+    },
+    {
+      "boundary": [
+        1116,
+        1114,
+        38,
+        40,
+        1117
+      ],
+      "hypothesisStratum": 15,
+      "idSpace": "candidate plus exactly keyed outside points",
+      "points": [
+        {
+          "id": 38,
+          "outsideLocalId": 0,
+          "positionBits": [
+            13844816554298846424,
+            13835618776295404592,
+            4617801817764908076
+          ]
+        },
+        {
+          "id": 40,
+          "outsideLocalId": 2,
+          "positionBits": [
+            13844816554298846762,
+            13836166026439335478,
+            4617801809107539645
+          ]
+        },
+        {
+          "id": 1114,
+          "outsideLocalId": 3,
+          "positionBits": [
+            13844748356977640844,
+            13835618776295404592,
+            4618030406640159634
+          ]
+        },
+        {
+          "id": 1116,
+          "outsideLocalId": 5,
+          "positionBits": [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ]
+        },
+        {
+          "id": 1117,
+          "outsideLocalId": 7,
+          "positionBits": [
+            13844773025837132680,
+            13836166026439335478,
+            4617949022357655430
+          ]
+        },
+        {
+          "id": 1119,
+          "outsideLocalId": 9,
+          "positionBits": [
+            13844780823415619052,
+            13835947126381763123,
+            4617922995774708407
+          ]
+        }
+      ],
+      "sourceIdentity": {
+        "compoundPresent": false,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rootAddressProcessLocal": "7b031f0010"
+          }
+        ],
+        "field": null,
+        "id": 15,
+        "leafIndex": 2,
+        "localIndex": 0,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "sourceOwnershipProved": false,
+      "triangles": [
+        1119,
+        1116,
+        1114,
+        1119,
+        1114,
+        38,
+        1119,
+        38,
+        40,
+        1119,
+        40,
+        1117,
+        1119,
+        1117,
+        1116
+      ]
+    },
+    {
+      "boundary": [
+        1122,
+        1120,
+        1114,
+        1116
+      ],
+      "hypothesisStratum": 15,
+      "idSpace": "candidate plus exactly keyed outside points",
+      "points": [
+        {
+          "id": 1114,
+          "outsideLocalId": 0,
+          "positionBits": [
+            13844748356977640844,
+            13835618776295404592,
+            4618030406640159634
+          ]
+        },
+        {
+          "id": 1116,
+          "outsideLocalId": 2,
+          "positionBits": [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ]
+        },
+        {
+          "id": 1120,
+          "outsideLocalId": 3,
+          "positionBits": [
+            13844678455638397759,
+            13835618776295404592,
+            4618253528714040814
+          ]
+        },
+        {
+          "id": 1122,
+          "outsideLocalId": 5,
+          "positionBits": [
+            13844678455638397759,
+            13836166026439335478,
+            4618253526875424072
+          ]
+        },
+        {
+          "id": 1125,
+          "outsideLocalId": 8,
+          "positionBits": [
+            13844713708077402966,
+            13835892401367370035,
+            4618142345450737534
+          ]
+        }
+      ],
+      "sourceIdentity": {
+        "compoundPresent": false,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rootAddressProcessLocal": "7b031f0010"
+          }
+        ],
+        "field": null,
+        "id": 15,
+        "leafIndex": 2,
+        "localIndex": 0,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "sourceOwnershipProved": false,
+      "triangles": [
+        1125,
+        1122,
+        1120,
+        1125,
+        1120,
+        1114,
+        1125,
+        1114,
+        1116,
+        1125,
+        1116,
+        1122
+      ]
+    },
+    {
+      "boundary": [
+        1116,
+        1115,
+        1123,
+        1124,
+        1121,
+        1122
+      ],
+      "hypothesisStratum": 31,
+      "idSpace": "candidate plus exactly keyed outside points",
+      "points": [
+        {
+          "id": 1115,
+          "outsideLocalId": 1,
+          "positionBits": [
+            13844747549898595909,
+            13836171170937199256,
+            4618030406640159634
+          ]
+        },
+        {
+          "id": 1116,
+          "outsideLocalId": 2,
+          "positionBits": [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ]
+        },
+        {
+          "id": 1121,
+          "outsideLocalId": 4,
+          "positionBits": [
+            13844678455638397759,
+            13836171170937199256,
+            4618250984810510084
+          ]
+        },
+        {
+          "id": 1122,
+          "outsideLocalId": 5,
+          "positionBits": [
+            13844678455638397759,
+            13836166026439335478,
+            4618253526875424072
+          ]
+        },
+        {
+          "id": 1123,
+          "outsideLocalId": 6,
+          "positionBits": [
+            13844747504968622092,
+            13836171170937199256,
+            4618030553548975900
+          ]
+        },
+        {
+          "id": 1124,
+          "outsideLocalId": 7,
+          "positionBits": [
+            13844704676989602914,
+            13836171170937199256,
+            4618168505300608302
+          ]
+        },
+        {
+          "id": 1126,
+          "outsideLocalId": 9,
+          "positionBits": [
+            13844717691560225764,
+            13836169939663886695,
+            4618127636648362788
+          ]
+        }
+      ],
+      "sourceIdentity": {
+        "compoundPresent": true,
+        "compoundTermsIncluded": false,
+        "domain": [
+          {
+            "branch": null,
+            "partners": [],
+            "path": [
+              0,
+              0
+            ],
+            "rootAddressProcessLocal": "7b031f0010"
+          }
+        ],
+        "field": null,
+        "id": 31,
+        "leafIndex": 18446744073709551615,
+        "localIndex": 0,
+        "ownerNodeId": -1,
+        "signHex": "3ff0000000000000"
+      },
+      "sourceOwnershipProved": false,
+      "triangles": [
+        1126,
+        1116,
+        1115,
+        1126,
+        1115,
+        1123,
+        1126,
+        1123,
+        1124,
+        1126,
+        1124,
+        1121,
+        1126,
+        1121,
+        1122,
+        1126,
+        1122,
+        1116
+      ]
+    }
+  ],
+  "points": [
+    {
+      "id": 38,
+      "positionBits": [
+        13844816554298846424,
+        13835618776295404592,
+        4617801817764908076
+      ]
+    },
+    {
+      "id": 39,
+      "positionBits": [
+        13844816554298846424,
+        13836171170937199256,
+        4617799094638878133
+      ]
+    },
+    {
+      "id": 40,
+      "positionBits": [
+        13844816554298846762,
+        13836166026439335478,
+        4617801809107539645
+      ]
+    },
+    {
+      "id": 41,
+      "positionBits": [
+        13844830331837451734,
+        13835618776295404592,
+        4617754209319262306
+      ]
+    },
+    {
+      "id": 458,
+      "positionBits": [
+        13844827666411667413,
+        13836171170937199256,
+        4617754209319262306
+      ]
+    },
+    {
+      "id": 459,
+      "positionBits": [
+        13844827771266531156,
+        13836171170937187002,
+        4617755369420993716
+      ]
+    },
+    {
+      "id": 460,
+      "positionBits": [
+        13844827650848918399,
+        13836171170937199257,
+        4617760755969393917
+      ]
+    },
+    {
+      "id": 464,
+      "positionBits": [
+        13844830331837451734,
+        13835894973616301924,
+        4617754209319262306
+      ]
+    },
+    {
+      "id": 465,
+      "positionBits": [
+        13844830331814374579,
+        13836165891772662319,
+        4617754209319262306
+      ]
+    },
+    {
+      "id": 478,
+      "positionBits": [
+        13844789161382673385,
+        13836171170937199256,
+        4617892307979710970
+      ]
+    },
+    {
+      "id": 647,
+      "positionBits": [
+        13844830282047795546,
+        13836166026439335478,
+        4617754382154335013
+      ]
+    },
+    {
+      "id": 648,
+      "positionBits": [
+        13844830187233903547,
+        13836166220664319136,
+        4617754419537920016
+      ]
+    },
+    {
+      "id": 649,
+      "positionBits": [
+        13844829891361871162,
+        13836166826779996655,
+        4617754536155328740
+      ]
+    },
+    {
+      "id": 650,
+      "positionBits": [
+        13844828706376621362,
+        13836169254640459311,
+        4617755002379997287
+      ]
+    },
+    {
+      "id": 653,
+      "positionBits": [
+        13844825742648919353,
+        13835938411809740731,
+        4617770119601665062
+      ]
+    },
+    {
+      "id": 654,
+      "positionBits": [
+        13844822768012469158,
+        13836168617584839349,
+        4617779019314262603
+      ]
+    },
+    {
+      "id": 655,
+      "positionBits": [
+        13844829261744532900,
+        13836168075307039100,
+        4617754590022194856
+      ]
+    },
+    {
+      "id": 656,
+      "positionBits": [
+        13844829081532605267,
+        13836168445143818604,
+        4617755744270549230
+      ]
+    },
+    {
+      "id": 1114,
+      "positionBits": [
+        13844748356977640844,
+        13835618776295404592,
+        4618030406640159634
+      ]
+    },
+    {
+      "id": 1115,
+      "positionBits": [
+        13844747549898595909,
+        13836171170937199256,
+        4618030406640159634
+      ]
+    },
+    {
+      "id": 1116,
+      "positionBits": [
+        13844748356756957604,
+        13836166026439335478,
+        4618030406640159853
+      ]
+    },
+    {
+      "id": 1117,
+      "positionBits": [
+        13844773025837132680,
+        13836166026439335478,
+        4617949022357655430
+      ]
+    },
+    {
+      "id": 1118,
+      "positionBits": [
+        13844782035343704292,
+        13836169018175885646,
+        4617917375411644382
+      ]
+    },
+    {
+      "id": 1119,
+      "positionBits": [
+        13844780823415619052,
+        13835947126381763123,
+        4617922995774708407
+      ]
+    },
+    {
+      "id": 1120,
+      "positionBits": [
+        13844678455638397759,
+        13835618776295404592,
+        4618253528714040814
+      ]
+    },
+    {
+      "id": 1121,
+      "positionBits": [
+        13844678455638397759,
+        13836171170937199256,
+        4618250984810510084
+      ]
+    },
+    {
+      "id": 1122,
+      "positionBits": [
+        13844678455638397759,
+        13836166026439335478,
+        4618253526875424072
+      ]
+    },
+    {
+      "id": 1123,
+      "positionBits": [
+        13844747504968622092,
+        13836171170937199256,
+        4618030553548975900
+      ]
+    },
+    {
+      "id": 1124,
+      "positionBits": [
+        13844704676989602914,
+        13836171170937199256,
+        4618168505300608302
+      ]
+    },
+    {
+      "id": 1125,
+      "positionBits": [
+        13844713708077402966,
+        13835892401367370035,
+        4618142345450737534
+      ]
+    },
+    {
+      "id": 1126,
+      "positionBits": [
+        13844717691560225764,
+        13836169939663886695,
+        4618127636648362788
+      ]
+    }
+  ],
+  "publicationAuthorized": false,
+  "scope": "exact three-cell emitted union; source/geometry/adoption remain separate",
+  "sharedSegments": [
+    [
+      40,
+      38
+    ],
+    [
+      39,
+      40
+    ]
+  ],
+  "sourceFingerprint": "10977506807348230851",
+  "surfaceTolerance": 0.01,
+  "triangleCount": 44,
+  "parentReceiptSha256": "28231cbb0f829c201e6b39000a5788d815600b059b7bf0a54e2ea3b382d212c2",
+  "cylinderSourceIdentity": {
+    "compoundPresent": false,
+    "compoundTermsIncluded": false,
+    "domain": [
+      {
+        "branch": null,
+        "partners": [],
+        "path": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "rootAddressProcessLocal": "7b031f0010"
+      }
+    ],
+    "field": null,
+    "id": 15,
+    "leafIndex": 2,
+    "localIndex": 0,
+    "ownerNodeId": -1,
+    "signHex": "3ff0000000000000"
+  }
+}

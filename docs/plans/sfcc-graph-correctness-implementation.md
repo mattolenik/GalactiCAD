@@ -1,21 +1,20 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [span/completeness milestone](../research/sfcc-span-completeness/README.md)
-certifies the three consumed curve-49 edges over parameters [31.867718621208247,33],
-with 13 checked own queries and an exported arc bound of 0.00031441763691510014 mm
-under the unchanged 0.01 mm limit. A separate source-level proof covers the entire
-original face rectangle and establishes one connected, two-branch contour with no
-additional crossings. All 72 selected tests and library validation pass; fresh
-runtime geometry, metadata and query evidence are unchanged.
+Status: the [boundary-adoption milestone](../research/sfcc-boundary-adoption/README.md)
+proves one continuous source correspondence on the complete 44-triangle, 31-vertex
+incident neighborhood. All four ideal targets are interior; simultaneous transport
+fixes the outer boundary and identifies the three consumed curve49 edges with their
+ideal physical arcs. The exported bound is 0.0012883081002970905 mm under 0.01 mm.
+Triangle-local source slabs succeed in 108 of 128 checks after the common-slab
+44-triangle attempt refused at 128. All 83 selected tests, library validation and
+fresh runtime preservation pass. Working/exported mesh coordinates are unchanged.
 
-**Stage 4 publication and production acceptance remain open.** An exact predicate
-shows that the prior fixed outer-boundary lift at nodes 647/1116 is not exactly on
-the ideal physical feature. This is not a mesh-error or tolerance failure, but it
-prevents silently adopting the new arc under the old map. Next bind the incident
-consumers and prove compatible 2D boundary transport at those nodes, then bind the
-captured polyline to the complete ideal face contour. Whole-curve/raw-parameter
-claims, broader ownership, remaining outside coverage, allocation accounting and
-production parity remain open.
+**Stage 4 publication and production acceptance remain open.** Next bind the
+captured face polyline to the complete ideal face contour and this adopted source
+correspondence. Then establish remaining interfaces, whole-cell source ownership
+and outside coverage. The207-cell/1042-face inventory is not a validated expanded
+transaction. Whole-curve/raw-parameter claims, allocation accounting and production
+native/WASM/GPU/full-model parity remain open.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and

@@ -1,0 +1,7 @@
+{
+  "filter": "incident_a_",
+  "tests": [
+    "sfcc::private_arc_a::stage4_component_b::outside_b::incident_a::incident_a_incomplete_or_changed_output_cannot_supply_fans"
+  ],
+  "exitCode": 0
+}

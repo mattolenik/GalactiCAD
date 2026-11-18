@@ -1,0 +1,7 @@
+{
+  "filter": "adoption_source_c_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::adoption_source_c::adoption_source_c_actual_incident_union_attempt"
+  ],
+  "exitCode": 0
+}

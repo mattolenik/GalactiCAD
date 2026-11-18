@@ -1,0 +1,6 @@
+{
+  "from": "Capture-reviewed",
+  "sourceAndBinaryUnchanged": true,
+  "sharedFocusedCapSeconds": 60,
+  "scope": "additional fixture case on same frozen binary; combined focused elapsed remains under60seconds"
+}

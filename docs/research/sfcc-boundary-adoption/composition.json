@@ -1,0 +1,46 @@
+{
+  "source": "/tmp/sfcc-adoption-capture",
+  "inputs": [
+    {
+      "source": "/tmp/sfcc-incident-a/gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "sha256": "14592858ab4a3ef4bd3e8f47fa27f489a89171781b47d7f37cdfa487c69c131d"
+    },
+    {
+      "source": "/tmp/sfcc-incident-a/gcad-wasm/kernel/src/sfcc/incident_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/incident_a.rs",
+      "sha256": "02bfc3cdcc91251dc58b9a428c105ff93f33ba14fdad3477cb99bea42b88045e"
+    },
+    {
+      "source": "/tmp/sfcc-boundary-b/gcad-wasm/kernel/src/sfcc/face_join_c.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/face_join_c.rs",
+      "sha256": "ea1e25024ecee2ad0aae26952cfd0f72e17c5d0516d6b5b642ba63353cf57ddd"
+    },
+    {
+      "source": "/tmp/sfcc-boundary-b/gcad-wasm/kernel/src/sfcc/boundary_transport_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/boundary_transport_b.rs",
+      "sha256": "6fc597e3ae2a0cd652834d24260cb166e84341a3b887afe73a366991995ccefa"
+    },
+    {
+      "source": "/tmp/sfcc-boundary-b/gcad-wasm/kernel/fixtures/incident-first-cell-b.json",
+      "target": "gcad-wasm/kernel/fixtures/incident-first-cell-b.json",
+      "sha256": "bf68f0176bc0ccd9e7985a5f8d3e229da82bfd1e639eb802c2614ffc15923a32"
+    },
+    {
+      "source": "/tmp/sfcc-adoption-c/gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "sha256": "786f2e0883faf3c02382e1eb2ddf27f9937920ef059bcb14ab858c15527c2a7c"
+    },
+    {
+      "source": "/tmp/sfcc-adoption-c/gcad-wasm/kernel/src/sfcc/fullfan_source_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/fullfan_source_a.rs",
+      "sha256": "9621f721a386d179b9f3974ce82cdccb0a5c444351e8e1b53732a679a2e9ed6f"
+    },
+    {
+      "source": "/tmp/sfcc-adoption-c/gcad-wasm/kernel/src/sfcc/adoption_source_c.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/adoption_source_c.rs",
+      "sha256": "ff06f056c744ab4c405657987c37093a7c63c9ff4407f7884452545ea7a0454f"
+    }
+  ],
+  "flags": "SFCC_INCIDENT_A=1; initial source test uses frozen34triangle fixture"
+}

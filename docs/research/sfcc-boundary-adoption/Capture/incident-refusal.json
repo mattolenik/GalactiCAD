@@ -1,0 +1,197 @@
+{
+  "parentReceiptSha256": "cddd321355b49af0d6a2b4e3764e1eb3679bbcef4773e0176ef2c8ec55317ab3",
+  "extractedField": "outsideB.incidentA",
+  "receipt": {
+    "complete": false,
+    "continuousSourceOwnershipProved": false,
+    "corner647": {
+      "cellPatchCount": 4,
+      "cellTriangleCount": 23,
+      "closedBoxConsumerCells": [
+        [
+          7,
+          25,
+          58,
+          86
+        ]
+      ],
+      "completeCandidateTriangleStarBound": true,
+      "incidentTriangles": [
+        [
+          653,
+          465,
+          647
+        ],
+        [
+          653,
+          647,
+          40
+        ],
+        [
+          654,
+          40,
+          647
+        ],
+        [
+          654,
+          647,
+          460
+        ],
+        [
+          655,
+          648,
+          647
+        ],
+        [
+          655,
+          647,
+          465
+        ],
+        [
+          656,
+          460,
+          647
+        ],
+        [
+          656,
+          647,
+          648
+        ]
+      ],
+      "point": 647,
+      "positionBits": [
+        13844830282047795546,
+        13836166026439335478,
+        4617754382154335013
+      ],
+      "sourceCorner": 13
+    },
+    "endpoint1116": {
+      "allOriginalFaceRecordsAndLeavesExamined": true,
+      "consumers": [
+        {
+          "cellsAndSides": [
+            [
+              [
+                7,
+                26,
+                58,
+                86
+              ],
+              1
+            ],
+            [
+              [
+                7,
+                26,
+                58,
+                87
+              ],
+              0
+            ]
+          ],
+          "face": [
+            2,
+            3464534,
+            2
+          ]
+        }
+      ],
+      "faces": [
+        {
+          "face": [
+            2,
+            3464534,
+            2
+          ],
+          "pin": {
+            "chart": 49,
+            "globalPoint": 4608,
+            "parameterBits": 4629663183038855226,
+            "sourceIdentities": [
+              {
+                "compoundPresent": true,
+                "compoundTermsIncluded": false,
+                "domain": [
+                  {
+                    "branch": null,
+                    "partners": [],
+                    "path": [
+                      0,
+                      0
+                    ],
+                    "rootAddressProcessLocal": "76eecb8010"
+                  }
+                ],
+                "field": null,
+                "id": 31,
+                "leafIndex": 18446744073709551615,
+                "localIndex": 0,
+                "ownerNodeId": -1,
+                "signHex": "3ff0000000000000"
+              },
+              {
+                "compoundPresent": false,
+                "compoundTermsIncluded": false,
+                "domain": [
+                  {
+                    "branch": null,
+                    "partners": [],
+                    "path": [
+                      0,
+                      0,
+                      0,
+                      1
+                    ],
+                    "rootAddressProcessLocal": "76eecb8010"
+                  }
+                ],
+                "field": null,
+                "id": 15,
+                "leafIndex": 2,
+                "localIndex": 0,
+                "ownerNodeId": -1,
+                "signHex": "3ff0000000000000"
+              }
+            ],
+            "strata": [
+              31,
+              15
+            ]
+          },
+          "segments": [
+            [
+              4606,
+              4608
+            ],
+            [
+              4608,
+              4607
+            ]
+          ]
+        }
+      ],
+      "globalPoint": 4608,
+      "joinedPoint": 1116,
+      "newConsumerCells": [
+        [
+          7,
+          26,
+          58,
+          87
+        ]
+      ],
+      "outsideLocalPoint": 5,
+      "positionBits": [
+        13844748356756957604,
+        13836166026439335478,
+        4618030406640159853
+      ]
+    },
+    "idealTargetAdoptionProved": false,
+    "publicationAuthorized": false,
+    "refusal": "incident_outer_point_consumer_closure",
+    "scope": "all discrete incident consumers of two specified feature endpoints, original stage; source and boundary transport remain separate obligations",
+    "sourceFingerprint": "10977506807348230851"
+  }
+}

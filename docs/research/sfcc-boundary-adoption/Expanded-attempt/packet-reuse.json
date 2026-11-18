@@ -1,0 +1,4 @@
+{
+  "packet": "../Capture-reviewed-packet/candidate.patch",
+  "reason": "same manifested source and binary; external runtime fixture differs"
+}

@@ -1,0 +1,349 @@
+{
+  "candidate": [
+    -9.334576470564954,
+    -2.492038035725069,
+    5.4319133015149585
+  ],
+  "candidateGeneratedImageDistanceUpper": 3.1238132782840795e-14,
+  "candidateKind": "physical feature and original X-face root",
+  "candidatePhysicalImageDistanceUpper": 3.1238132782840795e-14,
+  "chart": 49,
+  "commonXSurfaceLift": {
+    "chamferZeroRadiusBounds": [
+      10.799999999999974,
+      10.800000000000026
+    ],
+    "fullPhysicalSourceZeroProved": true,
+    "image": [
+      [
+        -9.334576470565562,
+        -2.492038035725069,
+        5.431913301513927
+      ],
+      [
+        -9.334576470565516,
+        -2.492038035725069,
+        5.431913301513927
+      ]
+    ],
+    "margins": {
+      "capCutMargin": 7.492038035725067,
+      "cylinderCapMargin": 7.507961964274902,
+      "cylinderLevel": [
+        -2.664535259100376e-14,
+        5e-324
+      ],
+      "grooveDistance": [
+        0.6999999999999984,
+        0.7000000000000163
+      ],
+      "grooveEdge": 2,
+      "nativeCapMargin": 6.475182836444477,
+      "nativeFiniteProfileMargin": 0.5697707242551691,
+      "nativeLevel": [
+        -0.03277912783045258,
+        -0.032779127830263356
+      ],
+      "nativeStrictlyBelowCylinder": true,
+      "otherDistance": [
+        1.8371364402204355,
+        1.837136440220465
+      ],
+      "outerRoundMargin": 3.076566286736273
+    },
+    "rhoBounds": [
+      10.799999999999974,
+      10.8
+    ],
+    "sameYZAsOriginalPoint": true,
+    "zeroArgument": "native below cylinder, groove negative: max(C,w*(C-d+r))=0 uniquely at rho=min(R,rho_Q(Y)) on admitted negative-X branch"
+  },
+  "exactCurveParameterMapProved": false,
+  "generatedCarrierNotClaimedExactPhysicalFeature": true,
+  "generatedFaceCarrierFeature": {
+    "constraintJacobianAbsLower": 0.41848380197621804,
+    "correlation": "rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero",
+    "finiteBranch": 2,
+    "fixedAxis": 0,
+    "fixedCoordinateBits": 13844816554298846424,
+    "grooveLevelBounds": [
+      0.6999999999999998,
+      0.7000000000000001
+    ],
+    "image": [
+      [
+        -9.334576470564954,
+        -2.492038035725099,
+        5.4319133015149506
+      ],
+      [
+        -9.334576470564954,
+        -2.492038035725039,
+        5.431913301514966
+      ]
+    ],
+    "jacobianConstraints": "(cylinder distance, positive groove distance), not scaled compiled compound",
+    "margins": {
+      "capCutMargin": 7.492038035725037,
+      "cylinderCapMargin": 7.507961964274899,
+      "cylinderLevel": [
+        -5e-324,
+        5e-324
+      ],
+      "grooveDistance": [
+        0.6999999999999736,
+        0.7000000000000266
+      ],
+      "grooveEdge": 2,
+      "nativeCapMargin": 6.475182836443558,
+      "nativeFiniteProfileMargin": 0.5697707242538468,
+      "nativeLevel": [
+        -0.03277912783134076,
+        -0.0327791278309588
+      ],
+      "nativeStrictlyBelowCylinder": true,
+      "otherDistance": [
+        1.837136440220446,
+        1.8371364402204786
+      ],
+      "outerRoundMargin": 3.076566286736259
+    },
+    "radius": 10.8
+  },
+  "generatedRadiusBounds": [
+    0.6999999999999998,
+    0.7000000000000001
+  ],
+  "neighboringPatchTransportProved": false,
+  "numericalAssociation": {
+    "candidateAdmittedAsOriginalParameterAssociation": true,
+    "candidateStrictCarrierChecks": [
+      {
+        "normalizedResidual": 0.0,
+        "stratum": 31,
+        "strictDomainPass": true,
+        "strictResidualPass": true
+      },
+      {
+        "normalizedResidual": 0.0,
+        "stratum": 15,
+        "strictDomainPass": true,
+        "strictResidualPass": true
+      }
+    ],
+    "candidateToGeneratedImageUpper": 3.1238132782840795e-14,
+    "candidateToOwnUpper": 1.193236221898535e-12,
+    "candidateToPhysicalImageUpper": 3.1238132782840795e-14,
+    "chargedAfter": 65,
+    "chargedBefore": 64,
+    "curve49FaceAllowance": 3.796655370190979e-7,
+    "generatedFeatureImageInTube": true,
+    "generatedFeatureImageStrictlyInFace": true,
+    "limitsChanged": false,
+    "mutationPerformed": false,
+    "newOwnQueryAttempts": 1,
+    "originalFace": [
+      0,
+      3464532,
+      2
+    ],
+    "originalFaceRectangle": [
+      [
+        -9.334576470564954,
+        -2.4943226517164696,
+        5.3896361967837
+      ],
+      [
+        -9.334576470564954,
+        -2.249010151716469,
+        5.634948696783697
+      ]
+    ],
+    "originalOwnContractPass": true,
+    "originalParameterBits": 4629807001818732852,
+    "originalPointBits": [
+      13844816554298846762,
+      13836166026439335478,
+      4617801809107539645
+    ],
+    "originalTube": [
+      [
+        -9.438961851300313,
+        -2.5720380357250736,
+        5.3097897051654375
+      ],
+      [
+        -9.177254389891155,
+        -2.4120380357250646,
+        5.6426649333606935
+      ]
+    ],
+    "ownInOriginalTube": true,
+    "ownQueryBits": [
+      13844816554298846762,
+      13836166026439335478,
+      4617801809107539645
+    ],
+    "ownStrictCarrierChecks": [
+      {
+        "normalizedResidual": 0.0,
+        "stratum": 31,
+        "strictDomainPass": true,
+        "strictResidualPass": true
+      },
+      {
+        "normalizedResidual": 0.0,
+        "stratum": 15,
+        "strictDomainPass": true,
+        "strictResidualPass": true
+      }
+    ],
+    "ownToGeneratedFeatureUpper": 1.199762047962197e-12,
+    "ownToPhysicalFeatureUpper": 1.199762047962197e-12,
+    "parameterContinuityOrExactIdealParameterizationProved": false,
+    "physicalFeatureImageInTube": true,
+    "physicalFeatureImageStrictlyInFace": true,
+    "primaryAssociationAllowance": 3.796655370190979e-7,
+    "retainedAssociationAllowance": 3.796655370190979e-7,
+    "strictCarrierResidualLimit": 4.745819212738724e-8
+  },
+  "offsetBits": 4602588292259442002,
+  "originalToCommonXSurfaceLiftDistance": [
+    0.0,
+    3.9079850466805535e-14
+  ],
+  "originalToPhysicalFaceFeatureDistance": [
+    1.186335097595406e-12,
+    1.199762047962197e-12
+  ],
+  "originalToPhysicalFixedZFeatureDistance": [
+    0.0,
+    3.147712339076734e-14
+  ],
+  "originalYMinusIdealFeatureY": [
+    -3.0198066269804264e-14,
+    2.97539770599542e-14
+  ],
+  "physicalChamferRadius": 0.7,
+  "physicalFaceFeature": {
+    "constraintJacobianAbsLower": 0.41848380197621804,
+    "correlation": "rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero",
+    "finiteBranch": 2,
+    "fixedAxis": 0,
+    "fixedCoordinateBits": 13844816554298846424,
+    "grooveLevelBounds": [
+      0.7,
+      0.7
+    ],
+    "image": [
+      [
+        -9.334576470564954,
+        -2.492038035725099,
+        5.4319133015149506
+      ],
+      [
+        -9.334576470564954,
+        -2.492038035725039,
+        5.431913301514966
+      ]
+    ],
+    "jacobianConstraints": "(cylinder distance, positive groove distance), not scaled compiled compound",
+    "margins": {
+      "capCutMargin": 7.492038035725037,
+      "cylinderCapMargin": 7.507961964274899,
+      "cylinderLevel": [
+        -5e-324,
+        5e-324
+      ],
+      "grooveDistance": [
+        0.6999999999999736,
+        0.7000000000000266
+      ],
+      "grooveEdge": 2,
+      "nativeCapMargin": 6.475182836443558,
+      "nativeFiniteProfileMargin": 0.5697707242538468,
+      "nativeLevel": [
+        -0.03277912783134076,
+        -0.0327791278309588
+      ],
+      "nativeStrictlyBelowCylinder": true,
+      "otherDistance": [
+        1.837136440220446,
+        1.8371364402204786
+      ],
+      "outerRoundMargin": 3.076566286736259
+    },
+    "radius": 10.8
+  },
+  "physicalFeatureZeroAndExposureProved": true,
+  "physicalFixedZFeature": {
+    "constraintJacobianAbsLower": 0.7191515833197369,
+    "correlation": "rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero",
+    "finiteBranch": 2,
+    "fixedAxis": 2,
+    "fixedCoordinateBits": 4617801809107539645,
+    "grooveLevelBounds": [
+      0.7,
+      0.7
+    ],
+    "image": [
+      [
+        -9.334576470565562,
+        -2.492038035725099,
+        5.431913301513927
+      ],
+      [
+        -9.334576470565546,
+        -2.492038035725039,
+        5.431913301513927
+      ]
+    ],
+    "jacobianConstraints": "(cylinder distance, positive groove distance), not scaled compiled compound",
+    "margins": {
+      "capCutMargin": 7.492038035725037,
+      "cylinderCapMargin": 7.507961964274899,
+      "cylinderLevel": [
+        -5e-324,
+        5e-324
+      ],
+      "grooveDistance": [
+        0.6999999999999736,
+        0.7000000000000266
+      ],
+      "grooveEdge": 2,
+      "nativeCapMargin": 6.475182836444357,
+      "nativeFiniteProfileMargin": 0.569770724254916,
+      "nativeLevel": [
+        -0.032779127830542286,
+        -0.03277912783014878
+      ],
+      "nativeStrictlyBelowCylinder": true,
+      "otherDistance": [
+        1.837136440220446,
+        1.8371364402204786
+      ],
+      "outerRoundMargin": 3.076566286736259
+    },
+    "radius": 10.8
+  },
+  "physicalGeneratedFaceSeparationUpper": 6.18241724653239e-14,
+  "publicationAuthorized": false,
+  "scope": "source-bound endpoint images and pointwise comparison only; no raw parameter continuity or mesh mutation",
+  "source": [
+    10,
+    30,
+    15
+  ],
+  "sourceFingerprint": "10977506807348230851",
+  "strata": [
+    31,
+    15
+  ],
+  "surfaceLiftExactIdealFeatureMembershipProved": false,
+  "surfaceLiftOffIdealFeatureProved": false,
+  "surfaceLiftToFixedZFeatureDistance": [
+    0.0,
+    5.518154668141433e-14
+  ],
+  "weightBits": 4604544271217802189
+}

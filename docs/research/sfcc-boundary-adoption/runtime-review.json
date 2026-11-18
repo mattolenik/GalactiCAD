@@ -1,0 +1,25 @@
+{
+  "sourceReceipts": {
+    ".testresults/sfcc-critical-repairs/e4-invalid-construction/round38-spans/Combined/component-attempt.json": "9d24506fa18d298472229264fee95ad674b8d45988ec1fa46db5b23263a1e2f1",
+    ".testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/component-attempt.json": "93ce7a09a8b091d2333c270603c40925372b191a142db47ff9392bf87e4b7a93",
+    "/tmp/sfcc-adoption-integrated/gcad-wasm/kernel/fixtures/incident-union-c.json": "a8c0145afa01a9cc450fbc1960e4836e0ae04c159d2b41fc3d5619edb7220cbb"
+  },
+  "round38PreservedAfterRemovingProcessLocalAddressesAndSortingUnorderedMetadata": true,
+  "normalizedIncidentFixtureMatchesEntireFinalCapture": true,
+  "fixtureNormalization": [
+    "cylinderSource identity object split into cylinderSource=15 and cylinderSourceIdentity",
+    "scope text",
+    "parentReceiptSha256 is earlier capture provenance"
+  ],
+  "all44TriangleOrderAnd31PointBitsAnd8FanBindingsMatch": true,
+  "exactDiscrete1116OppositeOwnersMatch": true,
+  "newConsumerLedger": {
+    "charged": 2117,
+    "generatedQueries": 5,
+    "allValidated": true
+  },
+  "expandedCells": 207,
+  "expandedFaces": 1042,
+  "liveStatePreserved": true,
+  "geometryOrTestsRunByReviewer": false
+}

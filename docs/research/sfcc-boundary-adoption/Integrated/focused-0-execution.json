@@ -1,0 +1,13 @@
+{
+  "step": "focused-0",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/kernel-tests",
+    "adoption_composition_c_actual_44_consumed_arc_transport",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 59.75709137500962,
+  "elapsedSeconds": 1.0886795410187915,
+  "exitCode": 0,
+  "timedOut": false
+}

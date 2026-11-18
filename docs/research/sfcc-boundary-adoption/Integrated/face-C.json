@@ -1,0 +1,5729 @@
+{
+  "combined": {
+    "Ok": {
+      "bothContourSourceTracesCompatible": true,
+      "commonEndpointSurfaceRootUnique": true,
+      "conditionalSourceToExportUpper": 0.0010243074924721758,
+      "idealFeatureEndpointProved": false,
+      "publicationReady": false,
+      "sourceAndGeometryTriangleOrderMustBeBound": true,
+      "tolerance": 0.01
+    }
+  },
+  "endpointTransport": {
+    "Ok": {
+      "additionalSourceCertificateCalls": 0,
+      "budgetScope": "separate proof-observation ledger; not component construction cost",
+      "chargedAfter": 65,
+      "chargedBefore": 64,
+      "chart": 49,
+      "entireFeatureCurveTransportProved": false,
+      "exactIdealParameterizationProved": false,
+      "featureGeometry": {
+        "candidate": [
+          -9.334576470564954,
+          -2.492038035725069,
+          5.4319133015149585
+        ],
+        "candidateGeneratedImageDistanceUpper": 3.1238132782840795e-14,
+        "candidateKind": "physical feature and original X-face root",
+        "candidatePhysicalImageDistanceUpper": 3.1238132782840795e-14,
+        "chart": 49,
+        "commonXSurfaceLift": {
+          "chamferZeroRadiusBounds": [
+            10.799999999999974,
+            10.800000000000026
+          ],
+          "fullPhysicalSourceZeroProved": true,
+          "image": [
+            [
+              -9.334576470565562,
+              -2.492038035725069,
+              5.431913301513927
+            ],
+            [
+              -9.334576470565516,
+              -2.492038035725069,
+              5.431913301513927
+            ]
+          ],
+          "margins": {
+            "capCutMargin": 7.492038035725067,
+            "cylinderCapMargin": 7.507961964274902,
+            "cylinderLevel": [
+              -2.664535259100376e-14,
+              5e-324
+            ],
+            "grooveDistance": [
+              0.6999999999999984,
+              0.7000000000000163
+            ],
+            "grooveEdge": 2,
+            "nativeCapMargin": 6.475182836444477,
+            "nativeFiniteProfileMargin": 0.5697707242551691,
+            "nativeLevel": [
+              -0.03277912783045258,
+              -0.032779127830263356
+            ],
+            "nativeStrictlyBelowCylinder": true,
+            "otherDistance": [
+              1.8371364402204355,
+              1.837136440220465
+            ],
+            "outerRoundMargin": 3.076566286736273
+          },
+          "rhoBounds": [
+            10.799999999999974,
+            10.8
+          ],
+          "sameYZAsOriginalPoint": true,
+          "zeroArgument": "native below cylinder, groove negative: max(C,w*(C-d+r))=0 uniquely at rho=min(R,rho_Q(Y)) on admitted negative-X branch"
+        },
+        "exactCurveParameterMapProved": false,
+        "generatedCarrierNotClaimedExactPhysicalFeature": true,
+        "generatedFaceCarrierFeature": {
+          "constraintJacobianAbsLower": 0.41848380197621804,
+          "correlation": "rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero",
+          "finiteBranch": 2,
+          "fixedAxis": 0,
+          "fixedCoordinateBits": 13844816554298846424,
+          "grooveLevelBounds": [
+            0.6999999999999998,
+            0.7000000000000001
+          ],
+          "image": [
+            [
+              -9.334576470564954,
+              -2.492038035725099,
+              5.4319133015149506
+            ],
+            [
+              -9.334576470564954,
+              -2.492038035725039,
+              5.431913301514966
+            ]
+          ],
+          "jacobianConstraints": "(cylinder distance, positive groove distance), not scaled compiled compound",
+          "margins": {
+            "capCutMargin": 7.492038035725037,
+            "cylinderCapMargin": 7.507961964274899,
+            "cylinderLevel": [
+              -5e-324,
+              5e-324
+            ],
+            "grooveDistance": [
+              0.6999999999999736,
+              0.7000000000000266
+            ],
+            "grooveEdge": 2,
+            "nativeCapMargin": 6.475182836443558,
+            "nativeFiniteProfileMargin": 0.5697707242538468,
+            "nativeLevel": [
+              -0.03277912783134076,
+              -0.0327791278309588
+            ],
+            "nativeStrictlyBelowCylinder": true,
+            "otherDistance": [
+              1.837136440220446,
+              1.8371364402204786
+            ],
+            "outerRoundMargin": 3.076566286736259
+          },
+          "radius": 10.8
+        },
+        "generatedRadiusBounds": [
+          0.6999999999999998,
+          0.7000000000000001
+        ],
+        "neighboringPatchTransportProved": false,
+        "offsetBits": 4602588292259442002,
+        "originalToCommonXSurfaceLiftDistance": [
+          0.0,
+          3.9079850466805535e-14
+        ],
+        "originalToPhysicalFaceFeatureDistance": [
+          1.186335097595406e-12,
+          1.199762047962197e-12
+        ],
+        "originalToPhysicalFixedZFeatureDistance": [
+          0.0,
+          3.147712339076734e-14
+        ],
+        "originalYMinusIdealFeatureY": [
+          -3.0198066269804264e-14,
+          2.97539770599542e-14
+        ],
+        "physicalChamferRadius": 0.7,
+        "physicalFaceFeature": {
+          "constraintJacobianAbsLower": 0.41848380197621804,
+          "correlation": "rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero",
+          "finiteBranch": 2,
+          "fixedAxis": 0,
+          "fixedCoordinateBits": 13844816554298846424,
+          "grooveLevelBounds": [
+            0.7,
+            0.7
+          ],
+          "image": [
+            [
+              -9.334576470564954,
+              -2.492038035725099,
+              5.4319133015149506
+            ],
+            [
+              -9.334576470564954,
+              -2.492038035725039,
+              5.431913301514966
+            ]
+          ],
+          "jacobianConstraints": "(cylinder distance, positive groove distance), not scaled compiled compound",
+          "margins": {
+            "capCutMargin": 7.492038035725037,
+            "cylinderCapMargin": 7.507961964274899,
+            "cylinderLevel": [
+              -5e-324,
+              5e-324
+            ],
+            "grooveDistance": [
+              0.6999999999999736,
+              0.7000000000000266
+            ],
+            "grooveEdge": 2,
+            "nativeCapMargin": 6.475182836443558,
+            "nativeFiniteProfileMargin": 0.5697707242538468,
+            "nativeLevel": [
+              -0.03277912783134076,
+              -0.0327791278309588
+            ],
+            "nativeStrictlyBelowCylinder": true,
+            "otherDistance": [
+              1.837136440220446,
+              1.8371364402204786
+            ],
+            "outerRoundMargin": 3.076566286736259
+          },
+          "radius": 10.8
+        },
+        "physicalFeatureZeroAndExposureProved": true,
+        "physicalFixedZFeature": {
+          "constraintJacobianAbsLower": 0.7191515833197369,
+          "correlation": "rho=R and nr*R+ny*Y+offset=level by construction; interval re-evaluation need not produce exact zero",
+          "finiteBranch": 2,
+          "fixedAxis": 2,
+          "fixedCoordinateBits": 4617801809107539645,
+          "grooveLevelBounds": [
+            0.7,
+            0.7
+          ],
+          "image": [
+            [
+              -9.334576470565562,
+              -2.492038035725099,
+              5.431913301513927
+            ],
+            [
+              -9.334576470565546,
+              -2.492038035725039,
+              5.431913301513927
+            ]
+          ],
+          "jacobianConstraints": "(cylinder distance, positive groove distance), not scaled compiled compound",
+          "margins": {
+            "capCutMargin": 7.492038035725037,
+            "cylinderCapMargin": 7.507961964274899,
+            "cylinderLevel": [
+              -5e-324,
+              5e-324
+            ],
+            "grooveDistance": [
+              0.6999999999999736,
+              0.7000000000000266
+            ],
+            "grooveEdge": 2,
+            "nativeCapMargin": 6.475182836444357,
+            "nativeFiniteProfileMargin": 0.569770724254916,
+            "nativeLevel": [
+              -0.032779127830542286,
+              -0.03277912783014878
+            ],
+            "nativeStrictlyBelowCylinder": true,
+            "otherDistance": [
+              1.837136440220446,
+              1.8371364402204786
+            ],
+            "outerRoundMargin": 3.076566286736259
+          },
+          "radius": 10.8
+        },
+        "physicalGeneratedFaceSeparationUpper": 6.18241724653239e-14,
+        "publicationAuthorized": false,
+        "scope": "source-bound endpoint images and pointwise comparison only; no raw parameter continuity or mesh mutation",
+        "source": [
+          10,
+          30,
+          15
+        ],
+        "sourceFingerprint": "10977506807348230851",
+        "strata": [
+          31,
+          15
+        ],
+        "surfaceLiftExactIdealFeatureMembershipProved": false,
+        "surfaceLiftOffIdealFeatureProved": false,
+        "surfaceLiftToFixedZFeatureDistance": [
+          0.0,
+          5.518154668141433e-14
+        ],
+        "weightBits": 4604544271217802189
+      },
+      "fixedFaceFeatureEndpointTransportProved": true,
+      "meshMutationPerformed": false,
+      "newOwnQueryAttempts": 1,
+      "originalFace": [
+        0,
+        3464532,
+        2
+      ],
+      "originalFaceRectangle": [
+        [
+          -9.334576470564954,
+          -2.4943226517164696,
+          5.3896361967837
+        ],
+        [
+          -9.334576470564954,
+          -2.249010151716469,
+          5.634948696783697
+        ]
+      ],
+      "originalOwnContractPass": true,
+      "originalParameterAssociationRetained": true,
+      "originalParameterBits": 4629807001818732852,
+      "originalPointBits": [
+        13844816554298846762,
+        13836166026439335478,
+        4617801809107539645
+      ],
+      "originalTube": [
+        [
+          -9.438961851300313,
+          -2.5720380357250736,
+          5.3097897051654375
+        ],
+        [
+          -9.177254389891155,
+          -2.4120380357250646,
+          5.6426649333606935
+        ]
+      ],
+      "ownQueryBits": [
+        13844816554298846762,
+        13836166026439335478,
+        4617801809107539645
+      ],
+      "ownToPhysicalFeatureImageUpper": 1.199762047962197e-12,
+      "publicationReady": false,
+      "retainedAssociationAllowance": 3.796655370190979e-7,
+      "sameSourceAndPointInputsBound": true,
+      "targetIsExactCorrelatedPhysicalFeatureRoot": true,
+      "transport": {
+        "additionalWorkingErrorUpper": 1.3678429079251375e-12,
+        "commonSourceSlabContainsTarget": true,
+        "endpoint": 40,
+        "exactFeatureRootCertificateRequired": true,
+        "meshGraphJacobianUpper": 1.3168547775662525,
+        "meshMutationPerformed": false,
+        "noAdditionalSourceCertificateCall": true,
+        "originalComposedBound": {
+          "bothContourSourceTracesCompatible": true,
+          "commonEndpointSurfaceRootUnique": true,
+          "conditionalSourceToExportUpper": 0.0010243074924721758,
+          "idealFeatureEndpointProved": false,
+          "publicationReady": false,
+          "sourceAndGeometryTriangleOrderMustBeBound": true,
+          "tolerance": 0.01
+        },
+        "projectedDomainMapsOntoItself": true,
+        "projectedVertexMotionUpper": 1.0387196304615446e-12,
+        "publicationReady": false,
+        "scope": "piecewise-affine projected interior-vertex transport conditional on the bound source graph and exact feature-root certificate",
+        "sourceFeatureCurveParameterizationProved": false,
+        "sourceToExportAfterTransportUpper": 0.0010243948722129135,
+        "starBoundaryAndOuterBoundaryFixed": true,
+        "starTriangles": [
+          {
+            "meshGraphJacobianUpper": 1.1559437614108397,
+            "oppositeEdge": [
+              38,
+              653
+            ],
+            "signedKernelMarginLower": 0.006841024329541713,
+            "triangle": 0
+          },
+          {
+            "meshGraphJacobianUpper": 1.1554765830612892,
+            "oppositeEdge": [
+              653,
+              647
+            ],
+            "signedKernelMarginLower": 0.004257903709743555,
+            "triangle": 5
+          },
+          {
+            "meshGraphJacobianUpper": 1.1609248000320815,
+            "oppositeEdge": [
+              1119,
+              38
+            ],
+            "signedKernelMarginLower": 0.026157651777165326,
+            "triangle": 8
+          },
+          {
+            "meshGraphJacobianUpper": 1.1617733505642394,
+            "oppositeEdge": [
+              1117,
+              1119
+            ],
+            "signedKernelMarginLower": 0.012710516967253957,
+            "triangle": 9
+          },
+          {
+            "meshGraphJacobianUpper": 1.308164266261481,
+            "oppositeEdge": [
+              654,
+              39
+            ],
+            "signedKernelMarginLower": 0.00004346957258717958,
+            "triangle": 11
+          },
+          {
+            "meshGraphJacobianUpper": 1.2978180032316393,
+            "oppositeEdge": [
+              647,
+              654
+            ],
+            "signedKernelMarginLower": 0.00004847161218465539,
+            "triangle": 12
+          },
+          {
+            "meshGraphJacobianUpper": 1.3168547775662525,
+            "oppositeEdge": [
+              39,
+              1118
+            ],
+            "signedKernelMarginLower": 0.0002377041353435739,
+            "triangle": 15
+          },
+          {
+            "meshGraphJacobianUpper": 1.2514589334223432,
+            "oppositeEdge": [
+              1118,
+              1117
+            ],
+            "signedKernelMarginLower": 0.00017371634619015096,
+            "triangle": 20
+          }
+        ],
+        "strictStarKernelMarginLower": 0.00004346957258717958,
+        "targetImage": [
+          [
+            -9.334576470564954,
+            -2.492038035725099,
+            5.4319133015149506
+          ],
+          [
+            -9.334576470564954,
+            -2.492038035725039,
+            5.431913301514966
+          ]
+        ],
+        "theorem": "kernel convexity preserves every intermediate star triangulation; T fixes its boundary; |Phi(Tu)-M(u)| <= delta + L_mesh*beta, followed by export rounding",
+        "tolerance": 0.01,
+        "uniformExportRoundingBound": 5.206356205475152e-7,
+        "uniformSourceBound": 0.0010238742352245227
+      }
+    }
+  },
+  "exactSourceGeometryInputBinding": true,
+  "face": [
+    0,
+    3464532,
+    2
+  ],
+  "idealFeatureEndpointProved": true,
+  "insideCell": [
+    7,
+    25,
+    58,
+    86
+  ],
+  "oneSourceCallGlobal128Cap": true,
+  "outsideCell": [
+    7,
+    26,
+    58,
+    86
+  ],
+  "parentReceiptSha256": "64b62c86aca4d3354d0e2cc9770aebbdf0feb5d41397ee966f50b8045c257a68",
+  "publicationReady": false,
+  "secondPairGeometry": {
+    "Ok": {
+      "crossPatchInteriorsDisjoint": true,
+      "crossPatchTrianglePairsCheckedPerPrecision": 24,
+      "intendedCellTrimCoverageProved": false,
+      "joinedBoundary": [
+        39,
+        478,
+        1115,
+        1116,
+        1117,
+        40,
+        647,
+        460
+      ],
+      "joinedProjectedDomainIsDisk": true,
+      "onlySharedIndexedEdgeAndEndpointsMeet": true,
+      "oppositeSharedBoundaryIncidence": true,
+      "patches": [
+        {
+          "conditionalLiftTheorem": "a continuous unique source root in X over this entire YZ disk gives a homeomorphic lifted disk; shared edges agree by common root uniqueness",
+          "exportProjectedOrientationPreserved": true,
+          "exported": {
+            "apex": 654,
+            "boundary": [
+              39,
+              40,
+              647,
+              460
+            ],
+            "exactCyclicFan": true,
+            "precision": "f32 represented coordinates",
+            "projectedDiskEmbedded": true,
+            "projection": "YZ",
+            "scope": "entire closed projected polygon tiled once by the indexed fan; no source exposure claim",
+            "sharedEdgeAffineXAgrees": true,
+            "simpleBoundary": true,
+            "strictKernelApex": true,
+            "triangleCount": 4,
+            "winding": -1
+          },
+          "intendedTrimBoundaryCorrespondenceProved": false,
+          "pointBits": [
+            [
+              38,
+              [
+                13844816554298846424,
+                13835618776295404592,
+                4617801817764908076
+              ]
+            ],
+            [
+              39,
+              [
+                13844816554298846424,
+                13836171170937199256,
+                4617799094638878133
+              ]
+            ],
+            [
+              40,
+              [
+                13844816554298846762,
+                13836166026439335478,
+                4617801809107539645
+              ]
+            ],
+            [
+              41,
+              [
+                13844830331837451734,
+                13835618776295404592,
+                4617754209319262306
+              ]
+            ],
+            [
+              460,
+              [
+                13844827650848918399,
+                13836171170937199257,
+                4617760755969393917
+              ]
+            ],
+            [
+              464,
+              [
+                13844830331837451734,
+                13835894973616301924,
+                4617754209319262306
+              ]
+            ],
+            [
+              465,
+              [
+                13844830331814374579,
+                13836165891772662319,
+                4617754209319262306
+              ]
+            ],
+            [
+              478,
+              [
+                13844789161382673385,
+                13836171170937199256,
+                4617892307979710970
+              ]
+            ],
+            [
+              647,
+              [
+                13844830282047795546,
+                13836166026439335478,
+                4617754382154335013
+              ]
+            ],
+            [
+              653,
+              [
+                13844825742648919353,
+                13835938411809740731,
+                4617770119601665062
+              ]
+            ],
+            [
+              654,
+              [
+                13844822768012469158,
+                13836168617584839349,
+                4617779019314262603
+              ]
+            ],
+            [
+              1114,
+              [
+                13844748356977640844,
+                13835618776295404592,
+                4618030406640159634
+              ]
+            ],
+            [
+              1115,
+              [
+                13844747549898595909,
+                13836171170937199256,
+                4618030406640159634
+              ]
+            ],
+            [
+              1116,
+              [
+                13844748356756957604,
+                13836166026439335478,
+                4618030406640159853
+              ]
+            ],
+            [
+              1117,
+              [
+                13844773025837132680,
+                13836166026439335478,
+                4617949022357655430
+              ]
+            ],
+            [
+              1118,
+              [
+                13844782035343704292,
+                13836169018175885646,
+                4617917375411644382
+              ]
+            ],
+            [
+              1119,
+              [
+                13844780823415619052,
+                13835947126381763123,
+                4617922995774708407
+              ]
+            ]
+          ],
+          "publicationAuthorized": false,
+          "roundingProof": "same barycentric coordinates give convex combinations of vertex displacements; triangle norm bounded by largest vertex norm",
+          "sourceFacePlaneIncidencePreservedByXLift": false,
+          "sourceRootExistenceProvedHere": false,
+          "triangleMeshToExportBounds": [
+            3.104236000590531e-7,
+            3.104236000590531e-7,
+            3.104236000590531e-7,
+            3.104236000590531e-7
+          ],
+          "triangles": [
+            654,
+            39,
+            40,
+            654,
+            40,
+            647,
+            654,
+            647,
+            460,
+            654,
+            460,
+            39
+          ],
+          "uniformMeshToExportBound": 3.104236000590531e-7,
+          "working": {
+            "apex": 654,
+            "boundary": [
+              39,
+              40,
+              647,
+              460
+            ],
+            "exactCyclicFan": true,
+            "precision": "f64 represented coordinates",
+            "projectedDiskEmbedded": true,
+            "projection": "YZ",
+            "scope": "entire closed projected polygon tiled once by the indexed fan; no source exposure claim",
+            "sharedEdgeAffineXAgrees": true,
+            "simpleBoundary": true,
+            "strictKernelApex": true,
+            "triangleCount": 4,
+            "winding": -1
+          }
+        },
+        {
+          "conditionalLiftTheorem": "a continuous unique source root in X over this entire YZ disk gives a homeomorphic lifted disk; shared edges agree by common root uniqueness",
+          "exportProjectedOrientationPreserved": true,
+          "exported": {
+            "apex": 1118,
+            "boundary": [
+              40,
+              39,
+              478,
+              1115,
+              1116,
+              1117
+            ],
+            "exactCyclicFan": true,
+            "precision": "f32 represented coordinates",
+            "projectedDiskEmbedded": true,
+            "projection": "YZ",
+            "scope": "entire closed projected polygon tiled once by the indexed fan; no source exposure claim",
+            "sharedEdgeAffineXAgrees": true,
+            "simpleBoundary": true,
+            "strictKernelApex": true,
+            "triangleCount": 6,
+            "winding": -1
+          },
+          "intendedTrimBoundaryCorrespondenceProved": false,
+          "pointBits": [
+            [
+              38,
+              [
+                13844816554298846424,
+                13835618776295404592,
+                4617801817764908076
+              ]
+            ],
+            [
+              39,
+              [
+                13844816554298846424,
+                13836171170937199256,
+                4617799094638878133
+              ]
+            ],
+            [
+              40,
+              [
+                13844816554298846762,
+                13836166026439335478,
+                4617801809107539645
+              ]
+            ],
+            [
+              41,
+              [
+                13844830331837451734,
+                13835618776295404592,
+                4617754209319262306
+              ]
+            ],
+            [
+              460,
+              [
+                13844827650848918399,
+                13836171170937199257,
+                4617760755969393917
+              ]
+            ],
+            [
+              464,
+              [
+                13844830331837451734,
+                13835894973616301924,
+                4617754209319262306
+              ]
+            ],
+            [
+              465,
+              [
+                13844830331814374579,
+                13836165891772662319,
+                4617754209319262306
+              ]
+            ],
+            [
+              478,
+              [
+                13844789161382673385,
+                13836171170937199256,
+                4617892307979710970
+              ]
+            ],
+            [
+              647,
+              [
+                13844830282047795546,
+                13836166026439335478,
+                4617754382154335013
+              ]
+            ],
+            [
+              653,
+              [
+                13844825742648919353,
+                13835938411809740731,
+                4617770119601665062
+              ]
+            ],
+            [
+              654,
+              [
+                13844822768012469158,
+                13836168617584839349,
+                4617779019314262603
+              ]
+            ],
+            [
+              1114,
+              [
+                13844748356977640844,
+                13835618776295404592,
+                4618030406640159634
+              ]
+            ],
+            [
+              1115,
+              [
+                13844747549898595909,
+                13836171170937199256,
+                4618030406640159634
+              ]
+            ],
+            [
+              1116,
+              [
+                13844748356756957604,
+                13836166026439335478,
+                4618030406640159853
+              ]
+            ],
+            [
+              1117,
+              [
+                13844773025837132680,
+                13836166026439335478,
+                4617949022357655430
+              ]
+            ],
+            [
+              1118,
+              [
+                13844782035343704292,
+                13836169018175885646,
+                4617917375411644382
+              ]
+            ],
+            [
+              1119,
+              [
+                13844780823415619052,
+                13835947126381763123,
+                4617922995774708407
+              ]
+            ]
+          ],
+          "publicationAuthorized": false,
+          "roundingProof": "same barycentric coordinates give convex combinations of vertex displacements; triangle norm bounded by largest vertex norm",
+          "sourceFacePlaneIncidencePreservedByXLift": false,
+          "sourceRootExistenceProvedHere": false,
+          "triangleMeshToExportBounds": [
+            2.993806002638828e-7,
+            4.2556920701529265e-7,
+            4.2556920701529265e-7,
+            2.993806002638828e-7,
+            2.993806002638828e-7,
+            2.993806002638828e-7
+          ],
+          "triangles": [
+            1118,
+            40,
+            39,
+            1118,
+            39,
+            478,
+            1118,
+            478,
+            1115,
+            1118,
+            1115,
+            1116,
+            1118,
+            1116,
+            1117,
+            1118,
+            1117,
+            40
+          ],
+          "uniformMeshToExportBound": 4.2556920701529265e-7,
+          "working": {
+            "apex": 1118,
+            "boundary": [
+              40,
+              39,
+              478,
+              1115,
+              1116,
+              1117
+            ],
+            "exactCyclicFan": true,
+            "precision": "f64 represented coordinates",
+            "projectedDiskEmbedded": true,
+            "projection": "YZ",
+            "scope": "entire closed projected polygon tiled once by the indexed fan; no source exposure claim",
+            "sharedEdgeAffineXAgrees": true,
+            "simpleBoundary": true,
+            "strictKernelApex": true,
+            "triangleCount": 6,
+            "winding": -1
+          }
+        }
+      ],
+      "pointBits": [
+        [
+          39,
+          [
+            13844816554298846424,
+            13836171170937199256,
+            4617799094638878133
+          ]
+        ],
+        [
+          40,
+          [
+            13844816554298846762,
+            13836166026439335478,
+            4617801809107539645
+          ]
+        ],
+        [
+          460,
+          [
+            13844827650848918399,
+            13836171170937199257,
+            4617760755969393917
+          ]
+        ],
+        [
+          478,
+          [
+            13844789161382673385,
+            13836171170937199256,
+            4617892307979710970
+          ]
+        ],
+        [
+          647,
+          [
+            13844830282047795546,
+            13836166026439335478,
+            4617754382154335013
+          ]
+        ],
+        [
+          654,
+          [
+            13844822768012469158,
+            13836168617584839349,
+            4617779019314262603
+          ]
+        ],
+        [
+          1115,
+          [
+            13844747549898595909,
+            13836171170937199256,
+            4618030406640159634
+          ]
+        ],
+        [
+          1116,
+          [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ]
+        ],
+        [
+          1117,
+          [
+            13844773025837132680,
+            13836166026439335478,
+            4617949022357655430
+          ]
+        ],
+        [
+          1118,
+          [
+            13844782035343704292,
+            13836169018175885646,
+            4617917375411644382
+          ]
+        ]
+      ],
+      "publicationAuthorized": false,
+      "scope": "two exact cyclic projected fan disks glued along one original indexed edge; source-root, feature-curve and complete-cell coverage remain separate",
+      "sharedEdge": [
+        39,
+        40
+      ],
+      "sharedEdgeAffineXAgrees": true,
+      "sourceFeatureCurveCorrespondenceProved": false,
+      "sourceRootCertificateNeeded": true,
+      "triangleCounts": [
+        4,
+        6
+      ],
+      "triangleOrder": "first patch then second patch",
+      "triangles": [
+        654,
+        39,
+        40,
+        654,
+        40,
+        647,
+        654,
+        647,
+        460,
+        654,
+        460,
+        39,
+        1118,
+        40,
+        39,
+        1118,
+        39,
+        478,
+        1118,
+        478,
+        1115,
+        1118,
+        1115,
+        1116,
+        1118,
+        1116,
+        1117,
+        1118,
+        1117,
+        40
+      ],
+      "workingAndExportedUnionEmbedded": true
+    }
+  },
+  "sourceFeatureParameterTransportProved": false,
+  "sourceFingerprint": "10977506807348230851",
+  "wholeFaceGeometry": {
+    "Ok": {
+      "commonEndpoint": 40,
+      "connectedIndexedDisk": true,
+      "endpointIsInterior": true,
+      "idealFeatureEndpointProved": false,
+      "outerBoundary": [
+        38,
+        41,
+        464,
+        465,
+        647,
+        460,
+        39,
+        478,
+        1115,
+        1116,
+        1114
+      ],
+      "patchTriangleCounts": [
+        6,
+        5,
+        4,
+        6
+      ],
+      "pointBits": [
+        [
+          38,
+          [
+            13844816554298846424,
+            13835618776295404592,
+            4617801817764908076
+          ]
+        ],
+        [
+          39,
+          [
+            13844816554298846424,
+            13836171170937199256,
+            4617799094638878133
+          ]
+        ],
+        [
+          40,
+          [
+            13844816554298846762,
+            13836166026439335478,
+            4617801809107539645
+          ]
+        ],
+        [
+          41,
+          [
+            13844830331837451734,
+            13835618776295404592,
+            4617754209319262306
+          ]
+        ],
+        [
+          460,
+          [
+            13844827650848918399,
+            13836171170937199257,
+            4617760755969393917
+          ]
+        ],
+        [
+          464,
+          [
+            13844830331837451734,
+            13835894973616301924,
+            4617754209319262306
+          ]
+        ],
+        [
+          465,
+          [
+            13844830331814374579,
+            13836165891772662319,
+            4617754209319262306
+          ]
+        ],
+        [
+          478,
+          [
+            13844789161382673385,
+            13836171170937199256,
+            4617892307979710970
+          ]
+        ],
+        [
+          647,
+          [
+            13844830282047795546,
+            13836166026439335478,
+            4617754382154335013
+          ]
+        ],
+        [
+          653,
+          [
+            13844825742648919353,
+            13835938411809740731,
+            4617770119601665062
+          ]
+        ],
+        [
+          654,
+          [
+            13844822768012469158,
+            13836168617584839349,
+            4617779019314262603
+          ]
+        ],
+        [
+          1114,
+          [
+            13844748356977640844,
+            13835618776295404592,
+            4618030406640159634
+          ]
+        ],
+        [
+          1115,
+          [
+            13844747549898595909,
+            13836171170937199256,
+            4618030406640159634
+          ]
+        ],
+        [
+          1116,
+          [
+            13844748356756957604,
+            13836166026439335478,
+            4618030406640159853
+          ]
+        ],
+        [
+          1117,
+          [
+            13844773025837132680,
+            13836166026439335478,
+            4617949022357655430
+          ]
+        ],
+        [
+          1118,
+          [
+            13844782035343704292,
+            13836169018175885646,
+            4617917375411644382
+          ]
+        ],
+        [
+          1119,
+          [
+            13844780823415619052,
+            13835947126381763123,
+            4617922995774708407
+          ]
+        ]
+      ],
+      "projectedWinding": -1,
+      "publicationReady": false,
+      "scope": "complete supplied triangle union around both captured contour segments; source and ideal feature constraints are separate",
+      "sharedSegments": [
+        [
+          40,
+          38
+        ],
+        [
+          39,
+          40
+        ]
+      ],
+      "sourceGraphProvedHere": false,
+      "topology": {
+        "boundaryEdges": [
+          [
+            38,
+            41
+          ],
+          [
+            1114,
+            38
+          ],
+          [
+            460,
+            39
+          ],
+          [
+            39,
+            478
+          ],
+          [
+            41,
+            464
+          ],
+          [
+            647,
+            460
+          ],
+          [
+            464,
+            465
+          ],
+          [
+            465,
+            647
+          ],
+          [
+            478,
+            1115
+          ],
+          [
+            1116,
+            1114
+          ],
+          [
+            1115,
+            1116
+          ]
+        ],
+        "duplicateFaces": 0,
+        "edges": 37,
+        "invalidVertexLinks": [],
+        "localTopologyValid": true,
+        "misorientedInternalEdges": 0,
+        "nonManifoldEdges": 0,
+        "scope": "indexed open-component combinatorics only; no geometric or outside-contact verdict",
+        "triangles": 21,
+        "usedVertices": 17
+      },
+      "trianglePairsCheckedPerPrecision": 210,
+      "triangles": [
+        653,
+        40,
+        38,
+        653,
+        38,
+        41,
+        653,
+        41,
+        464,
+        653,
+        464,
+        465,
+        653,
+        465,
+        647,
+        653,
+        647,
+        40,
+        1119,
+        1116,
+        1114,
+        1119,
+        1114,
+        38,
+        1119,
+        38,
+        40,
+        1119,
+        40,
+        1117,
+        1119,
+        1117,
+        1116,
+        654,
+        39,
+        40,
+        654,
+        40,
+        647,
+        654,
+        647,
+        460,
+        654,
+        460,
+        39,
+        1118,
+        40,
+        39,
+        1118,
+        39,
+        478,
+        1118,
+        478,
+        1115,
+        1118,
+        1115,
+        1116,
+        1118,
+        1116,
+        1117,
+        1118,
+        1117,
+        40
+      ],
+      "workingAndExportedProjectedUnionEmbedded": true
+    }
+  },
+  "wholeFaceSource": {
+    "Ok": {
+      "acceptedPieces": 65,
+      "attempts": 109,
+      "cellFaceBoundaryTransportProved": false,
+      "commonWorldXSlab": [
+        -9.3690502954966,
+        -9.202000032231238
+      ],
+      "cylinder": 15,
+      "fullClosedTriangleDomainsCovered": true,
+      "fullFieldGloballyMonotoneClaimed": false,
+      "idealArcProtectedFiberContainmentProved": false,
+      "idealTargetProtectedFiberContainmentProved": false,
+      "originalTrianglePointBits": null,
+      "patchLabelsAssigned": false,
+      "perOriginalTriangleSlabs": null,
+      "perTriangleSourceBounds": [
+        0.00039437315268123934,
+        0.00039463447172875,
+        0.00037505235709690826,
+        0.0005120304156624526,
+        0.000370153210318171,
+        0.0005101658239649121,
+        0.00041089445053366563,
+        0.0010238742352245227,
+        0.0005126903886807774,
+        0.00043064244825599354,
+        0.0002711178928749504,
+        0.000024089914301253383,
+        0.0003331002420455914,
+        0.00009250863085135788,
+        0.00016507261638135795,
+        0.000313461038787048,
+        0.000313461038787048,
+        0.00041794508910018217,
+        0.0002804120768977151,
+        0.00027691082983765666,
+        0.00046849029377564954
+      ],
+      "pieceCap": 128,
+      "pieces": [
+        {
+          "capMargin": 7.390956834718021,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ],
+            [
+              [
+                -9.342737364812685,
+                -9.342737364812677
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.417840333889544,
+                5.417840333889547
+              ]
+            ],
+            [
+              [
+                -9.334576470565409,
+                -9.334576470565398
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.431915223835878,
+                5.431915223835883
+              ]
+            ]
+          ],
+          "leftSignLower": 0.015677293177817568,
+          "meshResidualBounds": [
+            -0.000056279855471865134,
+            0.00004499443925077999
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 3.0038460296500964,
+          "reducedFunctionDecreasingRateLower": 0.8496916545109329,
+          "rightSignUpper": -0.11433547744014774,
+          "sameYZRootDisplacementUpper": 0.00006623562226730214,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 0
+        },
+        {
+          "capMargin": 7.431281064722916,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.342737364812685,
+                -9.342737364812677
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.417840333889544,
+                5.417840333889547
+              ]
+            ],
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ],
+            [
+              [
+                -9.334576470565409,
+                -9.334576470565398
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.431915223835878,
+                5.431915223835883
+              ]
+            ]
+          ],
+          "leftSignLower": 0.022700690251000074,
+          "meshResidualBounds": [
+            -0.0000698667579326332,
+            0.00006333787023165886
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.022338606341577,
+          "reducedFunctionDecreasingRateLower": 0.8496916545109329,
+          "rightSignUpper": -0.11432085036540782,
+          "sameYZRootDisplacementUpper": 0.00008222601406253337,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 0
+        },
+        {
+          "capMargin": 7.370524093720767,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.334576470565409,
+                -9.334576470565398
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.431915223835878,
+                5.431915223835883
+              ]
+            ],
+            [
+              [
+                -9.334576470565258,
+                -9.334576470565251
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.431917146157831,
+                5.431917146157835
+              ]
+            ],
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ]
+          ],
+          "leftSignLower": 0.015662627591065993,
+          "meshResidualBounds": [
+            -0.00005765301240330563,
+            0.00005958669528823042
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.994434617698077,
+          "reducedFunctionDecreasingRateLower": 0.8496915788627109,
+          "rightSignUpper": -0.11431983466257901,
+          "sameYZRootDisplacementUpper": 0.00007012744008594932,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 0
+        },
+        {
+          "capMargin": 7.249010151716467,
+          "depth": 1,
+          "domainImage": [
+            [
+              [
+                -9.334576470565258,
+                -9.334576470565251
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.431917146157831,
+                5.431917146157835
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.431920990801739,
+                5.431920990801739
+              ]
+            ],
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ]
+          ],
+          "leftSignLower": 0.015393213172273079,
+          "meshResidualBounds": [
+            -0.00033122812031315086,
+            0.00033509548709552384
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.937913989662364,
+          "reducedFunctionDecreasingRateLower": 0.8496914275662474,
+          "rightSignUpper": -0.11404846586138263,
+          "sameYZRootDisplacementUpper": 0.00039437315268123934,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 0
+        },
+        {
+          "capMargin": 7.249010151716467,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.431920990801739,
+                5.431920990801739
+              ]
+            ],
+            [
+              [
+                -9.359050295496598,
+                -9.359050295496598
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.3896361967837,
+                5.3896361967837
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008339688167986137,
+          "meshResidualBounds": [
+            -0.00033145016086768046,
+            0.00033531752765005344
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.937913989662364,
+          "reducedFunctionDecreasingRateLower": 0.8496914275662474,
+          "rightSignUpper": -0.11404824660996846,
+          "sameYZRootDisplacementUpper": 0.00039463447172875,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 1
+        },
+        {
+          "capMargin": 7.249010151716467,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ],
+            [
+              [
+                -9.359050295496598,
+                -9.359050295496598
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.3896361967837,
+                5.3896361967837
+              ]
+            ],
+            [
+              [
+                -9.359050295496598,
+                -9.359050295496598
+              ],
+              [
+                -2.3716664017164693,
+                -2.3716664017164693
+              ],
+              [
+                5.3896361967837,
+                5.3896361967837
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008348954952953876,
+          "meshResidualBounds": [
+            -0.0003190585089196775,
+            0.00031909403281106156
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.950359620653438,
+          "reducedFunctionDecreasingRateLower": 0.8507986332388578,
+          "rightSignUpper": -0.12834156092838708,
+          "sameYZRootDisplacementUpper": 0.00037505235709690826,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 2
+        },
+        {
+          "capMargin": 7.3716664017164675,
+          "depth": 1,
+          "domainImage": [
+            [
+              [
+                -9.359050295496598,
+                -9.359050295496598
+              ],
+              [
+                -2.3716664017164693,
+                -2.3716664017164693
+              ],
+              [
+                5.3896361967837,
+                5.3896361967837
+              ]
+            ],
+            [
+              [
+                -9.35905027499997,
+                -9.359050274999962
+              ],
+              [
+                -2.431822316712532,
+                -2.4318223167125304
+              ],
+              [
+                5.389636196783698,
+                5.389636196783702
+              ]
+            ],
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008610419007172057,
+          "meshResidualBounds": [
+            -0.000056555843422700926,
+            0.000056591367314084985
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 3.0074635829198857,
+          "reducedFunctionDecreasingRateLower": 0.8507986332388578,
+          "rightSignUpper": -0.12860302498260703,
+          "sameYZRootDisplacementUpper": 0.00006651558324518045,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 3
+        },
+        {
+          "capMargin": 7.431822316712529,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.359050254503336,
+                -9.359050254503336
+              ],
+              [
+                -2.491978231708593,
+                -2.491978231708593
+              ],
+              [
+                5.3896361967837,
+                5.3896361967837
+              ]
+            ],
+            [
+              [
+                -9.354974256781574,
+                -9.354974256781567
+              ],
+              [
+                -2.441467533213309,
+                -2.441467533213307
+              ],
+              [
+                5.396701781524429,
+                5.396701781524433
+              ]
+            ],
+            [
+              [
+                -9.35905027499997,
+                -9.359050274999962
+              ],
+              [
+                -2.431822316712532,
+                -2.4318223167125304
+              ],
+              [
+                5.389636196783698,
+                5.389636196783702
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008610419007172057,
+          "meshResidualBounds": [
+            -0.00005963622558715548,
+            0.0004357769402827173
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0382527459696482,
+          "reducedFunctionDecreasingRateLower": 0.8510762778006453,
+          "rightSignUpper": -0.13217916517605924,
+          "sameYZRootDisplacementUpper": 0.0005120304156624526,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 3
+        },
+        {
+          "capMargin": 7.390956834718021,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.354974256781574,
+                -9.354974256781567
+              ],
+              [
+                -2.441467533213309,
+                -2.441467533213307
+              ],
+              [
+                5.396701781524429,
+                5.396701781524433
+              ]
+            ],
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ],
+            [
+              [
+                -9.35905027499997,
+                -9.359050274999962
+              ],
+              [
+                -2.431822316712532,
+                -2.4318223167125304
+              ],
+              [
+                5.389636196783698,
+                5.389636196783702
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008626320836943056,
+          "meshResidualBounds": [
+            -0.00004399404602403721,
+            0.00004093142580971474
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 3.0163564391330797,
+          "reducedFunctionDecreasingRateLower": 0.8507986332388578,
+          "rightSignUpper": -0.12861892681237805,
+          "sameYZRootDisplacementUpper": 0.00005170911694646092,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 3
+        },
+        {
+          "capMargin": 7.441497435221543,
+          "depth": 1,
+          "domainImage": [
+            [
+              [
+                -9.358961851300297,
+                -9.358961851300297
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.3897897051654455,
+                5.3897897051654455
+              ]
+            ],
+            [
+              [
+                -9.354930055180056,
+                -9.354930055180048
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.396778535715303,
+                5.396778535715306
+              ]
+            ],
+            [
+              [
+                -9.359050254503336,
+                -9.359050254503336
+              ],
+              [
+                -2.491978231708593,
+                -2.491978231708593
+              ],
+              [
+                5.3896361967837,
+                5.3896361967837
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008626290472063144,
+          "meshResidualBounds": [
+            -0.00004395227690170146,
+            0.00031502750022323144
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.042645322038545,
+          "reducedFunctionDecreasingRateLower": 0.8510732622106524,
+          "rightSignUpper": -0.13215620735493094,
+          "sameYZRootDisplacementUpper": 0.000370153210318171,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 4
+        },
+        {
+          "capMargin": 7.390956834718021,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ],
+            [
+              [
+                -9.354974256781574,
+                -9.354974256781567
+              ],
+              [
+                -2.441467533213309,
+                -2.441467533213307
+              ],
+              [
+                5.396701781524429,
+                5.396701781524433
+              ]
+            ],
+            [
+              [
+                -9.354930055180056,
+                -9.354930055180048
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.396778535715303,
+                5.396778535715306
+              ]
+            ]
+          ],
+          "leftSignLower": 0.012151223504545127,
+          "meshResidualBounds": [
+            -0.000044005099587133295,
+            0.00004092471742623062
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 3.0163564391330797,
+          "reducedFunctionDecreasingRateLower": 0.8507986332388578,
+          "rightSignUpper": -0.12861891007278567,
+          "sameYZRootDisplacementUpper": 0.00005172210893147858,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 4
+        },
+        {
+          "capMargin": 7.441467533213305,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.354974256781574,
+                -9.354974256781567
+              ],
+              [
+                -2.441467533213309,
+                -2.441467533213307
+              ],
+              [
+                5.396701781524429,
+                5.396701781524433
+              ]
+            ],
+            [
+              [
+                -9.359050254503336,
+                -9.359050254503336
+              ],
+              [
+                -2.491978231708593,
+                -2.491978231708593
+              ],
+              [
+                5.3896361967837,
+                5.3896361967837
+              ]
+            ],
+            [
+              [
+                -9.354930055180056,
+                -9.354930055180048
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.396778535715303,
+                5.396778535715306
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008626320836944833,
+          "meshResidualBounds": [
+            -0.00004399404602403721,
+            0.0003148323424402921
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.042631650417744,
+          "reducedFunctionDecreasingRateLower": 0.8510732622106524,
+          "rightSignUpper": -0.13215623771981264,
+          "sameYZRootDisplacementUpper": 0.00036992390246465853,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 4
+        },
+        {
+          "capMargin": 7.441497435221543,
+          "depth": 1,
+          "domainImage": [
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ],
+            [
+              [
+                -9.342737364812685,
+                -9.342737364812677
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.417840333889544,
+                5.417840333889547
+              ]
+            ],
+            [
+              [
+                -9.358961851300297,
+                -9.358961851300297
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.3897897051654455,
+                5.3897897051654455
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008691303293112556,
+          "meshResidualBounds": [
+            -0.00006858404430916726,
+            0.0004334836816328136
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0270079143475246,
+          "reducedFunctionDecreasingRateLower": 0.8496917301591483,
+          "rightSignUpper": -0.11432722422491039,
+          "sameYZRootDisplacementUpper": 0.0005101658239649121,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 5
+        },
+        {
+          "capMargin": 7.390956834718021,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.350898259059806,
+                -9.350898259059806
+              ],
+              [
+                -2.3909568347180232,
+                -2.3909568347180232
+              ],
+              [
+                5.403767366265162,
+                5.403767366265162
+              ]
+            ],
+            [
+              [
+                -9.354930055180056,
+                -9.354930055180048
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.396778535715303,
+                5.396778535715306
+              ]
+            ],
+            [
+              [
+                -9.342737364812685,
+                -9.342737364812677
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.417840333889544,
+                5.417840333889547
+              ]
+            ]
+          ],
+          "leftSignLower": 0.012187203190210338,
+          "meshResidualBounds": [
+            -0.00005629445447606458,
+            0.000044042196938638374
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 3.010108181240408,
+          "reducedFunctionDecreasingRateLower": 0.8502453601122532,
+          "rightSignUpper": -0.1214833959412988,
+          "sameYZRootDisplacementUpper": 0.00006620965796112353,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 5
+        },
+        {
+          "capMargin": 7.441497435221543,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.354930055180056,
+                -9.354930055180048
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.396778535715303,
+                5.396778535715306
+              ]
+            ],
+            [
+              [
+                -9.358961851300297,
+                -9.358961851300297
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.3897897051654455,
+                5.3897897051654455
+              ]
+            ],
+            [
+              [
+                -9.342737364812685,
+                -9.342737364812677
+              ],
+              [
+                -2.441497435221547,
+                -2.441497435221545
+              ],
+              [
+                5.417840333889544,
+                5.417840333889547
+              ]
+            ]
+          ],
+          "leftSignLower": 0.008691303293112556,
+          "meshResidualBounds": [
+            -0.00006858404430916726,
+            0.0004334836816328136
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0332811290095854,
+          "reducedFunctionDecreasingRateLower": 0.8502453601122532,
+          "rightSignUpper": -0.12147417978959253,
+          "sameYZRootDisplacementUpper": 0.0005098336338766767,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 5
+        },
+        {
+          "capMargin": 7.370524093720767,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.242269486183336,
+                -9.242269486183329
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.587248690416246,
+                5.587248690416249
+              ]
+            ],
+            [
+              [
+                -9.213433496606559,
+                -9.213433496606552
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.634948696783793,
+                5.6349486967837965
+              ]
+            ]
+          ],
+          "leftSignLower": 0.08404471414223844,
+          "meshResidualBounds": [
+            -0.00034583653149872174,
+            0.00020216870196704213
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9027340748315527,
+          "reducedFunctionDecreasingRateLower": 0.8416675646253016,
+          "rightSignUpper": -0.009601632958568418,
+          "sameYZRootDisplacementUpper": 0.00041089445053366563,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.43735676182313,
+          "depth": 6,
+          "domainImage": [
+            [
+              [
+                -9.227851393391903,
+                -9.227851393391893
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.611098693600066,
+                5.611098693600072
+              ]
+            ],
+            [
+              [
+                -9.220642395997713,
+                -9.220642395997695
+              ],
+              [
+                -2.4495081560235663,
+                -2.449508156023562
+              ],
+              [
+                5.623023695191952,
+                5.623023695191961
+              ]
+            ],
+            [
+              [
+                -9.22785144239343,
+                -9.227851442393412
+              ],
+              [
+                -2.437356761823136,
+                -2.437356761823132
+              ],
+              [
+                5.6110986936000415,
+                5.6110986936000495
+              ]
+            ]
+          ],
+          "leftSignLower": 0.12077013268431241,
+          "meshResidualBounds": [
+            -0.00012214696919461194,
+            -0.000048614891274103646
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9386583641319954,
+          "reducedFunctionDecreasingRateLower": 0.8421406199785397,
+          "rightSignUpper": -0.01596050337016549,
+          "sameYZRootDisplacementUpper": 0.00014504343609232938,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.431281064722916,
+          "depth": 6,
+          "domainImage": [
+            [
+              [
+                -9.220642395997713,
+                -9.220642395997695
+              ],
+              [
+                -2.4495081560235663,
+                -2.449508156023562
+              ],
+              [
+                5.623023695191952,
+                5.623023695191961
+              ]
+            ],
+            [
+              [
+                -9.213433398603515,
+                -9.213433398603504
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.634948696783841,
+                5.634948696783846
+              ]
+            ],
+            [
+              [
+                -9.22785144239343,
+                -9.227851442393412
+              ],
+              [
+                -2.437356761823136,
+                -2.437356761823132
+              ],
+              [
+                5.6110986936000415,
+                5.6110986936000495
+              ]
+            ]
+          ],
+          "leftSignLower": 0.12077503651872064,
+          "meshResidualBounds": [
+            -0.0001204158947193808,
+            0.000012665267992526123
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9304286613164563,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252995,
+          "rightSignUpper": -0.00974265580836341,
+          "sameYZRootDisplacementUpper": 0.00014306823712873927,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.43735676182313,
+          "depth": 5,
+          "domainImage": [
+            [
+              [
+                -9.22785144239343,
+                -9.227851442393412
+              ],
+              [
+                -2.437356761823136,
+                -2.437356761823132
+              ],
+              [
+                5.6110986936000415,
+                5.6110986936000495
+              ]
+            ],
+            [
+              [
+                -9.242269486183336,
+                -9.242269486183329
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.587248690416246,
+                5.587248690416249
+              ]
+            ],
+            [
+              [
+                -9.227851393391903,
+                -9.227851393391893
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.611098693600066,
+                5.611098693600072
+              ]
+            ]
+          ],
+          "leftSignLower": 0.10853151194523393,
+          "meshResidualBounds": [
+            -0.00016500359556476815,
+            -0.00008666567853670555
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9441225616400497,
+          "reducedFunctionDecreasingRateLower": 0.8426134691605337,
+          "rightSignUpper": -0.022169973940744856,
+          "sameYZRootDisplacementUpper": 0.0001958235912477823,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.461659550223991,
+          "depth": 5,
+          "domainImage": [
+            [
+              [
+                -9.213433300600464,
+                -9.213433300600464
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.6349486967838915,
+                5.6349486967838915
+              ]
+            ],
+            [
+              [
+                -9.213433349601992,
+                -9.213433349601981
+              ],
+              [
+                -2.4616595502239957,
+                -2.4616595502239926
+              ],
+              [
+                5.634948696783864,
+                5.634948696783871
+              ]
+            ],
+            [
+              [
+                -9.227851393391903,
+                -9.227851393391893
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.611098693600066,
+                5.611098693600072
+              ]
+            ]
+          ],
+          "leftSignLower": 0.12076647399811344,
+          "meshResidualBounds": [
+            -0.00012902030599677057,
+            0.00002324464974643533
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.944186473654358,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252977,
+          "rightSignUpper": -0.009734093287718907,
+          "sameYZRootDisplacementUpper": 0.00015329128912578352,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.431281064722916,
+          "depth": 6,
+          "domainImage": [
+            [
+              [
+                -9.213433398603515,
+                -9.213433398603504
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.634948696783841,
+                5.634948696783846
+              ]
+            ],
+            [
+              [
+                -9.220642395997713,
+                -9.220642395997695
+              ],
+              [
+                -2.4495081560235663,
+                -2.449508156023562
+              ],
+              [
+                5.623023695191952,
+                5.623023695191961
+              ]
+            ],
+            [
+              [
+                -9.213433349601992,
+                -9.213433349601981
+              ],
+              [
+                -2.4616595502239957,
+                -2.4616595502239926
+              ],
+              [
+                5.634948696783864,
+                5.634948696783871
+              ]
+            ]
+          ],
+          "leftSignLower": 0.12690199566966032,
+          "meshResidualBounds": [
+            -0.00007714840463032796,
+            0.000014346251587887408
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.930428661316444,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252986,
+          "rightSignUpper": -0.009737760196013752,
+          "sameYZRootDisplacementUpper": 0.00009166137305608731,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.44950815602356,
+          "depth": 6,
+          "domainImage": [
+            [
+              [
+                -9.220642395997713,
+                -9.220642395997695
+              ],
+              [
+                -2.4495081560235663,
+                -2.449508156023562
+              ],
+              [
+                5.623023695191952,
+                5.623023695191961
+              ]
+            ],
+            [
+              [
+                -9.227851393391903,
+                -9.227851393391893
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.611098693600066,
+                5.611098693600072
+              ]
+            ],
+            [
+              [
+                -9.213433349601992,
+                -9.213433349601981
+              ],
+              [
+                -2.4616595502239957,
+                -2.4616595502239926
+              ],
+              [
+                5.634948696783864,
+                5.634948696783871
+              ]
+            ]
+          ],
+          "leftSignLower": 0.12077503651873307,
+          "meshResidualBounds": [
+            -0.00012045776352646712,
+            0.000012623465017220898
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9386905281295337,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252986,
+          "rightSignUpper": -0.0097426558083492,
+          "sameYZRootDisplacementUpper": 0.00014311798219299762,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.370524093720767,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.213433398603515,
+                -9.213433398603504
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.634948696783841,
+                5.634948696783846
+              ]
+            ],
+            [
+              [
+                -9.213433496606559,
+                -9.213433496606552
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.634948696783793,
+                5.6349486967837965
+              ]
+            ],
+            [
+              [
+                -9.242269486183336,
+                -9.242269486183329
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.587248690416246,
+                5.587248690416249
+              ]
+            ]
+          ],
+          "leftSignLower": 0.10843194197419018,
+          "meshResidualBounds": [
+            -0.0002742284493290807,
+            0.0001305606197974011
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9027340748315296,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252995,
+          "rightSignUpper": -0.009634502669063455,
+          "sameYZRootDisplacementUpper": 0.00032581563179420373,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.309767122718616,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.213433496606559,
+                -9.213433496606552
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.634948696783793,
+                5.6349486967837965
+              ]
+            ],
+            [
+              [
+                -9.213433594609606,
+                -9.213433594609596
+              ],
+              [
+                -2.30976712271862,
+                -2.3097671227186174
+              ],
+              [
+                5.634948696783743,
+                5.6349486967837485
+              ]
+            ],
+            [
+              [
+                -9.242269682189427,
+                -9.24226968218942
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.587248690416148,
+                5.587248690416152
+              ]
+            ]
+          ],
+          "leftSignLower": 0.10847766134054217,
+          "meshResidualBounds": [
+            -0.00022834152046181464,
+            0.00008492503435265434
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.8748022144622527,
+          "reducedFunctionDecreasingRateLower": 0.8416675646253016,
+          "rightSignUpper": -0.00968022203549006,
+          "sameYZRootDisplacementUpper": 0.0002712965665529348,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.249010151716467,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.213433594609606,
+                -9.213433594609596
+              ],
+              [
+                -2.30976712271862,
+                -2.3097671227186174
+              ],
+              [
+                5.634948696783743,
+                5.6349486967837485
+              ]
+            ],
+            [
+              [
+                -9.213433692612647,
+                -9.213433692612647
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.634948696783697,
+                5.634948696783697
+              ]
+            ],
+            [
+              [
+                -9.242269682189427,
+                -9.24226968218942
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.587248690416148,
+                5.587248690416152
+              ]
+            ]
+          ],
+          "leftSignLower": 0.10843194197414044,
+          "meshResidualBounds": [
+            -0.00027406071185716226,
+            0.00013072783169150364
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.8466346896891976,
+          "reducedFunctionDecreasingRateLower": 0.8416675646253035,
+          "rightSignUpper": -0.009634502669113197,
+          "sameYZRootDisplacementUpper": 0.00032561633996097927,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.321918516919046,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.242269682189427,
+                -9.24226968218942
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.587248690416148,
+                5.587248690416152
+              ]
+            ],
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.213433496606559,
+                -9.213433496606552
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.634948696783793,
+                5.6349486967837965
+              ]
+            ]
+          ],
+          "leftSignLower": 0.08404471414223844,
+          "meshResidualBounds": [
+            -0.0003456687940268095,
+            0.00020216870196704213
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.880407491177422,
+          "reducedFunctionDecreasingRateLower": 0.8416675646253016,
+          "rightSignUpper": -0.009601632958568418,
+          "sameYZRootDisplacementUpper": 0.00041069515870045006,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 6
+        },
+        {
+          "capMargin": 7.249010151716466,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.274005081588804,
+                -9.274005081588797
+              ],
+              [
+                -2.24901015171647,
+                -2.249010151716468
+              ],
+              [
+                5.533434843792716,
+                5.53343484379272
+              ]
+            ],
+            [
+              [
+                -9.272555376677506,
+                -9.272555376677495
+              ],
+              [
+                -2.32191851691905,
+                -2.3219185169190473
+              ],
+              [
+                5.536491763920658,
+                5.5364917639206634
+              ]
+            ],
+            [
+              [
+                -9.242269682189427,
+                -9.24226968218942
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.587248690416148,
+                5.587248690416152
+              ]
+            ]
+          ],
+          "leftSignLower": 0.08095725839158686,
+          "meshResidualBounds": [
+            -0.0007879515202781569,
+            -5.765249382955118e-7
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.868319838596102,
+          "reducedFunctionDecreasingRateLower": 0.8435585376555031,
+          "rightSignUpper": -0.03445789478627496,
+          "sameYZRootDisplacementUpper": 0.0009340804284526663,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 7
+        },
+        {
+          "capMargin": 7.3219185169190455,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.272555376677506,
+                -9.272555376677495
+              ],
+              [
+                -2.32191851691905,
+                -2.3219185169190473
+              ],
+              [
+                5.536491763920658,
+                5.5364917639206634
+              ]
+            ],
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.242269682189427,
+                -9.24226968218942
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.587248690416148,
+                5.587248690416152
+              ]
+            ]
+          ],
+          "leftSignLower": 0.08252178461130077,
+          "meshResidualBounds": [
+            -0.0004536676943930803,
+            0.00013071219493692346
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9021521924928257,
+          "reducedFunctionDecreasingRateLower": 0.8435585376555031,
+          "rightSignUpper": -0.034467545517678964,
+          "sameYZRootDisplacementUpper": 0.0005378022675864986,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 7
+        },
+        {
+          "capMargin": 7.249010151716466,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.242269682189427,
+                -9.24226968218942
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.587248690416148,
+                5.587248690416152
+              ]
+            ],
+            [
+              [
+                -9.213433692612647,
+                -9.213433692612647
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.634948696783697,
+                5.634948696783697
+              ]
+            ],
+            [
+              [
+                -9.274005081588804,
+                -9.274005081588797
+              ],
+              [
+                -2.24901015171647,
+                -2.249010151716468
+              ],
+              [
+                5.533434843792716,
+                5.53343484379272
+              ]
+            ]
+          ],
+          "leftSignLower": 0.08092476345628861,
+          "meshResidualBounds": [
+            -0.0008617617340440209,
+            0.0002172354165820965
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.8466346896892207,
+          "reducedFunctionDecreasingRateLower": 0.8416675646253055,
+          "rightSignUpper": -0.0095920696880032,
+          "sameYZRootDisplacementUpper": 0.0010238742352245227,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 7
+        },
+        {
+          "capMargin": 7.249010151716466,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.431920990801739,
+                5.431920990801739
+              ]
+            ],
+            [
+              [
+                -9.302841071165581,
+                -9.302841071165574
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.48573483742517,
+                5.4857348374251735
+              ]
+            ],
+            [
+              [
+                -9.274005081588804,
+                -9.274005081588797
+              ],
+              [
+                -2.24901015171647,
+                -2.249010151716468
+              ],
+              [
+                5.533434843792716,
+                5.53343484379272
+              ]
+            ]
+          ],
+          "leftSignLower": 0.02965316820001944,
+          "meshResidualBounds": [
+            -0.000862816424859435,
+            0.0002218230503792317
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.8926083654941404,
+          "reducedFunctionDecreasingRateLower": 0.8456877482246172,
+          "rightSignUpper": -0.06225547364608678,
+          "sameYZRootDisplacementUpper": 0.0010202541383279784,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 7
+        },
+        {
+          "capMargin": 7.3219185169190455,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.272555376677506,
+                -9.272555376677495
+              ],
+              [
+                -2.32191851691905,
+                -2.3219185169190473
+              ],
+              [
+                5.536491763920658,
+                5.5364917639206634
+              ]
+            ],
+            [
+              [
+                -9.302841071165581,
+                -9.302841071165574
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.48573483742517,
+                5.4857348374251735
+              ]
+            ]
+          ],
+          "leftSignLower": 0.05677743295127427,
+          "meshResidualBounds": [
+            -0.0004663735617756769,
+            0.00014341806231952002
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.923750068078746,
+          "reducedFunctionDecreasingRateLower": 0.8454460751836401,
+          "rightSignUpper": -0.059136511202676295,
+          "sameYZRootDisplacementUpper": 0.0005516301695224921,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 7
+        },
+        {
+          "capMargin": 7.249010151716466,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.272555376677506,
+                -9.272555376677495
+              ],
+              [
+                -2.32191851691905,
+                -2.3219185169190473
+              ],
+              [
+                5.536491763920658,
+                5.5364917639206634
+              ]
+            ],
+            [
+              [
+                -9.274005081588804,
+                -9.274005081588797
+              ],
+              [
+                -2.24901015171647,
+                -2.249010151716468
+              ],
+              [
+                5.533434843792716,
+                5.53343484379272
+              ]
+            ],
+            [
+              [
+                -9.302841071165581,
+                -9.302841071165574
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.48573483742517,
+                5.4857348374251735
+              ]
+            ]
+          ],
+          "leftSignLower": 0.056787088429417786,
+          "meshResidualBounds": [
+            -0.0007758911314913065,
+            -0.00004773488993940603
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.891233663499546,
+          "reducedFunctionDecreasingRateLower": 0.8455669191611025,
+          "rightSignUpper": -0.06072245793777261,
+          "sameYZRootDisplacementUpper": 0.0009175987304009928,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 7
+        },
+        {
+          "capMargin": 7.321918516919046,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.302841071165581,
+                -9.302841071165574
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.48573483742517,
+                5.4857348374251735
+              ]
+            ],
+            [
+              [
+                -9.334576470565258,
+                -9.334576470565251
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.431917146157831,
+                5.431917146157835
+              ]
+            ]
+          ],
+          "leftSignLower": 0.029622071158705948,
+          "meshResidualBounds": [
+            -0.000431499203019483,
+            0.0002546676057256136
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.923750068078746,
+          "reducedFunctionDecreasingRateLower": 0.8454460751836401,
+          "rightSignUpper": -0.05907436133604324,
+          "sameYZRootDisplacementUpper": 0.0005103805147191165,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 8
+        },
+        {
+          "capMargin": 7.249010151716467,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.302841071165581,
+                -9.302841071165574
+              ],
+              [
+                -2.32191851691905,
+                -2.321918516919048
+              ],
+              [
+                5.48573483742517,
+                5.4857348374251735
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.249010151716469,
+                -2.249010151716469
+              ],
+              [
+                5.431920990801739,
+                5.431920990801739
+              ]
+            ],
+            [
+              [
+                -9.334576470565258,
+                -9.334576470565251
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.431917146157831,
+                5.431917146157835
+              ]
+            ]
+          ],
+          "leftSignLower": 0.029581666951394858,
+          "meshResidualBounds": [
+            -0.00040906910040394153,
+            0.00023417118700752023
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.913980531468068,
+          "reducedFunctionDecreasingRateLower": 0.8475711887855739,
+          "rightSignUpper": -0.08668931284819423,
+          "sameYZRootDisplacementUpper": 0.00048263686380145646,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 8
+        },
+        {
+          "capMargin": 7.370524093720767,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.334576470565258,
+                -9.334576470565251
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.431917146157831,
+                5.431917146157835
+              ]
+            ],
+            [
+              [
+                -9.334576470565409,
+                -9.334576470565398
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.431915223835878,
+                5.431915223835883
+              ]
+            ],
+            [
+              [
+                -9.302841071165881,
+                -9.302841071165874
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.485730992781264,
+                5.485730992781267
+              ]
+            ]
+          ],
+          "leftSignLower": 0.029682928566361386,
+          "meshResidualBounds": [
+            -0.00032450475785408963,
+            0.00014572028668516495
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.970390564532138,
+          "reducedFunctionDecreasingRateLower": 0.8475713404399661,
+          "rightSignUpper": -0.08679350732955496,
+          "sameYZRootDisplacementUpper": 0.0003828642408857789,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 8
+        },
+        {
+          "capMargin": 7.431281064722916,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ],
+            [
+              [
+                -9.318708770865722,
+                -9.318708770865712
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.458822147147593,
+                5.458822147147599
+              ]
+            ],
+            [
+              [
+                -9.334576470565409,
+                -9.334576470565398
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.431915223835878,
+                5.431915223835883
+              ]
+            ]
+          ],
+          "leftSignLower": 0.02975246644553345,
+          "meshResidualBounds": [
+            -0.0001931142976299913,
+            0.00006329550741880418
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0103128319940935,
+          "reducedFunctionDecreasingRateLower": 0.848632161626727,
+          "rightSignUpper": -0.10061796744497399,
+          "sameYZRootDisplacementUpper": 0.00022755948497145588,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 8
+        },
+        {
+          "capMargin": 7.431281064722916,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.318708770865722,
+                -9.318708770865712
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.458822147147593,
+                5.458822147147599
+              ]
+            ],
+            [
+              [
+                -9.302841071165881,
+                -9.302841071165874
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.485730992781264,
+                5.485730992781267
+              ]
+            ],
+            [
+              [
+                -9.334576470565409,
+                -9.334576470565398
+              ],
+              [
+                -2.4312810647229206,
+                -2.431281064722918
+              ],
+              [
+                5.431915223835878,
+                5.431915223835883
+              ]
+            ]
+          ],
+          "leftSignLower": 0.029763531683670852,
+          "meshResidualBounds": [
+            -0.0002439016405447725,
+            0.00006415032781081686
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.998238711365491,
+          "reducedFunctionDecreasingRateLower": 0.8475713404399661,
+          "rightSignUpper": -0.08687411044686442,
+          "sameYZRootDisplacementUpper": 0.00028776532299707727,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 8
+        },
+        {
+          "capMargin": 7.370524093720767,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.302841071165881,
+                -9.302841071165874
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.485730992781264,
+                5.485730992781267
+              ]
+            ],
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.334576470565258,
+                -9.334576470565251
+              ],
+              [
+                -2.37052409372077,
+                -2.370524093720768
+              ],
+              [
+                5.431917146157831,
+                5.431917146157835
+              ]
+            ]
+          ],
+          "leftSignLower": 0.029622071158705948,
+          "meshResidualBounds": [
+            -0.0004334520768945382,
+            0.0002546676057256136
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9461556219336535,
+          "reducedFunctionDecreasingRateLower": 0.8454460751836401,
+          "rightSignUpper": -0.05907436133604324,
+          "sameYZRootDisplacementUpper": 0.0005126903886807774,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 8
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.302841071165881,
+                -9.302841071165874
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.485730992781264,
+                5.485730992781267
+              ]
+            ],
+            [
+              [
+                -9.28004773052853,
+                -9.28004773052852
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.524197963070972,
+                5.524197963070978
+              ]
+            ],
+            [
+              [
+                -9.26418003082869,
+                -9.264180030828683
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.551106808704642,
+                5.551106808704645
+              ]
+            ]
+          ],
+          "leftSignLower": 0.05683674819637706,
+          "meshResidualBounds": [
+            -0.0002726625023425438,
+            0.00008133971566066365
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9742348673083483,
+          "reducedFunctionDecreasingRateLower": 0.8449890337279217,
+          "rightSignUpper": -0.0532320888401122,
+          "sameYZRootDisplacementUpper": 0.00032268170527564334,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 9
+        },
+        {
+          "capMargin": 7.467735247324206,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.257254389891173,
+                -9.257254389891173
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.562664933360685,
+                5.562664933360685
+              ]
+            ],
+            [
+              [
+                -9.260717210359935,
+                -9.260717210359925
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.556885871032661,
+                5.556885871032667
+              ]
+            ],
+            [
+              [
+                -9.28004773052853,
+                -9.28004773052852
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.524197963070972,
+                5.524197963070978
+              ]
+            ]
+          ],
+          "leftSignLower": 0.07635817880464597,
+          "meshResidualBounds": [
+            -0.00022313473764831428,
+            0.00004421241177727682
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.980004177820486,
+          "reducedFunctionDecreasingRateLower": 0.8445317823944419,
+          "rightSignUpper": -0.04729163687228186,
+          "sameYZRootDisplacementUpper": 0.00026421117866716156,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 9
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.260717210359935,
+                -9.260717210359925
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.556885871032661,
+                5.556885871032667
+              ]
+            ],
+            [
+              [
+                -9.26418003082869,
+                -9.264180030828683
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.551106808704642,
+                5.551106808704645
+              ]
+            ],
+            [
+              [
+                -9.28004773052853,
+                -9.28004773052852
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.524197963070972,
+                5.524197963070978
+              ]
+            ]
+          ],
+          "leftSignLower": 0.07636991261679589,
+          "meshResidualBounds": [
+            -0.00020724308195640569,
+            0.000018021624808013747
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9716098008865326,
+          "reducedFunctionDecreasingRateLower": 0.8447604341317417,
+          "rightSignUpper": -0.05029190615345577,
+          "sameYZRootDisplacementUpper": 0.0002453276379704188,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 9
+        },
+        {
+          "capMargin": 7.3948268821216265,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.26418003082869,
+                -9.264180030828683
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.551106808704642,
+                5.551106808704645
+              ]
+            ],
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.302841071165881,
+                -9.302841071165874
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.485730992781264,
+                5.485730992781267
+              ]
+            ]
+          ],
+          "leftSignLower": 0.05682142660153431,
+          "meshResidualBounds": [
+            -0.00027819996277302935,
+            0.00009748180872095622
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.9520672796353664,
+          "reducedFunctionDecreasingRateLower": 0.8449890337279217,
+          "rightSignUpper": -0.05321676724526945,
+          "sameYZRootDisplacementUpper": 0.00032923499793324784,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 9
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ],
+            [
+              [
+                -9.295915430228368,
+                -9.29591543022836
+              ],
+              [
+                -2.49203803572507,
+                -2.492038035725068
+              ],
+              [
+                5.497289117437305,
+                5.497289117437308
+              ]
+            ],
+            [
+              [
+                -9.302841071165881,
+                -9.302841071165874
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.485730992781264,
+                5.485730992781267
+              ]
+            ]
+          ],
+          "leftSignLower": 0.03268117187150546,
+          "meshResidualBounds": [
+            -0.0003648038114877823,
+            0.00010744093263721282
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.998576561778273,
+          "reducedFunctionDecreasingRateLower": 0.8471153110083712,
+          "rightSignUpper": -0.0809165193417558,
+          "sameYZRootDisplacementUpper": 0.00043064244825599354,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 9
+        },
+        {
+          "capMargin": 7.467735247324206,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.257254389891173,
+                -9.257254389891173
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.562664933360685,
+                5.562664933360685
+              ]
+            ],
+            [
+              [
+                -9.28004773052853,
+                -9.28004773052852
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.524197963070972,
+                5.524197963070978
+              ]
+            ],
+            [
+              [
+                -9.295915430228368,
+                -9.29591543022836
+              ],
+              [
+                -2.49203803572507,
+                -2.492038035725068
+              ],
+              [
+                5.497289117437305,
+                5.497289117437308
+              ]
+            ]
+          ],
+          "leftSignLower": 0.06890811666999766,
+          "meshResidualBounds": [
+            -0.0003567669532806163,
+            0.00009860570055900489
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.980004177820486,
+          "reducedFunctionDecreasingRateLower": 0.8445317823944419,
+          "rightSignUpper": -0.047257331269747814,
+          "sameYZRootDisplacementUpper": 0.00042244348965659993,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 9
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.28004773052853,
+                -9.28004773052852
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.524197963070972,
+                5.524197963070978
+              ]
+            ],
+            [
+              [
+                -9.302841071165881,
+                -9.302841071165874
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.485730992781264,
+                5.485730992781267
+              ]
+            ],
+            [
+              [
+                -9.295915430228368,
+                -9.29591543022836
+              ],
+              [
+                -2.49203803572507,
+                -2.492038035725068
+              ],
+              [
+                5.497289117437305,
+                5.497289117437308
+              ]
+            ]
+          ],
+          "leftSignLower": 0.05686440761254488,
+          "meshResidualBounds": [
+            -0.0003073629148921265,
+            -0.00014042675187837746
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.986429293065464,
+          "reducedFunctionDecreasingRateLower": 0.846052757801555,
+          "rightSignUpper": -0.06713452546734124,
+          "sameYZRootDisplacementUpper": 0.000363290482842702,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 9
+        },
+        {
+          "capMargin": 7.467735247324206,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.235343845245822,
+                -9.235343845245815
+              ],
+              [
+                -2.49203803572507,
+                -2.492038035725068
+              ],
+              [
+                5.598806815072287,
+                5.59880681507229
+              ]
+            ],
+            [
+              [
+                -9.238806665714582,
+                -9.238806665714568
+              ],
+              [
+                -2.4677352473242107,
+                -2.467735247324207
+              ],
+              [
+                5.5930277527442644,
+                5.5930277527442716
+              ]
+            ],
+            [
+              [
+                -9.249761938037258,
+                -9.249761938037247
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.574956811888463,
+                5.574956811888469
+              ]
+            ]
+          ],
+          "leftSignLower": 0.102240836952531,
+          "meshResidualBounds": [
+            -0.00013654979438391585,
+            -0.00006033010145480386
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.9635097153740992,
+          "reducedFunctionDecreasingRateLower": 0.8431006469340329,
+          "rightSignUpper": -0.02856419629426074,
+          "sameYZRootDisplacementUpper": 0.00016196143945623138,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.238806665714582,
+                -9.238806665714568
+              ],
+              [
+                -2.4677352473242107,
+                -2.467735247324207
+              ],
+              [
+                5.5930277527442644,
+                5.5930277527442716
+              ]
+            ],
+            [
+              [
+                -9.242269486183336,
+                -9.242269486183329
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.587248690416246,
+                5.587248690416249
+              ]
+            ],
+            [
+              [
+                -9.249761938037258,
+                -9.249761938037247
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.574956811888463,
+                5.574956811888469
+              ]
+            ]
+          ],
+          "leftSignLower": 0.10224730798158677,
+          "meshResidualBounds": [
+            -0.00015619445601750988,
+            -0.00006915178262594364
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.95514370353578,
+          "reducedFunctionDecreasingRateLower": 0.8433296173446149,
+          "rightSignUpper": -0.031573397644677606,
+          "sameYZRootDisplacementUpper": 0.00018521163351207576,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.467735247324206,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.249761938037258,
+                -9.249761938037247
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.574956811888463,
+                5.574956811888469
+              ]
+            ],
+            [
+              [
+                -9.257254389891173,
+                -9.257254389891173
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.562664933360685,
+                5.562664933360685
+              ]
+            ],
+            [
+              [
+                -9.235343845245822,
+                -9.235343845245815
+              ],
+              [
+                -2.49203803572507,
+                -2.492038035725068
+              ],
+              [
+                5.598806815072287,
+                5.59880681507229
+              ]
+            ]
+          ],
+          "leftSignLower": 0.09809632500226959,
+          "meshResidualBounds": [
+            -0.00011038753994133826,
+            0.000030438277930936612
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.9635097153740992,
+          "reducedFunctionDecreasingRateLower": 0.8431006469340329,
+          "rightSignUpper": -0.028561910456142495,
+          "sameYZRootDisplacementUpper": 0.00013093044151106598,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.467735247324206,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.213433300600464,
+                -9.213433300600464
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.6349486967838915,
+                5.6349486967838915
+              ]
+            ],
+            [
+              [
+                -9.227851393391903,
+                -9.227851393391893
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.611098693600066,
+                5.611098693600072
+              ]
+            ],
+            [
+              [
+                -9.235343845245822,
+                -9.235343845245815
+              ],
+              [
+                -2.49203803572507,
+                -2.492038035725068
+              ],
+              [
+                5.598806815072287,
+                5.59880681507229
+              ]
+            ]
+          ],
+          "leftSignLower": 0.11846228559716486,
+          "meshResidualBounds": [
+            -0.00013551572465299568,
+            0.000030385317130824366
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.946930851879166,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252977,
+          "rightSignUpper": -0.009731811395115848,
+          "sameYZRootDisplacementUpper": 0.00016100860998882142,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.242269486183336,
+                -9.242269486183329
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.587248690416246,
+                5.587248690416249
+              ]
+            ],
+            [
+              [
+                -9.238806665714582,
+                -9.238806665714568
+              ],
+              [
+                -2.4677352473242107,
+                -2.467735247324207
+              ],
+              [
+                5.5930277527442644,
+                5.5930277527442716
+              ]
+            ],
+            [
+              [
+                -9.227851393391903,
+                -9.227851393391893
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.611098693600066,
+                5.611098693600072
+              ]
+            ]
+          ],
+          "leftSignLower": 0.10853151194523393,
+          "meshResidualBounds": [
+            -0.00016500359556476815,
+            -0.00008670754735089899
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.946878976056252,
+          "reducedFunctionDecreasingRateLower": 0.8426134691605337,
+          "rightSignUpper": -0.022169973940744856,
+          "sameYZRootDisplacementUpper": 0.0001958235912477823,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.467735247324206,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.238806665714582,
+                -9.238806665714568
+              ],
+              [
+                -2.4677352473242107,
+                -2.467735247324207
+              ],
+              [
+                5.5930277527442644,
+                5.5930277527442716
+              ]
+            ],
+            [
+              [
+                -9.235343845245822,
+                -9.235343845245815
+              ],
+              [
+                -2.49203803572507,
+                -2.492038035725068
+              ],
+              [
+                5.598806815072287,
+                5.59880681507229
+              ]
+            ],
+            [
+              [
+                -9.227851393391903,
+                -9.227851393391893
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.611098693600066,
+                5.611098693600072
+              ]
+            ]
+          ],
+          "leftSignLower": 0.11149908851335635,
+          "meshResidualBounds": [
+            -0.00012771735329425717,
+            -0.0000703510869788898
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.9578806866390734,
+          "reducedFunctionDecreasingRateLower": 0.8426134691605337,
+          "rightSignUpper": -0.02217644433778914,
+          "sameYZRootDisplacementUpper": 0.00015157288361589748,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.3948268821216265,
+          "depth": 2,
+          "domainImage": [
+            [
+              [
+                -9.2711056717662,
+                -9.2711056717662
+              ],
+              [
+                -2.3948268821216288,
+                -2.3948268821216288
+              ],
+              [
+                5.5395486840486035,
+                5.5395486840486035
+              ]
+            ],
+            [
+              [
+                -9.26418003082869,
+                -9.264180030828683
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.551106808704642,
+                5.551106808704645
+              ]
+            ],
+            [
+              [
+                -9.242269486183336,
+                -9.242269486183329
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.587248690416246,
+                5.587248690416249
+              ]
+            ]
+          ],
+          "leftSignLower": 0.08412313824298627,
+          "meshResidualBounds": [
+            -0.0002287038132458334,
+            0.00008486877180938694
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.935644450298678,
+          "reducedFunctionDecreasingRateLower": 0.8435585376554993,
+          "rightSignUpper": -0.03451338722229152,
+          "sameYZRootDisplacementUpper": 0.0002711178928749504,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.26418003082869,
+                -9.264180030828683
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.551106808704642,
+                5.551106808704645
+              ]
+            ],
+            [
+              [
+                -9.260717210359935,
+                -9.260717210359925
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.556885871032661,
+                5.556885871032667
+              ]
+            ],
+            [
+              [
+                -9.249761938037258,
+                -9.249761938037247
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.574956811888463,
+                5.574956811888469
+              ]
+            ]
+          ],
+          "leftSignLower": 0.09006421479685107,
+          "meshResidualBounds": [
+            -0.00010271661214426068,
+            0.000014901428786385122
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.963387326040205,
+          "reducedFunctionDecreasingRateLower": 0.8440452756540191,
+          "rightSignUpper": -0.040941724556186464,
+          "sameYZRootDisplacementUpper": 0.0001216956188335625,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.467735247324206,
+          "depth": 4,
+          "domainImage": [
+            [
+              [
+                -9.260717210359935,
+                -9.260717210359925
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.556885871032661,
+                5.556885871032667
+              ]
+            ],
+            [
+              [
+                -9.257254389891173,
+                -9.257254389891173
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.562664933360685,
+                5.562664933360685
+              ]
+            ],
+            [
+              [
+                -9.249761938037258,
+                -9.249761938037247
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.574956811888463,
+                5.574956811888469
+              ]
+            ]
+          ],
+          "leftSignLower": 0.09301764838197947,
+          "meshResidualBounds": [
+            -0.00009388136493682271,
+            0.000013599008463497941
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.9744038923385925,
+          "reducedFunctionDecreasingRateLower": 0.8440452756540191,
+          "rightSignUpper": -0.040948206210512574,
+          "sameYZRootDisplacementUpper": 0.00011122787798803514,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.443432458923346,
+          "depth": 3,
+          "domainImage": [
+            [
+              [
+                -9.249761938037258,
+                -9.249761938037247
+              ],
+              [
+                -2.4677352473242102,
+                -2.4677352473242076
+              ],
+              [
+                5.574956811888463,
+                5.574956811888469
+              ]
+            ],
+            [
+              [
+                -9.242269486183336,
+                -9.242269486183329
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.587248690416246,
+                5.587248690416249
+              ]
+            ],
+            [
+              [
+                -9.26418003082869,
+                -9.264180030828683
+              ],
+              [
+                -2.4434324589233496,
+                -2.443432458923348
+              ],
+              [
+                5.551106808704642,
+                5.551106808704645
+              ]
+            ]
+          ],
+          "leftSignLower": 0.09006193832409905,
+          "meshResidualBounds": [
+            -0.00017153823318750855,
+            0.000019297876079139923
+          ],
+          "nativeSideActiveCandidate": false,
+          "outerRoundMargin": 2.957782300308087,
+          "reducedFunctionDecreasingRateLower": 0.8435585376554993,
+          "rightSignUpper": -0.03456509507367514,
+          "sameYZRootDisplacementUpper": 0.00020335071667256725,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 10
+        },
+        {
+          "capMargin": 7.492038035725067,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.345614243256772,
+                -9.345614243256772
+              ],
+              [
+                -2.4931887354844897,
+                -2.4931887354844897
+              ],
+              [
+                5.411671898935832,
+                5.411671898935832
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.42950236902782,
+                5.42950236902782
+              ]
+            ],
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ]
+          ],
+          "leftSignLower": 0.022295850312546633,
+          "meshResidualBounds": [
+            -9.145774528622975e-6,
+            0.000020469000962017595
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0500028578353784,
+          "reducedFunctionDecreasingRateLower": 0.8496917301591483,
+          "rightSignUpper": -0.11437302480120258,
+          "sameYZRootDisplacementUpper": 0.000024089914301253383,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 11
+        },
+        {
+          "capMargin": 7.492038035725067,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.345614243256772,
+                -9.345614243256772
+              ],
+              [
+                -2.4931887354844897,
+                -2.4931887354844897
+              ],
+              [
+                5.411671898935832,
+                5.411671898935832
+              ]
+            ],
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ],
+            [
+              [
+                -9.358961851300297,
+                -9.358961851300297
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.3897897051654455,
+                5.3897897051654455
+              ]
+            ]
+          ],
+          "leftSignLower": 0.010239422756925824,
+          "meshResidualBounds": [
+            -0.00004070262910299953,
+            0.0002830325209801496
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0500028578353784,
+          "reducedFunctionDecreasingRateLower": 0.8496917301591483,
+          "rightSignUpper": -0.1143517108645439,
+          "sameYZRootDisplacementUpper": 0.0003331002420455914,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 12
+        },
+        {
+          "capMargin": 7.492038035725067,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.345614243256772,
+                -9.345614243256772
+              ],
+              [
+                -2.4931887354844897,
+                -2.4931887354844897
+              ],
+              [
+                5.411671898935832,
+                5.411671898935832
+              ]
+            ],
+            [
+              [
+                -9.358961851300297,
+                -9.358961851300297
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.3897897051654455,
+                5.3897897051654455
+              ]
+            ],
+            [
+              [
+                -9.354287903179054,
+                -9.354287903179054
+              ],
+              [
+                -2.49432265171647,
+                -2.49432265171647
+              ],
+              [
+                5.395450790151924,
+                5.395450790151924
+              ]
+            ]
+          ],
+          "leftSignLower": 0.010356678221092893,
+          "meshResidualBounds": [
+            -0.000011310500929500857,
+            0.00007867747246995218
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0590387044033327,
+          "reducedFunctionDecreasingRateLower": 0.8504879138938994,
+          "rightSignUpper": -0.12464719305685364,
+          "sameYZRootDisplacementUpper": 0.00009250863085135788,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 13
+        },
+        {
+          "capMargin": 7.493188735484488,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.345614243256772,
+                -9.345614243256772
+              ],
+              [
+                -2.4931887354844897,
+                -2.4931887354844897
+              ],
+              [
+                5.411671898935832,
+                5.411671898935832
+              ]
+            ],
+            [
+              [
+                -9.354287903179054,
+                -9.354287903179054
+              ],
+              [
+                -2.49432265171647,
+                -2.49432265171647
+              ],
+              [
+                5.395450790151924,
+                5.395450790151924
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.42950236902782,
+                5.42950236902782
+              ]
+            ]
+          ],
+          "leftSignLower": 0.014040882213598067,
+          "meshResidualBounds": [
+            -0.000026589973820385352,
+            0.00014027649763552775
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.051602174861953,
+          "reducedFunctionDecreasingRateLower": 0.8497866012582904,
+          "rightSignUpper": -0.11558669380249749,
+          "sameYZRootDisplacementUpper": 0.00016507261638135795,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 14
+        },
+        {
+          "capMargin": 7.492038035725067,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.273258488509278,
+                -9.273258488509278
+              ],
+              [
+                -2.4933666336457128,
+                -2.4933666336457128
+              ],
+              [
+                5.534556798864257,
+                5.534556798864257
+              ]
+            ],
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.42950236902782,
+                5.42950236902782
+              ]
+            ]
+          ],
+          "leftSignLower": 0.0325820679152523,
+          "meshResidualBounds": [
+            -0.0002537530331486781,
+            0.00026507625958207274
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0037683115111693,
+          "reducedFunctionDecreasingRateLower": 0.8456434031093549,
+          "rightSignUpper": -0.061665808294942476,
+          "sameYZRootDisplacementUpper": 0.000313461038787048,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 15
+        },
+        {
+          "capMargin": 7.493366633645711,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.273258488509278,
+                -9.273258488509278
+              ],
+              [
+                -2.4933666336457128,
+                -2.4933666336457128
+              ],
+              [
+                5.534556798864257,
+                5.534556798864257
+              ]
+            ],
+            [
+              [
+                -9.334576470564954,
+                -9.334576470564954
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.42950236902782,
+                5.42950236902782
+              ]
+            ],
+            [
+              [
+                -9.285916876569859,
+                -9.285916876569859
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.5122924467836985,
+                5.5122924467836985
+              ]
+            ]
+          ],
+          "leftSignLower": 0.0325970602804956,
+          "meshResidualBounds": [
+            -0.0002537530331486781,
+            0.00026507625958207274
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 3.0043682643806373,
+          "reducedFunctionDecreasingRateLower": 0.8456434031093549,
+          "rightSignUpper": -0.061665808294942476,
+          "sameYZRootDisplacementUpper": 0.000313461038787048,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 16
+        },
+        {
+          "capMargin": 7.493366633645711,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.273258488509278,
+                -9.273258488509278
+              ],
+              [
+                -2.4933666336457128,
+                -2.4933666336457128
+              ],
+              [
+                5.534556798864257,
+                5.534556798864257
+              ]
+            ],
+            [
+              [
+                -9.285916876569859,
+                -9.285916876569859
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.5122924467836985,
+                5.5122924467836985
+              ]
+            ],
+            [
+              [
+                -9.21200003223124,
+                -9.21200003223124
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.634948696783697,
+                5.634948696783697
+              ]
+            ]
+          ],
+          "leftSignLower": 0.07842377138074032,
+          "meshResidualBounds": [
+            -0.00035030218030255396,
+            0.00035177082529005656
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.958482067718243,
+          "reducedFunctionDecreasingRateLower": 0.8416675646253055,
+          "rightSignUpper": -0.009119652820251489,
+          "sameYZRootDisplacementUpper": 0.00041794508910018217,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 17
+        },
+        {
+          "capMargin": 7.492038035725067,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.273258488509278,
+                -9.273258488509278
+              ],
+              [
+                -2.4933666336457128,
+                -2.4933666336457128
+              ],
+              [
+                5.534556798864257,
+                5.534556798864257
+              ]
+            ],
+            [
+              [
+                -9.21200003223124,
+                -9.21200003223124
+              ],
+              [
+                -2.4943226517164696,
+                -2.4943226517164696
+              ],
+              [
+                5.634948696783697,
+                5.634948696783697
+              ]
+            ],
+            [
+              [
+                -9.213433300600464,
+                -9.213433300600464
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.6349486967838915,
+                5.6349486967838915
+              ]
+            ]
+          ],
+          "leftSignLower": 0.09037655708122752,
+          "meshResidualBounds": [
+            -0.00023601351063379247,
+            0.00023601374985402152
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.957884363606467,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252977,
+          "rightSignUpper": -0.009204631190210862,
+          "sameYZRootDisplacementUpper": 0.0002804120768977151,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 18
+        },
+        {
+          "capMargin": 7.492038035725067,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.273258488509278,
+                -9.273258488509278
+              ],
+              [
+                -2.4933666336457128,
+                -2.4933666336457128
+              ],
+              [
+                5.534556798864257,
+                5.534556798864257
+              ]
+            ],
+            [
+              [
+                -9.213433300600464,
+                -9.213433300600464
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.6349486967838915,
+                5.6349486967838915
+              ]
+            ],
+            [
+              [
+                -9.257254389891173,
+                -9.257254389891173
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.562664933360685,
+                5.562664933360685
+              ]
+            ]
+          ],
+          "leftSignLower": 0.09037655708122752,
+          "meshResidualBounds": [
+            -0.00023306686376563254,
+            0.00023306686376783065
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.957884363606467,
+          "reducedFunctionDecreasingRateLower": 0.8416675646252977,
+          "rightSignUpper": -0.009595566855924826,
+          "sameYZRootDisplacementUpper": 0.00027691082983765666,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 19
+        },
+        {
+          "capMargin": 7.492038035725067,
+          "depth": 0,
+          "domainImage": [
+            [
+              [
+                -9.273258488509278,
+                -9.273258488509278
+              ],
+              [
+                -2.4933666336457128,
+                -2.4933666336457128
+              ],
+              [
+                5.534556798864257,
+                5.534556798864257
+              ]
+            ],
+            [
+              [
+                -9.257254389891173,
+                -9.257254389891173
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.562664933360685,
+                5.562664933360685
+              ]
+            ],
+            [
+              [
+                -9.334576470565555,
+                -9.334576470565555
+              ],
+              [
+                -2.492038035725069,
+                -2.492038035725069
+              ],
+              [
+                5.431913301513927,
+                5.431913301513927
+              ]
+            ]
+          ],
+          "leftSignLower": 0.03247820387739842,
+          "meshResidualBounds": [
+            -0.00039565494283590294,
+            0.000395654942836845
+          ],
+          "nativeSideActiveCandidate": true,
+          "outerRoundMargin": 2.990987361777154,
+          "reducedFunctionDecreasingRateLower": 0.8445317823944419,
+          "rightSignUpper": -0.04705713541074437,
+          "sameYZRootDisplacementUpper": 0.00046849029377564954,
+          "slab": [
+            -9.3690502954966,
+            -9.202000032231238
+          ],
+          "triangle": 20
+        }
+      ],
+      "primitiveCylinderClampInactive": true,
+      "protectedFiberHalfWidth": null,
+      "publicationReady": false,
+      "refinedFailures": [
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 0
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 0
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 0
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 3
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 3
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 4
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 4
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 5
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 5
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 3,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 4,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 5,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 4,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 5,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 6
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 7
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 7
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 7
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 7
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 7
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 8
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 8
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 8
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 8
+        },
+        {
+          "depth": 3,
+          "reason": "native_finite_side",
+          "triangle": 8
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 9
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 9
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 9
+        },
+        {
+          "depth": 3,
+          "reason": "native_finite_side",
+          "triangle": 9
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 9
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 9
+        },
+        {
+          "depth": 0,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 3,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 3,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 1,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 2,
+          "reason": "native_finite_side",
+          "triangle": 10
+        },
+        {
+          "depth": 3,
+          "reason": "native_finite_side",
+          "triangle": 10
+        }
+      ],
+      "scope": "unique full-source root graph over every supplied closed projected triangle, and same-YZ mesh-to-root displacement; supplied-domain topology and cell-face boundary transport are separate obligations",
+      "sharedEdgeRootAgreementConditionalOnExactContinuousMeshGraph": false,
+      "sharedEdgeRootsAgreeByCommonSlabUniqueness": true,
+      "slabDomain": "common",
+      "source": [
+        10,
+        30,
+        15
+      ],
+      "sourceFingerprint": "10977506807348230851",
+      "tolerance": 0.01,
+      "triangleCount": 21,
+      "uniformSourceBound": 0.0010238742352245227,
+      "uniqueRootInProtectedMeshCenteredFiber": false
+    }
+  },
+  "wholeFaceSourceGraphAndUnionProved": true
+}

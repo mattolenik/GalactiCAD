@@ -1916,6 +1916,41 @@ ideal face contour. Full original curve 49 coverage, raw query continuity, broad
 ownership, outside coverage, allocation accounting and production/native-WASM/GPU
 acceptance remain open. No geometry was mutated or published.
 
+## Round 39: complete incident neighborhood and compatible ideal-arc adoption
+
+The [boundary-adoption packet](sfcc-boundary-adoption/README.md) closes round 38's
+local outer-node adoption constraint. Original FaceRecord ownership identifies
+the second consumer of 1116. The complete three-cell neighborhood contains 44
+triangles, 31 used vertices and 8 fans; both647 and 1116 become interior. Fresh runtime
+capture binds all triangle order, point bits, source identities and fan options.
+
+The first capture correctly refused an unjustified equality between discrete face
+ownership and raw closed-box containment. The corrected inventory uses original
+integer face/leaf incidence and separately bounds the retained point's face defect
+by 1.9451107391432748e-13 mm under its unchanged 3.796655370190979e-7 mm allowance.
+No face rectangle is enlarged and exact retained-point membership is not claimed.
+
+The common-X-slab proof passes34 triangles in 122 checks but refuses44 triangles at
+the 128-check cap. Original-triangle slabs preserve one global 128-check/depth 12
+budget and succeed in 108 checks, 76 accepted pieces. A shared protected mesh-centered
+fiber identifies neighboring roots and glues the source graph. This proves local
+fiber uniqueness, not uniqueness across the entire union X hull.
+
+Fresh ideal targets for 647, 40, 1117, 1116 support simultaneous PL transport with fixed
+outer boundary and strictly positive intermediate orientations. Whole consumed arcs
+lie inside the protected fibers, identifying the source image of all three edges.
+The final exported correspondence bound is 0.0012883081002970905 mm below 0.01 mm.
+Mesh coordinates and the original 1775 triangles/1929 generated queries/8413 charges
+are unchanged. The new consumer's five validated queries have a separate 2117-charge
+ledger. The207-cell/1042-face inventory is not a reconstructed expanded transaction.
+
+All 83 focused tests pass in 33.661 seconds; library validation and the 31.169-second
+original-scene diagnostic pass. Fourth-agent review accepts this local milestone.
+Both failed attempts remain preserved. Production and publication remain blocked:
+next bind the captured face polyline to the exhaustive ideal contour and adopted
+correspondence, then establish remaining interface/interior ownership, outside
+coverage, allocation accounting and native/WASM/GPU/full-model acceptance.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

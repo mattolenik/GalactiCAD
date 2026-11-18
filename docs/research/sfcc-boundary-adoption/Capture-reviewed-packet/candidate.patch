@@ -1,0 +1,2287 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/incident-first-cell-b.json
+@@ -0,0 +1,1116 @@
++{
++  "scope": "all four first-cell outputs and both original-stage outside-cell outputs; next Z consumer absent",
++  "parentReceiptSha256": "9d24506fa18d298472229264fee95ad674b8d45988ec1fa46db5b23263a1e2f1",
++  "sourceFingerprint": "10977506807348230851",
++  "points": [
++    {
++      "id": 38,
++      "positionBits": [
++        13844816554298846424,
++        13835618776295404592,
++        4617801817764908076
++      ]
++    },
++    {
++      "id": 39,
++      "positionBits": [
++        13844816554298846424,
++        13836171170937199256,
++        4617799094638878133
++      ]
++    },
++    {
++      "id": 40,
++      "positionBits": [
++        13844816554298846762,
++        13836166026439335478,
++        4617801809107539645
++      ]
++    },
++    {
++      "id": 41,
++      "positionBits": [
++        13844830331837451734,
++        13835618776295404592,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 458,
++      "positionBits": [
++        13844827666411667413,
++        13836171170937199256,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 459,
++      "positionBits": [
++        13844827771266531156,
++        13836171170937187002,
++        4617755369420993716
++      ]
++    },
++    {
++      "id": 460,
++      "positionBits": [
++        13844827650848918399,
++        13836171170937199257,
++        4617760755969393917
++      ]
++    },
++    {
++      "id": 464,
++      "positionBits": [
++        13844830331837451734,
++        13835894973616301924,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 465,
++      "positionBits": [
++        13844830331814374579,
++        13836165891772662319,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 478,
++      "positionBits": [
++        13844789161382673385,
++        13836171170937199256,
++        4617892307979710970
++      ]
++    },
++    {
++      "id": 647,
++      "positionBits": [
++        13844830282047795546,
++        13836166026439335478,
++        4617754382154335013
++      ]
++    },
++    {
++      "id": 648,
++      "positionBits": [
++        13844830187233903547,
++        13836166220664319136,
++        4617754419537920016
++      ]
++    },
++    {
++      "id": 649,
++      "positionBits": [
++        13844829891361871162,
++        13836166826779996655,
++        4617754536155328740
++      ]
++    },
++    {
++      "id": 650,
++      "positionBits": [
++        13844828706376621362,
++        13836169254640459311,
++        4617755002379997287
++      ]
++    },
++    {
++      "id": 653,
++      "positionBits": [
++        13844825742648919353,
++        13835938411809740731,
++        4617770119601665062
++      ]
++    },
++    {
++      "id": 654,
++      "positionBits": [
++        13844822768012469158,
++        13836168617584839349,
++        4617779019314262603
++      ]
++    },
++    {
++      "id": 655,
++      "positionBits": [
++        13844829261744532900,
++        13836168075307039100,
++        4617754590022194856
++      ]
++    },
++    {
++      "id": 656,
++      "positionBits": [
++        13844829081532605267,
++        13836168445143818604,
++        4617755744270549230
++      ]
++    },
++    {
++      "id": 1114,
++      "positionBits": [
++        13844748356977640844,
++        13835618776295404592,
++        4618030406640159634
++      ]
++    },
++    {
++      "id": 1115,
++      "positionBits": [
++        13844747549898595909,
++        13836171170937199256,
++        4618030406640159634
++      ]
++    },
++    {
++      "id": 1116,
++      "positionBits": [
++        13844748356756957604,
++        13836166026439335478,
++        4618030406640159853
++      ]
++    },
++    {
++      "id": 1117,
++      "positionBits": [
++        13844773025837132680,
++        13836166026439335478,
++        4617949022357655430
++      ]
++    },
++    {
++      "id": 1118,
++      "positionBits": [
++        13844782035343704292,
++        13836169018175885646,
++        4617917375411644382
++      ]
++    },
++    {
++      "id": 1119,
++      "positionBits": [
++        13844780823415619052,
++        13835947126381763123,
++        4617922995774708407
++      ]
++    }
++  ],
++  "patches": [
++    {
++      "boundary": [
++        40,
++        38,
++        41,
++        464,
++        465,
++        647
++      ],
++      "carrierKind": "Cylinder",
++      "cellBoxBits": [
++        13844954652959295090,
++        13836171170937199256,
++        4617754209319262306,
++        13844816554298846424,
++        13835618776295404594,
++        4618030406640159637
++      ],
++      "chordTolerance": 0.02,
++      "continuousSourceOwnershipProved": false,
++      "hypothesisStratum": 15,
++      "points": [
++        {
++          "id": 38,
++          "positionBits": [
++            13844816554298846424,
++            13835618776295404592,
++            4617801817764908076
++          ]
++        },
++        {
++          "id": 40,
++          "positionBits": [
++            13844816554298846762,
++            13836166026439335478,
++            4617801809107539645
++          ]
++        },
++        {
++          "id": 41,
++          "positionBits": [
++            13844830331837451734,
++            13835618776295404592,
++            4617754209319262306
++          ]
++        },
++        {
++          "id": 464,
++          "positionBits": [
++            13844830331837451734,
++            13835894973616301924,
++            4617754209319262306
++          ]
++        },
++        {
++          "id": 465,
++          "positionBits": [
++            13844830331814374579,
++            13836165891772662319,
++            4617754209319262306
++          ]
++        },
++        {
++          "id": 647,
++          "positionBits": [
++            13844830282047795546,
++            13836166026439335478,
++            4617754382154335013
++          ]
++        },
++        {
++          "id": 653,
++          "positionBits": [
++            13844825742648919353,
++            13835938411809740731,
++            4617770119601665062
++          ]
++        }
++      ],
++      "qualityTriangulation": false,
++      "returned": true,
++      "sourceIdentity": {
++        "compoundPresent": false,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": null,
++            "partners": [],
++            "path": [
++              0,
++              0,
++              0,
++              1
++            ],
++            "rootAddressProcessLocal": "7b10c71010"
++          }
++        ],
++        "field": null,
++        "id": 15,
++        "leafIndex": 2,
++        "localIndex": 0,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      },
++      "surfaceTolerance": 0.01,
++      "triangles": [
++        653,
++        40,
++        38,
++        653,
++        38,
++        41,
++        653,
++        41,
++        464,
++        653,
++        464,
++        465,
++        653,
++        465,
++        647,
++        653,
++        647,
++        40
++      ]
++    },
++    {
++      "boundary": [
++        39,
++        40,
++        647,
++        460
++      ],
++      "carrierKind": "Field",
++      "cellBoxBits": [
++        13844954652959295090,
++        13836171170937199256,
++        4617754209319262306,
++        13844816554298846424,
++        13835618776295404594,
++        4618030406640159637
++      ],
++      "chordTolerance": 0.02,
++      "continuousSourceOwnershipProved": false,
++      "hypothesisStratum": 39,
++      "points": [
++        {
++          "id": 39,
++          "positionBits": [
++            13844816554298846424,
++            13836171170937199256,
++            4617799094638878133
++          ]
++        },
++        {
++          "id": 40,
++          "positionBits": [
++            13844816554298846762,
++            13836166026439335478,
++            4617801809107539645
++          ]
++        },
++        {
++          "id": 460,
++          "positionBits": [
++            13844827650848918399,
++            13836171170937199257,
++            4617760755969393917
++          ]
++        },
++        {
++          "id": 647,
++          "positionBits": [
++            13844830282047795546,
++            13836166026439335478,
++            4617754382154335013
++          ]
++        },
++        {
++          "id": 654,
++          "positionBits": [
++            13844822768012469158,
++            13836168617584839349,
++            4617779019314262603
++          ]
++        }
++      ],
++      "qualityTriangulation": false,
++      "returned": true,
++      "sourceIdentity": {
++        "compoundPresent": false,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": {
++              "kind": "Child(1)",
++              "nativeBandHex": "3e997a9ab0c2db32",
++              "path": [
++                0,
++                0,
++                0
++              ]
++            },
++            "partners": [
++              1,
++              18446744073709551615,
++              1
++            ],
++            "path": [],
++            "rootAddressProcessLocal": "7b10dc8010"
++          }
++        ],
++        "field": {
++          "branch": {
++            "kind": "Child(1)",
++            "nativeBandHex": "3e997a9ab0c2db32",
++            "path": [
++              0,
++              0,
++              0
++            ]
++          },
++          "partners": [
++            1,
++            18446744073709551615,
++            1
++          ],
++          "path": [],
++          "rootAddressProcessLocal": "7b10dc8010"
++        },
++        "id": 39,
++        "leafIndex": 18446744073709551615,
++        "localIndex": 0,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      },
++      "surfaceTolerance": 0.01,
++      "triangles": [
++        654,
++        39,
++        40,
++        654,
++        40,
++        647,
++        654,
++        647,
++        460,
++        654,
++        460,
++        39
++      ]
++    },
++    {
++      "boundary": [
++        458,
++        459,
++        650,
++        649,
++        648,
++        647,
++        465
++      ],
++      "carrierKind": "TwistedSide",
++      "cellBoxBits": [
++        13844954652959295090,
++        13836171170937199256,
++        4617754209319262306,
++        13844816554298846424,
++        13835618776295404594,
++        4618030406640159637
++      ],
++      "chordTolerance": 0.02,
++      "continuousSourceOwnershipProved": false,
++      "hypothesisStratum": 10,
++      "points": [
++        {
++          "id": 458,
++          "positionBits": [
++            13844827666411667413,
++            13836171170937199256,
++            4617754209319262306
++          ]
++        },
++        {
++          "id": 459,
++          "positionBits": [
++            13844827771266531156,
++            13836171170937187002,
++            4617755369420993716
++          ]
++        },
++        {
++          "id": 465,
++          "positionBits": [
++            13844830331814374579,
++            13836165891772662319,
++            4617754209319262306
++          ]
++        },
++        {
++          "id": 647,
++          "positionBits": [
++            13844830282047795546,
++            13836166026439335478,
++            4617754382154335013
++          ]
++        },
++        {
++          "id": 648,
++          "positionBits": [
++            13844830187233903547,
++            13836166220664319136,
++            4617754419537920016
++          ]
++        },
++        {
++          "id": 649,
++          "positionBits": [
++            13844829891361871162,
++            13836166826779996655,
++            4617754536155328740
++          ]
++        },
++        {
++          "id": 650,
++          "positionBits": [
++            13844828706376621362,
++            13836169254640459311,
++            4617755002379997287
++          ]
++        },
++        {
++          "id": 655,
++          "positionBits": [
++            13844829261744532900,
++            13836168075307039100,
++            4617754590022194856
++          ]
++        }
++      ],
++      "qualityTriangulation": false,
++      "returned": true,
++      "sourceIdentity": {
++        "compoundPresent": false,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": null,
++            "partners": [],
++            "path": [
++              0,
++              0,
++              0,
++              0,
++              1
++            ],
++            "rootAddressProcessLocal": "7b10c71010"
++          }
++        ],
++        "field": null,
++        "id": 10,
++        "leafIndex": 1,
++        "localIndex": 3,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      },
++      "surfaceTolerance": 0.01,
++      "triangles": [
++        655,
++        458,
++        459,
++        655,
++        459,
++        650,
++        655,
++        650,
++        649,
++        655,
++        649,
++        648,
++        655,
++        648,
++        647,
++        655,
++        647,
++        465,
++        655,
++        465,
++        458
++      ]
++    },
++    {
++      "boundary": [
++        459,
++        460,
++        647,
++        648,
++        649,
++        650
++      ],
++      "carrierKind": "Field",
++      "cellBoxBits": [
++        13844954652959295090,
++        13836171170937199256,
++        4617754209319262306,
++        13844816554298846424,
++        13835618776295404594,
++        4618030406640159637
++      ],
++      "chordTolerance": 0.02,
++      "continuousSourceOwnershipProved": false,
++      "hypothesisStratum": 38,
++      "points": [
++        {
++          "id": 459,
++          "positionBits": [
++            13844827771266531156,
++            13836171170937187002,
++            4617755369420993716
++          ]
++        },
++        {
++          "id": 460,
++          "positionBits": [
++            13844827650848918399,
++            13836171170937199257,
++            4617760755969393917
++          ]
++        },
++        {
++          "id": 647,
++          "positionBits": [
++            13844830282047795546,
++            13836166026439335478,
++            4617754382154335013
++          ]
++        },
++        {
++          "id": 648,
++          "positionBits": [
++            13844830187233903547,
++            13836166220664319136,
++            4617754419537920016
++          ]
++        },
++        {
++          "id": 649,
++          "positionBits": [
++            13844829891361871162,
++            13836166826779996655,
++            4617754536155328740
++          ]
++        },
++        {
++          "id": 650,
++          "positionBits": [
++            13844828706376621362,
++            13836169254640459311,
++            4617755002379997287
++          ]
++        },
++        {
++          "id": 656,
++          "positionBits": [
++            13844829081532605267,
++            13836168445143818604,
++            4617755744270549230
++          ]
++        }
++      ],
++      "qualityTriangulation": false,
++      "returned": true,
++      "sourceIdentity": {
++        "compoundPresent": false,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": {
++              "kind": "Child(0)",
++              "nativeBandHex": "3e997a9ab0c2db32",
++              "path": [
++                0,
++                0,
++                0
++              ]
++            },
++            "partners": [
++              1,
++              18446744073709551615,
++              1
++            ],
++            "path": [],
++            "rootAddressProcessLocal": "7b10dc8010"
++          }
++        ],
++        "field": {
++          "branch": {
++            "kind": "Child(0)",
++            "nativeBandHex": "3e997a9ab0c2db32",
++            "path": [
++              0,
++              0,
++              0
++            ]
++          },
++          "partners": [
++            1,
++            18446744073709551615,
++            1
++          ],
++          "path": [],
++          "rootAddressProcessLocal": "7b10dc8010"
++        },
++        "id": 38,
++        "leafIndex": 18446744073709551615,
++        "localIndex": 0,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      },
++      "surfaceTolerance": 0.01,
++      "triangles": [
++        656,
++        459,
++        460,
++        656,
++        460,
++        647,
++        656,
++        647,
++        648,
++        656,
++        648,
++        649,
++        656,
++        649,
++        650,
++        656,
++        650,
++        459
++      ]
++    },
++    {
++      "boundary": [
++        1116,
++        1114,
++        38,
++        40,
++        1117
++      ],
++      "hypothesisStratum": 15,
++      "idSpace": "candidate plus exactly keyed outside points",
++      "points": [
++        {
++          "id": 38,
++          "outsideLocalId": 0,
++          "positionBits": [
++            13844816554298846424,
++            13835618776295404592,
++            4617801817764908076
++          ]
++        },
++        {
++          "id": 40,
++          "outsideLocalId": 2,
++          "positionBits": [
++            13844816554298846762,
++            13836166026439335478,
++            4617801809107539645
++          ]
++        },
++        {
++          "id": 1114,
++          "outsideLocalId": 3,
++          "positionBits": [
++            13844748356977640844,
++            13835618776295404592,
++            4618030406640159634
++          ]
++        },
++        {
++          "id": 1116,
++          "outsideLocalId": 5,
++          "positionBits": [
++            13844748356756957604,
++            13836166026439335478,
++            4618030406640159853
++          ]
++        },
++        {
++          "id": 1117,
++          "outsideLocalId": 7,
++          "positionBits": [
++            13844773025837132680,
++            13836166026439335478,
++            4617949022357655430
++          ]
++        },
++        {
++          "id": 1119,
++          "outsideLocalId": 9,
++          "positionBits": [
++            13844780823415619052,
++            13835947126381763123,
++            4617922995774708407
++          ]
++        }
++      ],
++      "sourceIdentity": {
++        "compoundPresent": false,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": null,
++            "partners": [],
++            "path": [
++              0,
++              0,
++              0,
++              1
++            ],
++            "rootAddressProcessLocal": "7b10c71010"
++          }
++        ],
++        "field": null,
++        "id": 15,
++        "leafIndex": 2,
++        "localIndex": 0,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      },
++      "sourceOwnershipProved": false,
++      "triangles": [
++        1119,
++        1116,
++        1114,
++        1119,
++        1114,
++        38,
++        1119,
++        38,
++        40,
++        1119,
++        40,
++        1117,
++        1119,
++        1117,
++        1116
++      ]
++    },
++    {
++      "boundary": [
++        40,
++        39,
++        478,
++        1115,
++        1116,
++        1117
++      ],
++      "hypothesisStratum": 31,
++      "idSpace": "candidate plus exactly keyed outside points",
++      "points": [
++        {
++          "id": 39,
++          "outsideLocalId": 1,
++          "positionBits": [
++            13844816554298846424,
++            13836171170937199256,
++            4617799094638878133
++          ]
++        },
++        {
++          "id": 40,
++          "outsideLocalId": 2,
++          "positionBits": [
++            13844816554298846762,
++            13836166026439335478,
++            4617801809107539645
++          ]
++        },
++        {
++          "id": 1115,
++          "outsideLocalId": 4,
++          "positionBits": [
++            13844747549898595909,
++            13836171170937199256,
++            4618030406640159634
++          ]
++        },
++        {
++          "id": 1116,
++          "outsideLocalId": 5,
++          "positionBits": [
++            13844748356756957604,
++            13836166026439335478,
++            4618030406640159853
++          ]
++        },
++        {
++          "id": 478,
++          "outsideLocalId": 6,
++          "positionBits": [
++            13844789161382673385,
++            13836171170937199256,
++            4617892307979710970
++          ]
++        },
++        {
++          "id": 1117,
++          "outsideLocalId": 7,
++          "positionBits": [
++            13844773025837132680,
++            13836166026439335478,
++            4617949022357655430
++          ]
++        },
++        {
++          "id": 1118,
++          "outsideLocalId": 8,
++          "positionBits": [
++            13844782035343704292,
++            13836169018175885646,
++            4617917375411644382
++          ]
++        }
++      ],
++      "sourceIdentity": {
++        "compoundPresent": true,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": null,
++            "partners": [],
++            "path": [
++              0,
++              0
++            ],
++            "rootAddressProcessLocal": "7b10c71010"
++          }
++        ],
++        "field": null,
++        "id": 31,
++        "leafIndex": 18446744073709551615,
++        "localIndex": 0,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      },
++      "sourceOwnershipProved": false,
++      "triangles": [
++        1118,
++        40,
++        39,
++        1118,
++        39,
++        478,
++        1118,
++        478,
++        1115,
++        1118,
++        1115,
++        1116,
++        1118,
++        1116,
++        1117,
++        1118,
++        1117,
++        40
++      ]
++    }
++  ],
++  "cells": [
++    {
++      "cell": [
++        7,
++        25,
++        58,
++        86
++      ],
++      "patchIndices": [
++        0,
++        1,
++        2,
++        3
++      ],
++      "triangles": [
++        653,
++        40,
++        38,
++        653,
++        38,
++        41,
++        653,
++        41,
++        464,
++        653,
++        464,
++        465,
++        653,
++        465,
++        647,
++        653,
++        647,
++        40,
++        654,
++        39,
++        40,
++        654,
++        40,
++        647,
++        654,
++        647,
++        460,
++        654,
++        460,
++        39,
++        655,
++        458,
++        459,
++        655,
++        459,
++        650,
++        655,
++        650,
++        649,
++        655,
++        649,
++        648,
++        655,
++        648,
++        647,
++        655,
++        647,
++        465,
++        655,
++        465,
++        458,
++        656,
++        459,
++        460,
++        656,
++        460,
++        647,
++        656,
++        647,
++        648,
++        656,
++        648,
++        649,
++        656,
++        649,
++        650,
++        656,
++        650,
++        459
++      ]
++    },
++    {
++      "cell": [
++        7,
++        26,
++        58,
++        86
++      ],
++      "patchIndices": [
++        4,
++        5
++      ],
++      "triangles": [
++        1119,
++        1116,
++        1114,
++        1119,
++        1114,
++        38,
++        1119,
++        38,
++        40,
++        1119,
++        40,
++        1117,
++        1119,
++        1117,
++        1116,
++        1118,
++        40,
++        39,
++        1118,
++        39,
++        478,
++        1118,
++        478,
++        1115,
++        1118,
++        1115,
++        1116,
++        1118,
++        1116,
++        1117,
++        1118,
++        1117,
++        40
++      ]
++    }
++  ],
++  "cylinderSource": 15,
++  "surfaceTolerance": 0.01,
++  "sharedSegments": [
++    [
++      40,
++      38
++    ],
++    [
++      39,
++      40
++    ]
++  ],
++  "commonEndpoint": 40
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/adoption_source_c.rs
+@@ -0,0 +1,95 @@
++//! One globally budgeted source attempt over the provenance-bound incident triangle inventory.
++use super::fullfan_source_a;
++use crate::sfcc::pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube};
++use crate::sfcc::validation::NumericalGuard;
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++
++#[test]
++fn adoption_source_c_actual_incident_union_attempt() {
++    let _guard = NumericalGuard::new();
++    let original: Value =
++        serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let fixture_text = match std::env::var("SFCC_ADOPTION_C_FIXTURE") {
++        Ok(path) => std::fs::read_to_string(path).unwrap(),
++        Err(std::env::VarError::NotPresent) => {
++            include_str!("../../fixtures/face-fans-c.json").to_owned()
++        }
++        Err(error) => panic!("invalid incident fixture path: {error}"),
++    };
++    let saved: Value = serde_json::from_str(&fixture_text).unwrap();
++    let tree =
++        crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap())
++            .unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap()
++            - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
++    assert_eq!(
++        context.features.fingerprint().to_string(),
++        saved["sourceFingerprint"].as_str().unwrap()
++    );
++    let points: BTreeMap<usize, [f64; 3]> = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|p| {
++            (
++                p["id"].as_u64().unwrap() as usize,
++                std::array::from_fn(|k| f64::from_bits(p["positionBits"][k].as_u64().unwrap())),
++            )
++        })
++        .collect();
++    assert_eq!(points.len(), saved["points"].as_array().unwrap().len());
++    let mut flat = Vec::new();
++    let mut counts = Vec::new();
++    for patch in saved["patches"].as_array().unwrap() {
++        let ids: Vec<usize> = serde_json::from_value(patch["triangles"].clone()).unwrap();
++        assert!(!ids.is_empty() && ids.len() % 3 == 0);
++        counts.push(ids.len() / 3);
++        flat.extend(ids);
++    }
++    let mut unique = BTreeSet::new();
++    let triangles: Vec<_> = flat
++        .chunks_exact(3)
++        .map(|t| {
++            let mut key = [t[0], t[1], t[2]];
++            key.sort_unstable();
++            assert!(
++                unique.insert(key),
++                "duplicate emitted triangle must not create a second budget domain"
++            );
++            [points[&t[0]], points[&t[1]], points[&t[2]]]
++        })
++        .collect();
++    let tolerance = saved["surfaceTolerance"].as_f64().unwrap();
++    assert_eq!(
++        tolerance.to_bits(),
++        original["tuning"]["surfaceTolMm"]
++            .as_f64()
++            .unwrap()
++            .to_bits()
++    );
++    let cylinder = saved["cylinderSource"].as_u64().unwrap() as usize;
++    let attempt = fullfan_source_a::attempt(&context.features, cylinder, &triangles, tolerance);
++    let proved = attempt["result"]["Ok"].is_object();
++    let report = json!({"scope":"one source-root graph attempt over exactly the supplied emitted triangle union; geometric union, target ownership and transport are independent obligations",
++        "sourceFingerprint":context.features.fingerprint().to_string(),"parentReceiptSha256":saved["parentReceiptSha256"],
++        "cells":saved["cells"],"patchTriangleCounts":counts,"triangles":flat,
++        "trianglePointBits":triangles.iter().map(|t|t.map(|p|p.map(f64::to_bits))).collect::<Vec<_>>(),
++        "sourceAttempt":attempt,"wholeSuppliedSourceGraphProved":proved,
++        "sourceCalls":1,"priorCertificateReuse":false,"perFanBudgetReset":false,
++        "boundaryTransportProved":false,"idealCurveAdoptionProved":false,"publicationReady":false});
++    if let Ok(path) = std::env::var("SFCC_ADOPTION_C_RECEIPT") {
++        std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    }
++    assert!(
++        proved,
++        "source gate is preserved in the attempt receipt: {}",
++        report["sourceAttempt"]
++    );
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/boundary_transport_b.rs
+@@ -0,0 +1,259 @@
++//! Simultaneous interior-feature target adoption on one already checked projected disk.
++use super::{combine_error, graph_jacobian_upper, Domain, Point, Result, I};
++use crate::sfcc::loft_seam::{mul, square};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++
++/// Targets enclose exact source points proved by the caller on this source instance.
++/// This only changes source correspondence; both working and exported mesh points stay fixed.
++pub(crate) fn transport(
++    domain: &Domain,
++    points: &BTreeMap<usize, Point>,
++    source: &Value,
++    targets: &BTreeMap<usize, [I; 3]>,
++    tolerance: f64,
++) -> Result<Value> {
++    let base = combine_error(domain, source, tolerance)?;
++    if targets.is_empty() || targets.len() > 4 || points.len() > 128 {
++        return Err("boundary_transport_scope");
++    }
++    let used: BTreeSet<_> = domain.triangles.iter().copied().collect();
++    if used.iter().any(|id| {
++        points
++            .get(id)
++            .is_none_or(|p| p.iter().any(|x| !x.is_finite()))
++    }) {
++        return Err("boundary_transport_points");
++    }
++    if json!(used
++        .iter()
++        .map(|id| json!([id, points[id].map(f64::to_bits)]))
++        .collect::<Vec<_>>())
++        != domain.report["pointBits"]
++    {
++        return Err("boundary_transport_point_binding");
++    }
++    let boundary: Vec<usize> = serde_json::from_value(domain.report["outerBoundary"].clone())
++        .map_err(|_| "boundary_transport_boundary")?;
++    let slab: [f64; 2] = serde_json::from_value(source["commonWorldXSlab"].clone())
++        .map_err(|_| "boundary_transport_slab")?;
++    if slab.iter().any(|v| !v.is_finite()) || slab[0] >= slab[1] {
++        return Err("boundary_transport_slab");
++    }
++    let mut beta = 0.0_f64;
++    let mut rows = Vec::new();
++    for (&id, target) in targets {
++        if !used.contains(&id) || boundary.contains(&id) {
++            return Err("boundary_transport_target_not_interior");
++        }
++        if target
++            .iter()
++            .any(|v| !v.lo.is_finite() || !v.hi.is_finite() || v.lo > v.hi)
++            || target[0].lo <= slab[0]
++            || target[0].hi >= slab[1]
++        {
++            return Err("boundary_transport_target_enclosure");
++        }
++        let mut distance2 = I::point(0.);
++        for k in 1..3 {
++            distance2 = distance2
++                .add(
++                    square(
++                        target[k]
++                            .sub(I::point(points[&id][k]))
++                            .ok_or("boundary_transport_arithmetic")?,
++                    )
++                    .ok_or("boundary_transport_arithmetic")?,
++                )
++                .ok_or("boundary_transport_arithmetic")?;
++        }
++        let motion = distance2.hi.sqrt().next_up();
++        beta = beta.max(motion);
++        rows.push(json!({"id":id,"originalPointBits":points[&id].map(f64::to_bits),
++            "targetImage":[target.map(|v|v.lo),target.map(|v|v.hi)],"projectedVertexMotionUpper":motion}));
++    }
++    let mut jacobian = 0.0_f64;
++    let mut minimum_margin = f64::INFINITY;
++    let mut changed = Vec::new();
++    for (index, triangle) in domain.triangles.chunks_exact(3).enumerate() {
++        let p = [
++            points[&triangle[0]],
++            points[&triangle[1]],
++            points[&triangle[2]],
++        ];
++        jacobian = jacobian.max(graph_jacobian_upper(p).ok_or("boundary_transport_jacobian")?);
++        if !triangle.iter().any(|id| targets.contains_key(id)) {
++            continue;
++        }
++        // These hulls contain every simultaneous intermediate vertex for every enclosed target.
++        let hull: [[I; 2]; 3] = std::array::from_fn(|i| {
++            std::array::from_fn(|k| {
++                let old = p[i][k + 1];
++                targets.get(&triangle[i]).map_or(I::point(old), |t| I {
++                    lo: old.min(t[k + 1].lo),
++                    hi: old.max(t[k + 1].hi),
++                })
++            })
++        });
++        let a = hull[1][0]
++            .sub(hull[0][0])
++            .ok_or("boundary_transport_arithmetic")?;
++        let b = hull[1][1]
++            .sub(hull[0][1])
++            .ok_or("boundary_transport_arithmetic")?;
++        let c = hull[2][0]
++            .sub(hull[0][0])
++            .ok_or("boundary_transport_arithmetic")?;
++        let d = hull[2][1]
++            .sub(hull[0][1])
++            .ok_or("boundary_transport_arithmetic")?;
++        let sign = domain.report["projectedWinding"]
++            .as_i64()
++            .ok_or("boundary_transport_winding")?;
++        let margin = mul(a, d)
++            .and_then(|v| v.sub(mul(b, c)?))
++            .and_then(|v| v.mul(sign as f64))
++            .ok_or("boundary_transport_arithmetic")?;
++        if margin.lo <= 0. {
++            return Err("boundary_transport_intermediate_fold_not_excluded");
++        }
++        minimum_margin = minimum_margin.min(margin.lo);
++        changed.push(json!({"triangle":index,"ids":triangle,"signedOrientationLower":margin.lo}));
++    }
++    if changed.is_empty() || changed.len() > 128 {
++        return Err("boundary_transport_triangle_inventory");
++    }
++    let source_bounds: Vec<f64> = serde_json::from_value(source["perTriangleSourceBounds"].clone())
++        .map_err(|_| "boundary_transport_source_bounds")?;
++    let delta = source_bounds.iter().copied().fold(0., f64::max);
++    let eta = domain.export_bounds.iter().copied().fold(0., f64::max);
++    let extra = I::point(jacobian)
++        .mul(beta)
++        .ok_or("boundary_transport_arithmetic")?
++        .hi;
++    let total = I::point(delta)
++        .add(I::point(extra))
++        .and_then(|v| v.add(I::point(eta)))
++        .ok_or("boundary_transport_arithmetic")?
++        .hi;
++    if !total.is_finite() || total > tolerance {
++        return Err("boundary_transport_error_limit");
++    }
++    Ok(
++        json!({"scope":"conditional simultaneous source-correspondence transport on the exact supplied projected disk",
++        "targets":rows,"changedTriangles":changed,"strictIntermediateOrientationLower":minimum_margin,
++        "projectedMotionUpper":beta,"meshGraphJacobianUpper":jacobian,"additionalWorkingErrorUpper":extra,
++        "uniformSourceBound":delta,"uniformExportRoundingBound":eta,"sourceToExportAfterTransportUpper":total,
++        "tolerance":tolerance,"originalComposedBound":base,"outerBoundaryFixed":true,
++        "projectedDomainMapsOntoItself":true,"workingAndExportedMeshUnchanged":true,
++        "theorem":"every intermediate PL map has positive triangle Jacobians and fixes the simple disk boundary, so degree one gives a disk homeomorphism; the straight image path remains in D and |Phi(Tu)-M(u)| <= delta + L_mesh*beta + eta",
++        "exactTargetSourceCertificatesRequired":true,"allIncidentConsumerBindingRequired":true,
++        "sourceTriangleOrderBindingRequired":true,"sourceFeatureCurveParameterizationProved":false,
++        "noAdditionalSourceCertificateCall":true,"publicationReady":false}),
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn fixture() -> (BTreeMap<usize, Point>, Domain, Value) {
++        let p = BTreeMap::from([
++            (0, [0., -0.3, 0.]),
++            (1, [0., -1., -1.]),
++            (2, [0., 1., -1.]),
++            (3, [0., 1., 1.]),
++            (4, [0., -1., 1.]),
++            (5, [0., 0.3, 0.]),
++        ]);
++        let patches = [
++            vec![0, 2, 1, 0, 5, 2, 0, 1, 4],
++            vec![5, 3, 2, 5, 4, 3, 5, 0, 4],
++        ];
++        let domain = super::super::audit(&p, &patches, [[0, 2], [0, 4]], 0).unwrap();
++        let source = json!({"perTriangleSourceBounds":vec![0.001;6],"triangleCount":6,
++            "fullClosedTriangleDomainsCovered":true,"sharedEdgeRootsAgreeByCommonSlabUniqueness":true,
++            "tolerance":0.01,"commonWorldXSlab":[-1.,1.]});
++        (p, domain, source)
++    }
++    #[test]
++    fn boundary_b_simultaneous_interior_transport_and_binding() {
++        let (p, domain, source) = fixture();
++        let target = BTreeMap::from([
++            (0, [I::point(0.), I::point(-0.299999), I::point(1e-6)]),
++            (5, [I::point(0.), I::point(0.300001), I::point(1e-6)]),
++        ]);
++        assert_eq!(
++            transport(&domain, &p, &source, &target, 0.01).unwrap()["outerBoundaryFixed"],
++            true
++        );
++        let mut changed = p.clone();
++        changed.get_mut(&1).unwrap()[1] = -1.01;
++        assert_eq!(
++            transport(&domain, &changed, &source, &target, 0.01),
++            Err("boundary_transport_point_binding")
++        );
++    }
++    #[test]
++    fn boundary_b_refuses_outer_boundary_even_for_tiny_motion() {
++        let (p, domain, source) = fixture();
++        let target = BTreeMap::from([(1, [I::point(0.), I::point(-1. + 1e-14), I::point(-1.)])]);
++        assert_eq!(
++            transport(&domain, &p, &source, &target, 0.01),
++            Err("boundary_transport_target_not_interior")
++        );
++    }
++    #[test]
++    fn boundary_b_refuses_simultaneous_fold() {
++        let (p, domain, source) = fixture();
++        let target = BTreeMap::from([(0, p[&5].map(I::point)), (5, p[&0].map(I::point))]);
++        assert_eq!(
++            transport(&domain, &p, &source, &target, 0.01),
++            Err("boundary_transport_intermediate_fold_not_excluded")
++        );
++    }
++    #[test]
++    fn boundary_b_does_not_treat_enclosure_midpoint_as_target() {
++        let (p, domain, source) = fixture();
++        let target = BTreeMap::from([(0, [I::point(0.), I { lo: -2., hi: 2. }, I::point(0.)])]);
++        assert_eq!(
++            transport(&domain, &p, &source, &target, 0.01),
++            Err("boundary_transport_intermediate_fold_not_excluded")
++        );
++    }
++}
++
++#[test]
++fn boundary_b_actual_full_first_cell_union_attempt() {
++    let saved: Value =
++        serde_json::from_str(include_str!("../../fixtures/incident-first-cell-b.json")).unwrap();
++    let points: BTreeMap<usize, Point> = saved["points"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|p| {
++            (
++                p["id"].as_u64().unwrap() as usize,
++                std::array::from_fn(|k| f64::from_bits(p["positionBits"][k].as_u64().unwrap())),
++            )
++        })
++        .collect();
++    let patches: Vec<Vec<usize>> = saved["cells"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|p| serde_json::from_value(p["triangles"].clone()).unwrap())
++        .collect();
++    let attempt = super::audit(&points, &patches, [[40, 38], [39, 40]], 40);
++    eprintln!(
++        "BOUNDARY_B_FIRST_CELL {}",
++        match &attempt {
++            Ok(d) => json!({"geometry":d.report(),"sourceGraphProvedHere":false}),
++            Err(reason) => json!({"refused":reason,"sourceGraphProvedHere":false}),
++        }
++    );
++    let domain = attempt.unwrap();
++    let outer: Vec<usize> =
++        serde_json::from_value(domain.report()["outerBoundary"].clone()).unwrap();
++    assert!(!outer.contains(&647));
++    assert!(outer.contains(&1116));
++}
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -463,3 +463,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="span_complete_c.rs"]
+ pub(crate) mod span_complete_c;
++
++#[cfg(all(test, feature="serde"))]
++#[path="adoption_source_c.rs"]
++pub(crate) mod adoption_source_c;
+--- a/gcad-wasm/kernel/src/sfcc/face_join_c.rs
++++ b/gcad-wasm/kernel/src/sfcc/face_join_c.rs
+@@ -43,7 +43,7 @@
+         || count > 3 * 128
+         || patches
+             .iter()
+-            .any(|p| p.is_empty() || p.len() % 3 != 0 || !p.contains(&endpoint))
++            .any(|p| p.is_empty() || p.len() % 3 != 0)
+         || segments
+             .iter()
+             .any(|s| s[0] == s[1] || !s.contains(&endpoint))
+@@ -785,3 +785,6 @@
+         "newOwnQueryAttempts":1,"additionalSourceCertificateCalls":0,"meshMutationPerformed":false,"publicationReady":false}),
+     )
+ }
++
++#[path = "boundary_transport_b.rs"]
++pub(crate) mod boundary_transport_b;
+--- a/gcad-wasm/kernel/src/sfcc/fullfan_source_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/fullfan_source_a.rs
+@@ -444,6 +444,28 @@
+     triangles: &[[[f64; 3]; 3]],
+     tolerance: f64,
+ ) -> std::result::Result<Value, String> {
++    certify_recorded(f, cylinder_id, triangles, tolerance, &mut Value::Null)
++}
++
++pub(crate) fn attempt(
++    f: &SfccFeatureSet,
++    cylinder_id: usize,
++    triangles: &[[[f64; 3]; 3]],
++    tolerance: f64,
++) -> Value {
++    let mut diagnostics = json!({"sourceCalls":1,"pieceCap":MAX_PIECES,
++        "depthCap":12,"partialCoverageIsNotACertificate":true});
++    let result = certify_recorded(f, cylinder_id, triangles, tolerance, &mut diagnostics);
++    json!({"result":result,"diagnostics":diagnostics})
++}
++
++fn certify_recorded(
++    f: &SfccFeatureSet,
++    cylinder_id: usize,
++    triangles: &[[[f64; 3]; 3]],
++    tolerance: f64,
++    diagnostics: &mut Value,
++) -> std::result::Result<Value, String> {
+     if triangles.is_empty()
+         || triangles.len() > 128
+         || !tolerance.is_finite()
+@@ -475,6 +497,10 @@
+         I::point(maxx).add(I::point(tolerance)).ok_or("slab")?.hi,
+     )
+     .ok_or("slab")?;
++    *diagnostics = json!({"sourceCalls":1,"pieceCap":MAX_PIECES,"depthCap":12,
++        "sourceFingerprint":f.fingerprint().to_string(),"cylinder":cylinder_id,
++        "triangleCount":triangles.len(),"tolerance":tolerance,
++        "commonWorldXSlab":[slab.lo,slab.hi],"partialCoverageIsNotACertificate":true});
+     let mut stack: Vec<_> = triangles
+         .iter()
+         .enumerate()
+@@ -487,10 +513,17 @@
+     let mut failures = Vec::new();
+     while let Some((index, depth, t)) = stack.pop() {
+         if attempts == MAX_PIECES {
++            diagnostics["attempts"] = json!(attempts);
++            diagnostics["acceptedPieces"] = json!(accepted.len());
++            diagnostics["pendingPiecesIncludingCurrent"] = json!(stack.len() + 1);
++            diagnostics["refinedFailures"] = json!(failures);
++            diagnostics["currentTriangle"] = json!(index);
++            diagnostics["currentDepth"] = json!(depth);
++            diagnostics["refusal"] = json!("piece_cap");
+             return Err(format!(
+                 "piece_cap: accepted {}, pending {}, last {:?}",
+                 accepted.len(),
+-                stack.len(),
++                stack.len() + 1,
+                 failures.last()
+             ));
+         }
+@@ -508,6 +541,13 @@
+             Err(reason) => {
+                 failures.push(json!({"triangle":index,"depth":depth,"reason":reason}));
+                 if depth >= 12 {
++                    diagnostics["attempts"] = json!(attempts);
++                    diagnostics["acceptedPieces"] = json!(accepted.len());
++                    diagnostics["pendingPiecesIncludingCurrent"] = json!(stack.len() + 1);
++                    diagnostics["refinedFailures"] = json!(failures);
++                    diagnostics["currentTriangle"] = json!(index);
++                    diagnostics["currentDepth"] = json!(depth);
++                    diagnostics["refusal"] = json!(reason);
+                     return Err(format!(
+                         "unproved_piece: {reason}, triangle {index}, depth {depth}"
+                     ));
+@@ -518,6 +558,10 @@
+             }
+         }
+     }
++    diagnostics["attempts"] = json!(attempts);
++    diagnostics["acceptedPieces"] = json!(accepted.len());
++    diagnostics["pendingPiecesIncludingCurrent"] = json!(0);
++    diagnostics["refusal"] = Value::Null;
+     Ok(
+         json!({"scope":"unique full-source root graph over every supplied closed projected triangle, and same-YZ mesh-to-root displacement; supplied-domain topology and cell-face boundary transport are separate obligations",
+         "sourceFingerprint":source.f.fingerprint().to_string(),"source":source.source,"cylinder":source.cylinder_id,"commonWorldXSlab":[slab.lo,slab.hi],
+@@ -665,10 +709,11 @@
+     );
+     let repeated = triangles.repeat(21);
+     assert_eq!(repeated.len(), 126);
+-    assert!(
+-        certify(&f, sid, &repeated, tolerance)
+-            .unwrap_err()
+-            .starts_with("piece_cap:"),
+-        "128 attempts apply globally, not per input triangle"
+-    );
+-}
++    let refused = attempt(&f, sid, &repeated, tolerance);
++    assert!(refused["result"]["Err"].as_str().unwrap().starts_with("piece_cap:"),
++        "128 attempts apply globally, not per input triangle");
++    assert_eq!(refused["diagnostics"]["attempts"], 128);
++    assert_eq!(refused["diagnostics"]["sourceCalls"], 1);
++    assert_eq!(refused["diagnostics"]["refusal"], "piece_cap");
++    assert!(refused["diagnostics"]["pendingPiecesIncludingCurrent"].as_u64().unwrap() > 0);
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/incident_a.rs
+@@ -0,0 +1,622 @@
++//! Bounded incident-cell inventory; this observation never publishes a repair.
++use super::*;
++
++// Discrete ownership comes from original records, never rounded coordinate coincidence.
++fn owned_consumers(
++    entries: &[([i64; 4], usize)],
++    known: [i64; 4],
++    raw: &BTreeSet<[i64; 4]>,
++) -> Result<BTreeSet<[i64; 4]>> {
++    if entries.len() != 2
++        || entries[0].0 == entries[1].0
++        || entries.iter().any(|e| e.1 > 1)
++        || entries[0].1 == entries[1].1
++        || !entries.iter().any(|e| e.0 == known)
++    {
++        return Err("incident_opposite_consumer_inventory");
++    }
++    let owners: BTreeSet<_> = entries.iter().map(|e| e.0).collect();
++    if !raw.is_subset(&owners) {
++        return Err("incident_unrepresented_raw_box_consumer");
++    }
++    Ok(owners)
++}
++fn retained_face_defect(
++    axis: usize,
++    rect: [[f64; 3]; 2],
++    point: [f64; 3],
++    allowance: f64,
++) -> Result<Value> {
++    use crate::sdf::enclosure::Interval as I;
++    if axis >= 3
++        || !allowance.is_finite()
++        || allowance <= 0.
++        || rect
++            .iter()
++            .flatten()
++            .chain(point.iter())
++            .any(|v| !v.is_finite())
++        || (0..3).any(|k| rect[0][k] > rect[1][k])
++        || rect[0][axis] != rect[1][axis]
++    {
++        return Err("incident_face_defect_input");
++    }
++    let plane = I::point(point[axis])
++        .sub(I::point(rect[0][axis]))
++        .ok_or("incident_face_defect_interval")?;
++    let mut coordinate = [0.; 3];
++    let mut l1 = I::point(0.);
++    for k in 0..3 {
++        let closest = point[k].clamp(rect[0][k], rect[1][k]);
++        if point[k] != closest {
++            let delta = I::point(point[k])
++                .sub(I::point(closest))
++                .ok_or("incident_face_defect_interval")?;
++            coordinate[k] = delta.lo.abs().max(delta.hi.abs());
++            l1 = l1
++                .add(I::point(coordinate[k]))
++                .ok_or("incident_face_defect_interval")?;
++        }
++    }
++    if l1.hi > allowance {
++        return Err("incident_retained_point_outside_original_allowance");
++    }
++    Ok(
++        json!({"planeSignedDefectInterval":[plane.lo,plane.hi],"coordinateDefectUpper":coordinate,
++        "rectangleDistanceUpperL1":l1.hi,"originalAllowance":allowance,"rectangleBits":rect.map(|p|p.map(f64::to_bits)),
++        "retainedPointExactlyOnPlane":point[axis]==rect[0][axis],
++        "scope":"retained point distance to represented original face rectangle, not ideal-target containment or exact geometric ownership"}),
++    )
++}
++
++fn array<T: serde::de::DeserializeOwned>(value: &Value) -> Result<T> {
++    serde_json::from_value(value.clone()).map_err(|_| "incident_payload_encoding")
++}
++fn emitted_fans(report: &Value) -> Result<Vec<Value>> {
++    if report["failedCellCount"] != 0
++        || report["featureCellFallbacks"] != 0
++        || report["allGeneratedQueriesValidated"] != true
++        || report["originalFaceConsumptionValid"] != true
++        || report["invalidWorkingOrExportedOrientation"] != json!([])
++        || report["fanCaptureA"]["complete"] != true
++    {
++        return Err("incident_original_consumer_not_validated");
++    }
++    let fans = report["fanCaptureA"]["pairedFans"]
++        .as_array()
++        .ok_or("incident_fans_missing")?;
++    let triangles: Vec<usize> = array(&report["triangles"])?;
++    let rows = report["points"]
++        .as_array()
++        .ok_or("incident_points_missing")?;
++    if fans.len() > 128 || rows.len() > 4096 {
++        return Err("incident_capture_cap");
++    }
++    let mut flattened = Vec::new();
++    for fan in fans {
++        require_emitted_fan(fan, &triangles)?;
++        if fan["returned"] != true || fan["cellBoxBits"] != report["cellBoxBits"] {
++            return Err("incident_fan_cell_binding");
++        }
++        for row in fan["points"].as_array().ok_or("incident_fan_points")? {
++            let id = row["id"].as_u64().ok_or("incident_point_id")? as usize;
++            if rows
++                .get(id)
++                .is_none_or(|r| r["id"] != row["id"] || r["positionBits"] != row["positionBits"])
++            {
++                return Err("incident_fan_final_point_binding");
++            }
++        }
++        let fan_points = fan["points"].as_array().ok_or("incident_fan_points")?;
++        for point in fan["boundary"]
++            .as_array()
++            .into_iter()
++            .flatten()
++            .chain(fan["triangles"].as_array().into_iter().flatten())
++        {
++            if fan_points.iter().filter(|row| row["id"] == *point).count() != 1 {
++                return Err("incident_fan_final_point_binding");
++            }
++        }
++        flattened.extend(array::<Vec<usize>>(&fan["triangles"])?);
++    }
++    if flattened != triangles {
++        return Err("incident_fan_output_coverage");
++    }
++    Ok(fans.clone())
++}
++
++pub(super) fn probe(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++    candidate: &PrivateCandidate,
++    outside: &Value,
++) -> Value {
++    let mut receipt = json!({"scope":"all discrete incident consumers of two specified feature endpoints, original stage; source and boundary transport remain separate obligations",
++        "sourceFingerprint":features.fingerprint().to_string(),"publicationAuthorized":false,
++        "continuousSourceOwnershipProved":false,"idealTargetAdoptionProved":false,"complete":false});
++    if let Err(reason) = bind(
++        tree,
++        features,
++        oct,
++        faces,
++        live,
++        opts,
++        candidate,
++        outside,
++        &mut receipt,
++    ) {
++        receipt["refusal"] = json!(reason);
++    }
++    receipt
++}
++fn bind(
++    tree: &CsgNode,
++    features: &SfccFeatureSet,
++    oct: &SfccOctree,
++    faces: &[HashMap<i64, FaceRecord>; 3],
++    live: &PointTable,
++    opts: &CellMeshOptions,
++    candidate: &PrivateCandidate,
++    outside: &Value,
++    receipt: &mut Value,
++) -> Result<()> {
++    let inside = &outside["insideTargetFanCaptureB"];
++    if inside["complete"] != true || outside["secondSegmentB"]["complete"] != true {
++        return Err("incident_original_pair_binding");
++    }
++    let inside_cell: [i64; 4] = array(&inside["cell"])?;
++    let outside_cell: [i64; 4] = array(&outside["cell"])?;
++    let endpoint = candidate
++        .points
++        .lookup_str("corner:13")
++        .ok_or("incident_corner_key")?;
++    if endpoint != 647 {
++        return Err("incident_corner_witness");
++    }
++    let corner = features.corners.get(13).ok_or("incident_corner_source")?;
++    let p = q::pos(&candidate.points, endpoint);
++    if corner.id != 13 || [corner.x, corner.y, corner.z].map(f64::to_bits) != p.map(f64::to_bits) {
++        return Err("incident_corner_source_point");
++    }
++    let containing: Vec<_> = oct
++        .leaves
++        .iter()
++        .filter(|cell| {
++            let b = cell_aabb(&oct.lat, cell.level, cell.ix, cell.iy, cell.iz);
++            (0..3).all(|k| p[k] >= b[k] && p[k] <= b[k + 3])
++        })
++        .collect();
++    if containing.len() != 1 || id(containing[0]) != inside_cell {
++        return Err("incident_corner_leaf_closure");
++    }
++    let inside_fans = inside["pairedFans"]
++        .as_array()
++        .ok_or("incident_inside_fans")?;
++    let mut patches = inside_fans.clone();
++    let inside_triangles: Vec<usize> = patches
++        .iter()
++        .map(|f| array::<Vec<usize>>(&f["triangles"]))
++        .collect::<Result<Vec<_>>>()?
++        .into_iter()
++        .flatten()
++        .collect();
++    for fan in &patches {
++        require_final_fan(fan, &candidate.triangles, &candidate.points)?;
++        require_fan_source(fan, features)?;
++    }
++    let actual_corner: Vec<_> = candidate
++        .triangles
++        .chunks_exact(3)
++        .filter(|t| t.contains(&endpoint))
++        .map(|t| t.to_vec())
++        .collect();
++    let captured_corner: Vec<_> = inside_triangles
++        .chunks_exact(3)
++        .filter(|t| t.contains(&endpoint))
++        .map(|t| t.to_vec())
++        .collect();
++    if actual_corner.is_empty() || actual_corner != captured_corner {
++        return Err("incident_corner_triangle_closure");
++    }
++    receipt["corner647"] = json!({"point":endpoint,"sourceCorner":13,"positionBits":p.map(f64::to_bits),
++        "closedBoxConsumerCells":containing.iter().map(|c|id(c)).collect::<Vec<_>>(),"incidentTriangles":actual_corner,
++        "completeCandidateTriangleStarBound":true,"cellPatchCount":patches.len(),"cellTriangleCount":inside_triangles.len()/3});
++    let mapping: Vec<usize> = array(&outside["joined"]["outsideToJoined"])?;
++    let local = mapping
++        .iter()
++        .position(|&p| p == 1116)
++        .ok_or("incident_outer_endpoint_mapping")?;
++    if mapping.iter().filter(|&&p| p == 1116).count() != 1 {
++        return Err("incident_outer_endpoint_ambiguous");
++    }
++    let bindings: Vec<[usize; 2]> = array(&outside["pointBindings"])?;
++    let globals: Vec<_> = bindings
++        .iter()
++        .filter(|b| b[1] == local)
++        .map(|b| b[0])
++        .collect();
++    if globals.len() != 1 || globals[0] >= live.count() {
++        return Err("incident_outer_global_binding");
++    }
++    let global = globals[0];
++    let rows = outside["points"]
++        .as_array()
++        .ok_or("incident_outer_points")?;
++    if rows
++        .get(local)
++        .is_none_or(|r| r["positionBits"] != json!(q::pos(live, global).map(f64::to_bits)))
++    {
++        return Err("incident_outer_point_bits");
++    }
++    let mut incident_faces = BTreeSet::new();
++    let mut face_rows = Vec::new();
++    for axis in 0..3 {
++        for (&key, record) in &faces[axis] {
++            if record
++                .segments
++                .iter()
++                .any(|s| s.a == global || s.b == global)
++                || record.pins.iter().any(|p| p.point_id == global)
++            {
++                if record.axis != axis
++                    || record.key != key
++                    || record.len <= 0
++                    || incident_faces.len() >= 24
++                {
++                    return Err("incident_face_identity_or_cap");
++                }
++                let face = (axis, key, record.len);
++                incident_faces.insert(face);
++                let pins: Vec<_> = record
++                    .pins
++                    .iter()
++                    .filter(|p| p.point_id == global)
++                    .collect();
++                if pins.len() != 1 || pins[0].curve_id != 49 {
++                    return Err("incident_original_pin_source");
++                }
++                let pin = pins[0];
++                let curve = features
++                    .curves
++                    .get(pin.curve_id)
++                    .ok_or("incident_pin_chart")?;
++                if !pin.t.is_finite()
++                    || pin.t < curve.t_min
++                    || pin.t > curve.t_max
++                    || !matches!(live.key_at(global),PointKey::Str(k) if k==&format!("F{}:{}:{}:{:.12}",axis,key,pin.curve_id,pin.t))
++                {
++                    return Err("incident_original_pin_parameter");
++                }
++                face_rows.push(json!({"face":face,"segments":record.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>(),
++                "pin":{"globalPoint":global,"chart":pin.curve_id,"parameterBits":pin.t.to_bits(),"strata":curve.adjacent_strata,
++                "sourceIdentities":curve.adjacent_strata.map(|sid|features.strata[sid].graph_capture_identity_b())}}));
++            }
++        }
++    }
++    if incident_faces.is_empty() {
++        return Err("incident_original_face_missing");
++    }
++    let selected: BTreeSet<_> = candidate.receipt.consumers.iter().copied().collect();
++    let mut consumers = BTreeMap::new();
++    for cell in &oct.leaves {
++        for face in cell_faces(oct, faces, cell)
++            .into_iter()
++            .filter(|f| incident_faces.contains(f))
++        {
++            consumers
++                .entry(face)
++                .or_insert_with(Vec::new)
++                .push((id(cell), cell_side(oct, cell, face)?));
++        }
++    }
++    let mut new_cells = BTreeSet::new();
++    for face in &incident_faces {
++        let entries = consumers
++            .get(face)
++            .ok_or("incident_face_without_consumer")?;
++        if entries.len() != 2
++            || entries[0].1 == entries[1].1
++            || !entries.iter().any(|e| e.0 == outside_cell)
++        {
++            return Err("incident_opposite_consumer_inventory");
++        }
++        for (cell, _) in entries {
++            if *cell != outside_cell {
++                new_cells.insert(*cell);
++            }
++        }
++    }
++    receipt["endpoint1116"] = json!({"joinedPoint":1116,"outsideLocalPoint":local,"globalPoint":global,"positionBits":q::pos(live,global).map(f64::to_bits),
++        "faces":face_rows,"consumers":consumers.iter().map(|(face,c)|json!({"face":face,"cellsAndSides":c})).collect::<Vec<_>>(),
++        "newConsumerCells":new_cells,"allOriginalFaceRecordsAndLeavesExamined":true});
++    if new_cells.len() != 1 || new_cells.iter().any(|c| selected.contains(c)) {
++        return Err("incident_requires_one_uncaptured_original_consumer");
++    }
++    if selected.len() + 1 + new_cells.len() > 256 {
++        return Err("incident_combined_cell_cap");
++    }
++    let expanded: BTreeSet<_> = selected
++        .iter()
++        .copied()
++        .chain([outside_cell])
++        .chain(new_cells.iter().copied())
++        .collect();
++    let mut required_faces = BTreeSet::new();
++    for cell in &oct.leaves {
++        if expanded.contains(&id(cell)) {
++            required_faces.extend(cell_faces(oct, faces, cell));
++            if required_faces.len() > 1536 {
++                return Err("incident_combined_face_cap");
++            }
++        }
++    }
++    let outer_position = q::pos(live, global);
++    let point_consumers: BTreeSet<_> = oct
++        .leaves
++        .iter()
++        .filter(|cell| {
++            let b = cell_aabb(&oct.lat, cell.level, cell.ix, cell.iy, cell.iz);
++            (0..3).all(|k| outer_position[k] >= b[k] && outer_position[k] <= b[k + 3])
++        })
++        .map(id)
++        .collect();
++    if same_key(&candidate.points, live, global)?.is_some() {
++        return Err("incident_outer_point_already_in_candidate");
++    }
++    let primary = selected_pair_c(features).map_err(|_| "incident_source_pair")?;
++    let allowance = crate::sfcc::shared_arc_plan::numerical(
++        features,
++        primary[0],
++        primary[1],
++        opts.curve_chord_tol,
++    )
++    .ok_or("incident_original_allowance")?;
++    let mut defects = Vec::new();
++    for (&face, entries) in &consumers {
++        // The original record, exact integer leaf-side plane, and extents were bound above.
++        let owners = owned_consumers(entries, outside_cell, &point_consumers)?;
++        let low = unpack_point(&oct.lat, face.1);
++        let mut high = low;
++        if crate::math::grid::pack_point(&oct.lat, low[0], low[1], low[2]) != face.1
++            || low.iter().any(|&v| v < 0 || v > oct.lat.res)
++        {
++            return Err("incident_face_lattice_extent");
++        }
++        for k in 0..3 {
++            if k != face.0 {
++                high[k] = low[k]
++                    .checked_add(face.2)
++                    .ok_or("incident_face_lattice_extent")?;
++                if high[k] > oct.lat.res {
++                    return Err("incident_face_lattice_extent");
++                }
++            }
++        }
++        let rect =
++            [low, high].map(|g| crate::math::grid::point_to_world(&oct.lat, g[0], g[1], g[2]));
++        let defect = retained_face_defect(face.0, rect, outer_position, allowance)?;
++        defects.push(
++            json!({"face":face,"exactRecordConsumerCells":owners,"retainedPointDefect":defect}),
++        );
++    }
++    receipt["endpoint1116"]["rawClosedBoxConsumerCells"] = json!(point_consumers);
++    receipt["endpoint1116"]["faceOwnershipAndRetainedDefect"] = json!(defects);
++    receipt["endpoint1116"]["discreteOwnershipBasis"] = json!("original FaceRecord incidence, exact integer plane and leaf-side extents; raw boxes only exclude unrepresented owners");
++    receipt["endpoint1116"]["idealTargetFaceMembershipProved"] = json!(false);
++    receipt["expandedComponentCells"] = json!(expanded.len());
++    receipt["expandedComponentFaces"] = json!(required_faces.len());
++    let mut keys = BTreeMap::<String, usize>::new();
++    let mut point_bits = BTreeMap::<usize, [u64; 3]>::new();
++    for p in 0..candidate.points.count() {
++        point_bits.insert(p, q::pos(&candidate.points, p).map(f64::to_bits));
++        if !matches!(candidate.points.key_at(p), PointKey::Unkeyed) {
++            keys.insert(format!("{:?}", candidate.points.key_at(p)), p);
++        }
++    }
++    for row in rows {
++        let local: usize = array(&row["id"])?;
++        let id = *mapping.get(local).ok_or("incident_outer_mapping")?;
++        let bits = array(&row["positionBits"])?;
++        if point_bits.insert(id, bits).is_some_and(|old| old != bits) {
++            return Err("incident_outer_join_bits");
++        }
++        let key = row["key"].as_str().ok_or("incident_outer_key")?;
++        if key != "Unkeyed" && keys.insert(key.to_owned(), id).is_some_and(|old| old != id) {
++            return Err("incident_outer_join_key");
++        }
++    }
++    let start = patches.len();
++    for fan in emitted_fans(outside)? {
++        require_fan_source(&fan, features)?;
++        patches.push(joined_fan(&fan, &mapping)?);
++    }
++    let outside_triangles: Vec<usize> = array::<Vec<usize>>(&outside["triangles"])?
++        .into_iter()
++        .map(|i| mapping[i])
++        .collect();
++    let mut cells = vec![
++        json!({"cell":inside_cell,"triangles":inside_triangles,"patchIndices":(0..start).collect::<Vec<_>>()}),
++        json!({"cell":outside_cell,"triangles":outside_triangles,"patchIndices":(start..patches.len()).collect::<Vec<_>>()}),
++    ];
++    let new_id = *new_cells.iter().next().ok_or("incident_new_consumer")?;
++    let cell = oct
++        .leaves
++        .iter()
++        .find(|c| id(c) == new_id)
++        .ok_or("incident_new_leaf")?;
++    let saved = SavedDiagnostic::begin();
++    let outcome = replay_cell(
++        tree,
++        features,
++        oct,
++        faces,
++        live,
++        opts,
++        candidate,
++        cell,
++        &incident_faces,
++        json!({"selectionRule":"unique actual opposite consumer of the endpoint's original face records","cellCap":256}),
++        None,
++        None,
++        true,
++    );
++    let evidence = private_arc_a::DIAGNOSTIC
++        .with(|s| s.borrow_mut().take())
++        .unwrap_or(Value::Null);
++    drop(saved);
++    let mut replay = match outcome {
++        Ok(v) => v,
++        Err(reason) => json!({"refusal":reason}),
++    };
++    replay["queryAndGraphEvidence"] = evidence;
++    replay["queryBudgetScope"]=json!("separate observational ledger, unchanged 16384 total / 2048 reservation; not pooled with either previous ledger");
++    receipt["newConsumerReplay"] = replay.clone();
++    let fans = emitted_fans(&replay)?;
++    let mut next = point_bits.keys().next_back().copied().unwrap_or(0) + 1;
++    let mut remap = Vec::new();
++    for row in replay["points"].as_array().ok_or("incident_new_points")? {
++        if row["id"].as_u64() != Some(remap.len() as u64) {
++            return Err("incident_new_point_order");
++        }
++        let key = row["key"].as_str().ok_or("incident_new_key")?;
++        let bits: [u64; 3] = array(&row["positionBits"])?;
++        let id = if key != "Unkeyed" {
++            keys.get(key).copied()
++        } else {
++            None
++        };
++        let id = match id {
++            Some(id) => {
++                if point_bits.get(&id) != Some(&bits) {
++                    return Err("incident_new_key_position_mismatch");
++                }
++                id
++            }
++            None => {
++                let id = next;
++                next += 1;
++                point_bits.insert(id, bits);
++                if key != "Unkeyed" {
++                    keys.insert(key.to_owned(), id);
++                }
++                id
++            }
++        };
++        if point_bits.len() > 4096 {
++            return Err("incident_joined_vertex_cap");
++        }
++        remap.push(id);
++    }
++    let start = patches.len();
++    for fan in fans {
++        require_fan_source(&fan, features)?;
++        patches.push(joined_fan(&fan, &remap)?);
++    }
++    let triangles: Vec<usize> = array::<Vec<usize>>(&replay["triangles"])?
++        .into_iter()
++        .map(|i| remap[i])
++        .collect();
++    cells.push(json!({"cell":new_id,"triangles":triangles,"patchIndices":(start..patches.len()).collect::<Vec<_>>(),"localToJoined":remap}));
++    let triangle_count: usize = cells
++        .iter()
++        .map(|c| c["triangles"].as_array().map_or(0, |v| v.len() / 3))
++        .sum();
++    if triangle_count > 4096
++        || candidate.triangles.len() / 3 + outside_triangles.len() / 3 + triangles.len() / 3 > 4096
++    {
++        return Err("incident_joined_triangle_cap");
++    }
++    let used: BTreeSet<_> = patches
++        .iter()
++        .flat_map(|p| {
++            p["triangles"]
++                .as_array()
++                .into_iter()
++                .flatten()
++                .filter_map(Value::as_u64)
++        })
++        .map(|p| p as usize)
++        .collect();
++    receipt["points"] = json!(used
++        .iter()
++        .map(|id| json!({"id":id,"positionBits":point_bits[id]}))
++        .collect::<Vec<_>>());
++    receipt["patches"] = json!(patches);
++    receipt["cells"] = json!(cells);
++    receipt["triangleCount"] = json!(triangle_count);
++    receipt["cylinderSource"] = outside["pairedCandidateFanA"]["sourceIdentity"].clone();
++    receipt["surfaceTolerance"] = json!(opts.surface_tol);
++    receipt["commonEndpoint"] = json!(40);
++    receipt["sharedSegments"] = json!([[40, 38], [39, 40]]);
++    receipt["complete"] = json!(true);
++    Ok(())
++}
++
++#[test]
++fn incident_a_incomplete_or_changed_output_cannot_supply_fans() {
++    assert!(emitted_fans(&json!({})).is_err());
++    let mut report = json!({"failedCellCount":0,"featureCellFallbacks":0,"allGeneratedQueriesValidated":true,
++        "originalFaceConsumptionValid":true,"invalidWorkingOrExportedOrientation":[],"cellBoxBits":[1],
++        "triangles":[0,1,2],"points":[{"id":0,"positionBits":[0,0,0]}],"fanCaptureA":{"complete":true,
++        "pairedFans":[{"returned":true,"cellBoxBits":[1],"triangles":[0,1,2],"points":[{"id":0,"positionBits":[1,0,0]}]}]}});
++    assert_eq!(
++        emitted_fans(&report).unwrap_err(),
++        "incident_fan_final_point_binding"
++    );
++    report["fanCaptureA"]["pairedFans"][0]["points"][0]["positionBits"] = json!([0, 0, 0]);
++    report["fanCaptureA"]["pairedFans"][0]["points"] = json!([
++        {"id":0,"positionBits":[0,0,0]}, {"id":1,"positionBits":[0,0,0]}, {"id":2,"positionBits":[0,0,0]}]);
++    report["points"] = report["fanCaptureA"]["pairedFans"][0]["points"].clone();
++    report["triangles"] = json!([0, 1, 2, 2, 1, 0]);
++    assert_eq!(
++        emitted_fans(&report).unwrap_err(),
++        "incident_fan_output_coverage"
++    );
++}
++
++#[test]
++fn incident_a_record_owned_tiny_plane_offset_keeps_distinct_geometric_claims() {
++    let left = [7, 26, 58, 86];
++    let right = [7, 26, 58, 87];
++    let raw = BTreeSet::from([right]);
++    assert_eq!(
++        owned_consumers(&[(left, 1), (right, 0)], left, &raw).unwrap(),
++        BTreeSet::from([left, right])
++    );
++    let bound = retained_face_defect(
++        2,
++        [[0., 0., 1.], [1., 1., 1.]],
++        [0.5, 0.5, 1. + 2e-13],
++        3e-7,
++    )
++    .unwrap();
++    assert_eq!(bound["retainedPointExactlyOnPlane"], false);
++    assert!(bound["rectangleDistanceUpperL1"].as_f64().unwrap() < 3e-7);
++    assert!(
++        retained_face_defect(2, [[0., 0., 1.], [1., 1., 1.]], [0.5, 0.5, 1. + 1e-5], 3e-7).is_err()
++    );
++}
++#[test]
++fn incident_a_wrong_record_ownership_cannot_be_fixed_by_small_coordinate_defect() {
++    let left = [7, 26, 58, 86];
++    let right = [7, 26, 58, 87];
++    let other = [7, 27, 58, 87];
++    assert!(owned_consumers(&[(left, 1), (right, 1)], left, &BTreeSet::from([right])).is_err());
++    assert!(owned_consumers(&[(left, 1), (right, 0)], other, &BTreeSet::from([right])).is_err());
++    assert_eq!(
++        owned_consumers(&[(left, 1), (right, 0)], left, &BTreeSet::from([other])).unwrap_err(),
++        "incident_unrepresented_raw_box_consumer"
++    );
++    assert!(retained_face_defect(
++        2,
++        [[0., 0., 1.], [1., 1., 1.]],
++        [1.01, 0.5, 1. + 2e-13],
++        3e-7
++    )
++    .is_err());
++}
+--- a/gcad-wasm/kernel/src/sfcc/outside_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/outside_b.rs
+@@ -17,6 +17,8 @@
+ };
+ use serde_json::{json, Value};
+ use std::collections::{BTreeMap, BTreeSet};
++#[path = "incident_a.rs"]
++mod incident_a;
+ type Result<T> = std::result::Result<T, &'static str>;
+ type Face = (usize, i64, i64);
+ fn id(c: &SfccCell) -> [i64; 4] {
+@@ -533,6 +535,18 @@
+     private_arc_a::DIAGNOSTIC
+         .with(|s| s.borrow_mut().as_mut().unwrap()["outsideInventory"] = inventory.clone());
+     let cell = chosen.ok_or("outside_nonempty_frontier_consumer_missing")?;
++    let mut report = replay_cell(tree,features,oct,faces,live,opts,candidate,cell,&frontier,inventory,target.as_ref(),second_capture,target.is_some())?;
++    if std::env::var("SFCC_INCIDENT_A").as_deref()==Ok("1") {
++        report["incidentA"] = incident_a::probe(tree,features,oct,faces,live,opts,candidate,&report);
++    }
++    Ok(report)
++}
++fn replay_cell(
++    tree:&CsgNode, features:&SfccFeatureSet, oct:&SfccOctree,
++    faces:&[HashMap<i64,FaceRecord>;3], live:&PointTable, opts:&CellMeshOptions,
++    candidate:&PrivateCandidate, cell:&SfccCell, frontier:&BTreeSet<Face>, inventory:Value,
++    target:Option<&PairedTarget>, second_capture:Option<&Value>, capture_fans:bool,
++)->Result<Value> {
+     let required = cell_faces(oct, faces, cell);
+     if required.len() > 24 {
+         return Err("outside_cell_face_cap");
+@@ -667,7 +681,7 @@
+         features: Some(features),
+         ..*opts
+     };
+-    let fan_scope=target.as_ref().map(|_|crate::sfcc::cell_mesh::ownership_a::PairedScope::begin());
++    let fan_scope=capture_fans.then(crate::sfcc::cell_mesh::ownership_a::PairedScope::begin);
+     let mesh = mesh_cells_subset(
+         oct,
+         &mut staged,
+@@ -736,7 +750,9 @@
+         report["scope"]=json!("actual retained opposite consumer of the first certified fan; original stage/source/face payloads; no publication");
+         report["pairedTargetA"]=t.receipt.clone();
+         report["pairedCandidateFanA"]=t.candidate_fan.clone();
+-        report["fanCaptureA"]=fan_capture.clone().unwrap_or(Value::Null);
++    }
++    if let Some(capture)=&fan_capture {
++        report["fanCaptureA"]=capture.clone();
+         report["options"]=json!({"surfaceToleranceBits":opts.surface_tol.to_bits(),"chordToleranceBits":opts.curve_chord_tol.to_bits(),
+             "qualityTriangulation":opts.quality_triangulation,"maxPolylinePoints":opts.max_polyline_points_per_cell,"projectMaxIters":opts.project_max_iters});
+         let memberships:Vec<_>=points.identified_edges().flat_map(|((a,b),is)|is.iter().map(move |iv|json!({"edge":[a,b],"chart":iv.curve_id,"rangeBits":[iv.start.to_bits(),iv.end.to_bits()]}))).collect();

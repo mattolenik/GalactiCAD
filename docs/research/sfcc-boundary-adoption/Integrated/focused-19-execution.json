@@ -1,0 +1,13 @@
+{
+  "step": "focused-19",
+  "command": [
+    "/Users/matt/gcad/galacticad/.testresults/sfcc-critical-repairs/e4-invalid-construction/round39-adoption/Integrated/kernel-tests",
+    "component_c_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "capSeconds": 43.47040458297124,
+  "elapsedSeconds": 0.004621542000677437,
+  "exitCode": 0,
+  "timedOut": false
+}

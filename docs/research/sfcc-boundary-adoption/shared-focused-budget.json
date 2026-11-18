@@ -1,0 +1,15 @@
+{
+  "capSeconds": 60,
+  "campaigns": [
+    {
+      "job": "Capture-reviewed",
+      "elapsedCampaignSecondsUpper": 1.3282888749963604
+    },
+    {
+      "job": "Expanded-attempt",
+      "elapsedCampaignSecondsUpper": 1.3149731669691391
+    }
+  ],
+  "combinedSecondsUpper": 2.6432620419654995,
+  "note": "Two runner invocations; aggregate elapsed campaign bounds checked against one60-second allowance."
+}

@@ -1,0 +1,11 @@
+{
+  "filter": "component_c_",
+  "tests": [
+    "sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_exact_activation_coverage_and_dual_incoming",
+    "sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_refuses_disconnected_equal_parameter_and_gaps",
+    "sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_refuses_event_relabel_and_duplicate_membership",
+    "sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_refuses_missing_dual_membership_and_native_tail",
+    "sfcc::private_arc_a::secondary_component_validation_c::tests::component_c_whole_mesh_rejects_cross_cell_contacts_and_export_collapse"
+  ],
+  "exitCode": 0
+}

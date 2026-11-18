@@ -1,0 +1,9 @@
+
+running 4 tests
+test sfcc::shared_twisted_proof::exposure_a::fullfan_boundary_c::fullfan_c_actual_x_face_lift_does_not_preserve_boundary_plane ... ok
+test sfcc::shared_twisted_proof::exposure_a::fullfan_boundary_c::fullfan_c_plane_exclusion_requires_strict_finite_separation ... ok
+test sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_c_local_fibers_keep_one_global_attempt_limit ... ok
+test sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_c_original_triangle_slabs_protect_shared_mesh_fibers ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 465 filtered out; finished in 2.13s
+

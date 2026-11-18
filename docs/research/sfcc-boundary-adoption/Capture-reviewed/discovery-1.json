@@ -1,0 +1,11 @@
+{
+  "filter": "boundary_b_",
+  "tests": [
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::boundary_transport_b::boundary_b_actual_full_first_cell_union_attempt",
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::boundary_transport_b::tests::boundary_b_does_not_treat_enclosure_midpoint_as_target",
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::boundary_transport_b::tests::boundary_b_refuses_outer_boundary_even_for_tiny_motion",
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::boundary_transport_b::tests::boundary_b_refuses_simultaneous_fold",
+    "sfcc::shared_twisted_proof::exposure_a::face_join_c::boundary_transport_b::tests::boundary_b_simultaneous_interior_transport_and_binding"
+  ],
+  "exitCode": 0
+}

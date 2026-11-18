@@ -1,0 +1,106 @@
+{
+  "selected": "Integrated",
+  "sourceManifestSha256": "4be74e6c43a91d3ecdf95a46b4681f95cf4d6a072803c07e807805584393b970",
+  "componentReceiptSha256": "93ce7a09a8b091d2333c270603c40925372b191a142db47ff9392bf87e4b7a93",
+  "proofReceiptSha256": "fa570bd54209bf5385af74cddfc1293c979f64e3a53736b705a5f9cb614745b9",
+  "preservation": {
+    "candidatePointsIdentical": true,
+    "candidateTrianglesIdentical": true,
+    "candidateTopologyIdentical": true,
+    "intervalsIdenticalAfterSorting": true,
+    "candidateGeneratedQueriesIdentical": true,
+    "candidateQueryCostsIdentical": true,
+    "retainedMetadataIdentical": true,
+    "outsideEvidenceIdenticalModuloAddressesAndUnorderedRows": true,
+    "entireIncidentFixtureMatchesFreshRuntimeModuloDocumentedNormalization": true,
+    "allNewConsumerQueriesPostvalidated": true,
+    "incidentCaptureComplete": true,
+    "liveStatePreserved": true
+  },
+  "cells": [
+    [
+      7,
+      25,
+      58,
+      86
+    ],
+    [
+      7,
+      26,
+      58,
+      86
+    ],
+    [
+      7,
+      26,
+      58,
+      87
+    ]
+  ],
+  "triangles": 44,
+  "vertices": 31,
+  "prospectiveExpandedCells": 207,
+  "prospectiveExpandedFaces": 1042,
+  "sourceChecks": 108,
+  "sourceAcceptedPieces": 76,
+  "sourceCheckCap": 128,
+  "sourceDepthCap": 12,
+  "sourceCalls": 1,
+  "sourceMode": "original_triangle",
+  "uniformSourceBound": 0.0012877874623095722,
+  "projectedMotionUpper": 1.0387196304615446e-12,
+  "additionalWorkingErrorUpper": 2.3669703229083213e-12,
+  "strictIntermediateOrientationLower": 1.4286621227476203e-08,
+  "exportedCorrespondenceBound": 0.0012883081002970905,
+  "tolerance": 0.01,
+  "consumedEdges": [
+    [
+      40,
+      647
+    ],
+    [
+      40,
+      1117
+    ],
+    [
+      1116,
+      1117
+    ]
+  ],
+  "consumedParameterRange": [
+    31.867718621208247,
+    33.0
+  ],
+  "originalCurveRange": [
+    0,
+    33
+  ],
+  "result": {
+    "consumedIdealPhysicalArcIdentifiedByProtectedFiberUniqueness": true,
+    "globalCellTrimOrPatchOwnershipProved": false,
+    "originalSpanPointQueryOrderAndTubeContractsBound": true,
+    "publicationReady": false,
+    "rawParameterContinuityOrTotalityProved": false,
+    "scope": "the three captured consumed curve49 edges within the exact44-triangle supplied disk",
+    "simultaneousFourTargetTransportProved": true,
+    "sourceCalls": 1,
+    "sourcePieceCap": 128,
+    "sourceRootGraphAndSharedEdgeAgreementProved": true,
+    "spanOwnQueriesChargedAfter": 77,
+    "spanOwnQueriesChargedBefore": 64,
+    "spanSourcePieceCount": 32,
+    "wholeOriginalCurve49RangeProved": false,
+    "workingAndExportedMeshUnchanged": true
+  },
+  "newConsumerGeneratedQueries": 5,
+  "newConsumerSeparateCharges": 2117,
+  "focusedTestsPassed": 83,
+  "focusedCampaignSeconds": 33.66095845901873,
+  "librarySeconds": 3.0088614170090295,
+  "componentSeconds": 31.169133334013168,
+  "preservedRefusals": [
+    "Capture/component-attempt.json: discrete ownership incorrectly equated to exact raw closed-box containment",
+    "Expanded-attempt/adoption-C.json: common slab source piece_cap at128 checks"
+  ],
+  "productionChanged": false
+}

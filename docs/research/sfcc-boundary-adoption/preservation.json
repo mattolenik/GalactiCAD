@@ -1,0 +1,40 @@
+{
+  "parentManifest": "docs/research/sfcc-span-completeness/Combined/manifest.json",
+  "parentManifestSha256": "3a0dcff5674fa1c2f1d1fdef1fdf11be443d45e3ec7cae8b10ac0aeb4b7a8a50",
+  "parentInputCount": 222,
+  "selected": "Integrated",
+  "restorations": [
+    {
+      "packet": "Capture",
+      "patchSha256": "0c87fe9ec40f2efe44d2a9936013d8d225e7bff74d88155132a4b4e944579c43",
+      "manifestSha256": "a886145b6cc24b182296324e8e341ea9c4e27a97a9b7357dde685c3f6a8238e2",
+      "verifiedInputCount": 226,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-adoption-restore-jjxcitep",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Capture-reviewed",
+      "patchSha256": "f2457d0be3a74b6363a30875b6d0837901802cd1b1014ac3dcd024d640fdbab1",
+      "manifestSha256": "d6f7400555e3efc19426d9181001726c0c3165a9148be763d6632c24b764099f",
+      "verifiedInputCount": 226,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-adoption-restore-l_3xhm15",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Integrated",
+      "patchSha256": "a31921b7e6fd95484eab505a60fc9d3bc4f950d3be746b486b23596645d84a91",
+      "manifestSha256": "4be74e6c43a91d3ecdf95a46b4681f95cf4d6a072803c07e807805584393b970",
+      "verifiedInputCount": 229,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-adoption-restore-2fbi_4o3",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Local",
+      "patchSha256": "ccf94b47d3e0759f7de6271c2d9875cdcc96b5ada876d140213922f7a4dbb7bd",
+      "manifestSha256": "3e76a64eac864f8c30832075f2d35be113745bdb2d049731625ae4369c134b1d",
+      "verifiedInputCount": 228,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-adoption-restore-qff1jf1_",
+      "result": "all input hashes match"
+    }
+  ]
+}

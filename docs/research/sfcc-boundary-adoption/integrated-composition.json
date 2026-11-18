@@ -1,0 +1,6 @@
+{
+  "source": "/tmp/sfcc-adoption-integrated",
+  "localSourceBase": "/tmp/sfcc-adoption-local",
+  "compositionSha256": "0f6dcf3328ca8d2cd8e6d873e755212b6388ef04d096a7e500cb6052728ac816",
+  "scope": "fresh source/span/geometry/target/whole-arc proof, no mesh edits"
+}

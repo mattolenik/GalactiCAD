@@ -1,0 +1,16 @@
+{
+  "source": "Capture/component-attempt.json",
+  "fixture": "gcad-wasm/kernel/fixtures/paired-fans-c.json",
+  "fixtureSha256": "37938387b58654d9b6b7b642bc9525bea4f9fdcce941dba0aaccd1d0cf4b6ba3",
+  "sourceFingerprint": "10977506807348230851",
+  "patchTriangles": [
+    6,
+    5
+  ],
+  "pointCount": 11,
+  "sharedEdge": [
+    40,
+    38
+  ],
+  "preservedOutsideLocalMembershipIdSpace": true
+}

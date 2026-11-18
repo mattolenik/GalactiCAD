@@ -1,0 +1,36 @@
+{
+  "source": "/tmp/sfcc-paired-capture",
+  "inputs": [
+    {
+      "source": "/tmp/sfcc-paired-a-reviewed/gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/outside_b.rs",
+      "sha256": "1529550f6ffb2678c672058be3dc35e8ed368624852b0acd239079224545c859"
+    },
+    {
+      "source": "/tmp/sfcc-paired-a-reviewed/gcad-wasm/kernel/src/sfcc/ownership_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/ownership_a.rs",
+      "sha256": "afdec568a286c3fc01efe12933cdc72426b95114a26b69c3a25b5da2f0c3bfd8"
+    },
+    {
+      "source": "/tmp/sfcc-paired-b-fixed/gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/cell_mesh.rs",
+      "sha256": "ce94540a60b6c4e1c86b0d6a36a9e08bb1eb083030e23e45da0f72bb15bff7be"
+    },
+    {
+      "source": "/tmp/sfcc-paired-b-fixed/gcad-wasm/kernel/src/sfcc/paired_geometry_b.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/paired_geometry_b.rs",
+      "sha256": "044e842b079229c8edb5e4dda47d6e0165366f9359830fcc00670cd188366469"
+    },
+    {
+      "source": "/tmp/sfcc-paired-c/gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/exposure_a.rs",
+      "sha256": "7e537d76d8afca8d4670575f88e914eb7bea484a377d8d44900bb5676d74c750"
+    },
+    {
+      "source": "/tmp/sfcc-paired-c/gcad-wasm/kernel/src/sfcc/paired_source_c.rs",
+      "target": "gcad-wasm/kernel/src/sfcc/paired_source_c.rs",
+      "sha256": "9a6c59d3dd2a5309fc9874fe75f8f8c594a30eb7fecbfd1c0141effa0d134d28"
+    }
+  ],
+  "env": "SFCC_PAIRED_A=1 selects actual opposite consumer; all original limits retained"
+}

@@ -1,0 +1,1408 @@
+--- /dev/null
++++ b/gcad-wasm/kernel/fixtures/paired-fans-c.json
+@@ -0,0 +1,414 @@
++{
++  "parentReceiptSha256": "0038149308982d78d9dd205946e787d84cd64d5d0ebc116df921e5c4f4e8f3e7",
++  "sourceFingerprint": "10977506807348230851",
++  "face": [
++    0,
++    3464532,
++    2
++  ],
++  "insideCell": [
++    7,
++    25,
++    58,
++    86
++  ],
++  "outsideCell": [
++    7,
++    26,
++    58,
++    86
++  ],
++  "sharedEdge": [
++    40,
++    38
++  ],
++  "surfaceTolerance": 0.01,
++  "chordTolerance": 0.02,
++  "cylinderSource": 15,
++  "patches": [
++    {
++      "boundary": [
++        40,
++        38,
++        41,
++        464,
++        465,
++        647
++      ],
++      "triangles": [
++        653,
++        40,
++        38,
++        653,
++        38,
++        41,
++        653,
++        41,
++        464,
++        653,
++        464,
++        465,
++        653,
++        465,
++        647,
++        653,
++        647,
++        40
++      ],
++      "hypothesisStratum": 15,
++      "sourceIdentity": {
++        "compoundPresent": false,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": null,
++            "partners": [],
++            "path": [
++              0,
++              0,
++              0,
++              1
++            ],
++            "rootAddressProcessLocal": "76890d8010"
++          }
++        ],
++        "field": null,
++        "id": 15,
++        "leafIndex": 2,
++        "localIndex": 0,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      }
++    },
++    {
++      "boundary": [
++        1116,
++        1114,
++        38,
++        40,
++        1117
++      ],
++      "triangles": [
++        1119,
++        1116,
++        1114,
++        1119,
++        1114,
++        38,
++        1119,
++        38,
++        40,
++        1119,
++        40,
++        1117,
++        1119,
++        1117,
++        1116
++      ],
++      "hypothesisStratum": 15,
++      "sourceIdentity": {
++        "compoundPresent": false,
++        "compoundTermsIncluded": false,
++        "domain": [
++          {
++            "branch": null,
++            "partners": [],
++            "path": [
++              0,
++              0,
++              0,
++              1
++            ],
++            "rootAddressProcessLocal": "76890d8010"
++          }
++        ],
++        "field": null,
++        "id": 15,
++        "leafIndex": 2,
++        "localIndex": 0,
++        "ownerNodeId": -1,
++        "signHex": "3ff0000000000000"
++      }
++    }
++  ],
++  "points": [
++    {
++      "id": 38,
++      "positionBits": [
++        13844816554298846424,
++        13835618776295404592,
++        4617801817764908076
++      ]
++    },
++    {
++      "id": 40,
++      "positionBits": [
++        13844816554298846762,
++        13836166026439335478,
++        4617801809107539645
++      ]
++    },
++    {
++      "id": 41,
++      "positionBits": [
++        13844830331837451734,
++        13835618776295404592,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 464,
++      "positionBits": [
++        13844830331837451734,
++        13835894973616301924,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 465,
++      "positionBits": [
++        13844830331814374579,
++        13836165891772662319,
++        4617754209319262306
++      ]
++    },
++    {
++      "id": 647,
++      "positionBits": [
++        13844830282047795546,
++        13836166026439335478,
++        4617754382154335013
++      ]
++    },
++    {
++      "id": 653,
++      "positionBits": [
++        13844825742648919353,
++        13835938411809740731,
++        4617770119601665062
++      ]
++    },
++    {
++      "id": 1114,
++      "positionBits": [
++        13844748356977640844,
++        13835618776295404592,
++        4618030406640159634
++      ]
++    },
++    {
++      "id": 1116,
++      "positionBits": [
++        13844748356756957604,
++        13836166026439335478,
++        4618030406640159853
++      ]
++    },
++    {
++      "id": 1117,
++      "positionBits": [
++        13844773025837132680,
++        13836166026439335478,
++        4617949022357655430
++      ]
++    },
++    {
++      "id": 1119,
++      "positionBits": [
++        13844780823415619052,
++        13835947126381763123,
++        4617922995774708407
++      ]
++    }
++  ],
++  "originalTarget": {
++    "candidateEdge": [
++      40,
++      38
++    ],
++    "candidateMembershipsAtSharedPoints": [
++      {
++        "chart": 49,
++        "edge": [
++          40,
++          647
++        ],
++        "rangeBits": [
++          4629807001818732852,
++          4629841154425225216
++        ]
++      }
++    ],
++    "consumers": [
++      [
++        [
++          7,
++          25,
++          58,
++          86
++        ],
++        1,
++        true
++      ],
++      [
++        [
++          7,
++          26,
++          58,
++          86
++        ],
++        0,
++        false
++      ]
++    ],
++    "face": [
++      0,
++      3464532,
++      2
++    ],
++    "globalEdgeInCandidateOrder": [
++      4074,
++      4072
++    ],
++    "insideCell": [
++      7,
++      25,
++      58,
++      86
++    ],
++    "originalPins": [
++      {
++        "candidatePoint": 40,
++        "chart": 49,
++        "cornerEnds": [
++          -1,
++          13
++        ],
++        "originalPoint": 4074,
++        "parameterBits": 4629807001818732852,
++        "rangeBits": [
++          0,
++          4629841154425225216
++        ],
++        "strata": [
++          31,
++          15
++        ],
++        "stratumSources": [
++          {
++            "compoundPresent": true,
++            "compoundTermsIncluded": false,
++            "domain": [
++              {
++                "branch": null,
++                "partners": [],
++                "path": [
++                  0,
++                  0
++                ],
++                "rootAddressProcessLocal": "76890d8010"
++              }
++            ],
++            "field": null,
++            "id": 31,
++            "leafIndex": 18446744073709551615,
++            "localIndex": 0,
++            "ownerNodeId": -1,
++            "signHex": "3ff0000000000000"
++          },
++          {
++            "compoundPresent": false,
++            "compoundTermsIncluded": false,
++            "domain": [
++              {
++                "branch": null,
++                "partners": [],
++                "path": [
++                  0,
++                  0,
++                  0,
++                  1
++                ],
++                "rootAddressProcessLocal": "76890d8010"
++              }
++            ],
++            "field": null,
++            "id": 15,
++            "leafIndex": 2,
++            "localIndex": 0,
++            "ownerNodeId": -1,
++            "signHex": "3ff0000000000000"
++          }
++        ]
++      }
++    ],
++    "originalSegments": [
++      [
++        4072,
++        4074
++      ],
++      [
++        4074,
++        4073
++      ]
++    ],
++    "outsideCell": [
++      7,
++      26,
++      58,
++      86
++    ],
++    "publicationAuthorized": false,
++    "scope": "actual source-bound first fan and unique original opposite face consumer; no geometry authority",
++    "sourceFingerprint": "10977506807348230851"
++  },
++  "outsideCurveMemberships": [
++    {
++      "chart": 49,
++      "edge": [
++        2,
++        7
++      ],
++      "rangeBits": [
++        4629807001818732852,
++        4629700416936869888
++      ]
++    },
++    {
++      "chart": 49,
++      "edge": [
++        5,
++        7
++      ],
++      "rangeBits": [
++        4629663183038855226,
++        4629700416936869888
++      ]
++    }
++  ],
++  "captureChecks": {
++    "mainFanEmitted": true,
++    "outsideFanEmitted": true,
++    "exactPointBindings": true,
++    "outsideOriginalFaceConsumption": true,
++    "outsideQueryPostvalidation": true,
++    "outsideOrientationPass": true
++  },
++  "outsideLedger": {
++    "generatedQueries": 9,
++    "chargedQueries": 2121
++  },
++  "outsideCurveMembershipIdSpace": "outside-local PointTable; use outsideToJoined before comparing to patch IDs",
++  "outsideToJoined": [
++    38,
++    39,
++    40,
++    1114,
++    1115,
++    1116,
++    478,
++    1117,
++    1118,
++    1119
++  ]
++}
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -2319,3 +2319,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="fullfan_geometry_b.rs"]
+ pub(crate) mod fullfan_geometry_b;
++
++#[cfg(all(test,feature="serde"))]
++#[path="paired_geometry_b.rs"]
++pub(crate) mod paired_geometry_b;
+--- a/gcad-wasm/kernel/src/sfcc/exposure_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/exposure_a.rs
+@@ -447,3 +447,7 @@
+ #[cfg(all(test, feature="serde"))]
+ #[path="fullfan_boundary_c.rs"]
+ pub(crate) mod fullfan_boundary_c;
++
++#[cfg(all(test, feature="serde"))]
++#[path="paired_source_c.rs"]
++pub(crate) mod paired_source_c;
+--- a/gcad-wasm/kernel/src/sfcc/outside_b.rs
++++ b/gcad-wasm/kernel/src/sfcc/outside_b.rs
+@@ -111,6 +111,173 @@
+     )
+ }
+ 
++struct PairedTarget {
++    face: Face,
++    outside: [i64;4],
++    global_edge: [usize;2],
++    candidate_edge: [usize;2],
++    candidate_fan: Value,
++    receipt: Value,
++}
++fn cell_side(oct:&SfccOctree, cell:&SfccCell, face:Face)->Result<usize> {
++    if face.0>=3 || face.2<=0 {return Err("paired_face_identity");}
++    let stride=stride_at_level(&oct.lat,cell.level);
++    let base=[cell.ix*stride,cell.iy*stride,cell.iz*stride];
++    let grid=unpack_point(&oct.lat,face.1);
++    if (0..3).filter(|&k|k!=face.0).any(|k|grid[k]<base[k] || grid[k]+face.2>base[k]+stride) {
++        return Err("paired_face_extent");
++    }
++    if grid[face.0]==base[face.0] {Ok(0)}
++    else if grid[face.0]==base[face.0]+stride {Ok(1)}
++    else {Err("paired_face_plane")}
++}
++fn directed_occurrences(boundary:&[usize],edge:[usize;2])->usize {
++    boundary.iter().enumerate().filter(|&(i,&a)|a==edge[0] && boundary[(i+1)%boundary.len()]==edge[1]).count()
++}
++fn paired_target(
++    f:&SfccFeatureSet,oct:&SfccOctree,faces:&[HashMap<i64,FaceRecord>;3],live:&PointTable,
++    candidate:&PrivateCandidate,fan:&Value,
++)->Result<PairedTarget> {
++    let fingerprint=f.fingerprint().to_string();
++    let witness:Value=serde_json::from_str(include_str!("../../fixtures/fullfan-boundary-c.json"))
++        .map_err(|_|"paired_witness_encoding")?;
++    let source:Value=serde_json::from_str(include_str!("../../fixtures/ownership-first-fan-a.json"))
++        .map_err(|_|"paired_fan_encoding")?;
++    if witness["sourceFingerprint"].as_str()!=Some(fingerprint.as_str())
++        || candidate.receipt.fingerprint!=f.fingerprint()
++        || fan["returned"]!=true || fan["continuousSourceOwnershipProved"]!=false
++        || fan["hypothesisStratum"]!=source["fan"]["stratum"]
++        || fan["boundary"]!=source["fan"]["polygon"] || fan["triangles"]!=source["fan"]["triangles"] {
++        return Err("paired_actual_first_fan_binding");
++    }
++    let face:Face=serde_json::from_value(witness["face"].clone()).map_err(|_|"paired_face_encoding")?;
++    let candidate_edge:[usize;2]=serde_json::from_value(witness["edge"].clone()).map_err(|_|"paired_edge_encoding")?;
++    let boundary:Vec<usize>=serde_json::from_value(fan["boundary"].clone()).map_err(|_|"paired_boundary_encoding")?;
++    if boundary.len()>64 || directed_occurrences(&boundary,candidate_edge)!=1 {return Err("paired_first_fan_edge");}
++    for p in fan["points"].as_array().ok_or("paired_fan_points")? {
++        let point=p["id"].as_u64().ok_or("paired_point_id")? as usize;
++        if point>=candidate.points.count() || p["positionBits"]!=json!(q::pos(&candidate.points,point).map(f64::to_bits)) {
++            return Err("paired_fan_point_payload");
++        }
++    }
++    if face.0>=3 {return Err("paired_face_axis");}
++    let record=faces[face.0].get(&face.1).ok_or("paired_original_face_missing")?;
++    if record.axis!=face.0 || record.key!=face.1 || record.len!=face.2
++        || record.segments.len()>1024 || record.pins.len()>1024 {return Err("paired_original_face_identity");}
++    let fan_triangles:Vec<usize>=serde_json::from_value(fan["triangles"].clone()).map_err(|_|"paired_fan_triangles")?;
++    if fan_triangles.len()>3*128 || fan_triangles.len()%3!=0
++        || fan_triangles.chunks_exact(3).any(|t|!candidate.triangles.chunks_exact(3).any(|c|c==t)) {
++        return Err("paired_fan_not_in_candidate");
++    }
++    let selected:BTreeSet<_>=candidate.receipt.consumers.iter().copied().collect();
++    let mut consumers=Vec::new();
++    for cell in &oct.leaves {
++        if cell_faces(oct,faces,cell).contains(&face) {
++            if consumers.len()>=2 {return Err("paired_multiple_consumers");}
++            consumers.push((id(cell),cell_side(oct,cell,face)?,selected.contains(&id(cell))));
++        }
++    }
++    if consumers.len()!=2 || consumers[0].1==consumers[1].1 || consumers.iter().filter(|v|v.2).count()!=1 {
++        return Err("paired_opposite_consumer_inventory");
++    }
++    let inside=*consumers.iter().find(|v|v.2).ok_or("paired_inside_consumer")?;
++    let outside=*consumers.iter().find(|v|!v.2).ok_or("paired_outside_consumer")?;
++    let expected_inside:[i64;4]=serde_json::from_value(witness["cell"].clone()).map_err(|_|"paired_inside_encoding")?;
++    if inside.0!=expected_inside {return Err("paired_first_fan_cell");}
++    let inside_leaf=oct.leaves.iter().find(|c|id(c)==inside.0).ok_or("paired_inside_leaf")?;
++    if fan["cellBoxBits"]!=json!(cell_aabb(&oct.lat,inside_leaf.level,inside_leaf.ix,inside_leaf.iy,inside_leaf.iz).map(f64::to_bits)) {
++        return Err("paired_first_fan_cell_box");
++    }
++    let mut global_edge=None;
++    for segment in &record.segments {
++        if segment.a>=live.count() || segment.b>=live.count() {return Err("paired_original_point");}
++        let a=same_key(&candidate.points,live,segment.a)?.ok_or("paired_original_key_binding")?;
++        let b=same_key(&candidate.points,live,segment.b)?.ok_or("paired_original_key_binding")?;
++        let local=if inside.1==1 {[b,a]} else {[a,b]};
++        if local==candidate_edge {
++            if global_edge.is_some(){return Err("paired_ambiguous_segment");}
++            global_edge=Some(if inside.1==1 {[segment.b,segment.a]} else {[segment.a,segment.b]});
++        }
++    }
++    let global_edge=global_edge.ok_or("paired_original_segment_missing")?;
++    if record.pins.iter().filter(|p|p.point_id==global_edge[0]).count()!=1 {return Err("paired_original_shared_pin");}
++    let mut source_rows=Vec::new();
++    for pin in &record.pins {
++        let curve=f.curves.get(pin.curve_id).ok_or("paired_pin_source")?;
++        if !pin.t.is_finite() || pin.t<curve.t_min || pin.t>curve.t_max {return Err("paired_pin_parameter");}
++        if pin.point_id>=live.count() || !matches!(live.key_at(pin.point_id),PointKey::Str(k) if k==&format!("F{}:{}:{}:{:.12}",face.0,face.1,pin.curve_id,pin.t)) {
++            return Err("paired_original_pin_provenance");
++        }
++        source_rows.push(json!({"chart":pin.curve_id,"parameterBits":pin.t.to_bits(),"originalPoint":pin.point_id,
++            "candidatePoint":same_key(&candidate.points,live,pin.point_id)?,"strata":curve.adjacent_strata,
++            "rangeBits":[curve.t_min.to_bits(),curve.t_max.to_bits()],"cornerEnds":[curve.corner_start,curve.corner_end],
++            "stratumSources":curve.adjacent_strata.map(|sid|f.strata[sid].graph_capture_identity_b())}));
++    }
++    let candidate_memberships:Vec<_>=candidate.points.identified_edges().filter(|((a,b),_)|candidate_edge.contains(a)||candidate_edge.contains(b))
++        .flat_map(|((a,b),is)|is.iter().map(move |i|json!({"edge":[a,b],"chart":i.curve_id,"rangeBits":[i.start.to_bits(),i.end.to_bits()]}))).collect();
++    if candidate_memberships.len()>2048 {return Err("paired_membership_cap");}
++    let receipt=json!({"scope":"actual source-bound first fan and unique original opposite face consumer; no geometry authority",
++        "face":face,"consumers":consumers,"insideCell":inside.0,"outsideCell":outside.0,"globalEdgeInCandidateOrder":global_edge,
++        "candidateEdge":candidate_edge,"originalSegments":record.segments.iter().map(|s|[s.a,s.b]).collect::<Vec<_>>(),
++        "originalPins":source_rows,"candidateMembershipsAtSharedPoints":candidate_memberships,"sourceFingerprint":f.fingerprint().to_string(),
++        "publicationAuthorized":false});
++    Ok(PairedTarget{face,outside:outside.0,global_edge,candidate_edge,candidate_fan:fan.clone(),receipt})
++}
++fn select_paired_fan(capture:&Value, edge:[usize;2])->Result<Value> {
++    if capture["complete"]!=true {return Err("paired_fan_capture_incomplete");}
++    let fans=capture["pairedFans"].as_array().ok_or("paired_fan_capture_missing")?;
++    if fans.len()>128 {return Err("paired_fan_capture_cap");}
++    let mut selected=None;
++    for fan in fans {
++        let boundary:Vec<usize>=serde_json::from_value(fan["boundary"].clone()).map_err(|_|"paired_fan_boundary")?;
++        if boundary.len()>64 {return Err("paired_fan_boundary_cap");}
++        let forward=directed_occurrences(&boundary,edge);
++        let reverse=directed_occurrences(&boundary,[edge[1],edge[0]]);
++        if forward+reverse>0 {
++            if forward!=1 || reverse!=0 || selected.is_some() || fan["returned"]!=true {
++                return Err("paired_fan_edge_incidence");
++            }
++            selected=Some(fan.clone());
++        }
++    }
++    selected.ok_or("paired_shared_edge_fan_missing")
++}
++fn require_emitted_fan(fan:&Value,emitted:&[usize])->Result<()> {
++    let triangles:Vec<usize>=serde_json::from_value(fan["triangles"].clone()).map_err(|_|"paired_fan_triangles")?;
++    if triangles.is_empty() || triangles.len()>3*128 || triangles.len()%3!=0 || emitted.len()%3!=0
++        || triangles.chunks_exact(3).any(|t|!emitted.chunks_exact(3).any(|m|m==t)) {
++        return Err("paired_fan_not_in_returned_mesh");
++    }
++    Ok(())
++}
++fn require_final_fan(fan:&Value,emitted:&[usize],points:&PointTable)->Result<()> {
++    require_emitted_fan(fan,emitted)?;
++    let rows=fan["points"].as_array().ok_or("paired_fan_point_payload")?;
++    if rows.len()>128 {return Err("paired_fan_point_cap");}
++    for value in fan["boundary"].as_array().ok_or("paired_fan_boundary")?.iter()
++        .chain(fan["triangles"].as_array().ok_or("paired_fan_triangles")?) {
++        let id=value.as_u64().ok_or("paired_fan_point_id")? as usize;
++        if id>=points.count() {return Err("paired_fan_point_payload");}
++        let mut found=rows.iter().filter(|row|row["id"].as_u64()==Some(id as u64));
++        let row=found.next().ok_or("paired_fan_point_payload")?;
++        if found.next().is_some() || row["positionBits"]!=json!(q::pos(points,id).map(f64::to_bits)) {
++            return Err("paired_fan_point_payload");
++        }
++    }
++    Ok(())
++}
++fn joined_fan(fan:&Value,mapping:&[usize])->Result<Value> {
++    let remap=|v:&Value|->Result<usize>{let n=v.as_u64().ok_or("paired_fan_point_id")? as usize;mapping.get(n).copied().ok_or("paired_fan_mapping")};
++    let boundary=fan["boundary"].as_array().ok_or("paired_fan_boundary")?.iter().map(remap).collect::<Result<Vec<_>>>()?;
++    let triangles=fan["triangles"].as_array().ok_or("paired_fan_triangles")?.iter().map(remap).collect::<Result<Vec<_>>>()?;
++    let mut points=Vec::new();
++    for row in fan["points"].as_array().ok_or("paired_fan_points")? {
++        points.push(json!({"id":remap(&row["id"])? ,"positionBits":row["positionBits"],"outsideLocalId":row["id"]}));
++    }
++    Ok(json!({"hypothesisStratum":fan["hypothesisStratum"],"sourceIdentity":fan["sourceIdentity"],"boundary":boundary,"triangles":triangles,
++        "points":points,"idSpace":"candidate plus exactly keyed outside points","sourceOwnershipProved":false}))
++}
++
+ pub(super) fn probe(
+     tree: &CsgNode,
+     features: &SfccFeatureSet,
+@@ -120,9 +287,12 @@
+     opts: &CellMeshOptions,
+     candidate: &PrivateCandidate,
+ ) -> Value {
++    let paired = if std::env::var("SFCC_PAIRED_A").as_deref()==Ok("1") {
++        Some(private_arc_a::DIAGNOSTIC.with(|s|s.borrow().as_ref().map(|v|v["secondaryTransactionA"]["fanOwnershipA"]["first"].clone()).unwrap_or(Value::Null)))
++    } else {None};
+     let _saved = SavedDiagnostic::begin();
+     let before = private_arc_a::diagnostic::live_digest(faces, live);
+-    let result = probe_inner(tree, features, oct, faces, live, opts, candidate);
++    let result = probe_inner(tree, features, oct, faces, live, opts, candidate, paired.as_ref());
+     let evidence = private_arc_a::DIAGNOSTIC
+         .with(|s| s.borrow_mut().take())
+         .unwrap_or(Value::Null);
+@@ -150,7 +320,10 @@
+     live: &PointTable,
+     opts: &CellMeshOptions,
+     candidate: &PrivateCandidate,
++    paired_fan: Option<&Value>,
+ ) -> Result<Value> {
++    let target=paired_fan.map(|fan|paired_target(features,oct,faces,live,candidate,fan)).transpose()?;
++    if let Some(t)=&target {private_arc_a::DIAGNOSTIC.with(|s|s.borrow_mut().as_mut().unwrap()["pairedTargetA"]=t.receipt.clone());}
+     let selected: BTreeSet<_> = candidate.receipt.consumers.iter().copied().collect();
+     if selected.is_empty() || selected.len() > 256 {
+         return Err("outside_selected_cell_cap");
+@@ -202,15 +375,16 @@
+             .any(|&(a, k, _)| !faces[a][&k].segments.is_empty())
+         {
+             nonempty += 1;
+-            if chosen.is_none_or(|old| id(cell) < id(old)) {
++            if target.as_ref().map_or_else(||chosen.is_none_or(|old|id(cell)<id(old)),|t|id(cell)==t.outside) {
+                 chosen = Some(cell);
+             }
+         }
+     }
+-    let inventory = json!({"selectedCells":selected.len(),"requiredFaces":required.len(),"frontierFaces":frontier.len(),"outsideLeaves":outside_count,
++    let mut inventory = json!({"selectedCells":selected.len(),"requiredFaces":required.len(),"frontierFaces":frontier.len(),"outsideLeaves":outside_count,
+         "faceAdjacentOutsideLeaves":adjacent,"nonemptyFaceAdjacentOutsideLeaves":nonempty,"adjacentRingFitsExisting256CellCap":adjacent<=256,
+         "allOutsideLeavesExaminedForFaceIncidence":true,"unmeshedCellBoundsUsedToExcludeContacts":false,
+         "fullOutsideReconstructionAttempted":false,"plannedWitnessCells":1,"selectionRule":"lexicographically smallest original outside cell ID incident to a nonempty candidate frontier FaceRecord"});
++    if target.is_some(){inventory["selectionRule"]=json!("unique actual opposite consumer of the source-bound first-fan boundary record");}
+     private_arc_a::DIAGNOSTIC
+         .with(|s| s.borrow_mut().as_mut().unwrap()["outsideInventory"] = inventory.clone());
+     let cell = chosen.ok_or("outside_nonempty_frontier_consumer_missing")?;
+@@ -225,6 +399,9 @@
+         .collect();
+     if shared.is_empty() {
+         return Err("outside_actual_frontier_binding");
++    }
++    if let Some(t)=&target {
++        if id(cell)!=t.outside || !shared.contains(&t.face) || !frontier.contains(&t.face) {return Err("paired_selected_face_consumer");}
+     }
+     let mut needed = BTreeSet::new();
+     let mut pins = 0;
+@@ -345,6 +522,7 @@
+         features: Some(features),
+         ..*opts
+     };
++    let fan_scope=target.as_ref().map(|_|crate::sfcc::cell_mesh::ownership_a::PairedScope::begin());
+     let mesh = mesh_cells_subset(
+         oct,
+         &mut staged,
+@@ -353,6 +531,8 @@
+         &local_opts,
+         std::slice::from_ref(cell),
+     );
++    let fan_capture=fan_scope.map(|scope|scope.finish());
++    if let Some(capture)=&fan_capture {private_arc_a::DIAGNOSTIC.with(|s|s.borrow_mut().as_mut().unwrap()["pairedFanCaptureA"]=capture.clone());}
+     let failed = !mesh.failed_cells.is_empty() || mesh.feature_cell_fallbacks != 0;
+     if failed {
+         private_arc_a::graph_b::final_failure(cell);
+@@ -407,6 +587,17 @@
+         "triangles":mesh.tris,"failedCellCount":mesh.failed_cells.len(),"featureCellFallbacks":mesh.feature_cell_fallbacks,
+         "generatedQueries":queries.len(),"generatedPostvalidationFailures":validation_failures,"allGeneratedQueriesValidated":validation_failures.is_empty(),
+         "chargedBeforeReservation":before,"finalChargedQueries":budget.charged_queries(),"fullOutsideContactAudit":false,"publicationReady":false});
++    if let Some(t)=&target {
++        report["scope"]=json!("actual retained opposite consumer of the first certified fan; original stage/source/face payloads; no publication");
++        report["pairedTargetA"]=t.receipt.clone();
++        report["pairedCandidateFanA"]=t.candidate_fan.clone();
++        report["fanCaptureA"]=fan_capture.clone().unwrap_or(Value::Null);
++        report["options"]=json!({"surfaceToleranceBits":opts.surface_tol.to_bits(),"chordToleranceBits":opts.curve_chord_tol.to_bits(),
++            "qualityTriangulation":opts.quality_triangulation,"maxPolylinePoints":opts.max_polyline_points_per_cell,"projectMaxIters":opts.project_max_iters});
++        let memberships:Vec<_>=points.identified_edges().flat_map(|((a,b),is)|is.iter().map(move |iv|json!({"edge":[a,b],"chart":iv.curve_id,"rangeBits":[iv.start.to_bits(),iv.end.to_bits()]}))).collect();
++        if memberships.len()>2048 {return Err("paired_outside_membership_cap");}
++        report["curveMemberships"]=json!(memberships);
++    }
+     if points.count() > 4096 || mesh.tris.len() > 3 * 4096 {
+         return Err("outside_geometry_cap");
+     }
+@@ -446,6 +637,29 @@
+             Err(reason) => json!({"refusal":reason,"completeOutsideContactAudit":false}),
+         };
+     }
++    if let Some(t)=&target {
++        let outside_edge=[*map.get(&t.global_edge[1]).ok_or("paired_outside_shared_point")?,*map.get(&t.global_edge[0]).ok_or("paired_outside_shared_point")?];
++        report["pairedSharedEdgeOutsideOrder"]=json!(outside_edge);
++        report["pairedFanBindingA"]=if failed || !validation_failures.is_empty() || !consumption_valid
++            || report["invalidWorkingOrExportedOrientation"]!=json!([]) {
++            json!({"refusal":"paired_original_cell_not_validated","outsideFailureIsNotAttributedToRepair":true})
++        } else {match select_paired_fan(fan_capture.as_ref().unwrap_or(&Value::Null),outside_edge) {
++            Ok(fan)=> {
++                match require_final_fan(&fan,&mesh.tris,&points).and_then(|()|serde_json::from_value::<Vec<usize>>(report["joined"]["outsideToJoined"].clone()).map_err(|_|"paired_join_unavailable")) {
++                    Ok(mapping)=> {
++                        if outside_edge.iter().any(|&id|id>=mapping.len()) || [mapping[outside_edge[0]],mapping[outside_edge[1]]]!=[t.candidate_edge[1],t.candidate_edge[0]] {
++                            json!({"refusal":"paired_joined_shared_edge"})
++                        } else {match joined_fan(&fan,&mapping) {
++                            Ok(joined)=>json!({"complete":true,"outsideLocalFan":fan,"joinedFan":joined,"sharedEdgeCandidateOrder":t.candidate_edge,"sharedEdgeOutsideOrderJoined":[mapping[outside_edge[0]],mapping[outside_edge[1]]],"publicationAuthorized":false}),
++                            Err(reason)=>json!({"refusal":reason}),
++                        }}
++                    },
++                    Err(reason)=>json!({"refusal":reason,"outsideLocalFan":fan}),
++                }
++            },
++            Err(reason)=>json!({"refusal":reason}),
++        }};
++    }
+     Ok(report)
+ }
+ 
+@@ -495,3 +709,37 @@
+         json!([0])
+     );
+ }
++
++#[test]
++fn paired_a_selected_fan_requires_exact_directed_shared_edge() {
++    let fan=|boundary:Value|json!({"boundary":boundary,"returned":true,"triangles":[3,0,1,3,1,2,3,2,0],"points":[]});
++    let right=fan(json!([0,1,2]));
++    let capture=json!({"complete":true,"pairedFans":[right.clone()]});
++    assert!(select_paired_fan(&capture,[0,1]).is_ok());
++    assert!(select_paired_fan(&capture,[1,0]).is_err());
++    assert!(select_paired_fan(&json!({"complete":true,"pairedFans":[right.clone(),right.clone()]}),[0,1]).is_err());
++    assert!(select_paired_fan(&json!({"complete":false,"pairedFans":[right]}),[0,1]).is_err());
++    let remapped=joined_fan(&capture["pairedFans"][0],&[10,11,12,13]).unwrap();
++    assert_eq!(remapped["boundary"],json!([10,11,12]));
++    assert!(joined_fan(&capture["pairedFans"][0],&[10]).is_err());
++}
++
++#[test]
++fn paired_a_fan_binding_requires_actual_emitted_triangles() {
++    let fan=json!({"triangles":[0,1,2,0,2,3]});
++    assert!(require_emitted_fan(&fan,&[0,1,2,0,2,3]).is_ok());
++    assert!(require_emitted_fan(&fan,&[0,1,2]).is_err());
++    assert!(require_emitted_fan(&fan,&[0,2,1,0,2,3]).is_err());
++    assert!(require_emitted_fan(&json!({"triangles":[]}),&[]).is_err());
++}
++
++#[test]
++fn paired_a_fan_binding_rejects_changed_captured_point() {
++    let mut points=PointTable::new();
++    for p in [[0.,0.,0.],[1.,0.,0.],[0.,1.,0.]] {points.add(p[0],p[1],p[2],0.,0.,1.);}
++    let mut fan=json!({"boundary":[0,1,2],"triangles":[0,1,2],
++        "points":(0..3).map(|id|json!({"id":id,"positionBits":q::pos(&points,id).map(f64::to_bits)})).collect::<Vec<_>>()});
++    assert!(require_final_fan(&fan,&[0,1,2],&points).is_ok());
++    fan["points"][1]["positionBits"][0]=json!(2.0_f64.to_bits());
++    assert_eq!(require_final_fan(&fan,&[0,1,2],&points),Err("paired_fan_point_payload"));
++}
+--- a/gcad-wasm/kernel/src/sfcc/ownership_a.rs
++++ b/gcad-wasm/kernel/src/sfcc/ownership_a.rs
+@@ -3,9 +3,21 @@
+ use serde_json::{json,Value};
+ use std::{cell::RefCell,collections::BTreeMap};
+ #[derive(Default)]
+-struct Inventory {active:bool,fans:usize,triangles:usize,rows:BTreeMap<(usize,bool,bool),[usize;3]>,first:Option<Value>,overflow:bool}
++struct Inventory {active:bool,fans:usize,triangles:usize,rows:BTreeMap<(usize,bool,bool),[usize;3]>,first:Option<Value>,overflow:bool,paired:Option<Vec<Value>>}
+ thread_local!{static INVENTORY:RefCell<Inventory>=RefCell::new(Inventory::default());}
+ pub(crate) fn reset(){INVENTORY.with(|p|*p.borrow_mut()=Inventory{active:true,..Inventory::default()});}
++pub(crate) struct PairedScope(Option<Inventory>);
++impl PairedScope {
++    pub(crate) fn begin() -> Self {
++        Self(Some(INVENTORY.with(|p|p.replace(Inventory{active:true,paired:Some(Vec::new()),..Inventory::default()}))))
++    }
++    pub(crate) fn finish(self) -> Value { take_report() }
++}
++impl Drop for PairedScope {
++    fn drop(&mut self) {
++        if let Some(saved)=self.0.take() {INVENTORY.with(|p|*p.borrow_mut()=saved);}
++    }
++}
+ pub(crate) fn record(boundary:&[usize],s:&Stratum,box_:&[f64;6],points:&PointTable,opts:&CellMeshOptions,tris:&[usize],returned:bool){
+     if !crate::sfcc::private_arc_a::secondary_component_a::enabled() || !crate::sfcc::private_arc_a::generated_queries_active(){return;}
+     INVENTORY.with(|p|{
+@@ -13,21 +25,26 @@
+         if p.fans>4096 || p.triangles>4096 || p.rows.len()>=128 {p.overflow=true;return;}
+         let support=crate::sfcc::surface_patch::supports_local_edits(s);
+         let row=p.rows.entry((s.id,opts.quality_triangulation,support)).or_default();row[0]+=1;row[1]+=tris.len()/3;row[2]+=usize::from(returned);
+-        if p.first.is_none(){
+-            if boundary.len()>64||tris.len()>3*128 {p.overflow=true;return;}
++        if p.first.is_none() || p.paired.is_some(){
++            if boundary.len()>64||tris.len()>3*128 || p.paired.as_ref().is_some_and(|v|v.len()>=128) {p.overflow=true;return;}
+             let ids:std::collections::BTreeSet<_>=boundary.iter().chain(tris).copied().collect();
+-            p.first=Some(json!({"hypothesisStratum":s.id,"carrierKind":format!("{:?}",s.kind),"sourceIdentity":s.graph_capture_identity_b(),
++            let record=json!({"hypothesisStratum":s.id,"carrierKind":format!("{:?}",s.kind),"sourceIdentity":s.graph_capture_identity_b(),
+                 "qualityTriangulation":opts.quality_triangulation,"supportedLocalCarrier":support,
+                 "diskPathEnabled":opts.quality_triangulation&&support,"boundary":boundary,"triangles":tris,"returned":returned,
+                 "cellBoxBits":box_.map(f64::to_bits),"surfaceTolerance":opts.surface_tol,"chordTolerance":opts.curve_chord_tol,
+                 "points":ids.into_iter().map(|id|json!({"id":id,"positionBits":q::pos(points,id).map(f64::to_bits)})).collect::<Vec<_>>(),
+                 "assignedOwners":tris.chunks_exact(3).map(|t|points.patch([t[0],t[1],t[2]])).collect::<Vec<_>>(),
+-                "continuousSourceOwnershipProved":false}));
++                "continuousSourceOwnershipProved":false});
++            if p.first.is_none(){p.first=Some(record.clone());}
++            if let Some(rows)=p.paired.as_mut(){rows.push(record);}
+         }
+     });
+ }
+-pub(crate) fn take_report()->Value{INVENTORY.with(|p|{let p=std::mem::take(&mut *p.borrow_mut());json!({"scope":"fan entry/output hypotheses and option gates only; zero additional field or curve queries","fans":p.fans,"triangles":p.triangles,"complete":!p.overflow,"overflow":p.overflow,
+-    "rows":p.rows.into_iter().map(|((id,quality,support),counts)|json!({"stratum":id,"qualityTriangulation":quality,"supportedLocalCarrier":support,"counts":counts})).collect::<Vec<_>>(),"first":p.first,"patchLabelsChanged":false})})}
++pub(crate) fn take_report()->Value{INVENTORY.with(|p|{let p=std::mem::take(&mut *p.borrow_mut());let mut report=json!({"scope":"fan entry/output hypotheses and option gates only; zero additional field or curve queries","fans":p.fans,"triangles":p.triangles,"complete":!p.overflow,"overflow":p.overflow,
++    "rows":p.rows.into_iter().map(|((id,quality,support),counts)|json!({"stratum":id,"qualityTriangulation":quality,"supportedLocalCarrier":support,"counts":counts})).collect::<Vec<_>>(),"first":p.first,"patchLabelsChanged":false});
++    if let Some(rows)=p.paired {report["pairedFans"]=json!(rows);}
++    report
++})}
+ 
+ #[test]
+ fn ownership_a_inventory_is_bounded_and_inactive_without_request(){reset();assert_eq!(take_report()["fans"],0);INVENTORY.with(|p|{let mut p=p.borrow_mut();p.overflow=true;});assert_eq!(take_report()["complete"],false);assert_eq!(take_report()["fans"],0);}
+@@ -84,3 +101,15 @@
+         "limitation":"a positive graph witness disproves that projection's ownership, not every possible nearby curved-boundary reconstruction"});
+     if let Ok(path)=std::env::var("SFCC_OWNERSHIP_A_RECEIPT"){std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();}
+ }
++
++#[test]
++fn paired_a_fan_scope_restores_previous_inventory_after_unwind() {
++    reset();
++    INVENTORY.with(|p|p.borrow_mut().fans=9);
++    let result=std::panic::catch_unwind(||{let _scope=PairedScope::begin();panic!("paired observer scope");});
++    assert!(result.is_err());
++    assert_eq!(take_report()["fans"],9);
++    let scope=PairedScope::begin();let r=scope.finish();
++    assert_eq!(r["pairedFans"],json!([]));
++    assert!(take_report().get("pairedFans").is_none());
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/paired_geometry_b.rs
+@@ -0,0 +1,343 @@
++//! Two cyclic fan disks glued along one exact indexed edge; no source field is evaluated.
++use super::fullfan_geometry_b::{self, FanDomain};
++use crate::sfcc::{predicates::orient2d, triangle_quality as q};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++
++type Point = [f64; 3];
++type Result<T> = std::result::Result<T, &'static str>;
++fn edge(a: usize, b: usize) -> [usize; 2] {
++    [a.min(b), a.max(b)]
++}
++fn yz(p: Point) -> [f64; 2] {
++    [p[1], p[2]]
++}
++fn on_segment(a: [f64; 2], b: [f64; 2], p: [f64; 2]) -> bool {
++    orient2d(a, b, p) == 0 && (0..2).all(|k| p[k] >= a[k].min(b[k]) && p[k] <= a[k].max(b[k]))
++}
++fn strict_inside(p: [f64; 2], t: [[f64; 2]; 3]) -> bool {
++    let sign = orient2d(t[0], t[1], t[2]);
++    sign != 0 && (0..3).all(|i| orient2d(t[i], t[(i + 1) % 3], p) == sign)
++}
++fn direction(boundary: &[usize], shared: [usize; 2]) -> i8 {
++    for (i, &a) in boundary.iter().enumerate() {
++        let b = boundary[(i + 1) % boundary.len()];
++        if [a, b] == shared {
++            return 1;
++        }
++        if [b, a] == shared {
++            return -1;
++        }
++    }
++    0
++}
++
++fn compatible_triangles(
++    a: [usize; 3],
++    b: [usize; 3],
++    points: &BTreeMap<usize, Point>,
++    shared: [usize; 2],
++    rounded: bool,
++) -> bool {
++    let get = |id| {
++        let p = points[&id];
++        yz(if rounded { q::rounded(p) } else { p })
++    };
++    let pa = a.map(get);
++    let pb = b.map(get);
++    if pa.iter().any(|&p| strict_inside(p, pb)) || pb.iter().any(|&p| strict_inside(p, pa)) {
++        return false;
++    }
++    for i in 0..3 {
++        for j in 0..3 {
++            let ia = [a[i], a[(i + 1) % 3]];
++            let ib = [b[j], b[(j + 1) % 3]];
++            let ea = [pa[i], pa[(i + 1) % 3]];
++            let eb = [pb[j], pb[(j + 1) % 3]];
++            if edge(ia[0], ia[1]) == edge(ib[0], ib[1]) {
++                if edge(ia[0], ia[1]) != edge(shared[0], shared[1]) || ia != [ib[1], ib[0]] {
++                    return false;
++                }
++                continue;
++            }
++            let signs = [
++                orient2d(ea[0], ea[1], eb[0]),
++                orient2d(ea[0], ea[1], eb[1]),
++                orient2d(eb[0], eb[1], ea[0]),
++                orient2d(eb[0], eb[1], ea[1]),
++            ];
++            if signs[0] * signs[1] < 0 && signs[2] * signs[3] < 0 {
++                return false;
++            }
++            for k in 0..2 {
++                if on_segment(ea[0], ea[1], eb[k]) && !ia.contains(&ib[k]) {
++                    return false;
++                }
++                if on_segment(eb[0], eb[1], ea[k]) && !ib.contains(&ia[k]) {
++                    return false;
++                }
++            }
++        }
++    }
++    true
++}
++fn joined_boundary(boundaries: [&[usize]; 2], shared: [usize; 2]) -> Result<Vec<usize>> {
++    let mut next = BTreeMap::new();
++    let mut incoming = BTreeSet::new();
++    for boundary in boundaries {
++        for (i, &a) in boundary.iter().enumerate() {
++            let b = boundary[(i + 1) % boundary.len()];
++            if edge(a, b) == edge(shared[0], shared[1]) {
++                continue;
++            }
++            if next.insert(a, b).is_some() || !incoming.insert(b) {
++                return Err("paired_boundary_degree");
++            }
++        }
++    }
++    if next.len() != boundaries[0].len() + boundaries[1].len() - 2 || next.len() < 4 {
++        return Err("paired_boundary_inventory");
++    }
++    let start = *next.keys().next().ok_or("paired_boundary_empty")?;
++    let mut out = Vec::with_capacity(next.len());
++    let mut current = start;
++    loop {
++        if out.contains(&current) {
++            return Err("paired_boundary_repeated_vertex");
++        }
++        out.push(current);
++        current = *next.get(&current).ok_or("paired_boundary_gap")?;
++        if current == start {
++            break;
++        }
++        if out.len() >= next.len() {
++            return Err("paired_boundary_not_closed");
++        }
++    }
++    if out.len() != next.len() {
++        return Err("paired_boundary_multiple_cycles");
++    }
++    Ok(out)
++}
++
++pub(crate) struct PairedDomain {
++    report: Value,
++    fans: [FanDomain; 2],
++    counts: [usize; 2],
++}
++impl PairedDomain {
++    pub(crate) fn report(&self) -> &Value {
++        &self.report
++    }
++}
++
++/// The caller must bind joined IDs to original point provenance before this check.
++pub(crate) fn audit(
++    boundaries: [&[usize]; 2],
++    triangles: [&[usize]; 2],
++    shared: [usize; 2],
++    points: &BTreeMap<usize, Point>,
++) -> Result<PairedDomain> {
++    if shared[0] == shared[1]
++        || points.len() > 128
++        || triangles
++            .iter()
++            .any(|t| t.is_empty() || t.len() % 3 != 0 || t.len() > 3 * 64)
++        || boundaries.iter().any(|b| b.len() < 3 || b.len() > 64)
++    {
++        return Err("paired_domain_inventory");
++    }
++    let used: [BTreeSet<usize>; 2] = triangles.map(|t| t.iter().copied().collect());
++    if used[0]
++        .intersection(&used[1])
++        .copied()
++        .collect::<BTreeSet<_>>()
++        != BTreeSet::from(shared)
++    {
++        return Err("paired_shared_identity_inventory");
++    }
++    if direction(boundaries[0], shared) == 0
++        || direction(boundaries[0], shared) != -direction(boundaries[1], shared)
++    {
++        return Err("paired_shared_boundary_orientation");
++    }
++    let all: BTreeSet<_> = used[0].union(&used[1]).copied().collect();
++    if all.len() > 128
++        || all.iter().any(|id| {
++            points
++                .get(id)
++                .is_none_or(|p| p.iter().any(|x| !x.is_finite()))
++        })
++    {
++        return Err("paired_point_inventory");
++    }
++    for rounded in [false, true] {
++        let mut seen = Vec::with_capacity(all.len());
++        for id in &all {
++            let p = points[id];
++            let p = if rounded { q::rounded(p) } else { p };
++            if p.iter().any(|x| !x.is_finite()) || seen.contains(&yz(p)) {
++                return Err("paired_projected_vertex_collision");
++            }
++            seen.push(yz(p));
++        }
++    }
++    let fans = [
++        fullfan_geometry_b::audit(boundaries[0], triangles[0], points)?,
++        fullfan_geometry_b::audit(boundaries[1], triangles[1], points)?,
++    ];
++    if fans[0].report()["working"]["winding"] != fans[1].report()["working"]["winding"] {
++        return Err("paired_projected_orientation_mismatch");
++    }
++    let mut pair_checks = 0usize;
++    for a in triangles[0].chunks_exact(3) {
++        for b in triangles[1].chunks_exact(3) {
++            pair_checks += 1;
++            if pair_checks > 4096 {
++                return Err("paired_triangle_pair_cap");
++            }
++            for rounded in [false, true] {
++                if !compatible_triangles(
++                    [a[0], a[1], a[2]],
++                    [b[0], b[1], b[2]],
++                    points,
++                    shared,
++                    rounded,
++                ) {
++                    return Err(if rounded {
++                        "paired_projected_contact_f32"
++                    } else {
++                        "paired_projected_contact_f64"
++                    });
++                }
++            }
++        }
++    }
++    let boundary = joined_boundary(boundaries, shared)?;
++    let counts = triangles.map(|t| t.len() / 3);
++    let ids: Vec<_> = triangles.into_iter().flatten().copied().collect();
++    let report = json!({"scope":"two exact cyclic projected fan disks glued along one original indexed edge; source-root, feature-curve and complete-cell coverage remain separate",
++        "patches":[fans[0].report(),fans[1].report()],"sharedEdge":shared,"triangleCounts":counts,"triangles":ids,
++        "triangleOrder":"first patch then second patch","pointBits":all.iter().map(|id|json!([id,points[id].map(f64::to_bits)])).collect::<Vec<_>>(),
++        "crossPatchTrianglePairsCheckedPerPrecision":pair_checks,"joinedBoundary":boundary,
++        "workingAndExportedUnionEmbedded":true,"crossPatchInteriorsDisjoint":true,"onlySharedIndexedEdgeAndEndpointsMeet":true,
++        "oppositeSharedBoundaryIncidence":true,"joinedProjectedDomainIsDisk":true,"sharedEdgeAffineXAgrees":true,
++        "sourceRootCertificateNeeded":true,"sourceFeatureCurveCorrespondenceProved":false,"intendedCellTrimCoverageProved":false,"publicationAuthorized":false});
++    Ok(PairedDomain {
++        report,
++        fans,
++        counts,
++    })
++}
++
++/// Conditional composition; bind every source bound to the concatenated exact triangle input.
++pub(crate) fn combine_error(
++    domain: &PairedDomain,
++    source_bounds: &[f64],
++    tolerance: f64,
++) -> Result<Value> {
++    if source_bounds.len() != domain.counts.iter().sum::<usize>() {
++        return Err("paired_source_bound_inventory");
++    }
++    let split = domain.counts[0];
++    let a = fullfan_geometry_b::combine_error(&domain.fans[0], &source_bounds[..split], tolerance)?;
++    let b = fullfan_geometry_b::combine_error(&domain.fans[1], &source_bounds[split..], tolerance)?;
++    let upper = a["conditionalSourceToExportUpper"]
++        .as_f64()
++        .ok_or("paired_error_encoding")?
++        .max(
++            b["conditionalSourceToExportUpper"]
++                .as_f64()
++                .ok_or("paired_error_encoding")?,
++        );
++    Ok(
++        json!({"scope":"same-barycentric source-to-working plus working-to-export composition over both exact patch inputs",
++        "patches":[a,b],"conditionalSourceToExportUpper":upper,"tolerance":tolerance,
++        "commonSourceSlabAndRootsMustBeBoundIndependently":true,"sourceFeatureCurveCorrespondenceProved":false,"publicationAuthorized":false}),
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn fixture() -> (BTreeMap<usize, Point>, [Vec<usize>; 2], [Vec<usize>; 2]) {
++        let p = BTreeMap::from([
++            (0, [0., -0.5, 0.]),
++            (1, [0., 0., -1.]),
++            (2, [0., 0., 1.]),
++            (3, [0., -1., 1.]),
++            (4, [0., -1., -1.]),
++            (5, [0., 1., -1.]),
++            (6, [0., 1., 1.]),
++            (7, [0., 0.5, 0.]),
++        ]);
++        (
++            p,
++            [vec![1, 2, 3, 4], vec![2, 1, 5, 6]],
++            [
++                vec![0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1],
++                vec![7, 2, 1, 7, 1, 5, 7, 5, 6, 7, 6, 2],
++            ],
++        )
++    }
++    #[test]
++    fn paired_b_two_disks_share_one_edge_and_tile_union() {
++        let (p, b, t) = fixture();
++        let d = audit([&b[0], &b[1]], [&t[0], &t[1]], [1, 2], &p).unwrap();
++        assert_eq!(d.report()["joinedProjectedDomainIsDisk"], true);
++        assert_eq!(d.report()["joinedBoundary"].as_array().unwrap().len(), 6);
++        assert!(combine_error(&d, &[0.001; 8], 0.01).is_ok());
++        assert!(combine_error(&d, &[0.001; 7], 0.01).is_err());
++        assert!(combine_error(&d, &[0.02; 8], 0.01).is_err());
++    }
++    #[test]
++    fn paired_b_refuses_renamed_shared_vertex_and_wrong_shared_edge() {
++        let (mut p, mut b, mut t) = fixture();
++        assert!(audit([&b[0], &b[1]], [&t[0], &t[1]], [1, 3], &p).is_err());
++        p.insert(8, p[&1]);
++        for id in b[1].iter_mut().chain(&mut t[1]) {
++            if *id == 1 {
++                *id = 8;
++            }
++        }
++        assert!(audit([&b[0], &b[1]], [&t[0], &t[1]], [1, 2], &p).is_err());
++    }
++    #[test]
++    fn paired_b_exact_cross_patch_contact_rejects_crossing_containment_and_t_junction() {
++        let p = BTreeMap::from([
++            (0, [0., 0., 0.]),
++            (1, [0., 4., 0.]),
++            (2, [0., 0., 4.]),
++            (3, [0., 0.5, 0.5]),
++            (4, [0., 1., 0.5]),
++            (5, [0., 0.5, 1.]),
++            (6, [0., -1., 1.]),
++            (7, [0., 2., 1.]),
++            (8, [0., 2., -1.]),
++            (9, [0., 2., 0.]),
++            (10, [0., 3., -1.]),
++            (11, [0., 1., -1.]),
++        ]);
++        assert!(!compatible_triangles(
++            [0, 1, 2],
++            [3, 4, 5],
++            &p,
++            [0, 1],
++            false
++        ));
++        assert!(!compatible_triangles(
++            [0, 1, 2],
++            [6, 7, 8],
++            &p,
++            [0, 1],
++            false
++        ));
++        assert!(!compatible_triangles(
++            [0, 1, 2],
++            [9, 10, 11],
++            &p,
++            [0, 1],
++            false
++        ));
++    }
++}
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/paired_source_c.rs
+@@ -0,0 +1,215 @@
++//! One common source-root certificate for two supplied incident patches.
++use super::fullfan_source_a;
++use crate::sfcc::feature_set::SfccFeatureSet;
++use serde_json::{json, Value};
++use std::collections::BTreeMap;
++type Point = [f64; 3];
++type Result<T> = std::result::Result<T, &'static str>;
++
++struct BoundPair {
++    triangles: Vec<[Point; 3]>,
++    ids: Vec<usize>,
++    counts: [usize; 2],
++    edge_directions: [[usize; 2]; 2],
++}
++fn bind_pair(
++    points: &BTreeMap<usize, Point>,
++    patches: [&[usize]; 2],
++    shared: [usize; 2],
++) -> Result<BoundPair> {
++    if points.is_empty() || points.len() > 4096 || points.values().flatten().any(|v| !v.is_finite()) || shared[0] == shared[1]
++        || patches.iter().any(|p| p.is_empty() || p.len() % 3 != 0)
++        || patches[0].len().checked_add(patches[1].len()).is_none_or(|n| n > 3 * 128)
++    {
++        return Err("paired_source_inventory");
++    }
++    let mut edge_directions = [[0; 2]; 2];
++    let mut triangles = Vec::with_capacity((patches[0].len() + patches[1].len()) / 3);
++    let mut ids = Vec::with_capacity(patches[0].len() + patches[1].len());
++    for (patch, input) in patches.iter().enumerate() {
++        let mut incidence = 0;
++        for t in input.chunks_exact(3) {
++            if t[0] == t[1] || t[1] == t[2] || t[2] == t[0] {
++                return Err("paired_source_repeated_triangle_vertex");
++            }
++            let get = |id: usize| -> Result<Point> {
++                let p = *points.get(&id).ok_or("paired_source_missing_point")?;
++                if p.iter().any(|v| !v.is_finite()) { return Err("paired_source_nonfinite_point"); }
++                Ok(p)
++            };
++            triangles.push([get(t[0])?, get(t[1])?, get(t[2])?]);
++            ids.extend_from_slice(t);
++            for k in 0..3 {
++                let e = [t[k], t[(k + 1) % 3]];
++                if e == shared || e == [shared[1], shared[0]] {
++                    incidence += 1;
++                    edge_directions[patch] = e;
++                }
++            }
++        }
++        if incidence != 1 { return Err("paired_source_not_single_boundary_edge"); }
++    }
++    if edge_directions[0] != [edge_directions[1][1], edge_directions[1][0]] {
++        return Err("paired_source_shared_edge_direction");
++    }
++    Ok(BoundPair { triangles, ids, counts: patches.map(|p| p.len() / 3), edge_directions })
++}
++
++/// Domain embedding and source-feature incidence are independent caller obligations.
++pub(crate) fn certify_pair(
++    features: &SfccFeatureSet,
++    cylinder_id: usize,
++    points: &BTreeMap<usize, Point>,
++    patches: [&[usize]; 2],
++    shared: [usize; 2],
++    tolerance: f64,
++) -> std::result::Result<Value, String> {
++    let pair = bind_pair(points, patches, shared).map_err(str::to_owned)?;
++    // One call retains a common slab and the existing global 128-check limit.
++    let source = fullfan_source_a::certify(features, cylinder_id, &pair.triangles, tolerance)?;
++    if source["triangleCount"].as_u64() != Some(pair.triangles.len() as u64)
++        || source["fullClosedTriangleDomainsCovered"] != true
++        || source["sharedEdgeRootsAgreeByCommonSlabUniqueness"] != true
++        || source["tolerance"].as_f64().map(f64::to_bits) != Some(tolerance.to_bits())
++    {
++        return Err("paired_source_certificate_scope".into());
++    }
++    Ok(json!({
++        "scope":"one full-source root graph over both supplied closed triangle families; projected union and source-feature correspondence require independent checks",
++        "sourceFingerprint":features.fingerprint().to_string(),
++        "cylinderSource":cylinder_id,
++        "patchTriangleCounts":pair.counts,
++        "triangleOrder":"all inside triangles, then all outside triangles",
++        "triangles":pair.ids,
++        "pointBits":points.iter().filter(|entry|pair.ids.contains(entry.0)).map(|(&id,p)|json!([id,p.map(f64::to_bits)])).collect::<Vec<_>>(),
++        "sharedEdge":shared,
++        "oppositeBoundaryDirections":pair.edge_directions,
++        "sharedPointBits":shared.map(|id|points[&id].map(f64::to_bits)),
++        "sharedRootTraceAgreementProved":true,
++        "traceArgument":"the same affine YZ edge is included in both closed domains; at every edge parameter the one common slab contains exactly one full-source root",
++        "sourceCertificate":source,
++        "projectedUnionEmbeddingProvedHere":false,
++        "sharedSourceFeatureIdentityProved":false,
++        "exactFacePlanePreservationProved":false,
++        "otherInterfacesCovered":false,
++        "publicationReady":false
++    }))
++}
++
++#[test]
++fn paired_c_source_binding_requires_one_opposite_shared_edge() {
++    let points = BTreeMap::from([
++        (0, [0., 0., 0.]), (1, [0., 1., 0.]),
++        (2, [0., 0., 1.]), (3, [0., 0., -1.]),
++        (4, [0., 0., 0.]), (5, [0., 1., 0.]),
++    ]);
++    let pair = bind_pair(&points, [&[0, 1, 2], &[1, 0, 3]], [0, 1]).unwrap();
++    assert_eq!(pair.counts, [1, 1]);
++    assert_eq!(pair.ids, [0, 1, 2, 1, 0, 3]);
++    assert_eq!(pair.edge_directions, [[0, 1], [1, 0]]);
++    assert!(bind_pair(&points, [&[0, 1, 2], &[0, 1, 3]], [0, 1]).is_err());
++    assert!(bind_pair(&points, [&[0, 1, 2], &[5, 4, 3]], [0, 1]).is_err(),
++        "equal coordinates with different IDs are not established shared provenance");
++    assert!(bind_pair(&points, [&[0, 1, 2, 1, 0, 3], &[1, 0, 3]], [0, 1]).is_err());
++    assert!(bind_pair(&points, [&[0, 1, 2], &[1, 0, 3]], [0, 0]).is_err());
++}
++
++#[test]
++fn paired_c_source_binding_rejects_invalid_and_over_cap_inputs() {
++    let mut points = BTreeMap::from([(0, [0., 0., 0.]), (1, [0., 1., 0.]), (2, [0., 0., 1.]), (3, [0., 0., -1.])]);
++    assert!(bind_pair(&points, [&[], &[1, 0, 3]], [0, 1]).is_err());
++    assert!(bind_pair(&points, [&[0, 1], &[1, 0, 3]], [0, 1]).is_err());
++    assert!(bind_pair(&points, [&[0, 1, 1], &[1, 0, 3]], [0, 1]).is_err());
++    assert!(bind_pair(&points, [&[0, 1, 9], &[1, 0, 3]], [0, 1]).is_err());
++    points.insert(2, [f64::NAN, 0., 0.]);
++    assert!(bind_pair(&points, [&[0, 1, 2], &[1, 0, 3]], [0, 1]).is_err());
++    let too_many = [0, 1, 2].repeat(128);
++    assert!(bind_pair(&points, [&too_many, &[1, 0, 3]], [0, 1]).is_err());
++}
++
++#[test]
++fn paired_c_actual_common_source_graph_and_union() {
++    use crate::sfcc::{
++        cell_mesh::paired_geometry_b,
++        pipeline::{build_pipeline_context, PipelineTuning, SfccWorldCube},
++        validation::NumericalGuard,
++    };
++    let _guard = NumericalGuard::new();
++    let original: Value = serde_json::from_str(include_str!("../../fixtures/shared-arc-full-knob.json")).unwrap();
++    let saved: Value = serde_json::from_str(include_str!("../../fixtures/paired-fans-c.json")).unwrap();
++    let tree = crate::scene_bridge::build_csg_tree_from_json(original["sceneJson"].as_str().unwrap()).unwrap();
++    let cube = SfccWorldCube {
++        min_x: original["cube"]["min"][0].as_f64().unwrap(),
++        min_y: original["cube"]["min"][1].as_f64().unwrap(),
++        min_z: original["cube"]["min"][2].as_f64().unwrap(),
++        size: original["cube"]["max"][0].as_f64().unwrap() - original["cube"]["min"][0].as_f64().unwrap(),
++    };
++    let context = build_pipeline_context(&tree, &cube, &PipelineTuning::default());
++    let f = &context.features;
++    assert_eq!(f.fingerprint().to_string(), saved["sourceFingerprint"].as_str().unwrap());
++    assert_eq!(saved["sourceFingerprint"], saved["originalTarget"]["sourceFingerprint"]);
++    assert_eq!(saved["face"], saved["originalTarget"]["face"]);
++    assert_eq!(saved["insideCell"], saved["originalTarget"]["insideCell"]);
++    assert_eq!(saved["outsideCell"], saved["originalTarget"]["outsideCell"]);
++    for flag in ["mainFanEmitted", "outsideFanEmitted", "exactPointBindings", "outsideOriginalFaceConsumption", "outsideQueryPostvalidation", "outsideOrientationPass"] {
++        assert_eq!(saved["captureChecks"][flag], true, "captured prerequisite {flag}");
++    }
++    fn without_addresses(value: &Value) -> Value {
++        match value {
++            Value::Object(m) => Value::Object(m.iter().filter(|(k,_)|k.as_str()!="rootAddressProcessLocal")
++                .map(|(k,v)|(k.clone(),without_addresses(v))).collect()),
++            Value::Array(a) => Value::Array(a.iter().map(without_addresses).collect()),
++            other => other.clone(),
++        }
++    }
++    let patches = saved["patches"].as_array().unwrap();
++    assert_eq!(patches.len(), 2);
++    for patch in patches {
++        let sid = patch["hypothesisStratum"].as_u64().unwrap() as usize;
++        assert_eq!(without_addresses(&f.strata[sid].graph_capture_identity_b()), without_addresses(&patch["sourceIdentity"]));
++    }
++    let points: BTreeMap<usize,Point> = saved["points"].as_array().unwrap().iter().map(|p| {
++        (p["id"].as_u64().unwrap() as usize, std::array::from_fn(|k|f64::from_bits(p["positionBits"][k].as_u64().unwrap())))
++    }).collect();
++    assert_eq!(points.len(), saved["points"].as_array().unwrap().len());
++    let boundaries: [Vec<usize>;2] = std::array::from_fn(|k|serde_json::from_value(patches[k]["boundary"].clone()).unwrap());
++    let ids: [Vec<usize>;2] = std::array::from_fn(|k|serde_json::from_value(patches[k]["triangles"].clone()).unwrap());
++    let shared: [usize;2] = serde_json::from_value(saved["sharedEdge"].clone()).unwrap();
++    assert_eq!(saved["sharedEdge"], saved["originalTarget"]["candidateEdge"]);
++    let tolerance = saved["surfaceTolerance"].as_f64().unwrap();
++    assert_eq!(tolerance.to_bits(), original["tuning"]["surfaceTolMm"].as_f64().unwrap().to_bits());
++    assert_eq!(tolerance.to_bits(), PipelineTuning::default().surface_tol_mm.to_bits());
++    let cylinder = saved["cylinderSource"].as_u64().unwrap() as usize;
++    let geometry = paired_geometry_b::audit([&boundaries[0],&boundaries[1]],[&ids[0],&ids[1]],shared,&points);
++    let source = certify_pair(f,cylinder,&points,[&ids[0],&ids[1]],shared,tolerance);
++    let exact_binding = match (&geometry,&source) {
++        (Ok(g),Ok(s)) => s["triangles"]==g.report()["triangles"]
++            && s["pointBits"]==g.report()["pointBits"]
++            && s["patchTriangleCounts"]==g.report()["triangleCounts"]
++            && s["sharedEdge"]==g.report()["sharedEdge"],
++        _ => false,
++    };
++    let combined: std::result::Result<Value,String> = match (&geometry,&source) {
++        (Ok(g),Ok(s)) if exact_binding => {
++            let bounds: Vec<f64> = serde_json::from_value(s["sourceCertificate"]["perTriangleSourceBounds"].clone()).unwrap();
++            paired_geometry_b::combine_error(g,&bounds,tolerance).map_err(str::to_owned)
++        }
++        (Err(e),_) => Err(format!("paired_geometry: {e}")),
++        (_,Err(e)) => Err(format!("paired_source: {e}")),
++        _ => Err("paired_exact_input_binding".into()),
++    };
++    let geometry_result = geometry.as_ref().map(|g|g.report().clone()).map_err(|e|e.to_string());
++    let source_report = json!({"parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":saved["sourceFingerprint"],"face":saved["face"],"result":source});
++    let geometry_report = json!({"parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":saved["sourceFingerprint"],"face":saved["face"],"result":geometry_result});
++    let combined_report = json!({"parentReceiptSha256":saved["parentReceiptSha256"],"sourceFingerprint":saved["sourceFingerprint"],
++        "face":saved["face"],"insideCell":saved["insideCell"],"outsideCell":saved["outsideCell"],"sharedEdge":shared,
++        "sourceResult":source,"geometryResult":geometry_result,"combinedResult":combined,
++        "exactSourceGeometryInputBinding":exact_binding,"sharedSourceGraphAndUnionProved":combined.is_ok(),
++        "sourceFeatureParameterTransportProved":false,"otherInterfacesCovered":false,"publicationReady":false});
++    for (env,value) in [("SFCC_PAIRED_C_RECEIPT",&source_report),("SFCC_PAIRED_B_RECEIPT",&geometry_report),("SFCC_PAIRED_COMBINED_RECEIPT",&combined_report)] {
++        if let Ok(path)=std::env::var(env) {std::fs::write(path,serde_json::to_vec_pretty(value).unwrap()).unwrap();}
++    }
++    assert!(geometry.is_ok(), "{geometry_result:?}");
++    assert!(source.is_ok(), "{source:?}");
++    assert!(combined.is_ok(), "{combined:?}");
++}

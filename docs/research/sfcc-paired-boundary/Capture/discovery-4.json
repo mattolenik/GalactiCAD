@@ -1,0 +1,8 @@
+{
+  "filter": "outside_b_",
+  "tests": [
+    "sfcc::private_arc_a::stage4_component_b::outside_b::outside_b_identity_requires_original_key_and_position",
+    "sfcc::private_arc_a::stage4_component_b::outside_b::outside_b_join_checks_actual_contacts_and_partial_topology"
+  ],
+  "exitCode": 0
+}

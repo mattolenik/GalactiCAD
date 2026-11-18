@@ -1,0 +1,80 @@
+{
+  "selected": "Proof-fixed",
+  "sourceManifestSha256": "3680e906355f68f978a4a670033dd550290ade8c10b2e7e9858da0b8685be6e7",
+  "componentReceiptSha256": "64b62c86aca4d3354d0e2cc9770aebbdf0feb5d41397ee966f50b8045c257a68",
+  "preservation": {
+    "candidatePointsIdentical": true,
+    "candidateTrianglesIdentical": true,
+    "candidateTopologyIdentical": true,
+    "intervalsIdenticalAfterSorting": true,
+    "candidateGeneratedQueriesIdentical": true,
+    "candidateQueryCostsIdentical": true,
+    "retainedMetadataIdentical": true,
+    "outsideMatchesCaptureModuloAddressesAndUnorderedMembershipRows": true,
+    "proofTriangleOrderMatchesFreshPair": true,
+    "proofPointBitsMatchFreshPair": true,
+    "sharedDirectionsMatchActual": true
+  },
+  "face": [
+    0,
+    3464532,
+    2
+  ],
+  "insideCell": [
+    7,
+    25,
+    58,
+    86
+  ],
+  "outsideCell": [
+    7,
+    26,
+    58,
+    86
+  ],
+  "pairedTriangles": [
+    6,
+    5
+  ],
+  "pairedUsedVertices": 11,
+  "sharedEdge": [
+    40,
+    38
+  ],
+  "outsideWholeCellTriangles": 11,
+  "outsideOtherFanTriangles": 6,
+  "projectedCrossPatchPairsCheckedPerPrecision": 30,
+  "joinedProjectedDomainIsDisk": true,
+  "commonWorldXSlab": [
+    -9.3690502954966,
+    -9.203433300600462
+  ],
+  "acceptedPieces": 55,
+  "pieceAttempts": 99,
+  "globalPieceCap": 128,
+  "minimumDecreaseRate": 0.8417986595496135,
+  "minimumLeftSignLower": 0.008339726120493616,
+  "maximumRightSignUpper": -0.00836976059189105,
+  "workingSourceBound": 0.0010236853133464587,
+  "exportedSourceBound": 0.0010241185705941118,
+  "tolerance": 0.01,
+  "sharedSourceTraceAgreement": true,
+  "featureParameterTransportProved": false,
+  "fullFaceCovered": false,
+  "fullOutsideCovered": false,
+  "publicationReady": false,
+  "candidateTriangles": 1775,
+  "candidateGeneratedQueries": 1929,
+  "candidateCharges": 8413,
+  "outsideGeneratedQueries": 9,
+  "outsideCharges": 2121,
+  "outsideOrientationFailures": [],
+  "outsideContactConflictsWorkingOrExported": [],
+  "outsideContactConflictsRoundedBroadphase": [],
+  "partialJoinedTriangles": 1786,
+  "partialJoinedTopologyValid": true,
+  "liveStatePreserved": true,
+  "focusedTestsPassed": 57,
+  "focusedCampaignSeconds": 24.99332804203732,
+  "componentSeconds": 32.30889870901592
+}

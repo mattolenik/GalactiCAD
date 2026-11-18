@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_a_actual_closed_source_graph ... ok
+test sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_a_cylinder_primitive_clamp_guard ... ok
+test sfcc::shared_twisted_proof::exposure_a::fullfan_source_a::fullfan_a_refuses_invalid_source_domain_and_tighter_budget ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.23s
+

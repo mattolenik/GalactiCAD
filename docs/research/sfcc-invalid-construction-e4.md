@@ -1796,6 +1796,47 @@ replacement metadata, allocator accounting and production/parity acceptance rema
 open. The theorem concerns continuous real geometry over represented parameters,
 not bitwise CPU or WGSL field evaluation.
 
+## Round 36: actual opposite patch and a common source trace
+
+The [paired-boundary milestone](sfcc-paired-boundary/README.md) reconstructs the
+actual original-stage outside consumer [7,26,58,86] across [0,3464532,2]. It emits
+11 triangles in two fans: five for cylinder hypothesis 15 and six for stratum 31.
+The selected cylinder fan is bound by its reversed shared edge, emitted triangle
+triples and final point bits, not by capture order. All nine generated curve-49
+queries validate at 2,121 charges in a separate observational ledger. Orientation,
+original face consumption, candidate/outside contacts and partial joined topology
+pass; the discrete partial join contains 1,786 triangles.
+
+The first candidate fan's six triangles and the selected outside fan's five form
+one exact projected disk in working and f32 coordinates. Thirty cross-patch triangle
+pairs per precision exclude improper contacts and overlap. One source certificate
+covers their exact concatenation in a common X slab: 55 accepted pieces, 99 total
+checks under the unchanged global 128 cap, and decrease rate at least
+0.8417986595496135. Its same-barycentric export composition bounds error by
+0.0010241185705941118 mm under tolerance 0.01. Shared-root uniqueness and the
+projected union establish identical source traces along the entire shared edge
+without requiring that trace to remain on the original cell plane.
+
+The result covers one face-contour segment, not the ideal feature curve that meets
+it. Curve49 has strata [31,15], and its shared endpoint parameter/point bits remain
+in the validated numerical query log; ideal feature-parameter transport is still
+unproved. The face's other segment and the outside stratum-31 fan also remain
+outside this paired theorem. Outside-local membership IDs are explicitly mapped
+before comparison with joined patch IDs.
+
+The selected source passes 57 focused tests in 24.993 seconds, a non-test library
+check and a 32.309-second fresh diagnostic. Parent candidate geometry, topology,
+intervals, generated records/costs and retained metadata are unchanged. The new
+outside replay matches the capture after removing process-local addresses and
+sorting only unordered membership rows. Two initial compile failures are preserved;
+no source-family extension, tolerance change or limit increase was needed.
+
+Next check curve49 at the actual shared endpoint, then certify the second face
+segment and compatibility of its incident patch. Full-component ownership, complete
+outside coverage, replacement metadata, allocation accounting and production/parity
+acceptance remain open. This is a local continuous represented-source result, not
+bitwise CPU/WGSL field parity or a published mesh repair.
+
 ## Evidence
 
 - [Frozen E4 baseline](../../.testresults/sfcc-critical-repairs/e4-invalid-construction/baseline.json)

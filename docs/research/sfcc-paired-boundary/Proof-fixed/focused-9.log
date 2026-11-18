@@ -1,0 +1,12 @@
+
+running 3 tests
+test sfcc::private_arc_a::secondary_component_a::component_a_face_proof_rejects_refused_prefix_and_incomplete_inventory ... ok
+test sfcc::private_arc_a::secondary_component_a::component_a_paired_inventory_rejects_unsupported_axis_and_ambiguous_pins ... ok
+test sfcc::private_arc_a::secondary_component_a::component_a_scope_restores_and_conflicting_merge_is_atomic ... 
+thread 'sfcc::private_arc_a::secondary_component_a::component_a_scope_restores_and_conflicting_merge_is_atomic' (28048321) panicked at kernel/src/sfcc/secondary_component_a.rs:388:9:
+secondary transaction scope
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 0.00s
+

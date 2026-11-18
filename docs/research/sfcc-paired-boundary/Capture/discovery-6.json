@@ -1,0 +1,9 @@
+{
+  "filter": "fullfan_b_",
+  "tests": [
+    "sfcc::cell_mesh::fullfan_geometry_b::fullfan_b_actual_projected_disk_and_export_rounding",
+    "sfcc::cell_mesh::fullfan_geometry_b::fullfan_b_error_composition_retains_original_limit",
+    "sfcc::cell_mesh::fullfan_geometry_b::fullfan_b_refuses_wrong_inventory_fold_and_export_collapse"
+  ],
+  "exitCode": 0
+}

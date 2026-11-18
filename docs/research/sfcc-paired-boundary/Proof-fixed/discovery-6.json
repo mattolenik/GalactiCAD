@@ -1,0 +1,9 @@
+{
+  "filter": "ownership_a_",
+  "tests": [
+    "sfcc::cell_mesh::ownership_a::ownership_a_first_actual_fan_source_regions_and_projection_witnesses",
+    "sfcc::cell_mesh::ownership_a::ownership_a_inventory_is_bounded_and_inactive_without_request",
+    "sfcc::shared_twisted_proof::exposure_a::ownership_source_a::ownership_a_height_clamp_guard_rejects_outside_and_invalid_extents"
+  ],
+  "exitCode": 0
+}

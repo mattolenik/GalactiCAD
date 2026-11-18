@@ -1,0 +1,7 @@
+error: expected item, found `/`
+ --> kernel/src/sfcc/paired_geometry_b.rs:1:1
+  |
+1 | /private/tmp/sfcc-paired-b/gcad-wasm/kernel/src/sfcc/paired_geometry_b.rs:
+  | ^ expected item
+  |
+  = note: for a full list of items that can appear in modules, see <https://doc.rust-lang.org/reference/items.html>

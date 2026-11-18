@@ -1,0 +1,8 @@
+
+running 3 tests
+test sfcc::cell_mesh::ownership_a::ownership_a_first_actual_fan_source_regions_and_projection_witnesses ... ok
+test sfcc::cell_mesh::ownership_a::ownership_a_inventory_is_bounded_and_inactive_without_request ... ok
+test sfcc::shared_twisted_proof::exposure_a::ownership_source_a::ownership_a_height_clamp_guard_rejects_outside_and_invalid_extents ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 1.18s
+

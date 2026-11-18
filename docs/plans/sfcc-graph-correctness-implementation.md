@@ -1,21 +1,21 @@
 # SFCC: from the private graph refusal to a validated construction repair
 
-Status: the [whole-first-fan certificate](../research/sfcc-full-fan/README.md)
-covers all six closed triangle domains with one local full-source root graph.
-Fifteen accepted pieces use 24 of 128 allowed checks. The uniform bound after f32
-mesh rounding is 0.0005058201434644458 mm, below the unchanged 0.01 mm tolerance.
-The exact projected fan is an embedded disk in both precisions. All 48 selected
-checks and the library validation pass; the fresh full-component run preserves
-geometry, metadata and all query evidence exactly.
+Status: the [paired-boundary milestone](../research/sfcc-paired-boundary/README.md)
+reconstructs the actual retained neighbor [7,26,58,86] and certifies the selected
+6+5 triangles across face [0,3464532,2]. Their projected union is an embedded disk
+in both precisions. One common source slab proves identical roots along the whole
+shared contour trace, with exported error at most 0.0010241185705941118 mm under
+the unchanged 0.01 mm tolerance. The proof uses 55 pieces / 99 of 128 checks.
+The selected source passes 57 tests and a library check; fresh runtime evidence
+preserves the original component and binds the actual pair exactly.
 
-**Stage 4 publication and production acceptance remain open.** The local graph
-may switch source facets and does not prove intended cell-trimmed coverage or
-conforming neighbor transport. An actual X-face midpoint moves about 2.23725e-6 mm
-off face [0,3464532,2] under the lift. Next reconstruct its actual retained opposite
-consumer [7,26,58,86] and prove a shared source boundary and compatible patch union.
-Other fans, complete outside coverage, replacement-stage metadata and checker
-allocation accounting remain open. The bound is for continuous represented-source
-geometry, not CPU/WGSL numerical parity.
+**Stage 4 publication and production acceptance remain open.** The shared edge is
+one face-contour segment. Numerical curve-49 endpoint provenance is retained, but
+ideal feature/parameter transport is not proved. Next check that endpoint directly
+and certify the face's second contour segment and incident chamfer patch before
+claiming complete face compatibility. Other fans, the complete outside ring,
+replacement-stage metadata, checker allocation accounting and production parity
+remain open.
 
 Stages 1–2 established the [exact graph refusal](../research/sfcc-graph-rejection-capture/README.md),
 [local source obligation](../research/sfcc-endpoint-obligation/README.md) and

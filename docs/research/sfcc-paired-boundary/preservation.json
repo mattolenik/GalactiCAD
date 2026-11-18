@@ -1,0 +1,48 @@
+{
+  "parentManifest": "docs/research/sfcc-full-fan/Reviewed/manifest.json",
+  "parentManifestSha256": "210be73002f70e29393735ce5ce990c9d253afec07986154b36ba4d0dde9f561",
+  "parentInputCount": 212,
+  "selected": "Proof-fixed",
+  "restorations": [
+    {
+      "packet": "B-check",
+      "patchSha256": "d031f5aee02ffd0318db9408358f759072cf6e55553a7a8976e7cd09868f8b08",
+      "manifestSha256": "d9df73a18eda3ebe18725ca48bbf2991e56fa7b9a427c70d5ec81aa55f1e4664",
+      "verifiedInputCount": 213,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-paired-restore-zn8vwc_u",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "C-check",
+      "patchSha256": "c7da74136467a44d6b4239d86f386bf35b983d06171208e7a77e69a22f53413d",
+      "manifestSha256": "58425b3886a8a21828c6bfdd8d214ce68c10e6a537d8eeb5007a5179b3c71395",
+      "verifiedInputCount": 213,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-paired-restore-vyabn9q2",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Capture",
+      "patchSha256": "a2accdd26751368941f9198f65c0fbb193a4772f09118172758d30f11152b063",
+      "manifestSha256": "fe55980a7ab5c3f996927b6abaed161b000db204797561d59c134638aebe147e",
+      "verifiedInputCount": 214,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-paired-restore-x0sjrrwm",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Proof",
+      "patchSha256": "023044d7c5081002cafed49720da49502a7159d206a461882b88b98b33d294e0",
+      "manifestSha256": "69581c2f70c86e876c2bf729595219ef1aff7447d21db01341182f5a50ef942f",
+      "verifiedInputCount": 215,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-paired-restore-cii_b8h5",
+      "result": "all input hashes match"
+    },
+    {
+      "packet": "Proof-fixed",
+      "patchSha256": "45112f640792db4c7b107a766ce18e92078eb6eb18d1a53f2a0ab3d3db7efd53",
+      "manifestSha256": "3680e906355f68f978a4a670033dd550290ade8c10b2e7e9858da0b8685be6e7",
+      "verifiedInputCount": 215,
+      "restoredAt": "/var/folders/tb/m4kk_wmd6lz4hrhtv1bqzytc0000gn/T/sfcc-paired-restore-0pfteisl",
+      "result": "all input hashes match"
+    }
+  ]
+}

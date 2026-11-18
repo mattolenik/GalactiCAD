@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+   --> kernel/src/sfcc/paired_source_c.rs:169:38
+    |
+169 |         assert_eq!(without_addresses(&f.strata[sid].graph_capture_identity_b()), without_addresses(&patch["sourceIdentity"]));
+    |                    ----------------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&Value`, found `&Option<Value>`
+    |                    |
+    |                    arguments to this function are incorrect
+    |
+    = note: expected reference `&Value`
+               found reference `&std::option::Option<Value>`
+note: function defined here
+   --> kernel/src/sfcc/paired_source_c.rs:157:8
+    |
+157 |     fn without_addresses(value: &Value) -> Value {
+    |        ^^^^^^^^^^^^^^^^^ -------------

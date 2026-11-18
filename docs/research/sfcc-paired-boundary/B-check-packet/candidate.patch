@@ -1,0 +1,358 @@
+--- a/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
++++ b/gcad-wasm/kernel/src/sfcc/cell_mesh.rs
+@@ -2319,3 +2319,7 @@
+ #[cfg(all(test,feature="serde"))]
+ #[path="fullfan_geometry_b.rs"]
+ pub(crate) mod fullfan_geometry_b;
++
++#[cfg(all(test,feature="serde"))]
++#[path="paired_geometry_b.rs"]
++pub(crate) mod paired_geometry_b;
+--- /dev/null
++++ b/gcad-wasm/kernel/src/sfcc/paired_geometry_b.rs
+@@ -0,0 +1,345 @@
++/private/tmp/sfcc-paired-b/gcad-wasm/kernel/src/sfcc/paired_geometry_b.rs:
++
++//! Two cyclic fan disks glued along one exact indexed edge; no source field is evaluated.
++use super::fullfan_geometry_b::{self, FanDomain};
++use crate::sfcc::{predicates::orient2d, triangle_quality as q};
++use serde_json::{json, Value};
++use std::collections::{BTreeMap, BTreeSet};
++
++type Point = [f64; 3];
++type Result<T> = std::result::Result<T, &'static str>;
++fn edge(a: usize, b: usize) -> [usize; 2] {
++    [a.min(b), a.max(b)]
++}
++fn yz(p: Point) -> [f64; 2] {
++    [p[1], p[2]]
++}
++fn on_segment(a: [f64; 2], b: [f64; 2], p: [f64; 2]) -> bool {
++    orient2d(a, b, p) == 0 && (0..2).all(|k| p[k] >= a[k].min(b[k]) && p[k] <= a[k].max(b[k]))
++}
++fn strict_inside(p: [f64; 2], t: [[f64; 2]; 3]) -> bool {
++    let sign = orient2d(t[0], t[1], t[2]);
++    sign != 0 && (0..3).all(|i| orient2d(t[i], t[(i + 1) % 3], p) == sign)
++}
++fn direction(boundary: &[usize], shared: [usize; 2]) -> i8 {
++    for (i, &a) in boundary.iter().enumerate() {
++        let b = boundary[(i + 1) % boundary.len()];
++        if [a, b] == shared {
++            return 1;
++        }
++        if [b, a] == shared {
++            return -1;
++        }
++    }
++    0
++}
++
++fn compatible_triangles(
++    a: [usize; 3],
++    b: [usize; 3],
++    points: &BTreeMap<usize, Point>,
++    shared: [usize; 2],
++    rounded: bool,
++) -> bool {
++    let get = |id| {
++        let p = points[&id];
++        yz(if rounded { q::rounded(p) } else { p })
++    };
++    let pa = a.map(get);
++    let pb = b.map(get);
++    if pa.iter().any(|&p| strict_inside(p, pb)) || pb.iter().any(|&p| strict_inside(p, pa)) {
++        return false;
++    }
++    for i in 0..3 {
++        for j in 0..3 {
++            let ia = [a[i], a[(i + 1) % 3]];
++            let ib = [b[j], b[(j + 1) % 3]];
++            let ea = [pa[i], pa[(i + 1) % 3]];
++            let eb = [pb[j], pb[(j + 1) % 3]];
++            if edge(ia[0], ia[1]) == edge(ib[0], ib[1]) {
++                if edge(ia[0], ia[1]) != edge(shared[0], shared[1]) || ia != [ib[1], ib[0]] {
++                    return false;
++                }
++                continue;
++            }
++            let signs = [
++                orient2d(ea[0], ea[1], eb[0]),
++                orient2d(ea[0], ea[1], eb[1]),
++                orient2d(eb[0], eb[1], ea[0]),
++                orient2d(eb[0], eb[1], ea[1]),
++            ];
++            if signs[0] * signs[1] < 0 && signs[2] * signs[3] < 0 {
++                return false;
++            }
++            for k in 0..2 {
++                if on_segment(ea[0], ea[1], eb[k]) && !ia.contains(&ib[k]) {
++                    return false;
++                }
++                if on_segment(eb[0], eb[1], ea[k]) && !ib.contains(&ia[k]) {
++                    return false;
++                }
++            }
++        }
++    }
++    true
++}
++fn joined_boundary(boundaries: [&[usize]; 2], shared: [usize; 2]) -> Result<Vec<usize>> {
++    let mut next = BTreeMap::new();
++    let mut incoming = BTreeSet::new();
++    for boundary in boundaries {
++        for (i, &a) in boundary.iter().enumerate() {
++            let b = boundary[(i + 1) % boundary.len()];
++            if edge(a, b) == edge(shared[0], shared[1]) {
++                continue;
++            }
++            if next.insert(a, b).is_some() || !incoming.insert(b) {
++                return Err("paired_boundary_degree");
++            }
++        }
++    }
++    if next.len() != boundaries[0].len() + boundaries[1].len() - 2 || next.len() < 4 {
++        return Err("paired_boundary_inventory");
++    }
++    let start = *next.keys().next().ok_or("paired_boundary_empty")?;
++    let mut out = Vec::with_capacity(next.len());
++    let mut current = start;
++    loop {
++        if out.contains(&current) {
++            return Err("paired_boundary_repeated_vertex");
++        }
++        out.push(current);
++        current = *next.get(&current).ok_or("paired_boundary_gap")?;
++        if current == start {
++            break;
++        }
++        if out.len() >= next.len() {
++            return Err("paired_boundary_not_closed");
++        }
++    }
++    if out.len() != next.len() {
++        return Err("paired_boundary_multiple_cycles");
++    }
++    Ok(out)
++}
++
++pub(crate) struct PairedDomain {
++    report: Value,
++    fans: [FanDomain; 2],
++    counts: [usize; 2],
++}
++impl PairedDomain {
++    pub(crate) fn report(&self) -> &Value {
++        &self.report
++    }
++}
++
++/// The caller must bind joined IDs to original point provenance before this check.
++pub(crate) fn audit(
++    boundaries: [&[usize]; 2],
++    triangles: [&[usize]; 2],
++    shared: [usize; 2],
++    points: &BTreeMap<usize, Point>,
++) -> Result<PairedDomain> {
++    if shared[0] == shared[1]
++        || points.len() > 128
++        || triangles
++            .iter()
++            .any(|t| t.is_empty() || t.len() % 3 != 0 || t.len() > 3 * 64)
++        || boundaries.iter().any(|b| b.len() < 3 || b.len() > 64)
++    {
++        return Err("paired_domain_inventory");
++    }
++    let used: [BTreeSet<usize>; 2] = triangles.map(|t| t.iter().copied().collect());
++    if used[0]
++        .intersection(&used[1])
++        .copied()
++        .collect::<BTreeSet<_>>()
++        != BTreeSet::from(shared)
++    {
++        return Err("paired_shared_identity_inventory");
++    }
++    if direction(boundaries[0], shared) == 0
++        || direction(boundaries[0], shared) != -direction(boundaries[1], shared)
++    {
++        return Err("paired_shared_boundary_orientation");
++    }
++    let all: BTreeSet<_> = used[0].union(&used[1]).copied().collect();
++    if all.len() > 128
++        || all.iter().any(|id| {
++            points
++                .get(id)
++                .is_none_or(|p| p.iter().any(|x| !x.is_finite()))
++        })
++    {
++        return Err("paired_point_inventory");
++    }
++    for rounded in [false, true] {
++        let mut seen = Vec::with_capacity(all.len());
++        for id in &all {
++            let p = points[id];
++            let p = if rounded { q::rounded(p) } else { p };
++            if p.iter().any(|x| !x.is_finite()) || seen.contains(&yz(p)) {
++                return Err("paired_projected_vertex_collision");
++            }
++            seen.push(yz(p));
++        }
++    }
++    let fans = [
++        fullfan_geometry_b::audit(boundaries[0], triangles[0], points)?,
++        fullfan_geometry_b::audit(boundaries[1], triangles[1], points)?,
++    ];
++    if fans[0].report()["working"]["winding"] != fans[1].report()["working"]["winding"] {
++        return Err("paired_projected_orientation_mismatch");
++    }
++    let mut pair_checks = 0usize;
++    for a in triangles[0].chunks_exact(3) {
++        for b in triangles[1].chunks_exact(3) {
++            pair_checks += 1;
++            if pair_checks > 4096 {
++                return Err("paired_triangle_pair_cap");
++            }
++            for rounded in [false, true] {
++                if !compatible_triangles(
++                    [a[0], a[1], a[2]],
++                    [b[0], b[1], b[2]],
++                    points,
++                    shared,
++                    rounded,
++                ) {
++                    return Err(if rounded {
++                        "paired_projected_contact_f32"
++                    } else {
++                        "paired_projected_contact_f64"
++                    });
++                }
++            }
++        }
++    }
++    let boundary = joined_boundary(boundaries, shared)?;
++    let counts = triangles.map(|t| t.len() / 3);
++    let ids: Vec<_> = triangles.into_iter().flatten().copied().collect();
++    let report = json!({"scope":"two exact cyclic projected fan disks glued along one original indexed edge; source-root, feature-curve and complete-cell coverage remain separate",
++        "patches":[fans[0].report(),fans[1].report()],"sharedEdge":shared,"triangleCounts":counts,"triangles":ids,
++        "triangleOrder":"first patch then second patch","pointBits":all.iter().map(|id|json!([id,points[id].map(f64::to_bits)])).collect::<Vec<_>>(),
++        "crossPatchTrianglePairsCheckedPerPrecision":pair_checks,"joinedBoundary":boundary,
++        "workingAndExportedUnionEmbedded":true,"crossPatchInteriorsDisjoint":true,"onlySharedIndexedEdgeAndEndpointsMeet":true,
++        "oppositeSharedBoundaryIncidence":true,"joinedProjectedDomainIsDisk":true,"sharedEdgeAffineXAgrees":true,
++        "sourceRootCertificateNeeded":true,"sourceFeatureCurveCorrespondenceProved":false,"intendedCellTrimCoverageProved":false,"publicationAuthorized":false});
++    Ok(PairedDomain {
++        report,
++        fans,
++        counts,
++    })
++}
++
++/// Conditional composition; bind every source bound to the concatenated exact triangle input.
++pub(crate) fn combine_error(
++    domain: &PairedDomain,
++    source_bounds: &[f64],
++    tolerance: f64,
++) -> Result<Value> {
++    if source_bounds.len() != domain.counts.iter().sum::<usize>() {
++        return Err("paired_source_bound_inventory");
++    }
++    let split = domain.counts[0];
++    let a = fullfan_geometry_b::combine_error(&domain.fans[0], &source_bounds[..split], tolerance)?;
++    let b = fullfan_geometry_b::combine_error(&domain.fans[1], &source_bounds[split..], tolerance)?;
++    let upper = a["conditionalSourceToExportUpper"]
++        .as_f64()
++        .ok_or("paired_error_encoding")?
++        .max(
++            b["conditionalSourceToExportUpper"]
++                .as_f64()
++                .ok_or("paired_error_encoding")?,
++        );
++    Ok(
++        json!({"scope":"same-barycentric source-to-working plus working-to-export composition over both exact patch inputs",
++        "patches":[a,b],"conditionalSourceToExportUpper":upper,"tolerance":tolerance,
++        "commonSourceSlabAndRootsMustBeBoundIndependently":true,"sourceFeatureCurveCorrespondenceProved":false,"publicationAuthorized":false}),
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn fixture() -> (BTreeMap<usize, Point>, [Vec<usize>; 2], [Vec<usize>; 2]) {
++        let p = BTreeMap::from([
++            (0, [0., -0.5, 0.]),
++            (1, [0., 0., -1.]),
++            (2, [0., 0., 1.]),
++            (3, [0., -1., 1.]),
++            (4, [0., -1., -1.]),
++            (5, [0., 1., -1.]),
++            (6, [0., 1., 1.]),
++            (7, [0., 0.5, 0.]),
++        ]);
++        (
++            p,
++            [vec![1, 2, 3, 4], vec![2, 1, 5, 6]],
++            [
++                vec![0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1],
++                vec![7, 2, 1, 7, 1, 5, 7, 5, 6, 7, 6, 2],
++            ],
++        )
++    }
++    #[test]
++    fn paired_b_two_disks_share_one_edge_and_tile_union() {
++        let (p, b, t) = fixture();
++        let d = audit([&b[0], &b[1]], [&t[0], &t[1]], [1, 2], &p).unwrap();
++        assert_eq!(d.report()["joinedProjectedDomainIsDisk"], true);
++        assert_eq!(d.report()["joinedBoundary"].as_array().unwrap().len(), 6);
++        assert!(combine_error(&d, &[0.001; 8], 0.01).is_ok());
++        assert!(combine_error(&d, &[0.001; 7], 0.01).is_err());
++        assert!(combine_error(&d, &[0.02; 8], 0.01).is_err());
++    }
++    #[test]
++    fn paired_b_refuses_renamed_shared_vertex_and_wrong_shared_edge() {
++        let (mut p, mut b, mut t) = fixture();
++        assert!(audit([&b[0], &b[1]], [&t[0], &t[1]], [1, 3], &p).is_err());
++        p.insert(8, p[&1]);
++        for id in b[1].iter_mut().chain(&mut t[1]) {
++            if *id == 1 {
++                *id = 8;
++            }
++        }
++        assert!(audit([&b[0], &b[1]], [&t[0], &t[1]], [1, 2], &p).is_err());
++    }
++    #[test]
++    fn paired_b_exact_cross_patch_contact_rejects_crossing_containment_and_t_junction() {
++        let p = BTreeMap::from([
++            (0, [0., 0., 0.]),
++            (1, [0., 4., 0.]),
++            (2, [0., 0., 4.]),
++            (3, [0., 0.5, 0.5]),
++            (4, [0., 1., 0.5]),
++            (5, [0., 0.5, 1.]),
++            (6, [0., -1., 1.]),
++            (7, [0., 2., 1.]),
++            (8, [0., 2., -1.]),
++            (9, [0., 2., 0.]),
++            (10, [0., 3., -1.]),
++            (11, [0., 1., -1.]),
++        ]);
++        assert!(!compatible_triangles(
++            [0, 1, 2],
++            [3, 4, 5],
++            &p,
++            [0, 1],
++            false
++        ));
++        assert!(!compatible_triangles(
++            [0, 1, 2],
++            [6, 7, 8],
++            &p,
++            [0, 1],
++            false
++        ));
++        assert!(!compatible_triangles(
++            [0, 1, 2],
++            [9, 10, 11],
++            &p,
++            [0, 1],
++            false
++        ));
++    }
++}
